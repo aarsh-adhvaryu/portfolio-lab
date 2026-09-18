@@ -1,0 +1,50 @@
+[strategy]
+id = "E1"
+charter = "docs/strategies/E1.md"
+lookback_sessions = 252
+skip_sessions = 21
+n_hold = 25
+band_exit_rank = 50
+max_buys_per_month = 6
+sip_amount = 50000.0
+initial_cash = 0.0
+cash_rate_annual = 0.06
+trend_filter = "sma10"          # sma10 | off | sell_to_cash
+delisting = "last_close"        # last_close | total_loss
+# §9: how many consecutive missing sessions before rows are taken to have
+# stopped. S9 moves both this and `delisting` together.
+delist_confirm_sessions = 250
+
+[hooks]
+# Every later-charter extension point, off for E1. See pflab/backtest/hooks.py.
+# intra_month_exit (E2-A), defer_exit (E1-P), tax_class (E3),
+# pre_buy_constraint (E2-B), side_sleeve_capital (E4).
+side_sleeve_capital = 0.0
+
+[universe]
+series = ["EQ"]
+min_sessions = 250
+top_n_by_turnover = 500
+turnover_window = 126
+min_price = 10.0
+max_adv_fraction = 0.01
+
+[evaluation]
+period = "development"
+periods_path = "configs/evaluation_periods.toml"
+
+[costs]
+path = "configs/costs_zerodha.toml"
+multiplier = 1.0
+
+[tax]
+path = "configs/tax_policy_in.toml"
+
+[benchmarks]
+primary = "NIFTY500_TRI"
+# keys must match pflab.data.indices.SERIES
+list = ["NIFTY50_TRI", "NIFTY500_TRI", "NIFTY200_MOMENTUM30_TRI", "EQUAL_WEIGHT_UNIVERSE"]
+mom30_expense_ratio = 0.003
+
+[report]
+output_dir = "experiments/E1"

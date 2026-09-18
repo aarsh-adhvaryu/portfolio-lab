@@ -1,0 +1,11 @@
+# Zerodha equity delivery, per side. Verify against the current charges
+# page before the first real order; these are research inputs.
+[costs]
+brokerage_pct = 0.0
+stt_buy_pct = 0.001
+stt_sell_pct = 0.001
+exchange_txn_pct = 0.0000297
+sebi_per_crore = 10.0
+stamp_buy_pct = 0.00015
+gst_pct = 0.18
+dp_charge_per_sell = 15.34

@@ -1,0 +1,27 @@
+# Period boundaries come from the charter (E1 §11). Configs may only
+# reference a period by name; they cannot widen it.
+
+[periods.warmup]
+start = "2005-01-01"
+end = "2006-12-31"
+sealed = false
+
+[periods.development]
+start = "2007-01-01"
+end = "2016-12-31"
+sealed = false
+
+[periods.validation]
+start = "2017-01-01"
+end = "2021-12-31"
+sealed = false
+
+[periods.sealed]
+start = "2022-01-01"
+end = "2025-12-31"
+sealed = true
+
+[periods.live]
+start = "2026-10-01"
+end = "2027-09-30"
+sealed = false

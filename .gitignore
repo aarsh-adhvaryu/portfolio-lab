@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+data/
+experiments/
+research/journal.jsonl
+configs/*.local.toml
+secrets*
+.env
+*.egg-info/

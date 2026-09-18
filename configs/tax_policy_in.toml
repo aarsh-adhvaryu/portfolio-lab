@@ -1,0 +1,10 @@
+# India listed-equity capital gains, regime in force for FY 2026-27,
+# applied counterfactually to every backtest year (charter E1 §8).
+[tax]
+stcg_rate = 0.20
+ltcg_rate = 0.125
+ltcg_exemption = 125000.0
+cess = 0.04
+dividend_rate = 0.30
+long_term_months = 12
+loss_carry_years = 8
