@@ -32,6 +32,29 @@ touching code. The charter is the spec; the code implements it.
 9. **Data lives under `PFLAB_DATA_DIR`** (env var, default `./data`).
    It is gitignored. On Aarsh's machine point it at the D: drive.
 
+## Repo layout (flattened 2026-09-19)
+
+The repository root is `D:\portfolio_lab` and it is the only copy of
+everything. Documents used to exist twice — once at the top level and once
+inside a doubly-nested `portfolio-lab/portfolio-lab/` checkout — which meant
+edits could land on the copy that was not law. That is fixed: **there is now
+exactly one file per document, and it lives in the repo.** Never create a
+second copy of a charter, roadmap or note outside `docs/`.
+
+| what | where |
+|---|---|
+| charters (E1, E1b, E1c, E1-P, E2…E5) and the gate | `docs/strategies/` incl. `GATE.md` |
+| experiment order and reasons | `docs/ROADMAP.md` |
+| session handoff (read this first) | `docs/HANDOFF.md` |
+| principles, sprint plan | `docs/principles.md`, `docs/PHASE1_SPRINT.md` |
+| data findings | `docs/data/`; diagnostics `docs/notes/`; reviews `docs/reviews/` |
+| superseded drafts, never law | `docs/archive/` |
+| code, tests, tools | `src/pflab/`, `tests/`, `tools/` |
+| gitignored outputs | `data/` (1.6 GB), `experiments/`, `.venv/`, `research/journal.jsonl` |
+
+`PFLAB_DATA_DIR` is unset, so data resolves to `./data` relative to the
+repo root: **run commands from `D:\portfolio_lab`.**
+
 ## State of the repo (2026-09-18 — see `docs/HANDOFF.md` for the full picture)
 
 **Adopted stack: E1 base.** Verdicts so far: **E1 INCONCLUSIVE** (2026-09-17),

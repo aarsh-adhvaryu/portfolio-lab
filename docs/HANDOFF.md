@@ -5,6 +5,17 @@ state, not opinion. Where something is unknown or unfinished it says so.
 
 `pytest -q` at close: **362 passed, 0 failed.**
 
+**2026-09-19 — repo consolidated; paths in this file are current.** The
+repository root is now `D:\portfolio_lab`. Previously the code sat two levels
+down in `portfolio-lab/portfolio-lab/` while the charters, ROADMAP and GATE
+also existed as separate top-level copies outside version control, so an edit
+could land on the copy that was not law. Everything is now single-copy inside
+the repo: charters and `GATE.md` in `docs/strategies/`, `docs/ROADMAP.md`, and
+the superseded 2026-09-16 pre-lock E1 draft in `docs/archive/` clearly marked
+as not law. E1 §2–§13 and E1b §3–§7 were verified byte-identical to commit
+`0ae301e` through the move, and `pytest -q` re-ran green (362) from the new
+root. See CLAUDE.md "Repo layout".
+
 ---
 
 ## 1. Current stack and every verdict so far
@@ -92,13 +103,13 @@ only, and nothing has ADVANCED.
 ## 3. E1-P build state
 
 E1-P was moved **ahead of** E1b on 2026-09-18 (reason recorded in
-`ROADMAP.md`): it needs no new data, and blocking a ready experiment on an
+`docs/ROADMAP.md`): it needs no new data, and blocking a ready experiment on an
 unready dataset buys nothing. Order is now E1, E1-P, E1b, E2-A, …
 **If E1b had been ADOPTED, E1-P would have been re-run on the E1b base
 before its verdict was final. E1b was REJECTED, so that does not apply and
 E1 base remains the comparison.**
 
-Charter `charters/E1-P.md`, still **DRAFT — Aarsh has not locked it.**
+Charter `docs/strategies/E1-P.md`, still **DRAFT — Aarsh has not locked it.**
 
 **Done:**
 - `defer_exit` hook is wired at `engine.py:374`, inside the exit loop and
@@ -240,12 +251,12 @@ E1b (`docs/strategies/E1b.md`, §10 change log), all dated **2026-09-18**:
   truth.
 - §6 (draft): S12 originally added (superseded by the line above).
 
-`CLAUDE.md` rule 7 (both copies), 2026-09-18: **`pypdf` added** to the
+`CLAUDE.md` rule 7, 2026-09-18: **`pypdf` added** to the
 allowed dependencies for the NSE constituent-change circulars, with
 **`pdfplumber` as a named fallback**, permitted only for a circular whose
 tables pypdf returns garbled. Declared in `pyproject.toml`.
 
-`ROADMAP.md` (both copies), 2026-09-18: order changed to **E1, E1-P, E1b,
+`docs/ROADMAP.md`, 2026-09-18: order changed to **E1, E1-P, E1b,
 E2-A, …** with the reason, the re-run-on-adoption rule, and E1b's
 three-working-day time-box (which closed on time).
 
@@ -311,8 +322,8 @@ with the corrected table.
 
 **2. E1c into ROADMAP and GATE order, with S7 folded into E3 §7.** Decide
 where E1c sits (it calibrates the benchmark, so it plausibly precedes
-everything that is judged against B3), update both `ROADMAP.md` copies and
-`charters/GATE.md`'s order line, and move E1c's S7 (costs ×2) into E3 §7 as
+everything that is judged against B3), update `docs/ROADMAP.md` and
+`docs/strategies/GATE.md`'s order line, and move E1c's S7 (costs ×2) into E3 §7 as
 Aarsh asked — after reading E3 §7 to confirm it fits.
 
 **3. Finish E1-P.** In order: implement §3's rule and wire it through
