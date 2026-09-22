@@ -69,6 +69,29 @@ VALUATION_SERIES = {
 }
 # NIFTY200 MOMENTUM 30 has no valuation history (the endpoint returns []).
 
+# Sector indices (collected 2026-09-22) -- groundwork for E1-S (MANDATE §7
+# sector-trend cap) and E2-B's sector nodes. Every NSE sectoral/thematic index
+# the endpoint serves, price and TRI both; WHICH sectors, and price or TRI,
+# is the charter's to choose, not this collector's. Not in SERIES, so
+# collect_all() is unchanged. Names probed against the live site: "NIFTY
+# HEALTHCARE INDEX" returns [], "NIFTY HEALTHCARE" returns rows. Several
+# start after 2004 (Private Bank, Healthcare, Oil & Gas, Consumer Durables,
+# Chemicals in 2005; Realty, India Consumption, CPSE later); Media returns a
+# single row before its real history begins.
+SECTORS = {
+    "BANK": "NIFTY BANK", "AUTO": "NIFTY AUTO", "FMCG": "NIFTY FMCG", "IT": "NIFTY IT",
+    "MEDIA": "NIFTY MEDIA", "METAL": "NIFTY METAL", "PHARMA": "NIFTY PHARMA",
+    "PSU_BANK": "NIFTY PSU BANK", "PRIVATE_BANK": "NIFTY PRIVATE BANK",
+    "REALTY": "NIFTY REALTY", "FIN_SERVICES": "NIFTY FINANCIAL SERVICES",
+    "ENERGY": "NIFTY ENERGY", "INFRA": "NIFTY INFRA", "COMMODITIES": "NIFTY COMMODITIES",
+    "CONSUMPTION": "NIFTY INDIA CONSUMPTION", "HEALTHCARE": "NIFTY HEALTHCARE",
+    "OIL_GAS": "NIFTY OIL & GAS", "CONSUMER_DURABLES": "NIFTY CONSUMER DURABLES",
+    "CPSE": "NIFTY CPSE", "PSE": "NIFTY PSE", "MNC": "NIFTY MNC",
+    "SERVICES": "NIFTY SERVICES SECTOR", "CHEMICALS": "NIFTY CHEMICALS",
+}
+SECTOR_SERIES = {f"SECTOR_{k}_{kind.upper()}": (name, kind)
+                 for k, name in SECTORS.items() for kind in ("price", "tri")}
+
 START = date(2004, 1, 1)
 CHUNK_YEARS = 2
 
@@ -127,13 +150,13 @@ def normalize(rows: list, kind: str) -> pd.DataFrame:
 def collect(key: str, start: date = START, end: Optional[date] = None,
             root: Optional[Path] = None, sleep: float = 1.0) -> Path:
     """Download one series in chunks and write data/indices/{key}.parquet."""
-    if key in SERIES:
-        name, kind = SERIES[key]
+    if key in SERIES or key in SECTOR_SERIES:
+        name, kind = SERIES.get(key) or SECTOR_SERIES[key]
     elif key in VALUATION_SERIES:
         name, kind = VALUATION_SERIES[key], "valuation"
     else:
         raise KeyError(f"unknown series {key!r}; "
-                       f"known: {sorted(SERIES) + sorted(VALUATION_SERIES)}")
+                       f"known: {sorted(SERIES) + sorted(VALUATION_SERIES) + sorted(SECTOR_SERIES)}")
     root = root or data_dir()
     end = end or date.today()
     s = _session()
@@ -167,6 +190,20 @@ def collect_all(start: date = START, end: Optional[date] = None,
         written[key] = (len(df), df["date"].min(), df["date"].max())
         print(f"  -> {p.name}: {len(df):,} sessions "
               f"{df['date'].min()} .. {df['date'].max()}", flush=True)
+    return written
+
+
+def collect_sectors(start: date = START, end: Optional[date] = None,
+                    root: Optional[Path] = None) -> dict:
+    """Every SECTOR_SERIES key; a series that fails is reported, not fatal."""
+    written = {}
+    for key in SECTOR_SERIES:
+        try:
+            df = pd.read_parquet(collect(key, start, end, root))
+            written[key] = (len(df), df["date"].min(), df["date"].max())
+        except Exception as e:
+            written[key] = repr(e)
+        print(f"  -> {key}: {written[key]}", flush=True)
     return written
 
 

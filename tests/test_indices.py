@@ -91,3 +91,11 @@ def test_valuation_series_are_not_e1_inputs():
     which is what the engine reads. Charter section 3 is pure price momentum."""
     assert not set(indices.SERIES) & set(indices.VALUATION_SERIES)
     assert "NIFTY200_MOMENTUM30_TRI" not in indices.VALUATION_SERIES
+
+
+def test_sector_series_are_separate_from_benchmarks():
+    """Sector indices are E1-S / E2-B groundwork; collect_all() and the
+    engine's SERIES must not pick them up."""
+    assert not set(indices.SERIES) & set(indices.SECTOR_SERIES)
+    assert len(indices.SECTOR_SERIES) == 2 * len(indices.SECTORS)
+    assert indices.SECTOR_SERIES["SECTOR_HEALTHCARE_TRI"] == ("NIFTY HEALTHCARE", "tri")

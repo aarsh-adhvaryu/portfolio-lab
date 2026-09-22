@@ -3,7 +3,7 @@
 Written at session close for whoever picks this up next. Everything here is
 state, not opinion. Where something is unknown or unfinished it says so.
 
-`pytest -q` at close: **425 passed, 0 failed.**
+`pytest -q` at close: **433 passed, 0 failed.**
 
 ## Start here (2026-09-22)
 
@@ -224,15 +224,26 @@ B3's 0.30% applies as about 0.21%.
   wait. Days average ~500–1,000 announcements (peaks ~4,000), ~2 s a page
   of 50; the 2020-onward range is the long pole.
 
+**Collected by code 2026-09-22 (no Aarsh action needed):**
+
+| item | file(s) | coverage | source, module |
+|---|---|---|---|
+| India VIX | `data/indices/INDIA_VIX.parquet` | 2008-03-03 → 2026-09-21, 4,586 sessions | NSE `historicalOR/vixhistory` (monthly: it caps answers at 70 rows, serves from 2010-07-19) + Yahoo `^INDIAVIX` only before that; overlap 3,971 days agree to median 0.0025 pt. `pflab/data/india_vix.py` |
+| Brent, USDINR, US 10y | `data/macro/{BRENT,USDINR,US10Y}.parquet` | 1987 / 1973 / 1962 → mid-Sep 2026 | FRED `fredgraph.csv` (DCOILBRENTEU, DEXINUS, DGS10). NY-close prints: a month-end decision should read the previous day's. `pflab/data/macro.py` |
+| FPI (FII) daily flows | `data/macro/FPI_DAILY.parquet` | 2009-12-01 → 2026-09-22, 4,049 report dates, 202 months, none failed; annual equity sums match published FPI totals | NSDL archive form, one post per month; keyed on custodian **report date** (covers trades up to the previous session). `pflab/data/fpi_flows.py` |
+| 23 sector indices, price + TRI | `data/indices/SECTOR_*_{PRICE,TRI}.parquet` (46 files) | 2004-01-01 → 2026-09-22 for most; Private Bank, Healthcare, Oil & Gas, Consumer Durables, Chemicals from 2005-04; Media 2005-12; Consumption 2006-01; Realty 2006-12; CPSE 2009-01 | niftyindices, `indices.SECTOR_SERIES` / `collect_sectors()`; not in `SERIES`, so `collect_all()` and the engine are unchanged. Which sectors, and price or TRI, is E1-S's charter to choose |
+
+Re-run any of them: `india_vix.collect()`, `macro.collect()`,
+`fpi_flows.collect()`, `indices.collect_sectors()` — each rewrites its files
+whole. Not yet in `tools/collect_daily.py`.
+
 **Everything else, unchanged since 2026-09-18 — needs Aarsh:**
 
 | item | state | what it needs |
 |---|---|---|
 | GDELT | 4 daily files only | Aarsh runs `tools/gdelt_bigquery.sql` in BigQuery, drops the CSV in `data/gdelt/backfill/` |
-| India VIX | **none** — not on the niftyindices endpoint the other indices use (probed 2026-09-22) | a source (NSE's VIX history page needs session cookies); E3-R's S8 and E2-C need it |
 | Shareholding patterns | not started, no module | source decision (E2-D) |
 | Point-in-time fundamentals | not started, no module | source decision |
-| Macro / FII flows | not started, no module | source decision (E2-B) |
 | ETF dividends | not started (`data/dividends/` is equity dividends) | source decision (E3) |
 
 ## 6. Index-membership build
@@ -399,8 +410,9 @@ copies of one range at once.
 **4. E3-R**, then **E2-A as soon as the BSE data is complete**, then the
 rest (`docs/ROADMAP.md`).
 
-**5. Data sources Aarsh owes** (§5): GDELT BigQuery export; an India VIX
-source; decisions on shareholding, fundamentals, macro/FII.
+**5. Data sources Aarsh owes** (§5): GDELT BigQuery export; decisions on
+shareholding and fundamentals. India VIX, Brent/USDINR/US 10y, FPI flows and
+sector indices were collected by code on 2026-09-22 (§5).
 
 ### Two notes for whoever runs a sweep next
 
