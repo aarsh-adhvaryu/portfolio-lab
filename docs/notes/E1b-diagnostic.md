@@ -48,3 +48,11 @@ unknown amount. E1c is chartered to measure that.
 
 Next experiment. Order: E1-P (ready, runs on E1 base as the stack), then
 E1c (the fund's construction through this engine). E3 gains a row (S7).
+
+---
+
+- 2026-09-22 — **Superseded verdict.** E1b was re-run from scratch under E1
+  §15's 2026-09-21 measurement correction and its GATE verdict is now
+  **INCONCLUSIVE**, not the REJECT recorded above: see
+  `docs/reviews/E1b-verdict-rerun.md`. This note is kept as written; its
+  findings on the universe stand.

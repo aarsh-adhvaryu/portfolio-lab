@@ -4,7 +4,7 @@ Status: **IN EFFECT from 2026-09-21** (§3 confirmed by Aarsh that day). From
 that date it governs every ADVANCE decision (sealed reveal, live paper year,
 real money) and every target the transition tool uses.
 
-It does not change any recorded verdict. E1 (INCONCLUSIVE), E1b (REJECT)
+It does not change any recorded verdict. E1 (INCONCLUSIVE), E1b (INCONCLUSIVE)
 and every verdict written before the effective date stand under their own
 charters. GATE.md still decides adoption (whether a change joins the
 stack). This file decides what the stack must achieve before it touches
@@ -190,6 +190,11 @@ response to a result the change would alter.
   alongside two measurement corrections (buy sizing net of costs, E1 §15;
   expense drag compounded by calendar days), before any verdict turned on
   §5.
+- 2026-09-22 — the E1b verdict quoted at the top of this file corrected from
+  REJECT to **INCONCLUSIVE**: E1b was re-run from scratch under the
+  2026-09-21 measurement correction and its verdict changed
+  (`docs/reviews/E1b-verdict-rerun.md`). A factual correction only; nothing
+  else in the mandate changes.
 
 ---
 
