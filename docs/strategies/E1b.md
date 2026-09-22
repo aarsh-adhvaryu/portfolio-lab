@@ -127,3 +127,7 @@ No new signal. No change to N, band, lookback, filter, cash flow or tax.
   REJECT; the full re-run decides it. Stack: E1 base as re-run under the same
   correction (`experiments/E1/regression/`). §3–§7 unchanged. Aarsh's
   decision.
+- 2026-09-22 — **re-run verdict: INCONCLUSIVE** (GATE), superseding the
+  2026-09-18 REJECT. Development G1 now passes (+0.77 pp over E1 base under
+  corrected measurement); validation fails G1 and G2 (−11.85 pp). C1–C4
+  REJECT, unchanged. Stack unchanged. `docs/reviews/E1b-verdict-rerun.md`.

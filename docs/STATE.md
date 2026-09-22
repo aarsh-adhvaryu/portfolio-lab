@@ -15,8 +15,8 @@ and none is changed by anything below.
 
 | experiment | charter | verdict | date | development 2007–16 | validation 2017–21 | verdict note |
 |---|---|---|---|---|---|---|
-| **E1** | LOCKED 2026-09-17 | **INCONCLUSIVE** (E1 §13) | 2026-09-17 | 9.34% / 55.38% | 26.12% / 39.55% | `docs/notes/E1-diagnostic.md` |
-| **E1b** | LOCKED 2026-09-18 | **REJECT** (GATE vs E1), **re-run pending** under the 2026-09-21 measurement correction; a base-row check says it becomes INCONCLUSIVE | 2026-09-18 | 9.47% / 54.67% | 15.38% / 43.58% | `docs/notes/E1b-diagnostic.md` |
+| **E1** | LOCKED 2026-09-17 | **INCONCLUSIVE** (E1 §13), unchanged under the 2026-09-21 correction | 2026-09-17 | 9.34% / 55.38% → **8.97% / 55.40%** corrected (the stack) | 26.12% / 39.55% → **27.36% / 39.82%** | `docs/notes/E1-diagnostic.md` |
+| **E1b** | LOCKED 2026-09-18 | **INCONCLUSIVE** (GATE vs E1), re-run under the 2026-09-21 measurement correction; was REJECT 2026-09-18 | 2026-09-22 | 9.74% / 54.96% | 15.51% / 43.34% | `docs/reviews/E1b-verdict-rerun.md` |
 | **E1-P** | LOCKED 2026-09-19 | **REJECT** (GATE vs E1) | 2026-09-21 | 9.34% / 55.38% | 25.08% / 42.57% | `docs/reviews/E1-P-verdict.md` |
 | **E1c** | LOCKED 2026-09-19, amended after lock (blind) 2026-09-21 | **REJECT** (GATE vs E1) | 2026-09-21 | 6.80% / 70.19% | 20.10% / 36.33% | `docs/reviews/E1c-verdict.md` |
 

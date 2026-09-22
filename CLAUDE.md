@@ -79,8 +79,8 @@ which must print `D:\portfolio_lab\data`.
 **Adopted stack: E1 base**, read from `experiments/E1/regression/` since the
 2026-09-21 measurement correction (E1 §15: buys sized net of costs; expense
 drag by calendar days). Development 8.97% / 55.40%, validation 27.36% /
-39.82%. Verdicts: **E1 INCONCLUSIVE**, **E1b REJECT — full re-run pending**
-under the correction (a base-row check says INCONCLUSIVE), **E1-P REJECT**,
+39.82%. Verdicts: **E1 INCONCLUSIVE**, **E1b INCONCLUSIVE** (re-run 2026-09-22 under
+the correction; was REJECT), **E1-P REJECT**,
 **E1c REJECT**. One-page table: `docs/STATE.md`. `pytest -q`: 425 passed.
 
 **`docs/MANDATE.md` is in effect from 2026-09-21**: GATE decides adoption;

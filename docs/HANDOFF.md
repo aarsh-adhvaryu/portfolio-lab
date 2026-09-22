@@ -7,14 +7,11 @@ state, not opinion. Where something is unknown or unfinished it says so.
 
 ## Start here (2026-09-22)
 
-1. **Two jobs may be running or may need resuming — check before anything.**
-   - **E1b full re-run** (Aarsh, two terminals): `docs/HANDOFF.md` §9 item 1.
-     When both sweeps exist, run `classify.classify_e1b` against the E1
-     regression stack and record the verdict (a base-row check says
-     INCONCLUSIVE).
-   - **BSE announcements backfill** 2010 → 2026-09-21 (§5): check with
-     `python tools/backfill_bse.py --check 2010-01-01 2026-09-21`; resume
-     with the commands in §9.
+1. **E1b re-run is DONE: INCONCLUSIVE** (was REJECT), recorded in
+   `docs/reviews/E1b-verdict-rerun.md`. **The BSE backfill may still be
+   running** in Aarsh's terminals (two ranges, §5/§9): check with
+   `python tools/backfill_bse.py --check 2010-01-01 2026-09-21` and resume
+   with the §9 commands if it stopped.
 2. **Measurement correction of 2026-09-21 (E1 §15):** buys are sized net of
    costs instead of being skipped when costs don't fit, and expense drag
    compounds by calendar days; B3 and B5 both carry 0.30% a year. **The
@@ -28,9 +25,8 @@ state, not opinion. Where something is unknown or unfinished it says so.
    `docs/data/`, so they had never been committed; the pattern is now
    `/data/`. Never re-widen it.
 4. **Next experiment: E1d** (`docs/strategies/E1d.md`, draft). Four small
-   code pieces before its first run: `docs/notes/E1d-readiness.md`. Build
-   them only AFTER E1b's re-run is classified (both E1b sweeps must share
-   one code state).
+   code pieces before its first run: `docs/notes/E1d-readiness.md`. E1b is
+   classified, so the code is free to change.
 
 ## 2026-09-19 session, in one paragraph
 
@@ -385,18 +381,7 @@ E1c `docs/strategies/E1c.md` §9: draft, 2026-09-18, written by Aarsh.
 
 ## 9. The exact next tasks, in order
 
-**1. E1b full re-run (Aarsh), then classify.** Both periods on the same
-committed code; nothing in `src/` or `tools/` changes until E1b is
-classified. In PowerShell, one terminal each (they can run side by side):
-
-    cd D:\portfolio_lab; .\.venv\Scripts\Activate.ps1
-    python -c "from pflab.backtest import runner; runner.main('configs/e1b.toml','development',sweep=True)"
-    python -c "from pflab.backtest import runner; runner.main('configs/e1b.toml','validation',sweep=True)"
-
-Then (Claude): `classify.classify_e1b(<dev dir>, <val dir>,
-'experiments/E1/regression/development-64343858a094c09e',
-'experiments/E1/regression/validation-303190300ed98ced')`, write the
-verdict note, update `docs/STATE.md`.
+**1. E1b re-run — DONE 2026-09-22: INCONCLUSIVE** (`docs/reviews/E1b-verdict-rerun.md`).
 
 **2. BSE backfill to completion** (§5). Resume, one terminal per range:
 
