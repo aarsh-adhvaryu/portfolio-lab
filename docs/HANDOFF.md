@@ -241,7 +241,7 @@ whole. Not yet in `tools/collect_daily.py`.
 
 | item | state | what it needs |
 |---|---|---|
-| GDELT | 4 daily files only | Aarsh runs `tools/gdelt_bigquery.sql` in BigQuery, drops the CSV in `data/gdelt/backfill/` |
+| GDELT | 4 daily files only | Aarsh runs `tools/gdelt_bigquery.sql` (rewritten 2026-09-22 to return the daily aggregate, ~4,200 rows) in BigQuery, saves it as `data/gdelt/backfill/gdelt_india_daily.csv`, then `python tools/ingest_gdelt_backfill.py` |
 | Shareholding patterns | not started, no module | source decision (E2-D) |
 | Point-in-time fundamentals | not started, no module | source decision |
 | ETF dividends | not started (`data/dividends/` is equity dividends) | source decision (E3) |
