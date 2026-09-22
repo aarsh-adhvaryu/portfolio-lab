@@ -44,7 +44,18 @@ def test_world_ingest_checks_duplicates(tmp_path):
     head = "day,country,n_events,n_articles,mean_tone,mean_goldstein,q1,q2,q3,q4\n"
     (src / "a.csv").write_text(head + "20150218,US,10,50,-1.0,0.5,5,2,2,1\n20150218,NA,3,9,-2.0,0.1,1,1,1,0\n")
     r = W.ingest(src, tmp_path / "out")
-    assert r["rows"] == 2 and r["countries"] == 2           # 'NA' (Namibia) is not a null
+    assert r["rows"] == 2 and r["keys"] == 2           # 'NA' (Namibia) is not a null
     (src / "b.csv").write_text(head + "20150218,US,10,50,-1.0,0.5,5,2,2,1\n")
     with pytest.raises(ValueError, match="appears twice"):
         W.ingest(src, tmp_path / "out")
+
+
+def test_bilateral_ingest_keys_on_the_pair(tmp_path):
+    src = tmp_path / "in"
+    src.mkdir()
+    head = ("day,a1,a2,n_events,n_articles,mean_tone,mean_goldstein,q1,q2,q3,q4,"
+            "sanctions_coerce,violence\n")
+    (src / "a.csv").write_text(head + "20220224,RUS,UKR,900,5000,-6.0,-5.0,10,5,300,585,40,500\n"
+                                      "20220224,UKR,RUS,700,4000,-6.1,-5.2,12,4,250,434,20,380\n")
+    r = W.ingest(src, tmp_path / "out", "bilateral")
+    assert r["rows"] == 2 and r["keys"] == 2

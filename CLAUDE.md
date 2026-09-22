@@ -81,7 +81,7 @@ which must print `D:\portfolio_lab\data`.
 drag by calendar days). Development 8.97% / 55.40%, validation 27.36% /
 39.82%. Verdicts: **E1 INCONCLUSIVE**, **E1b INCONCLUSIVE** (re-run 2026-09-22 under
 the correction; was REJECT), **E1-P REJECT**,
-**E1c REJECT**. One-page table: `docs/STATE.md`. `pytest -q`: 437 passed.
+**E1c REJECT**. One-page table: `docs/STATE.md`. `pytest -q`: 438 passed.
 
 **`docs/MANDATE.md` is in effect from 2026-09-21**: GATE decides adoption;
 MANDATE §3 and §5 decide ADVANCE. B5 (Nifty 500 Momentum 50 TRI) and B3
