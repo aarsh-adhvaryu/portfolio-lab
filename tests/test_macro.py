@@ -23,6 +23,6 @@ def test_collect_writes_one_file_per_series(monkeypatch, tmp_path):
     monkeypatch.setattr(macro, "fetch", lambda sid: pd.DataFrame(
         {"date": [date(2020, 1, 2)], "value": [1.0]}))
     out = macro.collect(tmp_path)
-    assert set(out) == set(macro.SERIES)
+    assert set(out) == set(macro.SERIES) | set(macro.REVISED)
     for key in macro.SERIES:
         assert len(macro.load(key, tmp_path)) == 1

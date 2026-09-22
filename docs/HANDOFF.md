@@ -3,7 +3,7 @@
 Written at session close for whoever picks this up next. Everything here is
 state, not opinion. Where something is unknown or unfinished it says so.
 
-`pytest -q` at close: **435 passed, 0 failed.**
+`pytest -q` at close: **437 passed, 0 failed.**
 
 ## Start here (2026-09-22)
 
@@ -232,6 +232,10 @@ B3's 0.30% applies as about 0.21%.
 | Brent, USDINR, US 10y | `data/macro/{BRENT,USDINR,US10Y}.parquet` | 1987 / 1973 / 1962 → mid-Sep 2026 | FRED `fredgraph.csv` (DCOILBRENTEU, DEXINUS, DGS10). NY-close prints: a month-end decision should read the previous day's. `pflab/data/macro.py` |
 | FPI (FII) daily flows | `data/macro/FPI_DAILY.parquet` | 2009-12-01 → 2026-09-22, 4,049 report dates, 202 months, none failed; annual equity sums match published FPI totals | NSDL archive form, one post per month; keyed on custodian **report date** (covers trades up to the previous session). `pflab/data/fpi_flows.py` |
 | GDELT India daily aggregate | `data/gdelt/agg/*.parquet` (4,216 day files) | 2015-02-18 → 2026-09-21; **18 days absent in GDELT itself** (2017-08-29, and 17 days from 2025-06-15), BigQuery has no rows for them either | Aarsh ran `tools/gdelt_bigquery.sql` 2026-09-22 (daily aggregate, keyed on DATEADDED); `tools/ingest_gdelt_backfill.py` loaded it (provenance `data/gdelt/backfill/_ingest.json`). **Collector fix:** `gdelt.py` now fetches the translingual feed as well as English (BigQuery holds both); English-only had undercounted by ~15%. Re-collected 2026-09-14/15 match BigQuery on every field |
+| World markets (Yahoo) | `data/global/*.parquet`, 30 series | S&P 500, Nasdaq, Nikkei from 1970-71; FTSE, DAX, Hang Seng, CAC, ASX, Bovespa, KOSPI, Shanghai, TAIEX 1984-97; US VIX 1990; MOVE, EEM, LQD, TLT 2002-03; HYG, STOXX 50, Brent futures 2007; gold, silver, copper, WTI, gas, wheat 2000; dollar index, US 10y 1970-71; bitcoin 2014 | `pflab/data/global_markets.py`. Dates are the exchange's local date. **Point-in-time:** Asia closes before the NSE (day M usable at M); Europe, US, Brazil close after (use M-1). Cross-checked against FRED: VIX identical on 9,246 days, Nasdaq median difference 0 |
+| More FRED (`macro.py`) | `data/macro/*.parquet`, 23 series | US VIX, WTI, broad dollar, 10y-2y and 10y-3m curves, fed funds, TED spread (ends 2022), Nasdaq, 30y mortgage, CNY/JPY/EUR; **REVISED (latest vintage only, not point-in-time):** St Louis stress, NFCI, Case-Shiller, housing starts, mortgage delinquency, unemployment, jobless claims, copper monthly | Revised series are for explanation; deciding on one needs ALFRED vintages (free FRED API key). ICE credit spreads skipped: FRED serves only 3 years; HYG/LQD stand in |
+| GDELT world by country | `tools/gdelt_world_bigquery.sql` → `data/gdelt/world_backfill/`, `python tools/ingest_gdelt_world.py` | **waiting on Aarsh** (BigQuery, ~1M rows, save via Google Drive) | |
+| GDELT 1.0 India 1979–2015 | `tools/gdelt_v1_bigquery.sql` → `data/gdelt/v1_backfill/` | **waiting on Aarsh**; inspection only, not point-in-time before 2013 | |
 | 23 sector indices, price + TRI | `data/indices/SECTOR_*_{PRICE,TRI}.parquet` (46 files) | 2004-01-01 → 2026-09-22 for most; Private Bank, Healthcare, Oil & Gas, Consumer Durables, Chemicals from 2005-04; Media 2005-12; Consumption 2006-01; Realty 2006-12; CPSE 2009-01 | niftyindices, `indices.SECTOR_SERIES` / `collect_sectors()`; not in `SERIES`, so `collect_all()` and the engine are unchanged. Which sectors, and price or TRI, is E1-S's charter to choose |
 
 Re-run any of them: `india_vix.collect()`, `macro.collect()`,

@@ -81,7 +81,7 @@ which must print `D:\portfolio_lab\data`.
 drag by calendar days). Development 8.97% / 55.40%, validation 27.36% /
 39.82%. Verdicts: **E1 INCONCLUSIVE**, **E1b INCONCLUSIVE** (re-run 2026-09-22 under
 the correction; was REJECT), **E1-P REJECT**,
-**E1c REJECT**. One-page table: `docs/STATE.md`. `pytest -q`: 435 passed.
+**E1c REJECT**. One-page table: `docs/STATE.md`. `pytest -q`: 437 passed.
 
 **`docs/MANDATE.md` is in effect from 2026-09-21**: GATE decides adoption;
 MANDATE §3 and §5 decide ADVANCE. B5 (Nifty 500 Momentum 50 TRI) and B3
@@ -147,7 +147,8 @@ Collected by code 2026-09-22 (`docs/HANDOFF.md` §5): India VIX
 Not started, each needing a source decision from Aarsh: shareholding,
 point-in-time fundamentals, ETF dividends. GDELT India daily aggregate
 backfilled 2015-02-18 → 2026-09-21 (BigQuery, 2026-09-22); the live collector
-fetches English + translingual feeds to match it. B5's history is
+fetches English + translingual feeds to match it. World markets (`global_markets`,
+30 Yahoo series) and 23 FRED series (`macro`; revised ones flagged) collected. B5's history is
 in `data/indices/NIFTY500_MOMENTUM50_TRI.parquet`.
 
 Next tasks, in order, are in `docs/HANDOFF.md` §9.

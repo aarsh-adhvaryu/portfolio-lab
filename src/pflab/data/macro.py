@@ -30,7 +30,30 @@ import requests
 from pflab.data import data_dir
 
 URL = "https://fred.stlouisfed.org/graph/fredgraph.csv"
-SERIES = {"BRENT": "DCOILBRENTEU", "USDINR": "DEXINUS", "US10Y": "DGS10"}
+SERIES = {
+    "BRENT": "DCOILBRENTEU", "USDINR": "DEXINUS", "US10Y": "DGS10",
+    # Added 2026-09-22: world stress that can reach India from outside.
+    # Market prints, never revised -- usable point-in-time with the NY-close
+    # rule above.
+    "US_VIX": "VIXCLS", "WTI": "DCOILWTICO", "USD_BROAD": "DTWEXBGS",
+    "US_10Y_2Y": "T10Y2Y", "US_10Y_3M": "T10Y3M", "FED_FUNDS": "DFF",
+    "TED_SPREAD": "TEDRATE",            # ends 2022-01-21 (LIBOR retired)
+    "US_NASDAQ": "NASDAQCOM", "US_MORTGAGE30": "MORTGAGE30US",
+    "USDCNY": "DEXCHUS", "USDJPY": "DEXJPUS", "USDEUR": "DEXUSEU",
+}
+# REVISED series: FRED serves only the LATEST vintage, so a past value here is
+# not what anyone saw at the time (housing starts and claims are revised;
+# the stress indices are re-estimated every week over their whole history).
+# Fine for explaining the past. A charter that decides on one must use
+# ALFRED vintages (free FRED API key) instead.
+REVISED = {
+    "US_FIN_STRESS_STL": "STLFSI4", "US_FIN_CONDITIONS_NFCI": "NFCI",
+    "US_HOME_PRICES_CS": "CSUSHPINSA", "US_HOUSING_STARTS": "HOUST",
+    "US_MORTGAGE_DELINQ": "DRSFRMACBS", "US_UNEMPLOYMENT": "UNRATE",
+    "US_JOBLESS_CLAIMS": "ICSA", "COPPER_MONTHLY": "PCOPPUSDM",
+}
+# Not collected: the ICE BofA credit spreads (BAMLH0A0HYM2 etc.) -- FRED now
+# serves only their last three years; global_markets carries HYG/LQD instead.
 
 
 def fetch(series_id: str, timeout: int = 60) -> pd.DataFrame:
@@ -47,13 +70,13 @@ def fetch(series_id: str, timeout: int = 60) -> pd.DataFrame:
 def collect(root: Optional[Path] = None) -> dict:
     root = root or data_dir()
     out = {}
-    for key, sid in SERIES.items():
+    for key, sid in {**SERIES, **REVISED}.items():
         df = fetch(sid)
         p = root / "macro" / f"{key}.parquet"
         p.parent.mkdir(parents=True, exist_ok=True)
         df.to_parquet(p, index=False)
         out[key] = {"fred_id": sid, "rows": len(df), "first": str(df["date"].min()),
-                    "last": str(df["date"].max())}
+                    "last": str(df["date"].max()), "revised": key in REVISED}
     return out
 
 
