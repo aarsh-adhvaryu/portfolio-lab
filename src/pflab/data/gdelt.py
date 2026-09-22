@@ -1,7 +1,8 @@
 """GDELT 2.0 events, India-filtered, daily aggregate (E2-B, E2-C).
 
 Backfill from BigQuery (tools/gdelt_bigquery.sql, Phase 1 task 1.6).
-Daily job: the 96 fifteen-minute export files for a date. Column
+Daily job: the 96 fifteen-minute export files for a date, English and
+translingual feeds both (see FEEDS). Column
 positions follow the GDELT 2.0 events codebook; VERIFY once against a
 real file.
 
@@ -25,6 +26,12 @@ import requests
 from pflab.data import data_dir
 
 BASE = "http://data.gdeltproject.org/gdeltv2/{stamp}.export.CSV.zip"
+# GDELT 2.0 publishes TWO event feeds per fifteen minutes: English and
+# translingual (65 languages, machine-translated). BigQuery's gdeltv2.events
+# holds both, so the backfill (tools/gdelt_bigquery.sql) counts both, and the
+# live job must too. Found 2026-09-22: English alone gave 6,424 India events
+# for 2026-09-14; English + translation gave 7,547, BigQuery's count exactly.
+FEEDS = (BASE, "http://data.gdeltproject.org/gdeltv2/{stamp}.translation.export.CSV.zip")
 # Verified against a live export 2026-09-16 (the docstring's "VERIFY once").
 # Column 51 is ActionGeo_Type, a 0-5 enum, NOT the country code: it matched no
 # India rows at all. ActionGeo_CountryCode is column 53.
@@ -76,12 +83,13 @@ def collect_day(d: date, root: Optional[Path] = None, sleep: float = 0.2) -> dic
     missing = 0
     for slot in range(96):
         t = datetime(d.year, d.month, d.day) + timedelta(minutes=15 * slot)
-        r = s.get(BASE.format(stamp=t.strftime("%Y%m%d%H%M%S")), timeout=60)
-        if r.status_code == 200 and r.content[:2] == b"PK":
-            frames.append(parse_export(r.content))
-        else:
-            missing += 1
-        time.sleep(sleep)
+        for feed in FEEDS:
+            r = s.get(feed.format(stamp=t.strftime("%Y%m%d%H%M%S")), timeout=60)
+            if r.status_code == 200 and r.content[:2] == b"PK":
+                frames.append(parse_export(r.content))
+            else:
+                missing += 1
+            time.sleep(sleep)
     df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=list(KEEP.values()))
     out_ev.parent.mkdir(parents=True, exist_ok=True)
     out_ag.parent.mkdir(parents=True, exist_ok=True)

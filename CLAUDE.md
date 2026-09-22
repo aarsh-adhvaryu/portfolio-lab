@@ -81,7 +81,7 @@ which must print `D:\portfolio_lab\data`.
 drag by calendar days). Development 8.97% / 55.40%, validation 27.36% /
 39.82%. Verdicts: **E1 INCONCLUSIVE**, **E1b INCONCLUSIVE** (re-run 2026-09-22 under
 the correction; was REJECT), **E1-P REJECT**,
-**E1c REJECT**. One-page table: `docs/STATE.md`. `pytest -q`: 433 passed.
+**E1c REJECT**. One-page table: `docs/STATE.md`. `pytest -q`: 435 passed.
 
 **`docs/MANDATE.md` is in effect from 2026-09-21**: GATE decides adoption;
 MANDATE §3 and §5 decide ADVANCE. B5 (Nifty 500 Momentum 50 TRI) and B3
@@ -145,8 +145,9 @@ Collected by code 2026-09-22 (`docs/HANDOFF.md` §5): India VIX
 (`india_vix`), FRED Brent/USDINR/US 10y (`macro`), NSDL daily FPI flows
 (`fpi_flows`), 23 sector indices price+TRI (`indices.SECTOR_SERIES`).
 Not started, each needing a source decision from Aarsh: shareholding,
-point-in-time fundamentals, ETF dividends. GDELT
-needs Aarsh to run `tools/gdelt_bigquery.sql` in BigQuery. B5's history is
+point-in-time fundamentals, ETF dividends. GDELT India daily aggregate
+backfilled 2015-02-18 → 2026-09-21 (BigQuery, 2026-09-22); the live collector
+fetches English + translingual feeds to match it. B5's history is
 in `data/indices/NIFTY500_MOMENTUM50_TRI.parquet`.
 
 Next tasks, in order, are in `docs/HANDOFF.md` §9.
