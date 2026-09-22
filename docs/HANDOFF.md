@@ -22,7 +22,12 @@ state, not opinion. Where something is unknown or unfinished it says so.
    under the correction): development **8.97% / 55.40%**, validation
    **27.36% / 39.82%**. Every stored number that moved is in
    `docs/STATE.md`.
-3. **Next experiment: E1d** (`docs/strategies/E1d.md`, draft). Four small
+3. **Repo:** github.com/aarsh-adhvaryu/portfolio_system (PRIVATE), branch
+   `master`. A fresh clone passes all 425 tests. Until 2026-09-22 the
+   unanchored `data/` in `.gitignore` also hid `src/pflab/data/` and
+   `docs/data/`, so they had never been committed; the pattern is now
+   `/data/`. Never re-widen it.
+4. **Next experiment: E1d** (`docs/strategies/E1d.md`, draft). Four small
    code pieces before its first run: `docs/notes/E1d-readiness.md`. Build
    them only AFTER E1b's re-run is classified (both E1b sweeps must share
    one code state).
