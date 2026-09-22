@@ -410,8 +410,8 @@ copies of one range at once.
 **4. E3-R**, then **E2-A as soon as the BSE data is complete**, then the
 rest (`docs/ROADMAP.md`).
 
-**5. Data sources Aarsh owes** (§5): GDELT BigQuery export; decisions on
-shareholding and fundamentals. India VIX, Brent/USDINR/US 10y, FPI flows and
+**5. Data sources Aarsh owes** (§5): decisions on
+shareholding and fundamentals. GDELT, India VIX, Brent/USDINR/US 10y, FPI flows and
 sector indices were collected by code on 2026-09-22 (§5).
 
 ### Two notes for whoever runs a sweep next
