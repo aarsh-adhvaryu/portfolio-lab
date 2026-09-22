@@ -89,7 +89,12 @@ def prepare(config: dict, period_name: Optional[str] = None,
     return period, panel, indices, actions, cost_factory, tax, membership
 
 
-def main(config_path, period_name=None, unseal_reason=None, sweep=False) -> str:
+def main(config_path, period_name=None, unseal_reason=None, sweep=False,
+         rows=None, kind="sweeps") -> str:
+    """`rows` restricts a sweep to named rows; `kind` is the directory the
+    run lands in. A regression re-run (the base row and the benchmarks only,
+    2026-09-21) uses rows=["base"], kind="regression", so it can never be
+    mistaken for, or collide with, an experiment's sweep."""
     from pflab.backtest import engine
     from pflab.eval import sweep as sweep_mod
 
@@ -101,13 +106,28 @@ def main(config_path, period_name=None, unseal_reason=None, sweep=False) -> str:
     cfg_text = json.dumps(cfg, sort_keys=True, default=str)
     fp = artifacts.data_fingerprint(panel)
     commit = artifacts.code_commit()
-    rid = artifacts.run_id(cfg_text, fp, commit["commit"], period.name)
+    # A dirty tree is not pinned by its commit hash, so the code identity
+    # carries the source fingerprint too (principle 5).
+    rid = artifacts.run_id(cfg_text, fp, artifacts.code_identity(commit),
+                           period.name)
 
     if sweep:
-        out = out_root / "sweeps" / f"{period.name}-{rid}"
+        out = out_root / kind / f"{period.name}-{rid}"
         experiment = str(cfg.get("strategy", {}).get("id", "E1"))
-        rows = (list(sweep_mod.e1b_rows()) if experiment == "E1b"
-                else list(sweep_mod.ROWS))
+        # Each charter has its own row table, and every charter has an "S1",
+        # so the table travels with the rows rather than being looked up by
+        # name later (sweep.apply_row).
+        if experiment == "E1b":
+            table = sweep_mod.e1b_rows()
+        elif experiment == "E1-P":
+            # §4's N1/N2 run alongside but are not sweep rows; classify_e1p
+            # strips them before GATE's G3 counts anything.
+            table = sweep_mod.e1p_rows(include_controls=True)
+        elif experiment == "E1c":
+            table = sweep_mod.e1c_rows()
+        else:
+            table = sweep_mod.ROWS
+        rows = list(table) if rows is None else [r for r in table if r in rows]
         mcfg = cfg.get("membership") or {}
         overlap = None
         if mcfg.get("overlap_index"):
@@ -117,12 +137,29 @@ def main(config_path, period_name=None, unseal_reason=None, sweep=False) -> str:
                     im.load(mcfg["overlap_index"]), period)
             except Exception:
                 overlap = None      # reported as unavailable, never invented
+        # Principle 5: a sweep now carries the same manifest a single run
+        # does, so re-running the same inputs verifies and different inputs
+        # refuse rather than overwriting (see sweep.SweepConflict).
+        manifest = {
+            "run_id": rid, "experiment": experiment, "period": period.name,
+            "period_start": str(period.start), "period_end": str(period.end),
+            "config_sha": artifacts._sha(cfg_text), "data_fingerprint": fp,
+            "code": commit, "rows": list(rows),
+            "first_session": str(panel["date"].min()),
+            "last_session": str(panel["date"].max()),
+        }
+        # STACK = the adopted stack, currently E1 base (E1b and E1-P were
+        # REJECTED). Used for the short-window companion runs; change this
+        # line, with a dated note, when a change is adopted.
+        stack_config = load_config(_repo_root() / "configs" / "e1.toml")
         sweep_mod.run_sweep(cfg, period, panel, indices, cost_factory, tax,
                             actions=actions, out_dir=out, rows=rows,
                             membership=membership, experiment=experiment,
                             overlap_membership=overlap,
                             overlap_index=mcfg.get("overlap_index",
-                                                   "NIFTY200_MOMENTUM30"))
+                                                   "NIFTY200_MOMENTUM30"),
+                            manifest=manifest, table=table,
+                            stack_config=stack_config)
         return str(out)
 
     res = engine.run(cfg, period, panel, indices.get("NIFTY50_PRICE"),

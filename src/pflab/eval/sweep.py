@@ -50,6 +50,76 @@ E1B_EXTRA_ROWS = {
 }
 
 
+# Charter E1-P §6. The base row is §3's rule as written; each row moves
+# exactly one of its terms.
+E1P_ROWS = {
+    "base": {},
+    "S1": {"hooks.patience.min_months": 6},
+    "S2": {"hooks.patience.rank_ceiling": 75},
+    "S3": {"hooks.patience.rank_ceiling": 150},
+    "S4": {"hooks.patience.require_gain": True},
+    # §6 S5: "minimum hold of 6 months on every lot regardless of rank
+    # (pure patience, tax-blind)". `min_hold_months` replaces the whole base
+    # rule -- window, rank and all -- and tests the YOUNGEST lot, because a
+    # full-position sale must not sell any lot before the floor.
+    "S5": {"hooks.patience.min_hold_months": 6},
+}
+
+# Charter E1-P §4. Negative controls: run alongside, reported with the same
+# metrics, NEVER adoptable. They are kept out of `e1p_rows()` so that GATE's
+# G3 cannot count them -- a control that happened to score well must not push
+# the experiment through the gate. Each turns §3's rule OFF, because §4 says
+# "everything else as E1".
+E1P_CONTROLS = {
+    "N1": {"hooks.intra_month_exit": "stop_loss", "hooks.stop_loss_pct": 0.20,
+           "hooks.patience.enabled": False},
+    "N2": {"hooks.intra_month_exit": "profit_take", "hooks.profit_take_pct": 0.50,
+           "hooks.patience.enabled": False},
+}
+
+
+def e1p_rows(include_controls: bool = False) -> dict:
+    """E1-P's sweep (§6). §4's controls are not part of it unless asked for."""
+    return {**E1P_ROWS, **(E1P_CONTROLS if include_controls else {})}
+
+
+# Charter E1c §5. Eleven rows, each isolating one of E1's departures from
+# the fund's own construction.
+E1C_ROWS = {
+    "base": {},
+    "S1": {"strategy.weighting": "equal"},
+    "S2": {"strategy.trend_filter": "sma10"},
+    "S3": {"strategy.trend_filter": "sell_to_cash"},
+    # S4 is E1's band on the fund's score: back to a monthly cadence, 30 in
+    # and 60 out, which is E1's 25/50 scaled to the fund's 30 names.
+    "S4": {"strategy.rebalance": "monthly_band", "strategy.n_hold": 30,
+           "strategy.band_exit_rank": 60},
+    "S5": {"strategy.selection_n": 25},
+    # §5 S6 as amended after lock, 2026-09-21: E1's raw 12-1 momentum as the
+    # ingredient, through §3's own z-score and ±3 clip, so S6 changes the
+    # signal only. As first written it was raw momentum used as the weight
+    # itself, which in 2008 had 26 of its top 30 names below zero.
+    "S6": {"strategy.signal": "mom_12_1_z"},
+    "S7": {"costs.multiplier": 2.0},
+    "S8": {"strategy.delisting": "total_loss"},
+    "S9": {"strategy.rebalance_months": [3, 6, 9, 12]},
+    "S10": {"universe.membership_bound": "latest"},
+    # Same mechanism as E1b's S13: `period_for_row` shortens the window and
+    # the `_<row>_stack` companion re-runs E1 base on it.
+    "S11": {"period.start": "2012-01-01"},
+    # §5 S12, added 2026-09-19: NSE standardises each window's ratio and
+    # averages the two z-scores; §3 averages the ratios and standardises
+    # once. The charter's order stays the base row; this row measures what
+    # the other order would have done.
+    "S12": {"strategy.score_order": "z_then_average"},
+}
+
+
+def e1c_rows() -> dict:
+    """E1c's sweep (§5): the base row plus its eleven."""
+    return dict(E1C_ROWS)
+
+
 def e1b_rows() -> dict:
     """E1b's sweep: the base row, E1's nine, then S10 and S11."""
     return {**ROWS, **E1B_EXTRA_ROWS}
@@ -59,18 +129,29 @@ BENCHMARKS = {
     "B1": ("NIFTY50_TRI", 0.0),
     "B2": ("NIFTY500_TRI", 0.0),
     "B3": ("NIFTY200_MOMENTUM30_TRI", 0.003),
+    # MANDATE §5 (effective 2026-09-21): Nifty 500 Momentum 50 TRI, the
+    # one-click alternative for a whole-500 momentum investor. REPORTED ONLY:
+    # never part of GATE or E1 §13's C1-C4; read by classify's mandate block.
+    # History before launch is back-computed by NSE (B3's caveat). 0.30% a
+    # year expense drag, the same as B3 -- decided by Aarsh 2026-09-21, as
+    # the realised annual cost of the index fund it stands for.
+    "B5": ("NIFTY500_MOMENTUM50_TRI", 0.003),
 }
 
 
-def rows_present(results: dict) -> list:
+def rows_present(results: dict, table: Optional[dict] = None) -> list:
     """Row names in charter order, restricted to what actually ran.
 
-    E1b adds S10 and S11, so iterating `ROWS` here would drop them from
+    E1b adds S10-S13, so iterating `ROWS` here would drop them from
     summary.md, extras.json, adv_skips.json AND criteria.json -- and
     criteria.json is what §13's C4 and GATE's G3 count rows from. Every
     consumer below goes through this function.
+
+    Rows not in `table` (E1-P's N1/N2, which are deliberately outside its
+    sweep) still appear, sorted, after the charter's own order: they are
+    reported, just never counted as sweep rows by the charter's arithmetic.
     """
-    order = list(e1b_rows())
+    order = list(table if table is not None else e1b_rows())
     named = [r for r in order if r in results]
     extra = [r for r in results
              if r not in order and not r.startswith("_")
@@ -78,15 +159,20 @@ def rows_present(results: dict) -> list:
     return named + sorted(extra)
 
 
-def period_for_row(period, row: str):
-    """The period a row runs on. Only S13 changes it.
+def period_for_row(period, row: str, table: Optional[dict] = None):
+    """The period a row runs on. Only a row carrying `period.start` changes it.
 
-    S13 exists because Nifty 200 membership is published from 2012 and
+    E1b's S13 exists because Nifty 200 membership is published from 2012 and
     derived before it, so the row asks what the answer looks like on the
-    published years alone. Every other row runs on the chartered window, and
-    a row that silently shortened it would not be comparable to anything.
+    published years alone; E1c's S11 is the same mechanism. Every other row
+    runs on the chartered window, and a row that silently shortened it would
+    not be comparable to anything.
+
+    `table` names the charter's row table. Every charter has an "S1", so a
+    lookup that assumed E1b's table would silently apply the wrong change to
+    an E1-P or E1c row.
     """
-    change = e1b_rows().get(row, {}).get("period.start")
+    change = (table if table is not None else e1b_rows()).get(row, {}).get("period.start")
     if not change:
         return period
     from datetime import date as _date
@@ -111,19 +197,125 @@ def _set(cfg: dict, dotted: str, value):
     node[parts[-1]] = value
 
 
-def apply_row(config: dict, row: str) -> dict:
-    """A deep copy of `config` with row `row`'s single change applied."""
+def apply_row(config: dict, row: str, table: Optional[dict] = None) -> dict:
+    """A deep copy of `config` with row `row`'s single change applied.
+
+    `table` is the charter's row table; it defaults to E1/E1b's so existing
+    callers are unchanged. Passing it is not optional for E1-P and E1c: row
+    names collide across charters and the wrong table would apply the wrong
+    change under the right name.
+    """
     import copy
     cfg = copy.deepcopy(config)
-    for k, v in e1b_rows()[row].items():
+    for k, v in (table if table is not None else e1b_rows())[row].items():
         _set(cfg, k, v)
     return cfg
+
+
+_CLOSE_WIDE_CACHE: list = []          # [(panel, close_wide)], length 0 or 1
+
+
+def _close_wide(panel):
+    """The wide close frame E1-P's §7 extras measure forward returns on.
+
+    Cached for one panel at a time: a sweep would otherwise pivot the same
+    frame once per row, which on the real panel is minutes of pure
+    repetition.
+
+    The cache holds the PANEL ITSELF, not `id(panel)`. Keying on the id and
+    storing only the pivot would let a freed panel's id be reused by the next
+    period's panel while the stale pivot was still cached -- a validation
+    sweep measuring forward returns on development's prices. Holding the
+    reference makes that impossible, because the id cannot be reused while
+    the object is alive.
+    """
+    if _CLOSE_WIDE_CACHE and _CLOSE_WIDE_CACHE[0][0] is panel:
+        return _CLOSE_WIDE_CACHE[0][1]
+    wide = panel.pivot_table(index="date", columns="isin", values="close",
+                             aggfunc="last")
+    _CLOSE_WIDE_CACHE[:] = [(panel, wide)]
+    return wide
+
+
+class SweepConflict(RuntimeError):
+    """A sweep directory already holds a manifest describing different inputs.
+
+    `write_run` has verified-or-refused since Phase 2; `write_summary` did
+    not, so a re-run from the same HEAD with edited-but-uncommitted code
+    landed on the same content-addressed path and overwrote it silently.
+    That cost three sweeps on 2026-09-18. Principle 5 says identical inputs
+    verify instead of overwriting; different inputs must not share a path at
+    all, so this refuses rather than guessing which one is wanted.
+    """
+
+
+def _persist_rows(results: dict, out_dir: Path,
+                  table: Optional[dict] = None) -> dict:
+    """Write every row's equity curve and trade ledger under `rows/<row>/`.
+
+    A sweep used to keep only aggregated metrics, so any extra thought of
+    later -- the equity/cash decomposition being the case in point -- meant
+    re-running twenty minutes of engine to recover curves the run already had
+    in memory. These files make the sweep self-sufficient: every extra in §7
+    of any charter is computable from them without touching the engine again.
+
+    Reporting only. Nothing reads these back into a decision.
+    """
+    written = {}
+    for row in rows_present(results, table):
+        r = results.get(row) or {}
+        res = r.get("result")
+        if res is None:
+            continue
+        d = out_dir / "rows" / row
+        d.mkdir(parents=True, exist_ok=True)
+        eq = res.equity.copy()
+        eq.to_parquet(d / "equity.parquet", index=False)
+        tr = res.trades.copy()
+        tr.to_parquet(d / "trades.parquet", index=False)
+        # Decisions as well as curves: E1-P's §7 extra measures the forward
+        # return of DEFERRED lots, which lives only in the decision record.
+        # Without this the extra would need the re-run this function exists
+        # to make unnecessary.
+        (d / "decisions.json").write_text(
+            json.dumps(res.decisions, indent=2, default=str), encoding="utf-8")
+        written[row] = {"equity_rows": int(len(eq)), "trades": int(len(tr)),
+                        "decisions": int(len(res.decisions or ()))}
+    # Benchmarks too: B1-B4 are engine runs and their curves are as costly to
+    # recover as any row's.
+    for label, res in (results.get("_benchmark_results") or {}).items():
+        d = out_dir / "rows" / f"_{label}"
+        d.mkdir(parents=True, exist_ok=True)
+        res.equity.to_parquet(d / "equity.parquet", index=False)
+        res.trades.to_parquet(d / "trades.parquet", index=False)
+        written[f"_{label}"] = {"equity_rows": int(len(res.equity)),
+                                "trades": int(len(res.trades))}
+    return written
+
+
+def _check_manifest(out_dir: Path, manifest: Optional[dict]) -> None:
+    """Principle 5 for sweeps: identical inputs verify, different ones refuse."""
+    if not manifest:
+        return
+    path = out_dir / "manifest.json"
+    if not path.exists():
+        return
+    prior = json.loads(path.read_text(encoding="utf-8"))
+    keys = ("config_sha", "data_fingerprint", "code", "period", "rows")
+    diff = [k for k in keys if prior.get(k) != manifest.get(k)]
+    if diff:
+        raise SweepConflict(
+            f"{out_dir} already holds a sweep whose {', '.join(diff)} differ "
+            f"from this one. Identical inputs share a directory and verify; "
+            f"different inputs must not. Nothing was overwritten. "
+            f"Prior code={prior.get('code')}, this code={manifest.get('code')}.")
 
 
 def run_sweep(config, period, panel, indices, cost_model_factory, tax_policy,
               actions=None, out_dir=None, rows=None, membership=None,
               experiment="E1", overlap_membership=None,
-              overlap_index="NIFTY200_MOMENTUM30") -> dict:
+              overlap_index="NIFTY200_MOMENTUM30", manifest=None,
+              table=None, stack_config=None) -> dict:
     """Run every row. Returns {row: {"result":..., "metrics":..., "error":...}}.
 
     A row that halts (charter §7 ADV guard) is recorded as halted rather than
@@ -131,7 +323,9 @@ def run_sweep(config, period, panel, indices, cost_model_factory, tax_policy,
     """
     from pflab.backtest import engine
     from pflab.eval import artifacts
+    from pflab.portfolio.construct import UndefinedWeight
 
+    table = table if table is not None else e1b_rows()
     rows = rows or list(ROWS)
     out: Dict[str, dict] = {}
     _say(f"sweep: {len(rows)} rows, period {getattr(period, 'name', '?')} "
@@ -149,8 +343,8 @@ def run_sweep(config, period, panel, indices, cost_model_factory, tax_policy,
     except Exception as e:                       # recorded, never silently absent
         out["_B4_error"] = f"{type(e).__name__}: {e}"
     for n, row in enumerate(rows, 1):
-        cfg = apply_row(config, row)
-        row_period = period_for_row(period, row)
+        cfg = apply_row(config, row, table)
+        row_period = period_for_row(period, row, table)
         cm = cost_model_factory(float(cfg.get("costs", {}).get("multiplier", 1.0)))
         # A sweep is twenty minutes of silence otherwise: every artifact is
         # written at the end, so without this there is no way to tell a slow
@@ -159,26 +353,57 @@ def run_sweep(config, period, panel, indices, cost_model_factory, tax_policy,
         try:
             res = engine.run(cfg, row_period, panel, trend_index, cm, tax_policy,
                              actions=actions, membership=membership)
+            extras = artifacts.extras_report(
+                res, membership=overlap_membership,
+                overlap_index=overlap_index)
+            # E1-P §7. Inert for a run that never deferred and never fired a
+            # control, so every charter can carry them -- but the close pivot
+            # is only built if one of them actually has something to measure.
+            # On the real panel that pivot is tens of seconds, and E1 and E1b
+            # would otherwise pay it on every sweep to report two zeroes.
+            deferred_any = any(d.get("deferred") for d in (res.decisions or ()))
+            control_any = (len(res.trades)
+                           and (res.trades["side"] == "SELL_INTRA").any())
+            cw = _close_wide(panel) if (deferred_any or control_any) else None
+            extras["deferred_lots"] = artifacts.deferred_lot_outcomes(res, close_w=cw)
+            extras["control_sells"] = artifacts.control_sell_outcomes(res, close_w=cw)
             out[row] = {"result": res, "metrics": artifacts.metrics_of(res, bench),
                         "error": None, "adv_skips": artifacts.adv_skip_report(res),
-                        "extras": artifacts.extras_report(
-                            res, membership=overlap_membership,
-                            overlap_index=overlap_index)}
+                        "extras": extras}
+        except UndefinedWeight:
+            # E1c §3 has no rule for a non-positive selected score, and the
+            # code must not invent one (CLAUDE.md 3). That is a question for
+            # the charter, not a row that failed, so it STOPS the sweep
+            # instead of being recorded and stepped over. Recording it would
+            # bury the question under twelve more rows and produce a summary
+            # that looked like a result.
+            _say(f"  {row}: HALTED by E1c §3 -- stopping the sweep")
+            raise
         except Exception as e:
             out[row] = {"result": None, "metrics": None,
                         "error": f"{type(e).__name__}: {e}"}
     # A row that runs on a shorter window cannot be compared with the stack's
     # full-window result, so the stack is re-run on that row's window too.
     for row in rows:
-        row_period = period_for_row(period, row)
+        row_period = period_for_row(period, row, table)
         if row_period is period or out.get(row, {}).get("error"):
             continue
         try:
-            stack_cfg = {k: dict(v) if isinstance(v, dict) else v
-                         for k, v in config.items()}
-            stack_cfg.setdefault("universe", {})
-            stack_cfg["universe"] = {**stack_cfg["universe"],
-                                     "mode": "turnover_top_n"}
+            # The comparison is the adopted STACK on this window, so it runs
+            # the stack's own config. Deriving it from the experiment's config
+            # with the universe switched was only right while every experiment
+            # shared E1's strategy (E1b did). For E1c it ran E1c's rules on
+            # E1's universe under the label "E1 base" (found 2026-09-21).
+            if stack_config is not None:
+                stack_cfg = stack_config
+            else:
+                # no stack given (unit tests): the old derivation, which is
+                # correct only for an experiment whose strategy is E1's
+                stack_cfg = {k: dict(v) if isinstance(v, dict) else v
+                             for k, v in config.items()}
+                stack_cfg.setdefault("universe", {})
+                stack_cfg["universe"] = {**stack_cfg["universe"],
+                                         "mode": "turnover_top_n"}
             res = engine.run(stack_cfg, row_period, panel, trend_index,
                              cost_model_factory(1.0), tax_policy, actions=actions)
             # The benchmarks have to move to the row's window too, or the
@@ -197,8 +422,10 @@ def run_sweep(config, period, panel, indices, cost_model_factory, tax_policy,
 
     _say("  benchmarks and artifacts")
     out["_benchmarks"] = {k: artifacts.metrics_of(v) for k, v in bench.items()}
+    out["_benchmark_results"] = bench
     if out_dir:
-        write_summary(out, Path(out_dir), period, experiment=experiment)
+        write_summary(out, Path(out_dir), period, experiment=experiment,
+                      manifest=manifest, table=table)
     return out
 
 
@@ -219,7 +446,11 @@ def run_benchmarks(config, period, indices_by_name, cost_model_factory, tax_poli
     return out
 
 
-def write_summary(results: dict, out_dir: Path, period, experiment="E1") -> Path:
+def write_summary(results: dict, out_dir: Path, period, experiment="E1",
+                  manifest: Optional[dict] = None,
+                  table: Optional[dict] = None) -> Path:
+    out_dir = Path(out_dir)
+    _check_manifest(out_dir, manifest)
     out_dir.mkdir(parents=True, exist_ok=True)
     bench = results.get("_benchmarks", {})
     lines = [f"# {experiment} sweep — {getattr(period, 'name', '?')} "
@@ -230,9 +461,9 @@ def write_summary(results: dict, out_dir: Path, period, experiment="E1") -> Path
              "| row | window | CAGR (liq) | MaxDD (liq) | turnover/yr | "
              "trades | ADV skips | status |",
              "|---|---|---|---|---|---|---|---|"]
-    for row in rows_present(results):
+    for row in rows_present(results, table):
         r = results[row]
-        rp = period_for_row(period, row)
+        rp = period_for_row(period, row, table)
         win = ("full" if rp is period
                else f"{rp.start}..{rp.end}")
         if r.get("error"):
@@ -280,23 +511,32 @@ def write_summary(results: dict, out_dir: Path, period, experiment="E1") -> Path
                          f"{100*pp.get('max_drawdown', float('nan')):.2f}% | "
                          f"{_b('B1')} | {_b('B2')} | {_b('B3')} |")
     lines += _skip_section(results)
-    lines += _extras_section(results)
+    lines += _extras_section(results, table)
+    lines += _patience_section(results, table)
     (out_dir / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     # Persist each row's skip detail so it survives the process (§7, §15).
     (out_dir / "extras.json").write_text(
         json.dumps({r: (results.get(r) or {}).get("extras")
-                    for r in rows_present(results)}, indent=2, default=str),
+                    for r in rows_present(results, table)}, indent=2, default=str),
         encoding="utf-8")
     (out_dir / "adv_skips.json").write_text(
         json.dumps({r: (results.get(r) or {}).get("adv_skips")
-                    for r in rows_present(results)}, indent=2, default=str),
+                    for r in rows_present(results, table)}, indent=2, default=str),
         encoding="utf-8")
     (out_dir / "criteria.json").write_text(
-        json.dumps(criteria_inputs(results), indent=2, default=str), encoding="utf-8")
+        json.dumps(criteria_inputs(results, table), indent=2, default=str),
+        encoding="utf-8")
+    # Per-row equity curves and trade ledgers, so no future extra needs a
+    # re-run to recover a curve this run already had (2026-09-19).
+    persisted = _persist_rows(results, out_dir, table)
+    if manifest:
+        (out_dir / "manifest.json").write_text(
+            json.dumps({**manifest, "persisted_rows": persisted}, indent=2,
+                       default=str), encoding="utf-8")
     return out_dir / "summary.md"
 
 
-def criteria_inputs(results: dict) -> dict:
+def criteria_inputs(results: dict, table: Optional[dict] = None) -> dict:
     """Exactly what §13's arithmetic consumes. Written to disk so `classify`
     never recomputes a metric from a different code path."""
     bench = results.get("_benchmarks", {})
@@ -305,7 +545,7 @@ def criteria_inputs(results: dict) -> dict:
         return (m or {}).get("paths", {}).get("nav_liq", {})
 
     out = {"rows": {}, "benchmarks": {k: liq(v) for k, v in bench.items()}}
-    for row in rows_present(results):
+    for row in rows_present(results, table):
         r = results[row]
         out["rows"][row] = {"error": r.get("error"), **liq(r.get("metrics")),
                             "turnover_annual": (r.get("metrics") or {}).get("turnover_annual")}
@@ -346,14 +586,14 @@ def _skip_section(results: dict) -> list:
     return out
 
 
-def _extras_section(results: dict) -> list:
+def _extras_section(results: dict, table: Optional[dict] = None) -> list:
     """The extras requested in the development review: reporting only.
 
     Per row: pre-tax CAGR and tax paid. For the base row: delisting exposure,
     RISK_OFF months and cash share by year, and the median turnover rank of
     holdings by year. Each element is one line; write_summary joins them.
     """
-    rows = [(r, (results.get(r) or {}).get("extras")) for r in rows_present(results)
+    rows = [(r, (results.get(r) or {}).get("extras")) for r in rows_present(results, table)
             if (results.get(r) or {}).get("extras")]
     if not rows:
         return []
@@ -449,4 +689,57 @@ def _extras_section(results: dict) -> list:
     elif isinstance(ov, str):
         out += ["", "### Overlap with the momentum index (base row)", "", ov]
     out += ["", f"Market-cap proxy: {base['market_cap_proxy']}."]
+    return out
+
+
+def _pct(x, nd=2):
+    """Format a number that may legitimately be None. Every extras value can
+    be None -- a row where nothing deferred, a forward window with no
+    measurable name -- and a bare f-string format would raise on it and take
+    the whole summary down with it."""
+    return "—" if x is None else f"{x:.{nd}f}"
+
+
+def _patience_section(results: dict, table: Optional[dict] = None) -> list:
+    """E1-P §7's two extras. Silent for any run that never deferred and never
+    fired a control, so E1 and E1b summaries are unchanged."""
+    rows = [(r, (results.get(r) or {}).get("extras") or {})
+            for r in rows_present(results, table)]
+    defer = [(r, x.get("deferred_lots") or {}) for r, x in rows]
+    ctrl = [(r, x.get("control_sells") or {}) for r, x in rows]
+    any_defer = any(d.get("deferrals") for _, d in defer)
+    any_ctrl = any(c.get("sells") for _, c in ctrl)
+    if not (any_defer or any_ctrl):
+        return []
+
+    out = ["", "## E1-P §7 — what patience and impatience did", ""]
+    if any_defer:
+        out += ["### Deferred lots vs the lots E1 would have sold", "",
+                "Forward 3-month return from the month-end, for names §3",
+                "deferred against names the same month-end band-sold. A",
+                "NEGATIVE gap means the deferred names did worse, i.e. the tax",
+                "saving was paid for out of return.", "",
+                "| row | deferrals | months with one | deferred fwd % | "
+                "band-sold fwd % | gap pp |", "|---|---|---|---|---|---|"]
+        for r, d in defer:
+            if not d.get("deferrals"):
+                continue
+            out.append(f"| {r} | {d.get('deferrals')} | "
+                       f"{d.get('month_ends_with_a_deferral', '—')} | "
+                       f"{_pct(d.get('deferred_forward_mean_pct'))} | "
+                       f"{_pct(d.get('band_sold_forward_mean_pct'))} | "
+                       f"{_pct(d.get('gap_pp'))} |")
+    if any_ctrl:
+        out += ["", "### Negative controls (E1-P §4 — never adoptable)", "",
+                "Forward 6-month return of the names the control sold, from",
+                "the fill. A POSITIVE mean means it sold names that then rose,",
+                "so the impatience cost return.", "",
+                "| row | sells | names | fwd 6m mean % | fwd 6m median % |",
+                "|---|---|---|---|---|"]
+        for r, c in ctrl:
+            if not c.get("sells"):
+                continue
+            out.append(f"| {r} | {c.get('sells')} | {c.get('names', '—')} | "
+                       f"{_pct(c.get('forward_mean_pct'))} | "
+                       f"{_pct(c.get('forward_median_pct'))} |")
     return out

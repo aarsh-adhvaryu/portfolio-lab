@@ -49,8 +49,10 @@ import pandas as pd
 from pflab.backtest import hooks as hk
 from pflab.data import universe as uni
 from pflab.data.index_membership import with_bound as im_with_bound
-from pflab.portfolio.construct import buy_list
+from pflab.portfolio.construct import buy_list, buy_list_weighted
 from pflab.signals.momentum import momentum_panel, rank_desc
+from pflab.signals.vol_scaled import (momentum_ratios, standardise,
+                                      vol_scaled_ratios)
 from pflab.tax.india_lots import FractionalEntitlement, LotBook, fy_of
 
 # §9 operational thresholds. A name whose rows stop is not known to have
@@ -96,6 +98,16 @@ class _State:
     cash: float = 0.0
     positions: Dict[str, int] = field(default_factory=dict)
     holdings_value: Dict[str, float] = field(default_factory=dict)
+    # E1-P §4: N1/N2 trigger on a position's move from its OWN cost basis, so
+    # a hook needs the basis as well as the mark. Per share, because the
+    # trigger is a price move ("down 20%"), and quantity-weighted across the
+    # position's lots, because a full-position sale realises all of them.
+    cost_basis: Dict[str, float] = field(default_factory=dict)
+    # E1-P §3 as resolved at the 2026-09-19 lock: S4 tests "the oldest lot's
+    # own unrealised gain, not the position average", so a hook needs the
+    # lots themselves, not just their aggregate. Read-only by contract, and
+    # still only ever the portfolio as of now.
+    lots: Dict[str, list] = field(default_factory=dict)
 
 
 def _cfg(config: dict, path: str, default=None):
@@ -211,6 +223,21 @@ def run(config, period, panel, indices, cost_model, tax_policy,
                             DELIST_CONFIRM_SESSIONS_S9 if delisting == "total_loss"
                             else DELIST_CONFIRM_SESSIONS))
     max_adv = float(_cfg(config, "universe.max_adv_fraction", 0.01))
+    # E1c §3. Every default below is E1's, so an E1 or E1b config reaches
+    # exactly the code it reached before.
+    signal = strat.get("signal", "mom_12_1")
+    rebalance = strat.get("rebalance", "monthly_band")
+    weighting = strat.get("weighting", "equal")
+    selection_n = int(strat.get("selection_n", n_hold))
+    weight_cap = float(strat.get("weight_cap", 0.05))
+    rebalance_months = tuple(strat.get("rebalance_months", (6, 12)))
+    # E1c §3 as amended 2026-09-19: ONE lag in total. The score's skip of the
+    # most recent month IS the lag, so there is no separate score-date lag
+    # and the default is 0. Any lag is counted in month-end positions.
+    score_lag_months = int(strat.get("score_lag_months", 0))
+    score_order = strat.get("score_order", "average_then_z")
+    # E1c §3 as amended 2026-09-21: weights proportional to max(score, 0).
+    on_negative = strat.get("weighting_negative", "zero")
 
     panel = panel.copy()
     panel["date"] = pd.to_datetime(panel["date"]).dt.date
@@ -232,7 +259,32 @@ def run(config, period, panel, indices, cost_model, tax_policy,
     # Hoisted out of the loop. momentum_panel is pure backward shifts, so its
     # value at date t is identical whether computed on the full truncated frame
     # or on the frame up to t -- no lookahead is introduced.
-    mom_w = momentum_panel(adj_w, lookback=lookback, skip=skip)
+    # E1 and every charter before E1c rank raw 12-1 momentum; `score_fn`
+    # stays None and the decision functions take exactly the path they took
+    # before E1c existed.
+    score_fn = None
+    if signal == "mom_12_1":
+        mom_w = momentum_panel(adj_w, lookback=lookback, skip=skip)
+    elif signal in ("vol_scaled_6_12", "mom_12_1_z"):
+        # E1c §3 (and §5 S6 as amended 2026-09-21). The raw ingredients are
+        # built once over the whole panel -- backward shifts and rolling
+        # windows only, so no lookahead -- but the z-score and the ±3 clip are
+        # applied at each decision date WITHIN THE ELIGIBLE UNIVERSE, which is
+        # what §3's "standardised across the universe" means. Standardising
+        # across the whole panel, as first implemented, measured names
+        # against the entire market (E1c §9, code fix of 2026-09-21).
+        parts = (vol_scaled_ratios(adj_w, windows=(126, 252), skip=skip)
+                 if signal == "vol_scaled_6_12"
+                 else momentum_ratios(adj_w, lookback=lookback, skip=skip))
+        mom_w = None
+
+        def score_fn(d, elig, _parts=parts, _order=score_order):
+            rows = [(pt.loc[d] if d in pt.index else pd.Series(dtype=float))
+                    for pt in _parts]
+            rows = [r[r.index.isin(elig)] for r in rows]
+            return standardise(rows, order=_order, clip=3.0)
+    else:
+        raise ValueError(f"unknown strategy.signal={signal!r}")
     uni_pre = precompute_universe(panel, config, membership)
     traded_by_date = {d: set(g) for d, g in panel.groupby("date")["isin"]}
 
@@ -248,6 +300,7 @@ def run(config, period, panel, indices, cost_model, tax_policy,
     taxes: List[dict] = []
     skips: List[dict] = []
     state = _State()
+    carried_weights: Dict[str, float] = {}   # E1c: targets between rebalances
     seen_fy = set()
     prev_session: Optional[date] = None
     month_ends = _month_ends(sessions)
@@ -279,6 +332,16 @@ def run(config, period, panel, indices, cost_model, tax_policy,
                                 cost_model, trades, warnings, max_adv, max_buys,
                                 n_hold, hooks, state, last_close, skips)
                 pending = None
+
+        # --- 1b. intra-month exits (E2-A red flags; E1-P §4 N1/N2) ------
+        # After the month-start execution on purpose. `state` still carries
+        # session t-1's marks here, which is exactly the hook's contract
+        # ("decided from data dated strictly before t"), and running after the
+        # buy list means a name bought at today's open -- whose cost basis IS
+        # today's open -- cannot be sold by its own purchase.
+        if in_window:
+            cash = _intra_month_exits(t, book, cash, open_w, cost_model,
+                                      trades, warnings, hooks, state)
 
         # --- suspension / delisting (§9) -------------------------------
         for isin in list(book.positions()):
@@ -322,16 +385,40 @@ def run(config, period, panel, indices, cost_model, tax_policy,
         positions = book.positions()
         hv = {i: q * last_close.get(i, 0.0) for i, q in positions.items()}
         equity_value = sum(hv.values())
+        basis, lots_by_isin = {}, {}
+        for i in positions:
+            lots = book.lots(i)
+            lots_by_isin[i] = lots
+            tq = sum(l.qty for l in lots)
+            if tq > 0:
+                basis[i] = sum(l.qty * l.cost_per_share for l in lots) / tq
         state.date, state.cash, state.positions, state.holdings_value = t, cash, positions, hv
+        state.cost_basis = basis
+        state.lots = lots_by_isin
         rows.append({"date": t, "equity_value": equity_value, "cash": cash,
                      "flow": flow, "risk_off": bool(risk_off.get(t, False)),
                      "dividends": dividends_today})
 
         # --- 5. month-end decision -------------------------------------
         if t in month_ends and in_window:
-            pending = _decide(t, mom_w, uni_pre, close_w, n_hold, band,
-                              positions, risk_off, trend_filter, config,
-                              hooks, state, decisions, book)
+            if rebalance == "semiannual":
+                pending = _decide_rebalance(
+                    t, mom_w, uni_pre, close_w, positions, risk_off,
+                    trend_filter, config, decisions, month_ends,
+                    selection_n=selection_n, weighting=weighting,
+                    weight_cap=weight_cap, rebalance_months=rebalance_months,
+                    score_lag_months=score_lag_months, on_negative=on_negative,
+                    carried=carried_weights, score_fn=score_fn)
+                if pending.get("target_weights"):
+                    carried_weights = dict(pending["target_weights"])
+            elif rebalance == "monthly_band":
+                pending = _decide(t, mom_w, uni_pre, close_w, n_hold, band,
+                                  positions, risk_off, trend_filter, config,
+                                  hooks, state, decisions, book,
+                                  weighting=weighting, weight_cap=weight_cap,
+                                  on_negative=on_negative, score_fn=score_fn)
+            else:
+                raise ValueError(f"unknown strategy.rebalance={rebalance!r}")
         prev_session = t
 
     equity = pd.DataFrame(rows)
@@ -352,14 +439,19 @@ def run(config, period, panel, indices, cost_model, tax_policy,
 
 # -- decision ----------------------------------------------------------
 def _decide(m, mom_w, uni_pre, close_w, n_hold, band, positions,
-            risk_off, trend_filter, config, hooks, state, decisions, book) -> dict:
+            risk_off, trend_filter, config, hooks, state, decisions, book,
+            weighting="equal", weight_cap=0.05, on_negative="zero",
+            score_fn=None) -> dict:
     elig = eligible_at(
         uni_pre, m,
         min_sessions=int(_cfg(config, "universe.min_sessions", 250)),
         top_n=int(_cfg(config, "universe.top_n_by_turnover", 500)),
         min_price=float(_cfg(config, "universe.min_price", 10.0)))
-    scores = mom_w.loc[m].dropna() if m in mom_w.index else pd.Series(dtype=float)
-    scores = scores[scores.index.isin(elig)]
+    if score_fn is not None:
+        scores = score_fn(m, elig)          # E1c: standardised within elig
+    else:
+        scores = mom_w.loc[m].dropna() if m in mom_w.index else pd.Series(dtype=float)
+        scores = scores[scores.index.isin(elig)]
     ranks = rank_desc(scores)
 
     held = list(positions)
@@ -380,12 +472,164 @@ def _decide(m, mom_w, uni_pre, close_w, n_hold, band, positions,
 
     entries = [i for i in ranks[ranks <= n_hold].sort_values().index if i not in held]
     ro = bool(risk_off.get(m, False))
+    # E1c §5 S4 puts E1's monthly band back on the fund's score. That row is
+    # meant to isolate the CADENCE, so the fund's weighting has to survive it;
+    # otherwise S4 would silently change two things at once and stop being a
+    # one-change row. `weighting` is "equal" for E1 and E1b, which leaves
+    # `target_weights` absent and the E1 path exactly as it was.
+    tw = None
+    if weighting == "score_tilted":
+        from pflab.portfolio.construct import score_tilted_weights
+        keep = [i for i in held
+                if i not in {e["isin"] for e in exits} or i in deferred]
+        target = list(dict.fromkeys(keep + entries))
+        target = [i for i in target if i in scores.index]
+        if target:
+            tw = _weights_or_ask({i: float(scores[i]) for i in target},
+                                 weight_cap, on_negative, m, None)
+    elif weighting != "equal":
+        raise ValueError(f"unknown strategy.weighting={weighting!r}")
+
     d = {"month_end": m, "risk_off": ro, "n_eligible": int(len(elig)),
          "exits": exits, "deferred": deferred, "entries": entries,
          "held": held, "ranks": {i: float(ranks[i]) for i in ranks.index[:200]},
          "reference_close": {i: float(close_w.at[m, i])
                              for i in set(held) | set(entries)
                              if i in close_w.columns and not pd.isna(close_w.at[m, i])},
+         "trend_filter": trend_filter}
+    if tw:
+        d["target_weights"] = tw
+    decisions.append(d)
+    return d
+
+
+def _weights_or_ask(scores, cap, on_negative, m, score_date):
+    """E1c §3's weights, with the date attached if §3 cannot answer.
+
+    Since the 2026-09-21 amendment that is only a selection with no positive
+    score in it; a merely non-positive score gets weight zero.
+
+    `score_tilted_weights` knows the names and the scores but not when it was
+    asked, and "which month did the charter run out of rules?" is the first
+    thing anyone will want. The halt is not a failure to be logged and
+    stepped over -- it is the charter asking a question -- so the date is
+    added and the exception is left to propagate all the way out of the
+    sweep.
+    """
+    from pflab.portfolio.construct import UndefinedWeight, score_tilted_weights
+    try:
+        return score_tilted_weights(scores, cap=cap, on_negative=on_negative)
+    except UndefinedWeight as e:
+        when = f"month-end {m}"
+        if score_date is not None and score_date != m:
+            when += f" (scored at {score_date})"
+        raise UndefinedWeight(f"{when}: {e}") from None
+
+
+def _score_date(m, month_ends, lag_months: int):
+    """The month-end whose scores a rebalance at `m` uses (E1c §3's lag).
+
+    Counted in MONTH-ENDS, not in calendar days: the score date is the
+    month-end `lag_months` positions before `m`. Subtracting a calendar month
+    from a month-end lands mid-month, before that month's own month-end
+    session, so snapping to "the latest month-end at or before it" silently
+    skips a whole month -- a one-month lag became two. Counting positions is
+    what "one-month lag from score date" means and cannot drift.
+    """
+    if lag_months <= 0:
+        return m
+    ordered = sorted(month_ends)          # _month_ends returns a set
+    try:
+        i = ordered.index(m)
+    except ValueError:
+        return None
+    j = i - lag_months
+    return ordered[j] if j >= 0 else None
+
+
+def _decide_rebalance(m, mom_w, uni_pre, close_w, positions, risk_off,
+                      trend_filter, config, decisions, month_ends,
+                      selection_n, weighting, weight_cap, rebalance_months,
+                      score_lag_months, on_negative, carried,
+                      score_fn=None) -> dict:
+    """E1c §3's decision: sells at rebalance only, no band, no intra-month.
+
+    On a rebalance month-end the universe is re-scored and the top
+    `selection_n` become the book; names leaving it are sold at the next
+    open. On every other month-end there are no exits and no entries, and
+    the SIP buys toward the weights the last rebalance set (§3: "Between
+    rebalances, only shortfall buys").
+
+    The scores are taken from the month-end `score_lag_months` earlier, which
+    is §3's "one-month lag from score date". NOTE: §3 also says the rebalance
+    is "effective the last trading day of June and December", which this
+    engine cannot place -- E1 §7 fills at the NEXT session's open. The
+    difference is one session, twice a year, and it is flagged in
+    docs/notes/E1c-readiness.md rather than resolved here.
+    """
+    from pflab.portfolio.construct import score_tilted_weights
+
+    held = list(positions)
+    is_rebalance = m.month in rebalance_months
+    ro = bool(risk_off.get(m, False))
+
+    if not is_rebalance:
+        # §3: only shortfall buys. Targets carry over, restricted to what is
+        # still held or still targeted.
+        d = {"month_end": m, "risk_off": ro, "n_eligible": None,
+             "exits": [], "deferred": [], "entries": [],
+             "held": held, "ranks": {},
+             "target_weights": dict(carried or {}),
+             "rebalance": False,
+             "reference_close": {i: float(close_w.at[m, i])
+                                 for i in set(held) | set(carried or {})
+                                 if i in close_w.columns
+                                 and not pd.isna(close_w.at[m, i])},
+             "trend_filter": trend_filter}
+        decisions.append(d)
+        return d
+
+    elig = eligible_at(
+        uni_pre, m,
+        min_sessions=int(_cfg(config, "universe.min_sessions", 250)),
+        top_n=int(_cfg(config, "universe.top_n_by_turnover", 500)),
+        min_price=float(_cfg(config, "universe.min_price", 10.0)))
+    sd = _score_date(m, month_ends, score_lag_months)
+    if score_fn is not None:
+        # standardised within the universe being selected from (the eligible
+        # set at the decision date; with §3's single lag, sd IS m)
+        scores = (score_fn(sd, elig) if sd is not None
+                  else pd.Series(dtype=float))
+    else:
+        scores = (mom_w.loc[sd].dropna() if (sd is not None and sd in mom_w.index)
+                  else pd.Series(dtype=float))
+        scores = scores[scores.index.isin(elig)]
+    ranks = rank_desc(scores)
+    selected = list(ranks[ranks <= selection_n].sort_values().index)
+
+    if weighting == "equal":
+        tw = {i: 1.0 / len(selected) for i in selected} if selected else {}
+    elif weighting == "score_tilted":
+        tw = (_weights_or_ask({i: float(scores[i]) for i in selected},
+                              weight_cap, on_negative, m, sd)
+              if selected else {})
+    else:
+        raise ValueError(f"unknown strategy.weighting={weighting!r}")
+
+    exits = [{"isin": i, "reason": "rebalance",
+              "rank": (None if i not in ranks.index else float(ranks[i]))}
+             for i in held if i not in selected]
+    entries = [i for i in selected if i not in held]
+
+    d = {"month_end": m, "risk_off": ro, "n_eligible": int(len(elig)),
+         "exits": exits, "deferred": [], "entries": entries,
+         "held": held, "ranks": {i: float(ranks[i]) for i in ranks.index[:200]},
+         "target_weights": tw, "rebalance": True,
+         "score_date": sd,
+         "reference_close": {i: float(close_w.at[m, i])
+                             for i in set(held) | set(selected)
+                             if i in close_w.columns
+                             and not pd.isna(close_w.at[m, i])},
          "trend_filter": trend_filter}
     decisions.append(d)
     return d
@@ -423,7 +667,14 @@ def _execute(dec, t, book, cash, open_w, close_w, turn_w, cost_model, trades,
 
     held = book.positions()
     hv = {i: q * last_close.get(i, 0.0) for i, q in held.items()}
-    candidates = [i for i in list(held) + dec["entries"]]
+    # E1c §3 targets each name's own weight; E1 §5 targets an equal share.
+    # `target_weights` is absent from every E1/E1b decision, so this is the
+    # only place the two paths differ and E1 never enters the new one.
+    tw = dec.get("target_weights")
+    if tw:
+        candidates = list(tw)
+    else:
+        candidates = [i for i in list(held) + dec["entries"]]
     prices = {i: p for i in candidates if (p := _price(open_w, t, i)) is not None}
     if not prices or cash <= 0:
         return cash
@@ -435,8 +686,14 @@ def _execute(dec, t, book, cash, open_w, close_w, turn_w, cost_model, trades,
     excluded: set = set()
     orders: List[tuple] = []
     for _ in range(len(available) + 1):
-        proposed = buy_list([c for c in available if c not in excluded], hv, cash,
-                            prices, n_hold=n_hold, max_names=max_buys)
+        usable = [c for c in available if c not in excluded]
+        if tw:
+            proposed = buy_list_weighted(
+                {k: v for k, v in tw.items() if k in usable},
+                hv, cash, prices, max_names=max_buys)
+        else:
+            proposed = buy_list(usable, hv, cash, prices,
+                                n_hold=n_hold, max_names=max_buys)
         if not proposed:
             orders = []
             break
@@ -465,14 +722,68 @@ def _execute(dec, t, book, cash, open_w, close_w, turn_w, cost_model, trades,
         if not hooks.pre_buy_constraint(t, isin, qty, px, state):
             warnings.append({"kind": "constraint_skip", "isin": isin, "date": t})
             continue
+        qty = _fit_to_cash(qty, px, cash, cost_model)
+        if qty < 1:
+            continue
         notional = qty * px
         c = cost_model.buy_cost(notional)
-        if notional + c > cash:
-            continue
         book.buy(isin, t, qty, px, c)
         cash -= notional + c
         trades.append(_trade(t, isin, "BUY", qty, dec["reference_close"].get(isin), px, c))
     return cash
+
+
+def _intra_month_exits(t, book, cash, open_w, cost_model, trades, warnings,
+                       hooks, state) -> float:
+    """Sell, at the open of `t`, whatever the intra-month hook names.
+
+    Inert for E1: `hooks._no_intra_month_exit` returns [] and this function
+    then touches nothing, which is what keeps the E1 path byte-identical
+    (tests/test_engine_rules.py).
+    """
+    held = list(book.positions())
+    if not held:
+        return cash
+    for isin in hooks.intra_month_exit(t, held, state) or ():
+        qty = book.holdings(isin)
+        if qty <= 0:
+            continue
+        px = _price(open_w, t, isin)
+        if px is None:
+            # §9 suspension: it exits on the first session it trades again.
+            warnings.append({"kind": "intra_month_exit_no_price",
+                             "isin": isin, "date": t})
+            continue
+        proceeds = qty * px
+        c = cost_model.sell_cost(proceeds, 1)
+        book.sell(isin, t, qty, px, c)
+        cash += proceeds - c
+        # No reference close: this is not a month-end decision, so there is
+        # no reference price to measure slippage against.
+        trades.append(_trade(t, isin, "SELL_INTRA", qty, None, px, c))
+        warnings.append({"kind": "intra_month_exit", "isin": isin, "date": t,
+                         "qty": int(qty), "price": px})
+    return cash
+
+
+def _fit_to_cash(qty: int, px: float, cash: float, cost_model) -> int:
+    """E1 §15, 2026-09-21: integer shares are sized net of buy costs.
+
+    §5's literal formula, floor(min(shortfall, cash) / price), ignores costs,
+    so a buy sized to use all the available cash could no longer pay for
+    itself once its costs were added. The engine used to skip such a buy
+    outright, which made whether a month was invested come down to rupee
+    rounding -- B5 sat out February 2007 that way. Instead the order is
+    reduced by whole shares until shares x price + costs fits the cash.
+
+    An error fix, not a rule change: every row and every benchmark takes this
+    path. Costs rise with notional, so the first quantity that fits is the
+    largest; in practice it is one or two shares below the original.
+    """
+    q = int(qty)
+    while q >= 1 and q * px + cost_model.buy_cost(q * px) > cash:
+        q -= 1
+    return q
 
 
 def _price(w, t, isin):
@@ -687,8 +998,12 @@ def run_benchmark(config, period, index_series, cost_model, tax_policy,
     s["date"] = pd.to_datetime(s["date"]).dt.date
     s = s[s["date"] <= period.end].sort_values("date")
     if expense_ratio:
-        days = np.arange(len(s))
-        s["close"] = s["close"].values * (1.0 - expense_ratio) ** (days / 365.0)
+        # The stated rate is the REALISED annual rate: compounded by calendar
+        # days elapsed. Counting sessions over 365 (as first written) applied
+        # a 0.30% drag as roughly 0.21% a year. Corrected 2026-09-21.
+        first = pd.Timestamp(s["date"].iloc[0])
+        days = (pd.to_datetime(s["date"]) - first).dt.days.to_numpy()
+        s["close"] = s["close"].values * (1.0 - expense_ratio) ** (days / 365.25)
     isin = f"IDX:{name}"
     panel = pd.DataFrame({
         "date": s["date"], "isin": isin, "symbol": name, "series": "EQ",
@@ -696,20 +1011,28 @@ def run_benchmark(config, period, index_series, cost_model, tax_policy,
         "low": s["close"], "close": s["close"], "prev_close": s["close"],
         "volume": 1, "turnover": 1e18, "adj_factor": 1.0,
         "adj_close": s["close"], "adj_open": s["close"], "dividend": 0.0})
-    cfg = {k: dict(v) if isinstance(v, dict) else v for k, v in config.items()}
-    cfg.setdefault("strategy", {})
-    cfg["strategy"] = dict(cfg["strategy"])
-    cfg["strategy"].update({"n_hold": 1, "band_exit_rank": 10**9,
-                            "max_buys_per_month": 1, "trend_filter": "off",
-                            "lookback_sessions": 1, "skip_sessions": 0})
-    cfg.setdefault("universe", {})
-    cfg["universe"] = dict(cfg["universe"])
-    cfg["universe"].update({"min_sessions": 1, "top_n_by_turnover": 1,
-                            "turnover_window": 1, "min_price": 0.0,
-                            "max_adv_fraction": 1.0,
-                            # the benchmark IS one synthetic security; an index
-                            # membership table has nothing to say about it
-                            "mode": "turnover_top_n"})
+    # A benchmark shares the experiment's MONEY -- SIP, starting cash, cash
+    # rate, delisting treatment -- and nothing about how it picks stocks. The
+    # strategy is therefore built from a whitelist, not copied and patched.
+    # Copying and patching broke on 2026-09-21: E1c's knobs (signal,
+    # rebalance, weighting, selection_n) were not in the patch list, so every
+    # benchmark ran E1c's rules on one security, whose z-score is undefined,
+    # and never bought (B1-B3 and B5 all read the 6% cash rate). A whitelist
+    # cannot leak a knob that a future charter adds. No hooks either: a
+    # benchmark is an index, not a candidate.
+    SHARED = ("sip_amount", "initial_cash", "cash_rate_annual",
+              "delisting", "delist_confirm_sessions")
+    src = config.get("strategy", {}) or {}
+    strategy = {k: src[k] for k in SHARED if k in src}
+    strategy.update({"n_hold": 1, "band_exit_rank": 10**9,
+                     "max_buys_per_month": 1, "trend_filter": "off",
+                     "lookback_sessions": 1, "skip_sessions": 0})
+    universe = {"series": ["EQ"], "min_sessions": 1, "top_n_by_turnover": 1,
+                "turnover_window": 1, "min_price": 0.0, "max_adv_fraction": 1.0,
+                # the benchmark IS one synthetic security; an index
+                # membership table has nothing to say about it
+                "mode": "turnover_top_n"}
+    cfg = {"strategy": strategy, "universe": universe}
     return run(cfg, period, panel, None, cost_model, tax_policy)
 
 
@@ -846,9 +1169,10 @@ def _rebalance(target_names, t, book, cash, open_w, cost_model, trades) -> float
         qty = int(min(short, cash) // px)
         if qty < 1:
             continue
-        c = cost_model.buy_cost(qty * px)
-        if qty * px + c > cash:
+        qty = _fit_to_cash(qty, px, cash, cost_model)
+        if qty < 1:
             continue
+        c = cost_model.buy_cost(qty * px)
         book.buy(isin, t, qty, px, c)
         cash -= qty * px + c
         trades.append(_trade(t, isin, "BUY_REBAL", qty, px, px, c))

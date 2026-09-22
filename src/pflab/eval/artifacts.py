@@ -55,6 +55,31 @@ def data_fingerprint(panel: pd.DataFrame, extra: Optional[dict] = None) -> str:
     return _sha(json.dumps(parts, sort_keys=True, default=str))
 
 
+def source_fingerprint() -> str:
+    """A content hash of the code the engine is actually running.
+
+    `git rev-parse HEAD` pins the code only when the tree is clean. While it
+    is dirty -- which is every session in progress -- two materially
+    different versions of the engine share a commit hash, so a run id built
+    on the commit alone cannot tell them apart. They then land in the same
+    content-addressed directory, and principle 5's "identical inputs verify"
+    becomes "different inputs overwrite". This closes that: the hash covers
+    every source file a run's behaviour can depend on.
+    """
+    root = Path(__file__).resolve().parents[3]
+    h = hashlib.sha256()
+    for sub in ("src/pflab", "tools"):
+        d = root / sub
+        if not d.exists():
+            continue
+        for f in sorted(d.rglob("*.py")):
+            if "__pycache__" in f.parts:
+                continue
+            h.update(str(f.relative_to(root)).replace("\\", "/").encode("utf-8"))
+            h.update(f.read_bytes())
+    return h.hexdigest()[:16]
+
+
 def code_commit() -> dict:
     try:
         h = subprocess.check_output(["git", "rev-parse", "HEAD"],
@@ -63,7 +88,16 @@ def code_commit() -> dict:
             ["git", "status", "--porcelain"], stderr=subprocess.DEVNULL).decode().strip())
     except Exception:
         h, dirty = "unknown", True
-    return {"commit": h, "dirty": dirty}
+    return {"commit": h, "dirty": dirty, "source_sha": source_fingerprint()}
+
+
+def code_identity(commit: dict) -> str:
+    """What `run_id` should hash for "the code". A clean tree is pinned by
+    its commit; a dirty one needs the source hash as well, or two different
+    working trees produce the same run id."""
+    if not commit.get("dirty"):
+        return commit.get("commit", "unknown")
+    return f"{commit.get('commit', 'unknown')}+{commit.get('source_sha', '?')}"
 
 
 class ArtifactConflict(RuntimeError):
@@ -532,3 +566,129 @@ def metrics_of(result, benchmarks: Optional[dict] = None) -> dict:
             out["benchmarks"][name] = {"cagr": M.cagr(nav),
                                        "max_drawdown": M.max_drawdown(nav)}
     return out
+
+
+# -- E1-P §7 ------------------------------------------------------------
+def _forward_returns(close_w, when, isins, sessions_ahead):
+    """Forward return of each name from `when`, over `sessions_ahead`.
+
+    A name that stops trading inside the window is DROPPED, never imputed:
+    its last price is not a price it could have been sold at.
+    """
+    out = []
+    if close_w is None or when not in close_w.index:
+        return out
+    i = close_w.index.get_loc(when)
+    j = min(i + sessions_ahead, len(close_w.index) - 1)
+    if j <= i:
+        return out
+    for isin in isins:
+        if isin not in close_w.columns:
+            continue
+        a = close_w.iat[i, close_w.columns.get_loc(isin)]
+        b = close_w.iat[j, close_w.columns.get_loc(isin)]
+        if pd.isna(a) or pd.isna(b) or a <= 0:
+            continue
+        out.append(float(b / a - 1.0))
+    return out
+
+
+def deferred_lot_outcomes(result, close_w=None, months: int = 3) -> dict:
+    """E1-P §7: "the forward 3-month return of deferred lots vs the lots E1
+    would have sold".
+
+    The comparator is the names the SAME month-end band-exited, because a
+    deferred name is exactly a name E1 would have band-exited. If patience is
+    free the two are alike and the tax saving is the whole gain; if the
+    deferred names fall further, the saving was paid for out of return.
+
+    Reporting only. Read off a completed run; no decision is recomputed.
+    """
+    decisions = result.decisions or []
+    if not decisions:
+        return {"available": False, "reason": "no decisions"}
+    n_def = sum(len(d.get("deferred") or []) for d in decisions)
+    if not n_def:
+        return {"available": True, "deferrals": 0,
+                "note": "nothing was deferred (E1 base, or the rule never fired)"}
+    if close_w is None:
+        return {"available": False,
+                "reason": "needs the close panel to measure forward returns"}
+
+    sessions_ahead = int(round(months * 21))
+    deferred, sold, by_month = [], [], []
+    for d in decisions:
+        m = d["month_end"]
+        dl = _forward_returns(close_w, m, d.get("deferred") or [], sessions_ahead)
+        sl = _forward_returns(close_w, m,
+                              [e["isin"] for e in (d.get("exits") or [])
+                               if e.get("reason") == "band"], sessions_ahead)
+        deferred += dl
+        sold += sl
+        if dl or sl:
+            by_month.append({
+                "month_end": str(m), "deferred": len(dl), "band_sold": len(sl),
+                "deferred_fwd_pct": (100 * float(np.mean(dl))) if dl else None,
+                "band_sold_fwd_pct": (100 * float(np.mean(sl))) if sl else None})
+
+    return {
+        "available": True,
+        "months": months,
+        "deferrals": n_def,
+        "month_ends_with_a_deferral": sum(1 for d in decisions if d.get("deferred")),
+        "deferred_forward_mean_pct": (100 * float(np.mean(deferred))) if deferred else None,
+        "deferred_forward_median_pct": (100 * float(np.median(deferred))) if deferred else None,
+        "band_sold_forward_mean_pct": (100 * float(np.mean(sold))) if sold else None,
+        "band_sold_forward_median_pct": (100 * float(np.median(sold))) if sold else None,
+        "gap_pp": ((100 * (float(np.mean(deferred)) - float(np.mean(sold))))
+                   if deferred and sold else None),
+        "measured_on": {"deferred": len(deferred), "band_sold": len(sold)},
+        "by_month": by_month,
+        "basis": (f"forward return from the month-end close over "
+                  f"{sessions_ahead} sessions (~{months} months). A NEGATIVE "
+                  f"gap_pp means the deferred names did worse than the ones "
+                  f"sold, i.e. the tax saving was paid for out of return."),
+    }
+
+
+def control_sell_outcomes(result, close_w=None, months: int = 6) -> dict:
+    """E1-P §7 for N1/N2: how many sells the control fired and what those
+    names did over the following six months.
+
+    A stop-loss that fires on names which then recover has cost money; one
+    that fires on names which keep falling has saved it. This says which. It
+    does not say whether the control is adoptable -- §4 says it is not.
+    """
+    tr = result.trades
+    if tr is None or not len(tr):
+        return {"available": True, "sells": 0}
+    sells = tr[tr["side"] == "SELL_INTRA"]
+    if not len(sells):
+        return {"available": True, "sells": 0,
+                "note": "no intra-month exits (E1 base, or no control ran)"}
+    if close_w is None:
+        return {"available": False,
+                "reason": "needs the close panel to measure forward returns"}
+
+    sessions_ahead = int(round(months * 21))
+    fwd = []
+    for r in sells.itertuples(index=False):
+        d = r.date.date() if hasattr(r.date, "date") else r.date
+        fwd += _forward_returns(close_w, d, [r.isin], sessions_ahead)
+
+    s = sells.copy()
+    s["date"] = pd.to_datetime(s["date"])
+    return {
+        "available": True,
+        "sells": int(len(sells)),
+        "names": int(sells["isin"].nunique()),
+        "by_year": {int(y): int(n) for y, n in s.groupby(s["date"].dt.year).size().items()},
+        "months": months,
+        "forward_mean_pct": (100 * float(np.mean(fwd))) if fwd else None,
+        "forward_median_pct": (100 * float(np.median(fwd))) if fwd else None,
+        "measured_on": len(fwd),
+        "basis": (f"forward return from the sell fill over {sessions_ahead} "
+                  f"sessions (~{months} months). A POSITIVE mean means the "
+                  f"control sold names that then ROSE -- impatience cost "
+                  f"return, which is what §4 exists to measure."),
+    }

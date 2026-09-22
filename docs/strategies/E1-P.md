@@ -29,6 +29,12 @@ month-end after it turns long-term if rank is still > 50, or immediately if
 rank exceeds 100 or eligibility fails. Delisting, suspension and red-flag
 exits are never deferred.
 
+Per-lot resolution: a position is deferred when its OLDEST lot falls in the
+9-12 month window, because FIFO makes that the lot a sale would realise.
+§6 S4 tests the oldest lot's own unrealised gain, not the position average.
+§6 S5's minimum hold uses the YOUNGEST lot, since "every lot held at least N
+months" is exactly that condition. Partial-position exits are out of scope.
+
 ## 4. Negative controls (run alongside, never adoptable)
 - **N1 Stop-loss**: sell any position at the next open when it is down 20%
   from its cost basis. Everything else as E1.
@@ -70,3 +76,9 @@ forecast.
 
 ## 10. Change log
 - 2026-09-16 — draft.
+- 2026-09-19 — §3: per-lot resolution appended (oldest lot for the base rule
+  and for S4's unrealised-gain test, youngest lot for S5's minimum hold,
+  partial-position exits out of scope). Requested by Aarsh; §3 was written
+  per-lot while E1 §4 sells a held name in full, and the two rows needed
+  opposite ends of the same position.
+- 2026-09-19 — LOCKED. No changes to §3-§7 after this line.

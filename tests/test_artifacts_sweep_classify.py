@@ -431,3 +431,66 @@ def test_equity_sleeve_survives_going_fully_to_cash():
     # day 0 has no prior close, so no return is defined for it: of the four
     # days that can have one, two had capital at risk
     assert e["share_of_days_invested"] == pytest.approx(0.4, abs=0.01)
+
+
+# -- 2026-09-19: sweeps persist per-row curves and verify their manifest ----
+def test_sweep_persists_per_row_equity_and_trades(tmp_path, base_config,
+                                                  cost_model, tax_policy):
+    """Every row's curve survives the process.
+
+    The 2026-09-18 session lost three sweeps because an extra thought of
+    afterwards needed a curve that only existed in memory. A sweep that keeps
+    its curves makes any later §7 extra a file read, not a re-run.
+    """
+    sessions, _, panel = random_walk_panel(seed=71, n_names=14,
+                                           start="2014-01-01", end="2018-12-31")
+    per = Period("dev", date(2016, 1, 1), date(2018, 12, 31))
+    idx = {"NIFTY50_TRI": _index(sessions, 0.09),
+           "NIFTY500_TRI": _index(sessions, 0.08),
+           "NIFTY200_MOMENTUM30_TRI": _index(sessions, 0.11)}
+    idx["NIFTY50_PRICE"] = _index(sessions, 0.09)
+    out = S.run_sweep(base_config, per, panel, idx,
+                      lambda m: cost_model.scaled(m), tax_policy,
+                      out_dir=tmp_path, rows=["base", "S1"])
+    for row in ("base", "S1"):
+        eq = pd.read_parquet(tmp_path / "rows" / row / "equity.parquet")
+        assert len(eq) and "equity_value" in eq.columns and "cash" in eq.columns
+        # the persisted curve is the one the metrics were computed from
+        assert list(eq["date"]) == list(out[row]["result"].equity["date"])
+        assert (tmp_path / "rows" / row / "trades.parquet").exists()
+    # benchmarks are engine runs too and cost as much to recover
+    assert (tmp_path / "rows" / "_B2" / "equity.parquet").exists()
+
+
+def test_sweep_refuses_to_overwrite_a_different_run(tmp_path, base_config,
+                                                    cost_model, tax_policy):
+    """Principle 5 for sweeps: different inputs must not share a directory.
+
+    `write_run` has always verified-or-refused; `write_summary` overwrote
+    unconditionally, and the run id does not carry the dirty flag, so a
+    re-run from the same HEAD with edited code silently replaced the sweep.
+    """
+    sessions, _, panel = random_walk_panel(seed=72, n_names=12,
+                                           start="2014-01-01", end="2017-12-31")
+    per = Period("dev", date(2016, 1, 1), date(2017, 12, 31))
+    idx = {"NIFTY50_PRICE": _index(sessions, 0.09)}
+    man = {"config_sha": "aaa", "data_fingerprint": "bbb",
+           "code": {"commit": "c0ffee", "dirty": False},
+           "period": "dev", "rows": ["base"]}
+    S.run_sweep(base_config, per, panel, idx, lambda m: cost_model.scaled(m),
+                tax_policy, out_dir=tmp_path, rows=["base"], manifest=man)
+    assert json.loads((tmp_path / "manifest.json").read_text(
+        encoding="utf-8"))["code"]["commit"] == "c0ffee"
+
+    # same inputs: verifies and proceeds
+    S.run_sweep(base_config, per, panel, idx, lambda m: cost_model.scaled(m),
+                tax_policy, out_dir=tmp_path, rows=["base"], manifest=man)
+
+    # different code: refuses, and leaves the prior sweep intact
+    before = (tmp_path / "summary.md").read_text(encoding="utf-8")
+    dirty = {**man, "code": {"commit": "c0ffee", "dirty": True}}
+    with pytest.raises(S.SweepConflict) as e:
+        S.run_sweep(base_config, per, panel, idx, lambda m: cost_model.scaled(m),
+                    tax_policy, out_dir=tmp_path, rows=["base"], manifest=dirty)
+    assert "code" in str(e.value)
+    assert (tmp_path / "summary.md").read_text(encoding="utf-8") == before

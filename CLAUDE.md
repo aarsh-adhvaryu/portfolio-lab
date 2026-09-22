@@ -29,8 +29,10 @@ touching code. The charter is the spec; the code implements it.
    circulars (E1b §3); `pdfplumber` is a named fallback, permitted only for a
    circular whose tables `pypdf` returns garbled, and nothing else.
 8. **ISIN is the security key.** Never join on symbol without a date.
-9. **Data lives under `PFLAB_DATA_DIR`** (env var, default `./data`).
-   It is gitignored. On Aarsh's machine point it at the D: drive.
+9. **Data lives under `PFLAB_DATA_DIR`** (env var; the code falls back to
+   the relative `./data`, but never rely on that). On Aarsh's machine it is
+   set explicitly to `D:\portfolio_lab\data` — see "Repo layout" below.
+   It is gitignored.
 
 ## Repo layout (flattened 2026-09-19)
 
@@ -52,18 +54,48 @@ second copy of a charter, roadmap or note outside `docs/`.
 | code, tests, tools | `src/pflab/`, `tests/`, `tools/` |
 | gitignored outputs | `data/` (1.6 GB), `experiments/`, `.venv/`, `research/journal.jsonl` |
 
-`PFLAB_DATA_DIR` is unset, so data resolves to `./data` relative to the
-repo root: **run commands from `D:\portfolio_lab`.**
+`PFLAB_DATA_DIR` is **set explicitly to `D:\portfolio_lab\data`** and must
+stay set; do not rely on the working directory. It is set in two places, both
+as of 2026-09-19:
 
-## State of the repo (2026-09-18 — see `docs/HANDOFF.md` for the full picture)
+- **Aarsh's shells** — a persistent user-scope Windows environment variable.
+  Re-create it with
+  `[Environment]::SetEnvironmentVariable('PFLAB_DATA_DIR','D:\portfolio_lab\data','User')`.
+  Already-open terminals do not see it; new ones do.
+- **Claude Code sessions** — `.claude/settings.json` `env` block, which the
+  harness applies to every tool call in this repo. It uses forward slashes
+  (`D:/portfolio_lab/data`) because JSON would otherwise need escaped
+  backslashes; `pathlib` resolves either form to the same directory.
 
-**Adopted stack: E1 base.** Verdicts so far: **E1 INCONCLUSIVE** (2026-09-17),
-**E1b REJECT** (2026-09-18, GATE G1 failed both periods and G2 violated in
-validation). `pytest -q`: 362 passed.
+Why: `pflab.data.data_dir()` falls back to the relative path `data`, so a
+command launched from anywhere other than the repo root silently resolved to a
+different (usually empty) directory instead of failing. An explicit absolute
+path removes that failure mode. Verify with
+`python -c "from pflab.data import data_dir; print(data_dir().resolve())"`,
+which must print `D:\portfolio_lab\data`.
 
-Charters: E1 LOCKED 2026-09-17 (§2–§13 untouched since). E1b LOCKED
-2026-09-18 (§3–§7 untouched since). E1-P DRAFT, partly built. E1c DRAFT,
-not prepped. Order: E1, E1-P, E1b, E2-A, E2-B, E2-C, E2-D, E3, E4, E5.
+## State of the repo (2026-09-22 — read `docs/HANDOFF.md` "Start here" first)
+
+**Adopted stack: E1 base**, read from `experiments/E1/regression/` since the
+2026-09-21 measurement correction (E1 §15: buys sized net of costs; expense
+drag by calendar days). Development 8.97% / 55.40%, validation 27.36% /
+39.82%. Verdicts: **E1 INCONCLUSIVE**, **E1b REJECT — full re-run pending**
+under the correction (a base-row check says INCONCLUSIVE), **E1-P REJECT**,
+**E1c REJECT**. One-page table: `docs/STATE.md`. `pytest -q`: 423 passed.
+
+**`docs/MANDATE.md` is in effect from 2026-09-21**: GATE decides adoption;
+MANDATE §3 and §5 decide ADVANCE. B5 (Nifty 500 Momentum 50 TRI) and B3
+both carry a 0.30% a year drag. No stack meets the mandate yet.
+
+Charters: E1, E1b, E1-P, E1c LOCKED (spans verified each session; hashes for
+E1-P and E1c in their readiness notes). **E1d DRAFT** (next; readiness
+`docs/notes/E1d-readiness.md`), E3-R DRAFT.
+Forward order: **E1d, E3-R, E2-A (when BSE data completes), E2-B, E1-S,
+E2-C, E2-D, E2-E, E3, E6-V, E5-A.** E4 and any stop-loss are off the list.
+**E1 §13's C2 can no longer be moved by any experiment.**
+
+**Running at session close:** the BSE announcements backfill (two workers,
+`tools/backfill_bse.py`, resumable; HANDOFF §5 and §9).
 
 Implemented, tested and used in real runs:
 - `pflab/tax/india_lots.py`, `pflab/execution/costs.py`
@@ -82,6 +114,21 @@ Implemented, tested and used in real runs:
 - `tools/` — `backfill_bhavcopy`, `collect_daily`, `red_flag_sample`,
   `build_index_membership`
 
+Added 2026-09-19: `pflab/signals/vol_scaled.py` (E1c §3's score),
+`hooks.patience_defer` / `stop_loss` / `profit_take` (E1-P §3/§4),
+`construct.score_tilted_weights` / `buy_list_weighted` (E1c §3),
+`engine._decide_rebalance` and `_intra_month_exits`,
+`classify.classify_e1p`, `sweep.e1p_rows` / `e1c_rows`,
+`artifacts.deferred_lot_outcomes` / `control_sell_outcomes` /
+`source_fingerprint`, and `configs/e1p.toml` / `configs/e1c.toml`.
+
+**Sweeps are now content-verified.** Each writes a `manifest.json` and
+refuses to overwrite a directory whose inputs differ (`SweepConflict`), and
+`run_id` includes a source fingerprint when the tree is dirty, so edited code
+lands in a new directory rather than on top of the old one (principle 9).
+Each sweep also persists per-row `equity.parquet`, `trades.parquet` and
+`decisions.json` under `rows/<row>/`, so no later extra needs a re-run.
+
 Stubs raising `NotImplementedError` (both Phase 4, on ADVANCE only, and
 nothing has ADVANCED): `pflab/execution/paper.py`, `pflab/execution/kite.py`.
 
@@ -90,12 +137,14 @@ anchored on 72 Internet Archive captures. Exact-list check passes — Nifty
 200 4/4, Nifty 100 21/21, Midcap 100 10/10, Nifty 500 13/14. Re-run with
 `python tools/build_index_membership.py --all`.
 
-Not started (Stage 3 was redirected to E1b and never resumed): BSE
-announcements backfill to 2010 (only 2026 collected), shareholding,
-point-in-time fundamentals, macro, IPO list, ETF dividends. GDELT needs
-Aarsh to run `tools/gdelt_bigquery.sql` in BigQuery.
+Data: BSE announcements backfill 2010 → now RUNNING (collector hardened
+2026-09-22: a day is written only if it matches the API's own count).
+Not started, each needing a source decision from Aarsh: India VIX,
+shareholding, point-in-time fundamentals, macro/FII, ETF dividends. GDELT
+needs Aarsh to run `tools/gdelt_bigquery.sql` in BigQuery. B5's history is
+in `data/indices/NIFTY500_MOMENTUM50_TRI.parquet`.
 
-Next four tasks, in order, are in `docs/HANDOFF.md` §9.
+Next tasks, in order, are in `docs/HANDOFF.md` §9.
 
 ## Task order (do them in this order; each is done when its tests pass)
 

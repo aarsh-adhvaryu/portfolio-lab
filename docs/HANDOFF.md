@@ -1,9 +1,45 @@
-# HANDOFF — 2026-09-18
+# HANDOFF — 2026-09-22
 
 Written at session close for whoever picks this up next. Everything here is
 state, not opinion. Where something is unknown or unfinished it says so.
 
-`pytest -q` at close: **362 passed, 0 failed.**
+`pytest -q` at close: **423 passed, 0 failed.**
+
+## Start here (2026-09-22)
+
+1. **Two jobs may be running or may need resuming — check before anything.**
+   - **E1b full re-run** (Aarsh, two terminals): `docs/HANDOFF.md` §9 item 1.
+     When both sweeps exist, run `classify.classify_e1b` against the E1
+     regression stack and record the verdict (a base-row check says
+     INCONCLUSIVE).
+   - **BSE announcements backfill** 2010 → 2026-09-21 (§5): check with
+     `python tools/backfill_bse.py --check 2010-01-01 2026-09-21`; resume
+     with the commands in §9.
+2. **Measurement correction of 2026-09-21 (E1 §15):** buys are sized net of
+   costs instead of being skipped when costs don't fit, and expense drag
+   compounds by calendar days; B3 and B5 both carry 0.30% a year. **The
+   stack is now read from `experiments/E1/regression/`** (E1 base re-run
+   under the correction): development **8.97% / 55.40%**, validation
+   **27.36% / 39.82%**. Every stored number that moved is in
+   `docs/STATE.md`.
+3. **Next experiment: E1d** (`docs/strategies/E1d.md`, draft). Four small
+   code pieces before its first run: `docs/notes/E1d-readiness.md`. Build
+   them only AFTER E1b's re-run is classified (both E1b sweeps must share
+   one code state).
+
+## 2026-09-19 session, in one paragraph
+
+`PFLAB_DATA_DIR` is now set explicitly (CLAUDE.md "Repo layout"). Both E1b
+sweeps were re-run with the corrected equity/cash decomposition and with
+per-row equity curves, trade ledgers and decision records persisted; **every
+row reproduced to within 1e-12, so E1b's REJECT is untouched.** E1c was
+slotted after E1-P in `ROADMAP.md` and `GATE.md`, and E1b's S7 (sell-to-cash
+during RISK_OFF) was added to E3 §7 as S6. **E1-P is finished** — §3's rule,
+N1/N2, the sweep rows, the GATE wrapper and both missing §7 extras — and
+**E1c is prepped** — the volatility-scaled 6+12 score, semi-annual rebalance,
+capped score-tilted weights and eleven rows. Neither has been run; both wait
+on Aarsh's lock, and each has a readiness note listing exactly what the lock
+must settle. Sealed period untouched; `research/journal.jsonl` still absent.
 
 **2026-09-19 — repo consolidated; paths in this file are current.** The
 repository root is now `D:\portfolio_lab`. Previously the code sat two levels
@@ -76,6 +112,15 @@ less.
 
 Development review at `docs/reviews/E1b-development.md`.
 
+**Both sweeps re-run 2026-09-19** with decomposition v3 and persisted
+artifacts: `development-1996387124c166df` and `validation-14c240592c8fc806`.
+**All fourteen rows and all four benchmarks reproduced to within 1e-12 in
+both periods**, so every number above stands and the REJECT is untouched.
+The originals (`development-26b23d4fbc273fea`,
+`validation-4eaf560fb1319d16`) were NOT overwritten — the run id now carries
+a source fingerprint, so changed code lands in a new directory. The verdict
+still lives in the original validation directory.
+
 ---
 
 ## 2. Built and tested vs stubbed
@@ -100,98 +145,89 @@ only, and nothing has ADVANCED.
 
 ---
 
-## 3. E1-P build state
+## 3. E1-P — REJECT (2026-09-21)
 
-E1-P was moved **ahead of** E1b on 2026-09-18 (reason recorded in
-`docs/ROADMAP.md`): it needs no new data, and blocking a ready experiment on an
-unready dataset buys nothing. Order is now E1, E1-P, E1b, E2-A, …
-**If E1b had been ADOPTED, E1-P would have been re-run on the E1b base
-before its verdict was final. E1b was REJECTED, so that does not apply and
-E1 base remains the comparison.**
+LOCKED 2026-09-19; both sweeps run on the same code (`source_sha
+a3945e6f1bb5b64c`). Verdict computed by `classify.classify_e1p` and written to
+`experiments/E1-P/sweeps/validation-708202782ce1ef66/verdict.json`. Verdict
+note: **`docs/reviews/E1-P-verdict.md`**; development review (Aarsh's):
+`docs/reviews/E1-P-development.md`.
 
-Charter `docs/strategies/E1-P.md`, still **DRAFT — Aarsh has not locked it.**
+| period | G1 | G2 | G3 | G4 | CAGR gap | MaxDD gap |
+|---|---|---|---|---|---|---|
+| development | ✗ | ✓ | ✗ (1/6) | ✓ | +0.006 pp | +0.007 pp |
+| validation | ✗ | **✗** | ✗ (0/6) | ✓ | **−1.04 pp** | **+3.02 pp** |
 
-**Done:**
-- `defer_exit` hook is wired at `engine.py:374`, inside the exit loop and
-  guarded by `reason == "band"`. §3's "delisting, suspension and red-flag
-  exits are never deferred" therefore holds by construction, not by care.
-  It receives month-end, ISIN, rank and lot ages in days — exactly §3's
-  three conditions.
-- The engine records `deferred` per decision, so §7's deferred-lot extras
-  are computable from existing artifacts.
-- GATE arithmetic (`gate_for_period`, `gate_verdict`) is generic and tested;
-  E1-P needs a thin wrapper like `classify_e1b`'s GATE half, not new maths.
-- Window, sweep machinery, summary, criteria.json, extras: all generic.
+REJECT: G1 fails in both periods; G2 also violated in validation.
 
-**Missing:**
-1. **The §3 rule itself.** `hooks.from_config` builds only `side_sleeve`.
-   There is no function implementing the 9–12 month / rank ≤ 100 / still
-   eligible test, and no config wiring for it.
-2. **N1/N2 controls cannot run.** `intra_month_exit` is declared in
-   `hooks.py` but has **no call site in the engine loop** — only
-   `defer_exit` and `pre_buy_constraint` are invoked. Separately,
-   `EngineState` exposes `date`, `cash`, `positions`, `holdings_value` but
-   **not cost basis**, which N1/N2 need for their −20% / +50% triggers. Two
-   changes, both touching the E1 path, so the byte-identical-with-hooks-off
-   test must be re-asserted afterwards.
-3. **S1–S5 rows** do not exist (`sweep.py` has E1's `ROWS` and
-   `e1b_rows()`). Mechanical once the rule exists.
-4. **Two §7 extras**: forward 3-month return of deferred lots vs the lots E1
-   would have sold; N1/N2 sell counts and their following 6-month returns.
-   The rest of §7 already exists.
+- The tax saving was not stable (0.24 pp in development, 0.06 pp in
+  validation); the return cost was (0.23 pp, then 1.10 pp).
+- §7 extra 1 has the same sign in both periods: deferred names underperform
+  the names sold at the same month-end (−10.80 pp, −7.33 pp).
+- **N1 (stop-loss) did not survive validation**: −4.74 pp against base, and
+  the names it sold rose 9.5% afterwards. "If not, it was 2008" — it was.
+- N2 (profit-take) was expensive in both periods.
 
----
+**The stack stays E1 base.**
 
-## 4. E1c charter status
+## 4. E1c — REJECT (2026-09-21)
 
-`docs/strategies/E1c.md` — **DRAFT, written 2026-09-18 by Aarsh. Not
-prepped, no code, not in ROADMAP or GATE order.**
+Verdict computed by `classify.classify_e1c`, written to
+`experiments/E1c/sweeps/validation-d1bff14844336e54/verdict.json`; note
+**`docs/reviews/E1c-verdict.md`**. Both sweeps on frozen code
+`455f61c0803632f2`; the development re-run reproduced all 13 rows exactly.
 
-It replicates the Nifty 200 Momentum 30 construction through this engine
-(volatility-scaled 6+12-month momentum, top 30, score-tilted weights capped
-5%, semi-annual rebalance) on E1b's universe, with E1's SIP, costs and tax.
+- **GATE: REJECT** — G2 violated in both periods (−2.54 pp / +14.81 pp
+  deeper; then −6.02 pp).
+- **C1–C4: INCONCLUSIVE.** **Mandate: not met** (§3 fails in development,
+  §5 fails in both, with or without a B5 drag).
+- **§6:** the fund's construction as a taxed SIP keeps about half of B3 in
+  development (−6.68 pp) and nearly all of it in validation (−0.15 pp). C2
+  is not restated. Weighting is worth 1–3 pp a year with no stable sign.
+- Held in both periods: E1's raw 12-1 signal costs about 5 pp a year on the
+  fund's cadence; E1's monthly band earns 1–2.5 pp over semi-annual.
 
-Two things make it unusual and they need reading before any work starts:
+**Open measurement flaw, not fixed** (E1 §5 buy sizing, Aarsh's call): a
+benchmark buy that uses all its cash is skipped when costs don't fit, by
+rupee rounding. Development B5 is overstated by 1.23 pp (15.37% should read
+about 14.14%), B3 by 0.15 pp; nothing else moves and no verdict depends on
+it. The benchmark expense drag also compounds per session over 365, so
+B3's 0.30% applies as about 0.21%.
 
-- **§6 lets it move E1's bar.** If the replication's gap to B3 exceeds 2 pp
-  in both periods, E1 §13's C2 is restated to "B3 as replicated through this
-  engine" with a §15 line. That is the only sanctioned route by which an
-  experiment may change E1 after its lock, and only downward toward what can
-  actually be bought.
-- **§3 declares a gap**: free-float shares outstanding are not in the panel,
-  so weights are score-proportional capped at 5% rather than the fund's
-  free-float tilt. S1 tests equal weight as the sensitivity.
+## 5. Background backfills — state at 2026-09-22 13:35 IST
 
-Its S11 ("2012–2016 development only, E1 base re-run on that window") is the
-same mechanism as E1b's S13, which is already implemented as
-`sweep.period_for_row` plus the `_<row>_stack` companion run — reusable.
+**BSE announcements 2010 → 2026-09-21 (E2-A's input): RUNNING, not complete.**
 
-**Aarsh's instruction for the next session includes folding E1c's S7 into
-E3 §7.** I have not looked at whether E3 §7 can take it; that is unexamined.
+- Two workers, `tools/backfill_bse.py`, logs `data/_bse/progress_r1.jsonl`
+  (2010–2019) and `progress_r2.jsonl` (2020 → yesterday). Idempotent and
+  resumable: re-run the same command to continue. Completeness:
+  `python tools/backfill_bse.py --check 2010-01-01 2026-09-21`.
+- **A first attempt (four workers, 11:49) wrote 529 blank day files** — BSE
+  answered throttled requests with one all-null row, and the collector
+  saved it as the day. Found by row-count checks, workers stopped at 13:25.
+  **Fixed:** `bse_announcements.fetch_day` now keeps a day only if its
+  unique announcements equal the API's own `Table1.ROWCNT` (verified: 1,239
+  of 1,239 on 2025-07-15) and raises `IncompleteDay` otherwise; a genuinely
+  empty day reports ROWCNT 0. Pass 1 of the backfill verifies every file
+  already on disk and re-fetches any that fail; later passes retry what is
+  still missing after 10, 20, 30… minute pauses. Tests:
+  `tests/test_bse_collector.py`.
+- Starting point of the relaunch: **1,408 good, 529 blank, 4,171 missing**
+  of 6,108 days. Expected finish about 12–13 hours after 13:30, i.e.
+  **around 02:00–03:00 IST on 2026-09-23**, later if BSE throttles and the
+  retry passes wait. Days now average ~500–1,000 announcements (peaks
+  ~4,000), ~2 s a page of 50.
 
----
-
-## 5. Background backfills — honest state
-
-Most of these were **never started**. Stage 3 was redirected to E1b on
-2026-09-17 and never resumed. Nothing below is in progress; no job is
-running.
+**Everything else, unchanged since 2026-09-18 — needs Aarsh:**
 
 | item | state | what it needs |
 |---|---|---|
-| **BSE announcements 2010 backfill** | **Not done.** `data/bse_announcements/` holds **2026 only** (41 files, 6.3 MB). The collector works. | A backfill run from 2010. Then `red_flags.classify` over it, and the 50 most common flagged headlines into `docs/data/red_flag_sample.md` for Aarsh to review the keyword rules (Phase 1 task 1.5). |
-| **GDELT** | Partial. `tools/gdelt_bigquery.sql` is written. `data/gdelt/` has `agg` and `daily` (4 files). | **Aarsh must run the BigQuery SQL** and drop the CSV in `data/gdelt/backfill/`. Nothing else can proceed until then. |
-| **Shareholding** | **Not started.** No module, no data directory. | Source decision, then a collector. |
-| **Point-in-time fundamentals** | **Not started.** No module, no data directory. | Source decision. Note the panel deliberately carries no shares outstanding (see §3 of E1c, and the `market_cap_proxy` note in every extras report). |
-| **Macro** | **Not started.** No module, no data directory. | Source decision (E2-B). |
-| **IPO list** | **Not started.** No module, no data directory. | Source decision (E4). |
-| **ETF dividends** | **Not started.** `data/dividends/` has one file. ETFs are excluded from the E1 universe by §2/§15 (ISIN prefix `INF`), so this is an E3 input, not an E1 one. | Source decision (E3). |
-
-**Done and current:** bhavcopy (2004-01-01 → 2026-09-16, 5,609 sessions),
-panel (8,033,369 rows, 4,380 securities), corporate actions (2004–2026),
-indices (6 series), index membership (see below).
-
----
+| GDELT | 4 daily files only | Aarsh runs `tools/gdelt_bigquery.sql` in BigQuery, drops the CSV in `data/gdelt/backfill/` |
+| India VIX | **none** — not on the niftyindices endpoint the other indices use (probed 2026-09-22) | a source (NSE's VIX history page needs session cookies); E3-R's S8 and E2-C need it |
+| Shareholding patterns | not started, no module | source decision (E2-D) |
+| Point-in-time fundamentals | not started, no module | source decision |
+| Macro / FII flows | not started, no module | source decision (E2-B) |
+| ETF dividends | not started (`data/dividends/` is equity dividends) | source decision (E3) |
 
 ## 6. Index-membership build
 
@@ -233,7 +269,30 @@ is published and exact from **2012-01-01**; before that E1b used a declared
 
 ---
 
-## 7. §15 and charter lines added this session (2026-09-18)
+## 7. Charter and doc lines added, by session
+
+### 2026-09-19
+
+**No §15 line was added to any LOCKED charter.** E1 §2–§13 and E1b §3–§7 were
+re-verified byte-identical to `0ae301e` at the close, and neither file was
+modified at all.
+
+Changes landed only in DRAFT documents and in the map:
+- `docs/strategies/E3.md` §7 — **S6 added** (sell-to-cash during RISK_OFF,
+  E1/E1b's S7), on Aarsh's instruction, with two consequences declared and a
+  §10 change-log line. E3 is DRAFT, so §7 is not law.
+- `docs/ROADMAP.md` — order change **E1c after E1-P**, with the reasoning;
+  E1b's entry corrected from "BLOCKED on data" to its REJECT verdict; an E1c
+  section added; a broken link to the E1 diagnostic fixed.
+- `docs/strategies/GATE.md` — order line corrected. It had carried the
+  **pre-2026-09-18** order "E1, E1b, E1-P" since the swap, i.e. it was stale
+  against ROADMAP for a day. Now E1, E1-P, E1c, with an "Order, and how it
+  has changed" section so a stale copy is recognisable as stale.
+- `CLAUDE.md` — `PFLAB_DATA_DIR` made explicit and documented; state section
+  refreshed.
+- New: `docs/notes/E1P-readiness.md`, `docs/notes/E1c-readiness.md`.
+
+### 2026-09-18
 
 **E1's §15 was NOT touched this session.** E1 §2–§13 are untouched since the
 2026-09-17 LOCKED line.
@@ -266,20 +325,24 @@ E1c `docs/strategies/E1c.md` §9: draft, 2026-09-18, written by Aarsh.
 
 ## 8. Open questions I was not comfortable resolving alone
 
-1. **The invested-equity metric took three attempts and the artifacts still
-   carry version 2.** See §9 task 1. Versions 1 and 2 were wrong (NaN from
-   the sleeve emptying; window starting at the panel start; then a
-   time-weighted construction that weights a ₹4,239 stub the same as a fully
-   invested day). Version 3 is a capital-weighted decomposition that
-   *reconciles* to the pre-tax return, which is the property the first two
-   lacked. **The `Invested equity alone` table in both E1b summaries is
-   version 2 and should be ignored.**
-2. **`write_summary` overwrites unconditionally**, unlike `write_run` which
-   verifies and refuses. Both E1 re-runs this session wrote back into their
-   original content-addressed directories; the originals survive only
-   because I copied them to `experiments/E1/_preregen_backup/` and
-   `experiments/E1b/_prererun_backup/` first. This is a real gap against
-   principle 9 and I did not change it mid-run.
+1. ~~**The invested-equity metric took three attempts…**~~ **RESOLVED
+   2026-09-19.** Version 3 shipped and both E1b sweeps were re-run on it.
+   The base row reconciles: equity 8.67 pp + cash 1.38 pp = 10.05 against
+   10.20% pre-tax (development). The corrected table is in
+   `docs/reviews/E1b-development.md`; the version-2 `Invested equity alone`
+   table survives only in the two ORIGINAL sweep directories and should still
+   be ignored there.
+2. ~~**`write_summary` overwrites unconditionally.**~~ **RESOLVED
+   2026-09-19**, and the underlying hole was worse than described. A sweep
+   now writes a `manifest.json` and **refuses** to overwrite a directory
+   whose config, data, code or rows differ (`sweep.SweepConflict`).
+   Separately, `run_id` hashed only `git rev-parse HEAD`, so **two different
+   working trees at the same commit produced the same run id** — which is
+   every session in progress. `artifacts.source_fingerprint()` now hashes
+   every `.py` under `src/pflab` and `tools`, and `code_identity()` appends
+   it whenever the tree is dirty, so changed code lands in a new directory
+   instead of on top of the old one. Principle 9 says a run's identity is the
+   hash of its config, data **and code**; it now is.
 3. **Momentum-30 overlap (E1b §8) is unavailable and always will be for
    2007–2016.** The Internet Archive has that list only from 2021 and the
    index launched in the 2020s with back-computed levels. Measuring against
@@ -295,8 +358,14 @@ E1c `docs/strategies/E1c.md` §9: draft, 2026-09-18, written by Aarsh.
    If B3's 13.48% / 20.25% does not survive real trading and tax, then C2
    has been failing every experiment against an unbuyable number. I did not
    act on this; it is E1c's job.
-6. **E1c's S7 into E3 §7** — Aarsh's instruction. I have not read E3 §7 to
-   see whether it can take it.
+6. ~~**E1c's S7 into E3 §7**~~ **RESOLVED 2026-09-19, with a correction.**
+   The instruction was for **E1b's** S7 (sell-to-cash during RISK_OFF), not
+   E1c's S7 (costs ×2) as this file previously said. E1b's S7 is the one that
+   belongs in a charter about where RISK_OFF money goes. Added to E3 §7 as
+   **S6**, with its two consequences declared (the sleeve carries realised
+   equity gains, so §5's tax module sees a far larger flow; and re-entry is
+   capped at six names a month, so a liquidated book takes months to
+   rebuild). E3 is DRAFT, so §7 is not law yet. E1c's S7 stays costs ×2.
 7. **Nifty 500's membership table is much weaker than Nifty 200's** (56% of
    names have a guessed window; `carry_back` median 676 d,
    `inferred_start` median 1,150 d). E1b's S10 used it. Any future row that
@@ -304,45 +373,58 @@ E1c `docs/strategies/E1c.md` §9: draft, 2026-09-18, written by Aarsh.
 
 ---
 
-## 9. The exact next four tasks, in order
+## 9. The exact next tasks, in order
 
-**1. Re-run both E1b sweeps with decomposition v3 and persisted equity
-curves.** The verdict does not change — it never depended on the extras —
-but the `Invested equity alone` column in both summaries is version 2 and is
-wrong. `artifacts.equity_sleeve_return` is already rewritten and tested
-(base row development, computed offline: equity **8.67 pp/yr**, cash
-**1.38 pp/yr**, sum 10.05% against 10.20% pre-tax). While re-running, also
-**persist per-row equity curves and trade ledgers** into the sweep
-directory, so no future extra ever requires a re-run — this session lost
-three sweeps to exactly that. Then update `docs/reviews/E1b-development.md`
-with the corrected table.
+**1. E1b full re-run (Aarsh), then classify.** Both periods on the same
+committed code; nothing in `src/` or `tools/` changes until E1b is
+classified. In PowerShell, one terminal each (they can run side by side):
 
+    cd D:\portfolio_lab; .\.venv\Scripts\Activate.ps1
     python -c "from pflab.backtest import runner; runner.main('configs/e1b.toml','development',sweep=True)"
     python -c "from pflab.backtest import runner; runner.main('configs/e1b.toml','validation',sweep=True)"
 
-**2. E1c into ROADMAP and GATE order, with S7 folded into E3 §7.** Decide
-where E1c sits (it calibrates the benchmark, so it plausibly precedes
-everything that is judged against B3), update `docs/ROADMAP.md` and
-`docs/strategies/GATE.md`'s order line, and move E1c's S7 (costs ×2) into E3 §7 as
-Aarsh asked — after reading E3 §7 to confirm it fits.
+Then (Claude): `classify.classify_e1b(<dev dir>, <val dir>,
+'experiments/E1/regression/development-64343858a094c09e',
+'experiments/E1/regression/validation-303190300ed98ced')`, write the
+verdict note, update `docs/STATE.md`.
 
-**3. Finish E1-P.** In order: implement §3's rule and wire it through
-`hooks.from_config`; add a call site for `intra_month_exit` and cost basis
-to `EngineState` so N1/N2 can run; re-assert the byte-identical-with-hooks-
-off test; add `e1p_rows()` S1–S5; add the two missing §7 extras; add the
-GATE wrapper. Then Aarsh locks and it runs against E1 base.
+**2. BSE backfill to completion** (§5). Resume, one terminal per range:
 
-**4. E1c prep.** Volatility-scaled 6+12 momentum signal, score-tilted
-capped weights, semi-annual rebalance, and the eleven sweep rows. Reuse
-`sweep.period_for_row` and the `_<row>_stack` companion for S11. Do not run
-before Aarsh locks.
+    python tools/backfill_bse.py 2010-01-01 2019-12-31 data/_bse/progress_r1.jsonl
+    python tools/backfill_bse.py 2020-01-01 2026-09-21 data/_bse/progress_r2.jsonl
 
----
+Add `--no-verify` once that range's pass 1 has finished (its log has
+`"pass": 1, "end_of_pass": true`). Never run two copies of one range.
+
+**3. E1d build, lock, run** (`docs/notes/E1d-readiness.md`).
+
+**4. E3-R**, then **E2-A as soon as the BSE data is complete**, then the
+rest (`docs/ROADMAP.md`).
+
+**5. Data sources Aarsh owes** (§5): GDELT BigQuery export; an India VIX
+source; decisions on shareholding, fundamentals, macro/FII.
+
+### Two notes for whoever runs a sweep next
+
+- **Sweeps now persist per-row artifacts** under `rows/<row>/`:
+  `equity.parquet`, `trades.parquet` and `decisions.json`, plus the four
+  benchmarks. No future extra should ever need a re-run to recover a curve
+  the run already had — three sweeps were lost to exactly that on
+  2026-09-18. The two E1b directories re-run on 2026-09-19 carry curves and
+  ledgers; `decisions.json` was added a few hours later, so they do not have
+  it, and nothing E1b still needs reads it.
+- **A sweep now refuses to overwrite a different run.** If you get a
+  `SweepConflict`, the inputs genuinely differ — do not force it; look at
+  what changed.
 
 ## 10. Seal
 
-**The sealed period (2022–2025) was never opened.** `research/journal.jsonl`
-does not exist, which is the proof: `periods.open_period` creates and
-appends to it only on a reveal, and only a sealed period can trigger one.
-Zero reveal lines. No run this session used anything but `development` and
-`validation`, both unsealed.
+**The sealed period (2022–2025) has never been opened.**
+`research/journal.jsonl` does not exist, which is the proof:
+`periods.open_period` creates and appends to it only on a reveal, and only a
+sealed period can trigger one. Zero reveal lines.
+
+Re-verified at the 2026-09-19 close. Every run this session used
+`development` or `validation`, both unsealed: two E1b sweeps and one single
+E1 base run for the byte-identity check. Nothing under `experiments/*/sealed*`
+was read or written.

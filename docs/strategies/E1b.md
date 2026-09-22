@@ -119,3 +119,11 @@ No new signal. No change to N, band, lookback, filter, cash flow or tax.
   from 2006 and 2005, so the pre-2011 years are reconstructed from the
   index's own definition rather than carried back. The manifest records which
   years are published and which are reconstructed.
+- 2026-09-22 — re-run from scratch, both periods, under E1 §15's
+  2026-09-21 measurement correction (buy sizing net of costs; expense drag by
+  calendar days), per GATE.md's rule for a measurement error. A base-row
+  regression showed the correction moves the development gap to E1 base from
+  +0.13 pp to +0.77 pp, which would make the verdict INCONCLUSIVE rather than
+  REJECT; the full re-run decides it. Stack: E1 base as re-run under the same
+  correction (`experiments/E1/regression/`). §3–§7 unchanged. Aarsh's
+  decision.

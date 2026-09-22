@@ -5,12 +5,74 @@ charter. Each experiment gets its own charter in `docs/strategies/` before it
 runs; this file only says what the experiments are, in what order, what each
 must prove, and what the finished system looks like.
 
-Order is sequential: E1, E1-P, E1b, E2-A, E2-B, E2-C, E2-D, E3, E4, E5.
-(E1-P and E1b swapped 2026-09-18; see the order change below.) Nothing skips
+**Forward order (2026-09-22): E1d, E3-R, E2-A (as soon as its BSE data is
+complete), E2-B, E1-S, E2-C, E2-D, E2-E, E3, E6-V, E5-A.** Done: E1
+(INCONCLUSIVE), E1b (REJECT), E1-P (REJECT), E1c (REJECT, 2026-09-21). Off
+the list: E4, and any stop-loss (E1-P's N1 failed validation). Nothing skips
 the gate. The gate's arithmetic lives in `docs/strategies/GATE.md`; each
 experiment has its own charter in `docs/strategies/`.
 
+**Two decisions, two documents.** `GATE.md` decides **adoption** — whether a
+change joins the stack. From **2026-09-21**, `docs/MANDATE.md` §3 and §5
+decide **ADVANCE** — the sealed reveal, the live paper year, real money —
+in place of E1 §13's C1–C4. Recorded verdicts are unchanged.
+
 ---
+
+## Order change, 2026-09-22 — E1d first, while the BSE backfill runs
+
+On Aarsh's instruction. E2-A, the permanent-loss guard, needs BSE
+announcements from 2010; only 2026 had been collected, and the backfill
+(started 2026-09-22, four idempotent workers, ~20–22 h) is the long pole.
+Rather than wait on it, **E1d** (`docs/strategies/E1d.md`: E1c's
+volatility-scaled score as E1's ranking signal) and **E3-R** (the risk
+gears), which need no new data, go first. **E2-A runs as soon as its data
+is complete**, then the rest as before.
+
+## Order change, 2026-09-21 — the mandate takes effect
+
+On Aarsh's instruction, with MANDATE §3 confirmed the same day. The order
+follows MANDATE §4 (the permanent-loss guard, E2-A, first after E1c,
+because the universe is the whole Nifty 500) and §9 (the risk gears, E3-R,
+next), then the rest:
+
+| # | experiment | what it is | charter |
+|---|---|---|---|
+| 1 | **E1c** | the momentum fund's own construction, through this engine | `E1c.md`, LOCKED |
+| 2 | **E2-A** | firm-level red flags: the permanent-loss guard | `E2-A.md`, draft |
+| 3 | **E3-R** | risk gears: cautious / normal / high equity exposure | `E3-R.md`, draft |
+| 4 | **E2-B** | shock-exposure graph | `E2-B.md`, draft |
+| 5 | **E1-S** | sector-trend cap (MANDATE §7): a sector below its 10-month average is capped at half weight | to be written |
+| 6 | **E2-C** | event-intensity regime input | `E2-C.md`, draft |
+| 7 | **E2-D** | positioning: bulk deals, insiders, promoters | `E2-D.md`, draft |
+| 8 | **E2-E** | *named in the order; no charter or description exists yet* | — |
+| 9 | **E3** | defensive sleeve during RISK_OFF | `E3.md`, draft |
+| 10 | **E6-V** | *named in the order; no charter or description exists yet* | — |
+| 11 | **E5-A** | LightGBM on the cross-section | `E5.md`, draft |
+
+**Off the list:** **E4** (IPO listing gains), and **any stop-loss**. E1-P's
+N1 control beat the base row only in the period containing 2008 and cost
+4.7 pp a year in validation, where the names it sold rose 9.5% afterwards.
+E1-P itself was REJECTED on 2026-09-21.
+
+## Order change, 2026-09-19 — E1c runs after E1-P
+
+**Aarsh's instruction, 2026-09-19: E1c is slotted immediately after E1-P and
+before E2-A.** Forward order is therefore E1-P, then E1c, then E2-A onward.
+
+The reasoning that makes the slot coherent, recorded so the next session does
+not have to re-derive it: E1c calibrates B3. Every experiment is judged partly
+against B3 through E1 §13's C2, and E1c §6 is the one sanctioned route by
+which C2 may be restated — downward, toward a number that can actually be
+bought. A bar that may move should move before the experiments that are
+measured against it, which argues for E1c early. It goes after E1-P rather
+than before it because E1-P is already most of the way built, needs no new
+data, and runs on E1 base either way; E1c's verdict cannot change E1-P's
+comparison, only the B3 column both of them report.
+
+E1c is a candidate base like E1b, so if it is ADOPTED, the re-run rule below
+applies to it too: E1-P's verdict against E1 base stands as evidence and is
+labelled as such.
 
 ## Order change, 2026-09-18
 
@@ -35,6 +97,9 @@ both in §4 and §15.
 
 ## The gate (applies to every experiment after E1)
 
+The gate decides adoption only. ADVANCE is decided by `docs/MANDATE.md` §3
+and §5 from 2026-09-21 (see `GATE.md`).
+
 An experiment is one change on top of the current adopted stack. It is
 tested under the same periods, the same nine-row sweep, the same after-tax
 liquidation-adjusted metrics and the same verdict arithmetic as E1. It is
@@ -51,7 +116,7 @@ only the change log moves.
 
 ## E1 — Momentum SIP baseline (the thing everything must beat)
 
-**Status:** VERDICT INCONCLUSIVE (2026-09-17). See `docs/reviews/E1-diagnostic.md`.
+**Status:** VERDICT INCONCLUSIVE (2026-09-17). See `docs/notes/E1-diagnostic.md`.
 **Charter:** `docs/strategies/E1.md`
 
 - Universe: NSE stocks (instrument type STK, series EQ), top 500 by traded
@@ -86,17 +151,19 @@ the charter, development sweep, written review, validation sweep, verdict.
 
 ## E1b — E1's rules on the momentum index's universe
 
-**Status:** charter written; code ready; **BLOCKED on data** — see
-`docs/data/index_membership_finding.md`. NSE publishes its
-constituent-change circulars as PDFs from 2010 onward (68 of 98) and
-names companies rather than symbols in them, so the point-in-time table
-cannot be built until a PDF reader is sanctioned (CLAUDE.md 7) and a
-company-name key is decided. Runs after E1's verdict, before E1-P.
-**Charter:** `docs/strategies/E1b.md`
+**Status:** **VERDICT REJECT (2026-09-18).** Complete; not in the forward
+order. Verdict at
+`experiments/E1b/sweeps/validation-4eaf560fb1319d16/verdict.json`, review at
+`docs/reviews/E1b-development.md`. The membership build it was blocked on
+finished and passes its exact-list check
+(`docs/data/index_membership_finding.md`).
+**Charter:** `docs/strategies/E1b.md` (LOCKED 2026-09-18)
 
-- Slotted ahead of E1-P because a universe change alters the base that every
-  later experiment is measured against. E1-P's preparation stands and runs on
-  whichever base survives E1b.
+- GATE G1 failed in both periods and G2 was violated in validation, where
+  confining E1's rules to the Nifty 200 cost **10.73 pp** of CAGR. E1's
+  2017–21 return came from small caps outside the Nifty 200; the universe
+  drift the E1 diagnostic flagged was where the money came from, not a defect.
+- E1 base therefore remains the stack, and E1-P is measured against it.
 - Rule: E1's rules unchanged, on Nifty 200 constituents point-in-time, taken
   from NSE's inclusion/exclusion history. No turnover ranking.
 - Judged by `GATE.md` against STACK = E1 base, and additionally reported
@@ -107,13 +174,59 @@ company-name key is decided. Runs after E1's verdict, before E1-P.
 
 ## E1-P — Patience
 
-**Status:** charter written; runs right after E1's verdict, no new data
+**Status:** **VERDICT REJECT (2026-09-21).** G1 failed in both periods and G2
+was violated in validation (−1.04 pp CAGR, +3.02 pp drawdown). Verdict note
+`docs/reviews/E1-P-verdict.md`. The tax saving was small and unstable; the
+return cost of deferring was not. N1 (stop-loss) failed validation; N2
+(profit-take) was expensive in both periods.
 
 - Rule: a band exit is deferred when the lot is 9–12 months old and the
   name has only slipped to rank 51–100, so the sale crosses into long-term
   tax. Two negative controls (20% stop-loss, 50% profit-taking) measure what
   impatience costs. The live ledger records every override you were tempted
   to make.
+- Judged by `GATE.md` against STACK = E1 base. Not a candidate base, so no
+  C1–C4 half — the GATE verdict is the whole verdict.
+- **The per-lot question was settled at the lock** (§3): the base rule and
+  S4 use the OLDEST lot, because FIFO makes it the lot a sale realises; S5's
+  minimum hold uses the YOUNGEST; partial-position exits are out of scope.
+
+## E1c — The momentum fund's own construction, through this engine
+
+**Status:** **VERDICT REJECT (2026-09-21)** — GATE G2 violated in both
+periods. Note `docs/reviews/E1c-verdict.md`. The replication keeps about
+half of B3 in development and nearly all of it in validation; C2 was not
+restated.
+
+- Rule: replicate the Nifty 200 Momentum 30 construction on E1b's universe —
+  volatility-scaled 6+12-month momentum clipped at ±3, top 30,
+  score-proportional weights capped at 5%, semi-annual rebalance with a
+  one-month lag — carrying E1's SIP, costs, tax and cash sleeve.
+- Judged by `GATE.md` against STACK = E1 base, and reported against E1 §13
+  C1–C4 because it is a candidate base.
+- **§6 no longer lets it move E1's bar** (amended 2026-09-19). E1c reports
+  its gap to B3 and attributes what it can, but **may not restate E1 §13's
+  C2**: free float exists in no dataset here, so the gap contains an
+  unmeasurable weighting artefact, and a bar must not move on one. C2 moves
+  only on a replication with real free-float weights. §6 now also requires
+  base vs S1 (equal weight) as the bound on how much weighting matters.
+  **No experiment may now change E1 after its lock.**
+- **Declared data gap (§3):** free-float shares outstanding are not in the
+  panel, so the fund's free-float tilt cannot be reproduced; weights are
+  score-proportional instead, and S1 tests equal weight as the sensitivity.
+
+## E1d — E1 with the fund's volatility-scaled score
+
+**Status:** charter DRAFT (`docs/strategies/E1d.md`, Aarsh, 2026-09-21);
+first in the order. Readiness: `docs/notes/E1d-readiness.md` — four small
+pieces of code before its first run, no new data.
+
+- Rule: E1c's score (6- and 12-month returns over their own volatility,
+  z-scored within the universe, ±3 clip) replaces E1's raw 12-1 momentum,
+  for ranking only. Everything else is E1.
+- Why: E1c's S6 found, in both periods, that E1's raw signal earns about
+  5 pp a year less than the volatility-scaled score on the fund's cadence.
+  §7 records honestly that the hypothesis came from those same years.
 
 ## E2 — Event layer (four separate experiments)
 
@@ -181,7 +294,8 @@ horizon. None is a forecast.
 
 ## E4 — IPO listing gains with GMP
 
-**Status:** idea parked; charter only after E3; runs on its own capital sleeve
+**Status:** **off the list (2026-09-21)**, on Aarsh's instruction. Kept here
+as a record of the idea, not as planned work.
 
 - Rule: apply at the retail cutoff to every mainboard IPO whose grey-market
   premium over issue price exceeds a pre-registered threshold on the last

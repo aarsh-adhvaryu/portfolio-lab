@@ -1,0 +1,61 @@
+[strategy]
+id = "E1-P"
+charter = "docs/strategies/E1-P.md"
+# §5: E1's window and E1's rules, unchanged. The ONE change is [hooks.patience].
+lookback_sessions = 252
+skip_sessions = 21
+n_hold = 25
+band_exit_rank = 50
+max_buys_per_month = 6
+sip_amount = 50000.0
+initial_cash = 0.0
+cash_rate_annual = 0.06
+trend_filter = "sma10"
+delisting = "last_close"
+delist_confirm_sessions = 250
+
+[hooks]
+side_sleeve_capital = 0.0
+
+[hooks.patience]
+# Charter E1-P §3, the one change. Window inclusive at both ends: a lot
+# exactly 12 months old is still short-term, and one more month is what
+# turns it long.
+enabled = true
+min_months = 9
+max_months = 12
+rank_ceiling = 100.0
+require_gain = false      # S6 S4 turns this on
+# S5 sets `min_hold_months = 6` instead, which replaces the rule above
+# entirely: no window, no rank ceiling, and the YOUNGEST lot is what is
+# tested, because "every lot" cannot be honoured any other way when §4 sells
+# a position in full. Unset here, so the base row runs §3 as written.
+
+[universe]
+# E1 §2, unchanged: top 500 by traded value, not index membership.
+mode = "turnover_top_n"
+series = ["EQ"]
+min_sessions = 250
+top_n_by_turnover = 500
+turnover_window = 126
+min_price = 10.0
+max_adv_fraction = 0.01
+
+[evaluation]
+period = "development"
+periods_path = "configs/evaluation_periods.toml"
+
+[costs]
+path = "configs/costs_zerodha.toml"
+multiplier = 1.0
+
+[tax]
+path = "configs/tax_policy_in.toml"
+
+[benchmarks]
+primary = "NIFTY500_TRI"
+list = ["NIFTY50_TRI", "NIFTY500_TRI", "NIFTY200_MOMENTUM30_TRI", "EQUAL_WEIGHT_UNIVERSE"]
+mom30_expense_ratio = 0.003
+
+[report]
+output_dir = "experiments/E1-P"

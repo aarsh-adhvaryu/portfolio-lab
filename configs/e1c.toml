@@ -1,0 +1,90 @@
+[strategy]
+id = "E1c"
+charter = "docs/strategies/E1c.md"
+
+# --- E1c §3: the fund's own construction --------------------------------
+# Volatility-scaled 6+12 momentum, z-scored across the universe, clipped
+# at +/-3. `skip_sessions` is §3's "skipping the most recent month".
+signal = "vol_scaled_6_12"
+skip_sessions = 21
+lookback_sessions = 252        # unused by this signal; kept for S6 (12-1)
+
+# Sells at rebalance only. No band, no intra-month exits.
+rebalance = "semiannual"
+rebalance_months = [6, 12]     # the DECISION month-ends; fills at the next open
+# §3 as amended 2026-09-19: ONE lag in total. The score already skips the
+# most recent month, and that skip IS the lag, so there is no separate
+# score-date lag. Any lag is counted in month-end positions, never days.
+score_lag_months = 0
+# §3's order: average the two ratios, then z-score. S12 runs NSE's order.
+score_order = "average_then_z"
+selection_n = 30               # top 30 by score
+
+# §3: score-tilted free-float market cap capped at 5%. Free float is not in
+# the panel and is not in any dataset under data/ (see
+# docs/notes/E1c-readiness.md), so weights are score-proportional, capped.
+# S1 tests equal weight.
+weighting = "score_tilted"
+weight_cap = 0.05
+# §3 as amended after lock, blind, 2026-09-21: weights are proportional to
+# max(score, 0). A non-positive score gets no weight (and so no new money);
+# the run halts only if no selected score is positive. NSE's normalisation
+# ("nse_normalised") stays unadopted.
+weighting_negative = "zero"
+
+# §3: "no band, no trend filter". S2 and S3 turn the filter on.
+trend_filter = "off"
+
+# --- E1's, unchanged (§3: "Costs, tax, cash sleeve, delisting ... E1's") -
+n_hold = 30                    # only read by S4, which restores the band
+band_exit_rank = 60            # only read by S4
+max_buys_per_month = 6
+sip_amount = 50000.0
+initial_cash = 0.0
+cash_rate_annual = 0.06
+delisting = "last_close"
+delist_confirm_sessions = 250
+
+[hooks]
+side_sleeve_capital = 0.0
+
+[universe]
+# §3: E1b's universe (Nifty 200 point-in-time; proxy 2007-2011).
+mode = "index_members"
+index = "NIFTY200"
+membership_bound = "earliest"
+series = ["EQ"]
+min_sessions = 250
+top_n_by_turnover = 500        # unused in index_members mode
+turnover_window = 126
+min_price = 10.0
+max_adv_fraction = 0.01
+
+[membership]
+index = "NIFTY200"
+overlap_index = "NIFTY200_MOMENTUM30"
+
+[evaluation]
+period = "development"
+periods_path = "configs/evaluation_periods.toml"
+
+[costs]
+path = "configs/costs_zerodha.toml"
+multiplier = 1.0
+
+[tax]
+path = "configs/tax_policy_in.toml"
+
+[benchmarks]
+primary = "NIFTY500_TRI"
+list = ["NIFTY50_TRI", "NIFTY500_TRI", "NIFTY200_MOMENTUM30_TRI", "EQUAL_WEIGHT_UNIVERSE"]
+mom30_expense_ratio = 0.003
+
+[report]
+output_dir = "experiments/E1c"
+
+# §3 as amended 2026-09-19: the rebalance is effective at the OPEN OF THE
+# FIRST SESSION AFTER the last trading day of June and December, which is
+# exactly E1 §7's convention (decide at the month-end close, fill next open).
+# `rebalance_months` are therefore the DECISION month-ends. No engine change
+# was needed and none was made.

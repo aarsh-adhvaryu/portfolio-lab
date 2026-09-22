@@ -60,12 +60,15 @@ def test_non_positive_close_halts():
 
 
 def test_series_registry_covers_the_charter():
-    """Section 6 needs the price index; B1-B3 need the three TRIs."""
+    """Section 6 needs the price index; B1-B3 need three TRIs, and MANDATE §5
+    (effective 2026-09-21) adds B5."""
     assert indices.SERIES["NIFTY50_PRICE"] == ("NIFTY 50", "price")
     assert {k for k, (_n, kind) in indices.SERIES.items() if kind == "tri"} == {
-        "NIFTY50_TRI", "NIFTY500_TRI", "NIFTY200_MOMENTUM30_TRI"}
-    # The site returns [] for any other spelling of the momentum index.
+        "NIFTY50_TRI", "NIFTY500_TRI", "NIFTY200_MOMENTUM30_TRI",
+        "NIFTY500_MOMENTUM50_TRI"}
+    # The site returns [] for any other spelling of either momentum index.
     assert indices.SERIES["NIFTY200_MOMENTUM30_TRI"][0] == "NIFTY200 MOMENTUM 30"
+    assert indices.SERIES["NIFTY500_MOMENTUM50_TRI"][0] == "NIFTY500 MOMENTUM 50"
 
 
 VALUATION_ROWS = [

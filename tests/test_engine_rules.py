@@ -231,6 +231,15 @@ def test_e1_hook_set_is_inert():
 
 
 def test_attaching_the_inert_hook_set_changes_nothing(base_config, cost_model, tax_policy):
+    """The E1 path with every hook off is byte-identical to no hooks at all.
+
+    Re-asserted after each engine change that touches the shared loop. As of
+    2026-09-19 that means the cost-basis computation in the mark-to-market
+    step and the `intra_month_exit` call site, both of which E1-P needs and
+    neither of which E1 may notice. DECISIONS and TAXES are compared as well
+    as equity and trades: a rule that changed only which names were chosen,
+    while leaving the curve alike by luck, would otherwise pass.
+    """
     sessions, names, panel = random_walk_panel(seed=9, n_names=12,
                                                start="2014-01-01", end="2018-12-31")
     per = Period("t", date(2016, 1, 1), date(2018, 12, 31))
@@ -239,6 +248,11 @@ def test_attaching_the_inert_hook_set_changes_nothing(base_config, cost_model, t
                    hooks=hk.HookSet.for_e1())
     pd.testing.assert_frame_equal(a.equity, b.equity)
     pd.testing.assert_frame_equal(a.trades, b.trades)
+    pd.testing.assert_frame_equal(a.taxes, b.taxes)
+    assert a.decisions == b.decisions
+    # and nothing deferred or intra-month-exited on the E1 path at all
+    assert not any(d["deferred"] for d in a.decisions)
+    assert "SELL_INTRA" not in set(a.trades["side"])
 
 
 def test_side_sleeve_never_touches_e1_cash(base_config, cost_model, tax_policy):

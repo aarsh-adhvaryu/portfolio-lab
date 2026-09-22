@@ -127,6 +127,126 @@ class HookSet:
         }
 
 
+# -- E1-P §3: tax-aware patience ---------------------------------------
+def patience_defer(min_months: int = 9, max_months: int = 12,
+                   rank_ceiling: float = 100.0, require_gain: bool = False,
+                   min_hold_months: Optional[int] = None) -> DeferExit:
+    """Charter E1-P §3. A band exit waits when waiting is cheap and the tax
+    saving is large.
+
+    Three conditions in §3; the engine gives two of them for free. It calls
+    `defer_exit` ONLY where the exit reason is "band", and a name that failed
+    §2 exits with reason "ineligible" instead, so "still eligible" holds by
+    construction. Delisting and suspension never enter that loop at all, so
+    §3's "never deferred" holds the same way -- by construction, not by care.
+
+    THE AGE WINDOW IS INCLUSIVE AT BOTH ENDS. `is_long_term` is
+    `sell > buy + 12 months`, so a lot exactly 12 months old is still
+    SHORT-term and one more month of patience is precisely what turns it
+    long. Excluding the endpoint would drop the lots the rule exists for.
+
+    WHICH LOT: settled by §3's per-lot resolution, appended at the
+    2026-09-19 LOCK. §3 is written per-lot while E1 §4 sells a held name IN
+    FULL, and this hook returns one decision per position, so the charter now
+    says which lot each test uses:
+
+      * the base rule and S4 use the OLDEST lot, because FIFO makes it the
+        lot a sale would realise;
+      * S5's minimum hold uses the YOUNGEST lot, because "every lot held at
+        least N months" is exactly that condition;
+      * partial-position exits are out of scope.
+
+    This is charter text now, not an implementer's reading.
+
+    Month arithmetic uses `relativedelta`, the same calendar as
+    `tax.india_lots.is_long_term`, so "9-12 months" and "long-term" cannot
+    disagree about what a month is.
+    """
+    from datetime import timedelta
+    from dateutil.relativedelta import relativedelta
+
+    def _defer(m, isin, rank, lot_ages_days, state) -> bool:
+        if not lot_ages_days:
+            return False
+
+        # §6 S5: "a minimum hold of 6 months on EVERY lot regardless of rank
+        # (pure patience, tax-blind)". Because §4 sells a held name IN FULL,
+        # the only way no lot is sold before the floor is to wait until the
+        # YOUNGEST lot reaches it -- the opposite end of the book from the
+        # base rule below, and for the same reason: whole-position sales.
+        # Tested here rather than folded into the window, because a window
+        # over the oldest lot would sell a one-month-old lot as soon as the
+        # oldest passed six months, which is what S5 forbids.
+        if min_hold_months is not None:
+            youngest = m - timedelta(days=int(min(lot_ages_days)))
+            return youngest > (m - relativedelta(months=min_hold_months))
+
+        buy = m - timedelta(days=int(max(lot_ages_days)))   # the oldest lot
+        if not ((m - relativedelta(months=max_months)) <= buy
+                <= (m - relativedelta(months=min_months))):
+            return False
+        if rank is None:
+            return False                          # off the ranked list entirely
+        try:
+            if float(rank) > float(rank_ceiling):
+                return False
+        except (TypeError, ValueError):
+            return False
+        if require_gain:
+            # §6 S4: a loss is sold, because the STCL is worth harvesting.
+            # §3 as resolved at the lock: "S4 tests the OLDEST lot's own
+            # unrealised gain, not the position average." The oldest lot is
+            # the one FIFO realises, so its gain is the gain the sale would
+            # actually book; a position average can show a gain while the lot
+            # being sold is at a loss, and then S4 would defer exactly the
+            # harvest it exists to take.
+            lots = (getattr(state, "lots", None) or {}).get(isin) or []
+            qty = (getattr(state, "positions", None) or {}).get(isin)
+            value = (getattr(state, "holdings_value", None) or {}).get(isin)
+            if not lots or not qty or value is None:
+                return False
+            oldest = min(lots, key=lambda l: l.buy_date)
+            if (value / qty) <= oldest.cost_per_share:
+                return False
+        return True
+
+    return _defer
+
+
+# -- E1-P §4: negative controls, run alongside, never adoptable --------
+def _threshold_exit(direction: int, pct: float) -> IntraMonthExit:
+    """Shared body for N1/N2. direction -1 = stop-loss, +1 = profit-taking.
+
+    Reads only `state`, which the engine leaves at the PREVIOUS session's
+    marks when the intra-month hook runs, so the decision is made from data
+    dated strictly before the fill -- the hook's contract, and §4 of E1.
+    """
+    def _exit(t, held, state) -> List[str]:
+        basis = getattr(state, "cost_basis", None) or {}
+        value = getattr(state, "holdings_value", None) or {}
+        pos = getattr(state, "positions", None) or {}
+        out = []
+        for isin in held:
+            b, q = basis.get(isin), pos.get(isin)
+            if not b or not q or isin not in value:
+                continue          # bought today: no prior mark, nothing to test
+            move = (value[isin] / q) / b - 1.0
+            if (direction < 0 and move <= -pct) or (direction > 0 and move >= pct):
+                out.append(isin)
+        return out
+    return _exit
+
+
+def stop_loss(pct: float = 0.20) -> IntraMonthExit:
+    """E1-P §4 N1. Sell at the next open when down `pct` from cost basis."""
+    return _threshold_exit(-1, pct)
+
+
+def profit_take(pct: float = 0.50) -> IntraMonthExit:
+    """E1-P §4 N2. Sell at the next open when up `pct` from cost basis."""
+    return _threshold_exit(+1, pct)
+
+
 def from_config(config: dict) -> HookSet:
     """Build the hook set from a config's [hooks] table. Absent means off."""
     h = config.get("hooks", {}) or {}
@@ -135,6 +255,27 @@ def from_config(config: dict) -> HookSet:
         hs.side_sleeve = SideSleeve(enabled=True,
                                     capital=float(h["side_sleeve_capital"]),
                                     cash=float(h["side_sleeve_capital"]))
+    # E1-P §3. Absent, or explicitly disabled, leaves `_never_defer` in place,
+    # which is what keeps E1 byte-identical.
+    p = h.get("patience") or {}
+    if p.get("enabled"):
+        hs.defer_exit = patience_defer(
+            min_months=int(p.get("min_months", 9)),
+            max_months=int(p.get("max_months", 12)),
+            rank_ceiling=float(p.get("rank_ceiling", 100.0)),
+            require_gain=bool(p.get("require_gain", False)),
+            min_hold_months=(int(p["min_hold_months"])
+                             if p.get("min_hold_months") is not None else None))
+    # E1-P §4 controls. Named, never inferred: an unknown name is an error
+    # rather than a silently inert run.
+    name = h.get("intra_month_exit")
+    if name:
+        if name == "stop_loss":
+            hs.intra_month_exit = stop_loss(float(h.get("stop_loss_pct", 0.20)))
+        elif name == "profit_take":
+            hs.intra_month_exit = profit_take(float(h.get("profit_take_pct", 0.50)))
+        else:
+            raise ValueError(f"unknown hooks.intra_month_exit={name!r}")
     return hs
 
 
@@ -145,3 +286,9 @@ class EngineState(Protocol):
     cash: float
     positions: Dict[str, int]
     holdings_value: Dict[str, float]
+    # E1-P §4: N1/N2 trigger on a move from the position's own cost basis.
+    # Per share, quantity-weighted across the position's lots.
+    cost_basis: Dict[str, float]
+    # E1-P §3 (locked 2026-09-19): S4 tests the OLDEST lot's own gain, which
+    # the aggregate above cannot answer. Read-only.
+    lots: Dict[str, list]
