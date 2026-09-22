@@ -81,7 +81,7 @@ which must print `D:\portfolio_lab\data`.
 drag by calendar days). Development 8.97% / 55.40%, validation 27.36% /
 39.82%. Verdicts: **E1 INCONCLUSIVE**, **E1b REJECT — full re-run pending**
 under the correction (a base-row check says INCONCLUSIVE), **E1-P REJECT**,
-**E1c REJECT**. One-page table: `docs/STATE.md`. `pytest -q`: 423 passed.
+**E1c REJECT**. One-page table: `docs/STATE.md`. `pytest -q`: 425 passed.
 
 **`docs/MANDATE.md` is in effect from 2026-09-21**: GATE decides adoption;
 MANDATE §3 and §5 decide ADVANCE. B5 (Nifty 500 Momentum 50 TRI) and B3
@@ -94,8 +94,10 @@ Forward order: **E1d, E3-R, E2-A (when BSE data completes), E2-B, E1-S,
 E2-C, E2-D, E2-E, E3, E6-V, E5-A.** E4 and any stop-loss are off the list.
 **E1 §13's C2 can no longer be moved by any experiment.**
 
-**Running at session close:** the BSE announcements backfill (two workers,
-`tools/backfill_bse.py`, resumable; HANDOFF §5 and §9).
+**At session close:** the BSE announcements backfill is handed to Aarsh to
+run in his own terminals (`tools/backfill_bse.py`, resumable, verified;
+HANDOFF §5 and §9). Check it with
+`python tools/backfill_bse.py --check 2010-01-01 2026-09-21`.
 
 Implemented, tested and used in real runs:
 - `pflab/tax/india_lots.py`, `pflab/execution/costs.py`

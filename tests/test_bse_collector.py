@@ -62,3 +62,28 @@ def test_verify_file_catches_a_blank_or_short_saved_day(tmp_path):
     assert B.verify_file(date(2025, 1, 2), good, s) is True
     assert B.verify_file(date(2025, 1, 2), blank, s) is False
     assert B.verify_file(date(2025, 1, 2), good, _Session([_page(_rows(3), 5)])) is False
+
+
+def test_a_throttled_check_leaves_the_day_unverified_and_retries_it(tmp_path, monkeypatch):
+    """A throttled answer to the CHECK must neither delete a good file nor
+    mark it verified; the next pass checks it again."""
+    d = date(2025, 1, 2)
+    f = tmp_path / "bse_announcements" / "2025" / "2025-01-02.parquet"
+    f.parent.mkdir(parents=True)
+    B.normalize(_rows(3)).to_parquet(f, index=False)
+    monkeypatch.setattr(B.requests, "Session", lambda: _Session([{"Table": []}]))
+    st = B.collect(d, d, root=tmp_path, sleep=0, verify=True)
+    assert st["unverified"] == 1 and f.exists()
+    assert d.isoformat() not in B.verified_days(tmp_path)
+    monkeypatch.setattr(B.requests, "Session", lambda: _Session([_page(_rows(3), 3)]))
+    st = B.collect(d, d, root=tmp_path, sleep=0, verify=True)
+    assert st["verified"] == 1 and d.isoformat() in B.verified_days(tmp_path)
+    st = B.collect(d, d, root=tmp_path, sleep=0, verify=True)   # ledger: no request
+    assert st["verified"] == 0 and st["unverified"] == 0
+
+
+def test_a_newly_written_day_goes_straight_into_the_ledger(tmp_path, monkeypatch):
+    d = date(2025, 1, 3)
+    monkeypatch.setattr(B.requests, "Session", lambda: _Session([_page(_rows(2), 2)]))
+    B.collect(d, d, root=tmp_path, sleep=0)
+    assert d.isoformat() in B.verified_days(tmp_path)

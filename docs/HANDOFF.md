@@ -3,7 +3,7 @@
 Written at session close for whoever picks this up next. Everything here is
 state, not opinion. Where something is unknown or unfinished it says so.
 
-`pytest -q` at close: **423 passed, 0 failed.**
+`pytest -q` at close: **425 passed, 0 failed.**
 
 ## Start here (2026-09-22)
 
@@ -208,15 +208,20 @@ B3's 0.30% applies as about 0.21%.
   **Fixed:** `bse_announcements.fetch_day` now keeps a day only if its
   unique announcements equal the API's own `Table1.ROWCNT` (verified: 1,239
   of 1,239 on 2025-07-15) and raises `IncompleteDay` otherwise; a genuinely
-  empty day reports ROWCNT 0. Pass 1 of the backfill verifies every file
-  already on disk and re-fetches any that fail; later passes retry what is
-  still missing after 10, 20, 30… minute pauses. Tests:
-  `tests/test_bse_collector.py`.
-- Starting point of the relaunch: **1,408 good, 529 blank, 4,171 missing**
-  of 6,108 days. Expected finish about 12–13 hours after 13:30, i.e.
-  **around 02:00–03:00 IST on 2026-09-23**, later if BSE throttles and the
-  retry passes wait. Days now average ~500–1,000 announcements (peaks
-  ~4,000), ~2 s a page of 50.
+  empty day reports ROWCNT 0. A ledger (`_verified.txt`) records every day
+  known good: written by the checked collector, or re-checked against the
+  API's count. Each pass re-checks the rest and re-fetches any that fail, so
+  a throttled answer to a check only delays it; passes after the first wait
+  10, 20, 30… minutes. Tests: `tests/test_bse_collector.py`.
+- **Throttling recurs.** At 13:40 BSE again answered without the count;
+  those days were refused, not written, and wait for the next pass. If it
+  persists, run one range at a time.
+- **State at hand-over (13:50): workers STOPPED** so Aarsh can run them in
+  his own terminals (§9 item 2).
+- Expected run time from here: **about 12–14 hours of fetching** across
+  the two ranges in parallel, longer if BSE throttles and the retry passes
+  wait. Days average ~500–1,000 announcements (peaks ~4,000), ~2 s a page
+  of 50; the 2020-onward range is the long pole.
 
 **Everything else, unchanged since 2026-09-18 — needs Aarsh:**
 
@@ -393,8 +398,11 @@ verdict note, update `docs/STATE.md`.
     python tools/backfill_bse.py 2010-01-01 2019-12-31 data/_bse/progress_r1.jsonl
     python tools/backfill_bse.py 2020-01-01 2026-09-21 data/_bse/progress_r2.jsonl
 
-Add `--no-verify` once that range's pass 1 has finished (its log has
-`"pass": 1, "end_of_pass": true`). Never run two copies of one range.
+Resumable: stop with Ctrl+C at any time and re-run the same command. Every
+pass re-checks days not yet in the verified ledger
+(`data/bse_announcements/_verified.txt`) and re-fetches any that fail; the
+job ends when nothing is missing and nothing is unverified. Never run two
+copies of one range at once.
 
 **3. E1d build, lock, run** (`docs/notes/E1d-readiness.md`).
 
