@@ -1,8 +1,10 @@
 .venv/
 __pycache__/
 *.pyc
-data/
-experiments/
+# anchored to the repo root: an unanchored `data/` also matched the source
+# package src/pflab/data/ and docs/data/, which were never committed (fixed 2026-09-22)
+/data/
+/experiments/
 research/journal.jsonl
 configs/*.local.toml
 secrets*
