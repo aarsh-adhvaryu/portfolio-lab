@@ -74,14 +74,14 @@ path removes that failure mode. Verify with
 `python -c "from pflab.data import data_dir; print(data_dir().resolve())"`,
 which must print `D:\portfolio_lab\data`.
 
-## State of the repo (2026-09-22 — read `docs/HANDOFF.md` "Start here" first)
+## State of the repo (2026-09-23 — read `docs/HANDOFF.md` "Start here" first)
 
 **Adopted stack: E1 base**, read from `experiments/E1/regression/` since the
 2026-09-21 measurement correction (E1 §15: buys sized net of costs; expense
 drag by calendar days). Development 8.97% / 55.40%, validation 27.36% /
 39.82%. Verdicts: **E1 INCONCLUSIVE**, **E1b INCONCLUSIVE** (re-run 2026-09-22 under
 the correction; was REJECT), **E1-P REJECT**,
-**E1c REJECT**. One-page table: `docs/STATE.md`. `pytest -q`: 438 passed.
+**E1c REJECT**. One-page table: `docs/STATE.md`. `pytest -q`: 440 passed.
 
 **`docs/MANDATE.md` is in effect from 2026-09-21**: GATE decides adoption;
 MANDATE §3 and §5 decide ADVANCE. B5 (Nifty 500 Momentum 50 TRI) and B3
@@ -90,14 +90,13 @@ both carry a 0.30% a year drag. No stack meets the mandate yet.
 Charters: E1, E1b, E1-P, E1c LOCKED (spans verified each session; hashes for
 E1-P and E1c in their readiness notes). **E1d DRAFT** (next; readiness
 `docs/notes/E1d-readiness.md`), E3-R DRAFT.
-Forward order: **E1d, E3-R, E2-A (when BSE data completes), E2-B, E1-S,
+Forward order: **E1d, E3-R, E2-A (data ready), E2-B, E1-S,
 E2-C, E2-D, E2-E, E3, E6-V, E5-A.** E4 and any stop-loss are off the list.
 **E1 §13's C2 can no longer be moved by any experiment.**
 
-**At session close:** the BSE announcements backfill is handed to Aarsh to
-run in his own terminals (`tools/backfill_bse.py`, resumable, verified;
-HANDOFF §5 and §9). Check it with
-`python tools/backfill_bse.py --check 2010-01-01 2026-09-21`.
+**BSE announcements backfill is COMPLETE (2026-09-23):** 6,109 of 6,109 days
+2010-01-01 → 2026-09-22, every day matched to the API's own ROWCNT
+(`tools/backfill_bse.py --check 2010-01-01 2026-09-22`). **E2-A is unblocked.**
 
 Implemented, tested and used in real runs:
 - `pflab/tax/india_lots.py`, `pflab/execution/costs.py`
@@ -139,15 +138,19 @@ anchored on 72 Internet Archive captures. Exact-list check passes — Nifty
 200 4/4, Nifty 100 21/21, Midcap 100 10/10, Nifty 500 13/14. Re-run with
 `python tools/build_index_membership.py --all`.
 
-Data: BSE announcements backfill 2010 → now RUNNING (collector hardened
-2026-09-22: a day is written only if it matches the API's own count).
-Collected by code 2026-09-22 (`docs/HANDOFF.md` §5): India VIX
+Data: BSE announcements 2010 → 2026-09-22 COMPLETE and verified (collector
+hardened 2026-09-22: a day is kept only if it matches the API's own count;
+2026-09-23: dedup key is `(NEWSID, DissemDT)`, since BSE counts a
+re-disseminated announcement twice).
+Collected by code 2026-09-22/23 (`docs/HANDOFF.md` §5): India VIX
 (`india_vix`), FRED Brent/USDINR/US 10y (`macro`), NSDL daily FPI flows
 (`fpi_flows`), 23 sector indices price+TRI (`indices.SECTOR_SERIES`).
 Not started, each needing a source decision from Aarsh: shareholding,
 point-in-time fundamentals, ETF dividends. GDELT India daily aggregate
 backfilled 2015-02-18 → 2026-09-21 (BigQuery, 2026-09-22); the live collector
-fetches English + translingual feeds to match it. World markets (`global_markets`,
+fetches English + translingual feeds to match it. GDELT world by country,
+event types (20 CAMEO codes) and bilateral pairs loaded 2026-09-23 into
+`data/gdelt/world/`. World markets (`global_markets`,
 30 Yahoo series) and 23 FRED series (`macro`; revised ones flagged) collected. B5's history is
 in `data/indices/NIFTY500_MOMENTUM50_TRI.parquet`.
 

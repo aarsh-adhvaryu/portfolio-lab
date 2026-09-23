@@ -83,8 +83,14 @@ def fetch_day(d: date, session: requests.Session, max_pages: int = 400,
             raise IncompleteDay(f"{d}: page {page} returned a row with no NEWSID "
                                 f"(a throttled or malformed answer)")
         for x in table:
-            if x["NEWSID"] not in seen:
-                seen.add(x["NEWSID"])
+            # An announcement re-disseminated later the same day repeats its
+            # NEWSID with a new DissemDT, and BSE's ROWCNT counts both. Keying
+            # on NEWSID alone dropped the second copy and left the day one
+            # short of its own count for ever (2015-08-29: Andhra Cements
+            # results at 14:58:51 and again at 15:10:13). Found 2026-09-23.
+            key = (x["NEWSID"], x.get("DissemDT"))
+            if key not in seen:
+                seen.add(key)
                 rows.append(x)
         if len(rows) >= expected or len(table) < 50:
             break

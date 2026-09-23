@@ -87,3 +87,22 @@ def test_a_newly_written_day_goes_straight_into_the_ledger(tmp_path, monkeypatch
     monkeypatch.setattr(B.requests, "Session", lambda: _Session([_page(_rows(2), 2)]))
     B.collect(d, d, root=tmp_path, sleep=0)
     assert d.isoformat() in B.verified_days(tmp_path)
+
+
+def test_a_re_disseminated_announcement_counts_twice():
+    """2015-08-29 (found 2026-09-23): BSE's ROWCNT counts a second, later
+    dissemination of the same NEWSID. Keying on NEWSID alone left the day
+    one short of its own count on every pass, for ever."""
+    rows = _rows(49) + [{"NEWSID": "dup", "SCRIP_CD": 532141, "HEADLINE": "results",
+                         "DissemDT": "2015-08-29T14:58:51.1"},
+                        {"NEWSID": "dup", "SCRIP_CD": 532141, "HEADLINE": "results",
+                         "DissemDT": "2015-08-29T15:10:13.483"}]
+    s = _Session([_page(rows, 51)])
+    assert len(B.fetch_day(date(2015, 8, 29), s, page_sleep=0)) == 51
+
+
+def test_an_identical_repeat_of_a_row_is_still_deduplicated():
+    """Paging overlap must not inflate a day: same NEWSID and same DissemDT."""
+    r = {"NEWSID": "x", "SCRIP_CD": 1, "HEADLINE": "h", "DissemDT": "2015-08-29T10:00:00"}
+    s = _Session([_page([r, dict(r)], 1)])
+    assert len(B.fetch_day(date(2015, 8, 29), s, page_sleep=0)) == 1

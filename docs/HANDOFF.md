@@ -1,17 +1,16 @@
-# HANDOFF — 2026-09-22
+# HANDOFF — 2026-09-23
 
 Written at session close for whoever picks this up next. Everything here is
 state, not opinion. Where something is unknown or unfinished it says so.
 
-`pytest -q` at close: **438 passed, 0 failed.**
+`pytest -q` at close: **440 passed, 0 failed.**
 
-## Start here (2026-09-22)
+## Start here (2026-09-23)
 
 1. **E1b re-run is DONE: INCONCLUSIVE** (was REJECT), recorded in
-   `docs/reviews/E1b-verdict-rerun.md`. **The BSE backfill may still be
-   running** in Aarsh's terminals (two ranges, §5/§9): check with
-   `python tools/backfill_bse.py --check 2010-01-01 2026-09-21` and resume
-   with the §9 commands if it stopped.
+   `docs/reviews/E1b-verdict-rerun.md`. **The BSE backfill is COMPLETE**
+   (2026-09-23): 6,109 of 6,109 days verified, 2010-01-01 → 2026-09-22 (§5).
+   **E2-A is unblocked.** The world data (§5) is in too.
 2. **Measurement correction of 2026-09-21 (E1 §15):** buys are sized net of
    costs instead of being skipped when costs don't fit, and expense drag
    compounds by calendar days; B3 and B5 both carry 0.30% a year. **The
@@ -141,8 +140,9 @@ GATE G1–G4), `signals/momentum.py`, `portfolio/crash_rule.py`,
 `execution/paper.py`, `execution/kite.py`. Both are Phase 4, on ADVANCE
 only, and nothing has ADVANCED.
 
-**Collectors written but not exercised at scale:** `bse_announcements.py`
-(works; only 2026 collected), `gdelt.py` (works; 4 files).
+**Collectors exercised at scale 2026-09-22/23:** `bse_announcements.py`
+(6,109 days, every one count-verified), `gdelt.py` (English + translingual,
+matching the BigQuery backfill exactly).
 
 ---
 
@@ -195,34 +195,30 @@ about 14.14%), B3 by 0.15 pp; nothing else moves and no verdict depends on
 it. The benchmark expense drag also compounds per session over 365, so
 B3's 0.30% applies as about 0.21%.
 
-## 5. Background backfills — state at 2026-09-22 13:35 IST
+## 5. Backfills — state at 2026-09-23
 
-**BSE announcements 2010 → 2026-09-21 (E2-A's input): RUNNING, not complete.**
+**BSE announcements 2010-01-01 → 2026-09-22 (E2-A's input): COMPLETE.**
+`python tools/backfill_bse.py --check 2010-01-01 2026-09-22` reports
+**6,109 of 6,109 days verified, 0 missing, 0 blank** (2026-09-23). Every day
+matches the API's own `Table1.ROWCNT`, recorded in the ledger
+`data/bse_announcements/_verified.txt`. **E2-A is no longer blocked on data.**
 
-- Two workers, `tools/backfill_bse.py`, logs `data/_bse/progress_r1.jsonl`
-  (2010–2019) and `progress_r2.jsonl` (2020 → yesterday). Idempotent and
-  resumable: re-run the same command to continue. Completeness:
-  `python tools/backfill_bse.py --check 2010-01-01 2026-09-21`.
-- **A first attempt (four workers, 11:49) wrote 529 blank day files** — BSE
-  answered throttled requests with one all-null row, and the collector
-  saved it as the day. Found by row-count checks, workers stopped at 13:25.
-  **Fixed:** `bse_announcements.fetch_day` now keeps a day only if its
-  unique announcements equal the API's own `Table1.ROWCNT` (verified: 1,239
-  of 1,239 on 2025-07-15) and raises `IncompleteDay` otherwise; a genuinely
-  empty day reports ROWCNT 0. A ledger (`_verified.txt`) records every day
-  known good: written by the checked collector, or re-checked against the
-  API's count. Each pass re-checks the rest and re-fetches any that fail, so
-  a throttled answer to a check only delays it; passes after the first wait
-  10, 20, 30… minutes. Tests: `tests/test_bse_collector.py`.
-- **Throttling recurs.** At 13:40 BSE again answered without the count;
-  those days were refused, not written, and wait for the next pass. If it
-  persists, run one range at a time.
-- **State at hand-over (13:50): workers STOPPED** so Aarsh can run them in
-  his own terminals (§9 item 2).
-- Expected run time from here: **about 12–14 hours of fetching** across
-  the two ranges in parallel, longer if BSE throttles and the retry passes
-  wait. Days average ~500–1,000 announcements (peaks ~4,000), ~2 s a page
-  of 50; the 2020-onward range is the long pole.
+Two collector defects were found and fixed while it ran; both are covered by
+`tests/test_bse_collector.py`:
+
+- **2026-09-22 — throttled answers saved as data.** Four parallel workers drew
+  throttled responses that carried one all-null row, and 529 day files were
+  written from them. `fetch_day` now keeps a day only if its announcements
+  equal `Table1.ROWCNT` (a genuinely empty day reports 0) and raises
+  `IncompleteDay` otherwise; `verify_file` re-checks saved days; the ledger
+  records what is confirmed. Three workers proved safe; four throttle.
+- **2026-09-23 — one day could never complete.** 2015-08-29 collected 113 of
+  its 114 announcements on every pass. BSE had re-disseminated one
+  announcement later the same day (Andhra Cements results, 14:58:51 and
+  15:10:13), repeating its `NEWSID` with a new `DissemDT`, and `ROWCNT`
+  counts both; de-duplicating on `NEWSID` alone dropped the second copy for
+  ever. The key is now `(NEWSID, DissemDT)`. Identical repeats from paging
+  overlap are still dropped. Re-collected: 114 of 114, verified.
 
 **Collected by code 2026-09-22 (no Aarsh action needed):**
 
@@ -235,7 +231,9 @@ B3's 0.30% applies as about 0.21%.
 | World markets (Yahoo) | `data/global/*.parquet`, 30 series | S&P 500, Nasdaq, Nikkei from 1970-71; FTSE, DAX, Hang Seng, CAC, ASX, Bovespa, KOSPI, Shanghai, TAIEX 1984-97; US VIX 1990; MOVE, EEM, LQD, TLT 2002-03; HYG, STOXX 50, Brent futures 2007; gold, silver, copper, WTI, gas, wheat 2000; dollar index, US 10y 1970-71; bitcoin 2014 | `pflab/data/global_markets.py`. Dates are the exchange's local date. **Point-in-time:** Asia closes before the NSE (day M usable at M); Europe, US, Brazil close after (use M-1). Cross-checked against FRED: VIX identical on 9,246 days, Nasdaq median difference 0 |
 | More FRED (`macro.py`) | `data/macro/*.parquet`, 23 series | US VIX, WTI, broad dollar, 10y-2y and 10y-3m curves, fed funds, TED spread (ends 2022), Nasdaq, 30y mortgage, CNY/JPY/EUR; **REVISED (latest vintage only, not point-in-time):** St Louis stress, NFCI, Case-Shiller, housing starts, mortgage delinquency, unemployment, jobless claims, copper monthly | Revised series are for explanation; deciding on one needs ALFRED vintages (free FRED API key). ICE credit spreads skipped: FRED serves only 3 years; HYG/LQD stand in |
 | GDELT world by country | `data/gdelt/world/daily_by_country.parquet` | 2015-02-18 → 2026-09-21, 980,954 rows, 266 countries (Aarsh, 2026-09-22). Checked: material-conflict events rose 21x (Ukraine, Feb 2022), 14x (Israel, Oct 2023), 23x (Iran, Jun 2025) | `tools/gdelt_world_bigquery.sql`, `tools/ingest_gdelt_world.py world` |
-| GDELT world event types (20 CAMEO root codes) and bilateral pairs | `tools/gdelt_world_types_bigquery.sql`, `tools/gdelt_bilateral_bigquery.sql` | **waiting on Aarsh** (Drive export each) | `ingest_gdelt_world.py types` / `bilateral` |
+| GDELT world event types (20 CAMEO root codes) | `data/gdelt/world/daily_event_types.parquet` | 2015-02-18 → 2026-09-22, 981,187 rows (Aarsh, 2026-09-23). Checked against the world file: the 20 type counts reproduce `n_events` on all but 218 of 980,954 rows, 298 events of 912.7M unaccounted (codes outside 01–20) | `tools/gdelt_world_types_bigquery.sql`, `ingest_gdelt_world.py types` |
+| GDELT bilateral (who acted against whom) | `data/gdelt/world/daily_bilateral.parquet` | 2015-02-18 → 2026-09-22, 2,902,731 rows, 18,133 country pairs, pairs with ≥10 events a day (Aarsh, 2026-09-23). Checked: RUS→UKR violence 36/day → 2,482 at the Feb-2022 invasion; ISR→IRN 13 → 2,012 in Jun 2025; IND→PAK 2 → 137 in May 2025 | `tools/gdelt_bilateral_bigquery.sql`, `ingest_gdelt_world.py bilateral` |
+| **Known gap** | world-by-country file ends 2026-09-21, the other two end 2026-09-22 | the world query ran a day earlier; re-run `gdelt_world_bigquery.sql` when convenient. The daily collector keeps India only, so world days do not fill themselves | |
 | GDELT GKG (topics, company names) | not collected | far larger table; needs a one-month size test before any pull | for the explanation layer |
 | GDELT 1.0 India 1979–2015 | `tools/gdelt_v1_bigquery.sql` → `data/gdelt/v1_backfill/` | **waiting on Aarsh**; inspection only, not point-in-time before 2013 | |
 | 23 sector indices, price + TRI | `data/indices/SECTOR_*_{PRICE,TRI}.parquet` (46 files) | 2004-01-01 → 2026-09-22 for most; Private Bank, Healthcare, Oil & Gas, Consumer Durables, Chemicals from 2005-04; Media 2005-12; Consumption 2006-01; Realty 2006-12; CPSE 2009-01 | niftyindices, `indices.SECTOR_SERIES` / `collect_sectors()`; not in `SERIES`, so `collect_all()` and the engine are unchanged. Which sectors, and price or TRI, is E1-S's charter to choose |
@@ -400,25 +398,20 @@ E1c `docs/strategies/E1c.md` §9: draft, 2026-09-18, written by Aarsh.
 
 **1. E1b re-run — DONE 2026-09-22: INCONCLUSIVE** (`docs/reviews/E1b-verdict-rerun.md`).
 
-**2. BSE backfill to completion** (§5). Resume, one terminal per range:
+**2. BSE backfill — DONE 2026-09-23** (§5): 6,109 of 6,109 days verified.
+To extend it to today, run the same tool for the new range; it is idempotent:
 
-    python tools/backfill_bse.py 2010-01-01 2019-12-31 data/_bse/progress_r1.jsonl
-    python tools/backfill_bse.py 2020-01-01 2026-09-21 data/_bse/progress_r2.jsonl
-
-Resumable: stop with Ctrl+C at any time and re-run the same command. Every
-pass re-checks days not yet in the verified ledger
-(`data/bse_announcements/_verified.txt`) and re-fetches any that fail; the
-job ends when nothing is missing and nothing is unverified. Never run two
-copies of one range at once.
+    python tools/backfill_bse.py 2026-09-23 <today> data/_bse/progress_r1.jsonl
 
 **3. E1d build, lock, run** (`docs/notes/E1d-readiness.md`).
 
-**4. E3-R**, then **E2-A as soon as the BSE data is complete**, then the
-rest (`docs/ROADMAP.md`).
+**4. E3-R**, then **E2-A** (its data is ready), then the rest
+(`docs/ROADMAP.md`).
 
-**5. Data sources Aarsh owes** (§5): decisions on
-shareholding and fundamentals. GDELT, India VIX, Brent/USDINR/US 10y, FPI flows and
-sector indices were collected by code on 2026-09-22 (§5).
+**5. Data sources Aarsh owes** (§5): decisions on shareholding and
+fundamentals only. Everything else was collected by code on 2026-09-22/23:
+BSE, GDELT (India, world by country, event types, bilateral), India VIX,
+FRED macro, FPI flows, sector indices, 30 world market series.
 
 ### Two notes for whoever runs a sweep next
 
