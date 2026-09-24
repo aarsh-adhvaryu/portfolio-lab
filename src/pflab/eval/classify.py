@@ -357,3 +357,55 @@ def classify_e1c(dev_sweep_dir, val_sweep_dir,
                               "weighting scheme matters; free-float weights "
                               "are unavailable.")},
     }
+
+
+def classify_e1d(dev_sweep_dir, val_sweep_dir,
+                 stack_dev_dir, stack_val_dir) -> dict:
+    """E1d §6: GATE vs E1 base, E1 §13's C1-C4, and the mandate block.
+
+    The same three blocks as `classify_e1c` without its §6 block, which
+    existed only to report E1c's gap to B3 and its base-vs-S1 weighting
+    bound. E1d changes the ranking signal and nothing about weighting, so
+    neither has anything to say here.
+
+    STACK is E1 base read from `experiments/E1/regression/` -- the
+    2026-09-21 re-run under the measurement correction (E1 §15: buys sized
+    net of costs, expense drag by calendar days). Comparing against the
+    ORIGINAL E1 sweeps would put the candidate's corrected numbers against
+    the stack's uncorrected ones and hand E1d a gap it did not earn.
+
+    §7 travels with the verdict: E1d's hypothesis came from E1c's S6 on
+    these same development and validation years, so a pass here is weaker
+    evidence than a pass on a fresh hypothesis. The note below is carried
+    into the verdict file so no reader can pick up the number without it.
+    """
+    load = lambda d: json.loads((Path(d) / "criteria.json").read_text(encoding="utf-8"))
+    cand_dev, cand_val = load(dev_sweep_dir), load(val_sweep_dir)
+    st_dev, st_val = load(stack_dev_dir), load(stack_val_dir)
+
+    g_dev, g_val = gate_for_period(cand_dev, st_dev), gate_for_period(cand_val, st_val)
+    c_dev, c_val = criteria_for_period(cand_dev), criteria_for_period(cand_val)
+
+    return {
+        "gate": {"development": g_dev, "validation": g_val,
+                 "verdict": gate_verdict(g_dev, g_val),
+                 "thresholds": GATE_THRESHOLDS, "stack": "E1 base"},
+        "charter_c1_c4": {"development": c_dev, "validation": c_val,
+                          "verdict": verdict(c_dev, c_val),
+                          "thresholds": THRESHOLDS,
+                          "note": ("reported per E1d §6 because E1d is a "
+                                   "candidate base; from 2026-09-21 ADVANCE "
+                                   "is decided by the mandate block, not by "
+                                   "this. No experiment may move C1-C4.")},
+        "mandate": _mandate_block(cand_dev, cand_val),
+        "section7": {
+            "prior_exposure": ("E1d's hypothesis came from E1c's S6, run on "
+                               "these same development and validation years. "
+                               "Those years are no longer unseen for this "
+                               "question."),
+            "consequence": ("A pass here is weaker evidence than a pass on a "
+                            "fresh hypothesis. The only clean test left is "
+                            "the sealed period, which MANDATE §14 reserves "
+                            "for a stack that meets §3 and §5."),
+        },
+    }

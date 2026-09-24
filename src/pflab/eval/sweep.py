@@ -120,6 +120,40 @@ def e1c_rows() -> dict:
     return dict(E1C_ROWS)
 
 
+# Charter E1d §5. The base row is E1 with ONE change -- E1c §3's
+# volatility-scaled 6+12 score replacing raw 12-1 momentum as the RANKING
+# signal -- so every row below is E1's own knob except S1, S2 and S8, which
+# perturb the new score itself.
+E1D_ROWS = {
+    "base": {},
+    # §5 S1/S2: the score's two components, one at a time. With a single
+    # window the two §3 orders coincide, so S8 is not confounded with these.
+    "S1": {"strategy.score_windows": [126]},
+    "S2": {"strategy.score_windows": [252]},
+    "S3": {"strategy.n_hold": 20, "strategy.band_exit_rank": 40},
+    "S4": {"strategy.n_hold": 35, "strategy.band_exit_rank": 70},
+    "S5": {"costs.multiplier": 2.0},
+    "S6": {"strategy.trend_filter": "off"},
+    "S7": {"strategy.trend_filter": "sell_to_cash"},
+    # §5 S8: NSE's order (z-score each window, then average) against §3's
+    # own (average the ratios, then z-score once). E1c ran this as its S12.
+    "S8": {"strategy.score_order": "z_then_average"},
+    "S9": {"strategy.delisting": "total_loss"},
+    # §5 S10: E1b's universe, to show whether the gain depends on holding
+    # names outside the Nifty 200 -- which is where E1's 2017-2021 return
+    # came from (E1b's verdict). The base row is E1's whole-500 universe
+    # (MANDATE §4), so this row switches mode, and configs/e1d.toml carries
+    # the [membership] section that `runner.prepare` needs to load the table.
+    "S10": {"universe.mode": "index_members", "universe.index": "NIFTY200",
+            "universe.membership_bound": "earliest"},
+}
+
+
+def e1d_rows() -> dict:
+    """E1d's sweep (§5): the base row plus its ten."""
+    return dict(E1D_ROWS)
+
+
 def e1b_rows() -> dict:
     """E1b's sweep: the base row, E1's nine, then S10 and S11."""
     return {**ROWS, **E1B_EXTRA_ROWS}

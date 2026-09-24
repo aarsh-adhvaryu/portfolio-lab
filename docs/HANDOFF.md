@@ -1,3 +1,43 @@
+# HANDOFF — 2026-09-24
+
+## Start here (2026-09-24 session)
+
+`pytest -q`: **479 passed** (was 440; +15 shareholding, +15 E1d, +9 insider).
+Sealed period still untouched; `research/journal.jsonl` still absent. All four
+locked charter spans re-verified after the code changes.
+
+1. **E1d's four pieces are BUILT and tested. E1d has NOT been run.** Readiness,
+   including three things for the lock to settle, is in
+   `docs/notes/E1d-readiness.md`. No line of E1d is unsupported by the engine.
+2. **A shareholding backfill is RUNNING as three shards**
+   (`tools/backfill_shareholding.py --shard i --of 3`), ~12.6 h at 247/min,
+   resumable. **Three is the maximum** (four throttle, 2026-09-22). A shard
+   takes a pid lock and a duplicate refuses; the venv python is a launcher
+   shim, so each worker shows as two processes -- **count the locks in
+   `data/bse_shareholding/_lock.shard*`, not the processes.** On 2026-09-24
+   eighteen workers were started by accident and left 972 scrip-quarters
+   ledgered with no data behind them; repaired by
+   `bse_shareholding.rebuild_ledger_from_data()`. If the ledger and
+   `summary.parquet` ever disagree, run that. Findings:
+   `docs/data/shareholding_finding.md` §5.
+3. **Insider disclosures are COLLECTED**: NSE structured PIT 2015-11-19 →
+   2026-05-02 (338,986 rows) and BSE insider/SAST out of the announcements
+   backfill. Findings and the source disagreement:
+   `docs/data/insider_finding.md`.
+4. **XBRL was probed, not collected** — deliberately.
+   `docs/data/xbrl_results_finding.md` has the field list and the answer to
+   the cash-flow question (**half-yearly, never quarterly**) and a decision
+   for Aarsh about the window.
+5. **Two things Aarsh must decide** before E2-A and E2-D can run as chartered:
+   - **E2-A §3 names `DissemDT` as the point-in-time key, and BSE returns it
+     as null for every announcement before 2016** — six of the seven years of
+     E2-A's own development window. `NEWS_DT` is a near-perfect substitute
+     (median gap 5.1 s, 0.009% cross a session boundary) but §3 is law.
+   - **XBRL does not reach 2011.** Documents resolve only from 2018, and
+     cash flow only from 2020.
+
+---
+
 # HANDOFF — 2026-09-23
 
 Written at session close for whoever picks this up next. Everything here is

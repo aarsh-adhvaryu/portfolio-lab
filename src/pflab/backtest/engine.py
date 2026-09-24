@@ -236,6 +236,14 @@ def run(config, period, panel, indices, cost_model, tax_policy,
     # and the default is 0. Any lag is counted in month-end positions.
     score_lag_months = int(strat.get("score_lag_months", 0))
     score_order = strat.get("score_order", "average_then_z")
+    # E1d §5 S1/S2: the two components of the §3 score, one at a time. The
+    # default is E1c §3's own pair, so every existing config reaches the
+    # identical code path. With a single window the two §3 orders coincide
+    # (averaging one z-score is that z-score), which is correct, not a
+    # degenerate case to guard against.
+    score_windows = tuple(int(w) for w in strat.get("score_windows", (126, 252)))
+    if not score_windows:
+        raise ValueError("strategy.score_windows must name at least one window")
     # E1c §3 as amended 2026-09-21: weights proportional to max(score, 0).
     on_negative = strat.get("weighting_negative", "zero")
 
@@ -273,7 +281,7 @@ def run(config, period, panel, indices, cost_model, tax_policy,
         # what §3's "standardised across the universe" means. Standardising
         # across the whole panel, as first implemented, measured names
         # against the entire market (E1c §9, code fix of 2026-09-21).
-        parts = (vol_scaled_ratios(adj_w, windows=(126, 252), skip=skip)
+        parts = (vol_scaled_ratios(adj_w, windows=score_windows, skip=skip)
                  if signal == "vol_scaled_6_12"
                  else momentum_ratios(adj_w, lookback=lookback, skip=skip))
         mom_w = None

@@ -1,0 +1,76 @@
+[strategy]
+id = "E1d"
+charter = "docs/strategies/E1d.md"
+
+# --- E1d §3: THE ONE CHANGE ---------------------------------------------
+# E1 §3's raw 12-1 momentum is replaced by E1c §3's volatility-scaled 6+12
+# score as the RANKING signal. 6- and 12-month returns, each skipping the
+# most recent month, each divided by that name's daily-return volatility
+# over the same span, averaged, z-scored across the ELIGIBLE UNIVERSE at
+# the decision date, clipped at +/-3.
+signal = "vol_scaled_6_12"
+skip_sessions = 21
+# §3's order: average the two ratios, then z-score once. S8 runs NSE's.
+score_order = "average_then_z"
+# §5 S1 = [126], S2 = [252]. The pair is §3's own.
+score_windows = [126, 252]
+
+# --- everything else is E1 as LOCKED ------------------------------------
+# §3: "Everything else is E1 as locked". These are byte-for-byte the values
+# in configs/e1.toml; no line here may differ from it except the block
+# above. `weighting` is left at its default ("equal"), so E1 §5's
+# equal-weight shortfall buys run unchanged and the score ranks only.
+lookback_sessions = 252         # unused by this signal; read by nothing in E1d
+n_hold = 25
+band_exit_rank = 50
+max_buys_per_month = 6
+sip_amount = 50000.0
+initial_cash = 0.0
+cash_rate_annual = 0.06
+trend_filter = "sma10"          # sma10 | off | sell_to_cash
+delisting = "last_close"        # last_close | total_loss
+delist_confirm_sessions = 250
+
+[hooks]
+# E1's: every later-charter extension point off. E1d adds no rule, only a
+# different ranking, so nothing here moves.
+side_sleeve_capital = 0.0
+
+[universe]
+# §3: E1's universe -- top 500 by traded value (MANDATE §4), NOT an index.
+# S10 switches `mode` to index_members to ask whether the gain depends on
+# the universe; in this base row the [membership] block below is loaded and
+# then ignored, which is what lets S10 run without a second config.
+mode = "turnover_top_n"
+series = ["EQ"]
+min_sessions = 250
+top_n_by_turnover = 500
+turnover_window = 126
+min_price = 10.0
+max_adv_fraction = 0.01
+
+[membership]
+# Present so `runner.prepare` loads the Nifty 200 point-in-time table for
+# §5 S10. The base row is turnover-ranked and never reads it.
+index = "NIFTY200"
+
+[evaluation]
+period = "development"
+periods_path = "configs/evaluation_periods.toml"
+
+[costs]
+path = "configs/costs_zerodha.toml"
+multiplier = 1.0
+
+[tax]
+path = "configs/tax_policy_in.toml"
+
+[benchmarks]
+# §4: B1-B5. B5 (MANDATE §5) is added by sweep.BENCHMARKS and carries the
+# 0.30% a year drag; it is reported, never part of GATE or C1-C4.
+primary = "NIFTY500_TRI"
+list = ["NIFTY50_TRI", "NIFTY500_TRI", "NIFTY200_MOMENTUM30_TRI", "EQUAL_WEIGHT_UNIVERSE"]
+mom30_expense_ratio = 0.003
+
+[report]
+output_dir = "experiments/E1d"
