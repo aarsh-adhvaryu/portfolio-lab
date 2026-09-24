@@ -6,21 +6,19 @@
 Sealed period still untouched; `research/journal.jsonl` still absent. All four
 locked charter spans re-verified after the code changes.
 
-1. **E1d is LOCKED (2026-09-24) and its DEVELOPMENT sweep is run.**
-   `experiments/E1d/sweeps/development-a8d5d7cda901a63f`, on clean commit
-   `37d018b` (dirty: False). Base **11.55% / 49.54%** against E1 base's
-   8.97% / 55.40%: **GATE G1-G4 all pass in development** (+2.58 pp CAGR,
-   5.86 pp shallower, 11 of 12 rows hold, turnover 1.79 vs 1.71).
-   C1 passes (+3.48 pp over B2), **C2 fails** (-1.68 pp vs B3), C4 holds in
-   1 of 12 rows. Mandate: §3 fails on rows (6 of 12, needs 8) though the
-   base row holds; **§5 fails** (-2.19 pp vs B5).
-   **Validation is NOT run** -- no verdict exists until it is, and GATE
-   requires both periods. Aarsh writes `docs/reviews/E1d-development.md`
-   next. Locked-span hash in `docs/notes/E1d-readiness.md` §0.
-   **§7 caveat travels with every number**: E1d's hypothesis came from
-   E1c's S6 on these same years, so a development pass is weaker evidence
-   than a pass on a fresh hypothesis; `classify_e1d` writes it into the
-   verdict file.
+1. **E1d is DONE: INCONCLUSIVE** (2026-09-25).
+   `docs/reviews/E1d-verdict.md`; verdict.json in
+   `experiments/E1d/sweeps/validation-7d350769a6907044`. Development
+   11.55% / 49.54%, validation 24.27% / 36.72%, against E1 base's
+   8.97% / 55.40% and 27.36% / 39.82%. **GATE passes all four in
+   development and fails G2 and G3 in validation** (+2.58 pp then
+   −3.09 pp on return; drawdown 5.86 then 3.10 pp shallower). The score
+   bought drawdown with return in both periods; only one decade made that
+   a good trade. C1–C4 INCONCLUSIVE. **Mandate not met** — §5 fails in
+   both, though validation's +1.79 pp against B5 is the closest anything
+   has come to the +2 it needs. **The adopted stack is still E1 base.**
+   Next: E3-R.
+
 2. **A shareholding backfill is RUNNING as three shards**
    (`tools/backfill_shareholding.py --shard i --of 3`), ~12.6 h at 247/min,
    resumable. **Three is the maximum** (four throttle, 2026-09-22). A shard
