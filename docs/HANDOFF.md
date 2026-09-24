@@ -17,7 +17,14 @@ locked charter spans re-verified after the code changes.
    a good trade. C1–C4 INCONCLUSIVE. **Mandate not met** — §5 fails in
    both, though validation's +1.79 pp against B5 is the closest anything
    has come to the +2 it needs. **The adopted stack is still E1 base.**
-   Next: E3-R.
+   Next: **E2-A** (order changed 2026-09-25; reason in `docs/ROADMAP.md`),
+   then E3-R. **E2-A readiness: `docs/notes/E2A-readiness.md` — it is NOT
+   ready, and the blocker is the charter, not the code.** §6's development
+   window (2010-2016) has almost no flags to test: 0.8% of the universe in
+   2010 rising to 5.9% in 2016, because the IBC only came into force in
+   Dec 2016 and SEBI's encumbrance and default disclosure regimes date from
+   2019. Three of the nine frozen flags are structurally absent from
+   development. Aarsh decides the window before anything is built.
 
 2. **A shareholding backfill is RUNNING as three shards**
    (`tools/backfill_shareholding.py --shard i --of 3`), ~12.6 h at 247/min,
