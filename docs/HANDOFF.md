@@ -6,9 +6,21 @@
 Sealed period still untouched; `research/journal.jsonl` still absent. All four
 locked charter spans re-verified after the code changes.
 
-1. **E1d's four pieces are BUILT and tested. E1d has NOT been run.** Readiness,
-   including three things for the lock to settle, is in
-   `docs/notes/E1d-readiness.md`. No line of E1d is unsupported by the engine.
+1. **E1d is LOCKED (2026-09-24) and its DEVELOPMENT sweep is run.**
+   `experiments/E1d/sweeps/development-a8d5d7cda901a63f`, on clean commit
+   `37d018b` (dirty: False). Base **11.55% / 49.54%** against E1 base's
+   8.97% / 55.40%: **GATE G1-G4 all pass in development** (+2.58 pp CAGR,
+   5.86 pp shallower, 11 of 12 rows hold, turnover 1.79 vs 1.71).
+   C1 passes (+3.48 pp over B2), **C2 fails** (-1.68 pp vs B3), C4 holds in
+   1 of 12 rows. Mandate: §3 fails on rows (6 of 12, needs 8) though the
+   base row holds; **§5 fails** (-2.19 pp vs B5).
+   **Validation is NOT run** -- no verdict exists until it is, and GATE
+   requires both periods. Aarsh writes `docs/reviews/E1d-development.md`
+   next. Locked-span hash in `docs/notes/E1d-readiness.md` §0.
+   **§7 caveat travels with every number**: E1d's hypothesis came from
+   E1c's S6 on these same years, so a development pass is weaker evidence
+   than a pass on a fresh hypothesis; `classify_e1d` writes it into the
+   verdict file.
 2. **A shareholding backfill is RUNNING as three shards**
    (`tools/backfill_shareholding.py --shard i --of 3`), ~12.6 h at 247/min,
    resumable. **Three is the maximum** (four throttle, 2026-09-22). A shard
