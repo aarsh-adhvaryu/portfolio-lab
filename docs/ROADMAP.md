@@ -5,17 +5,50 @@ charter. Each experiment gets its own charter in `docs/strategies/` before it
 runs; this file only says what the experiments are, in what order, what each
 must prove, and what the finished system looks like.
 
-**Forward order (2026-09-22): E1d, E3-R, E2-A (as soon as its BSE data is
-complete), E2-B, E1-S, E2-C, E2-D, E2-E, E3, E6-V, E5-A.** Done: E1
-(INCONCLUSIVE), E1b (REJECT), E1-P (REJECT), E1c (REJECT, 2026-09-21). Off
-the list: E4, and any stop-loss (E1-P's N1 failed validation). Nothing skips
-the gate. The gate's arithmetic lives in `docs/strategies/GATE.md`; each
-experiment has its own charter in `docs/strategies/`.
+**Forward order (2026-09-25): E2-A, E3-R, E2-B, E1-S, E2-C, E2-D, E2-E,
+E3, E6-V, E5-A.** Done: E1 (INCONCLUSIVE), E1b (INCONCLUSIVE), E1-P
+(REJECT), E1c (REJECT), E1d (INCONCLUSIVE, 2026-09-25). Off the list: E4,
+and any stop-loss (E1-P's N1 failed validation). Nothing skips the gate.
+The gate's arithmetic lives in `docs/strategies/GATE.md`; each experiment
+has its own charter in `docs/strategies/`.
 
 **Two decisions, two documents.** `GATE.md` decides **adoption** — whether a
 change joins the stack. From **2026-09-21**, `docs/MANDATE.md` §3 and §5
 decide **ADVANCE** — the sealed reveal, the live paper year, real money —
 in place of E1 §13's C1–C4. Recorded verdicts are unchanged.
+
+---
+
+## Order change, 2026-09-25 — E2-A before E3-R, on what E1d showed
+
+On Aarsh's instruction, after E1d's INCONCLUSIVE verdict
+(`docs/reviews/E1d-verdict.md`).
+
+**The reason, recorded before either runs.** E1d changed nothing but the
+price signal, and what it bought was a shallower drawdown paid for with
+return — the same trade in both periods, with only the sign of the bargain
+set by the decade. Development's crashes made the purchase cheap (+2.58 pp);
+2017–2021 punished being out of the way (−3.09 pp for 3.10 pp of fall), and
+G2's asymmetric tolerance refuses a one-for-one trade of that kind.
+
+**E3-R is a drawdown device too**, and a more direct one: its cautious gear
+takes equity down toward half. It will meet exactly the same G2 arithmetic,
+and on the same validation years that just refused E1d's version of the
+trade. That does not make E3-R wrong — its high gear is supposed to pay for
+the cautious gear — but it does mean E3-R is now the harder question, not
+the easier one.
+
+**E2-A is the different kind of change.** It removes *names* rather than
+*exposure*: a company with a distress flag leaves the universe, and the
+capital goes to another holding rather than to cash. So it is not the
+return-for-drawdown trade E1d and E3-R both make, and it is the one
+remaining route to MANDATE §2's "no meaningful chance of permanent loss"
+that does not cost market exposure to get there.
+
+Two further reasons it should go first: **its hypothesis was not formed on
+the test years** — unlike E1d's, which came from E1c's S6 on 2007–2021, so
+§7 applies to E1d and not to E2-A — and **its data is complete**: BSE
+announcements 2010-01-01 → 2026-09-22, 6,109 of 6,109 days count-verified.
 
 ---
 

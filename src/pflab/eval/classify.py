@@ -20,6 +20,15 @@ def _pp(x) -> float:
     return 100.0 * float(x)
 
 
+# GATE.md 2026-09-25: a short-window row that has no question to ask in a
+# period is reported, not counted. It is excluded from the DENOMINATOR as
+# well as the numerator -- counting it as a row that failed would penalise a
+# charter for declaring a row honestly, and counting it as one that held
+# would be a free pass. E1d's S11 in validation is the case that prompted it.
+def _countable(rows: dict) -> dict:
+    return {k: v for k, v in (rows or {}).items() if not v.get("not_applicable")}
+
+
 def criteria_for_period(crit: dict) -> dict:
     """C1-C4 for one period, from one sweep's criteria.json."""
     rows = crit.get("rows", {})
@@ -43,6 +52,7 @@ def criteria_for_period(crit: dict) -> dict:
     c3 = c3_gap <= THRESHOLDS["C3_pp"]
 
     per_row = {}
+    rows = _countable(rows)
     for name, r in rows.items():
         if r.get("error") or "cagr" not in r:
             per_row[name] = {"holds": False, "reason": r.get("error") or "no metrics"}
@@ -117,7 +127,7 @@ def gate_for_period(cand: dict, stack: dict) -> dict:
     g2 = (d_cagr >= -GATE_THRESHOLDS["G2_cagr_pp"]) and (d_dd <= GATE_THRESHOLDS["G2_dd_pp"])
 
     per_row, held = {}, 0
-    rows = cand.get("rows") or {}
+    rows = _countable(cand.get("rows") or {})
     for name, r in rows.items():
         if r.get("error") or "cagr" not in r:
             per_row[name] = {"holds": False, "reason": r.get("error") or "no metrics"}
@@ -262,6 +272,7 @@ def mandate_for_period(crit: dict) -> dict:
 
     base_ok, dd_gap, cagr_gap = m3_ok(base)
     per_row, held = {}, 0
+    rows = _countable(rows)
     for name, r in rows.items():
         if r.get("error") or "cagr" not in r:
             per_row[name] = {"holds": False, "reason": r.get("error") or "no metrics"}

@@ -100,3 +100,11 @@ they never give certainty, and false alarms are counted, not hidden.
 
 ## 11. Change log
 - 2026-09-19 — draft, written from MANDATE §3's dynamic risk requirement.
+- 2026-09-25 — **declared as noticed after E1d's verdict, before any E3-R
+  run.** E1d showed a near one-for-one trade of return for drawdown in
+  validation, which G2 refuses. E3-R's cautious gear is the same kind of
+  trade; its high gear (fast redeployment after a cautious period) is the
+  part that must pay for it. **Prediction recorded before any run: E3-R
+  passes only if the high gear's recovery return exceeds the cautious
+  gear's cost in 2017–2021.** No rule changes on this line — it is recorded
+  so the prediction cannot be written after the result is known.

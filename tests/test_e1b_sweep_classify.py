@@ -113,7 +113,13 @@ def test_e1b_sweep_runs_end_to_end_on_a_membership_universe(tmp_path, base_confi
                       overlap_membership=table, overlap_index="NIFTY200")
 
     for row in S.e1b_rows():
-        assert out[row]["error"] is None, f"{row}: {out[row]['error']}"
+        r = out[row]
+        if r.get("not_applicable"):
+            # GATE.md 2026-09-25: S13 shortens the window to 2012, and this
+            # test's period already starts in 2015, so it has nothing to ask.
+            assert S.row_applies(per, row, S.e1b_rows()) is False
+            continue
+        assert r["error"] is None, f"{row}: {r['error']}"
 
     # S10 draws from the wider list, so it can hold names the base row cannot
     base_held = {i for d in out["base"]["result"].decisions for i in (d.get("held") or [])}

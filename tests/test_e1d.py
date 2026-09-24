@@ -235,3 +235,41 @@ def test_classify_e1d_notes_that_c1_c4_no_longer_decide_advance(tmp_path):
     out = classify.classify_e1d(_write(tmp_path, "a", c), _write(tmp_path, "b", c),
                                 _write(tmp_path, "c", c), _write(tmp_path, "d", c))
     assert "mandate" in out["charter_c1_c4"]["note"]
+
+
+# -- GATE.md convention of 2026-09-25 -----------------------------------
+def test_s11_does_not_apply_to_validation():
+    """S11 asks S10's question on the published-membership years. Validation
+    already begins in 2017, so there is nothing to shorten -- and E1d's
+    validation sweep ran it as a duplicate of S10, reporting the same
+    19.67% / 32.47% on the same 458 trades and counting one row twice."""
+    from pflab.eval.periods import Period
+    table = S.e1d_rows()
+    dev = Period("development", date(2007, 1, 1), date(2016, 12, 31))
+    val = Period("validation", date(2017, 1, 1), date(2021, 12, 31))
+    assert S.row_applies(dev, "S11", table) is True
+    assert S.row_applies(val, "S11", table) is False
+    # every other row applies everywhere
+    for r in table:
+        if r != "S11":
+            assert S.row_applies(val, r, table) is True
+
+
+def test_a_non_applicable_row_is_excluded_from_the_denominator(tmp_path):
+    """Counting it as a failure would penalise a charter for declaring a row
+    honestly; counting it as a pass would be a free gift."""
+    from pflab.eval import classify
+    stack = {"rows": {"base": {"cagr": 0.10, "max_drawdown": 0.40,
+                               "turnover_annual": 1.0}},
+             "benchmarks": {}}
+    cand = {"rows": {"base": {"cagr": 0.20, "max_drawdown": 0.30,
+                              "turnover_annual": 1.0},
+                     "S1": {"cagr": 0.20, "max_drawdown": 0.30,
+                            "turnover_annual": 1.0},
+                     "S11": {"not_applicable": True, "reason": "starts before"}},
+            "benchmarks": {}}
+    g = classify.gate_for_period(cand, stack)
+    assert g["rows_total"] == 2          # NOT 3
+    assert g["rows_holding"] == 2
+    assert g["G3"] is True               # 2/2, not 2/3
+    assert "S11" not in g["rows"]

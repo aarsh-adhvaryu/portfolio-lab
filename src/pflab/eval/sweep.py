@@ -203,6 +203,32 @@ def rows_present(results: dict, table: Optional[dict] = None) -> list:
     return named + sorted(extra)
 
 
+def row_applies(period, row: str, table: Optional[dict] = None) -> bool:
+    """False when a short-window row has no question to ask in this period.
+
+    GATE.md, convention of 2026-09-25. A row that shortens the window exists
+    to ask its question on a sub-period; in a period that already begins at
+    or after the row's own start, shortening does nothing and the row would
+    run settings identical to the row it was derived from.
+
+    E1d's S11 declared `period.start = 2012-01-01` to ask S10's question on
+    the published-membership years. Validation begins in 2017, so S11 ran
+    S10's settings and reported the same 19.67% / 32.47% on the same 458
+    trades -- and validation's G3 count of 2 of 12 counted one row twice.
+    Both copies failed, so E1d's verdict did not move; this stops the next
+    one being counted wrong in a direction that does.
+
+    A row that does not apply is reported as such and excluded from the G3
+    and C4 counts, never run as a duplicate.
+    """
+    change = (table if table is not None else e1b_rows()).get(row, {}).get("period.start")
+    if not change:
+        return True
+    from datetime import date as _date
+    start = _date.fromisoformat(change) if isinstance(change, str) else change
+    return start > period.start
+
+
 def period_for_row(period, row: str, table: Optional[dict] = None):
     """The period a row runs on. Only a row carrying `period.start` changes it.
 
@@ -387,6 +413,19 @@ def run_sweep(config, period, panel, indices, cost_model_factory, tax_policy,
     except Exception as e:                       # recorded, never silently absent
         out["_B4_error"] = f"{type(e).__name__}: {e}"
     for n, row in enumerate(rows, 1):
+        # GATE.md 2026-09-25: a short-window row that has no question to ask
+        # in this period is reported, not run as a duplicate of the row it
+        # was derived from (E1d's S11 in validation).
+        if not row_applies(period, row, table):
+            start = table.get(row, {}).get("period.start")
+            _say(f"  [{n}/{len(rows)}] {row} — not applicable to "
+                 f"{getattr(period, 'name', '?')}")
+            out[row] = {"not_applicable": True,
+                        "reason": (f"row starts {start}, which is on or before "
+                                   f"{getattr(period, 'name', '?')}'s own start "
+                                   f"{getattr(period, 'start', '?')}; shortening "
+                                   f"the window would change nothing")}
+            continue
         cfg = apply_row(config, row, table)
         row_period = period_for_row(period, row, table)
         cm = cost_model_factory(float(cfg.get("costs", {}).get("multiplier", 1.0)))
@@ -510,6 +549,12 @@ def write_summary(results: dict, out_dir: Path, period, experiment="E1",
         rp = period_for_row(period, row, table)
         win = ("full" if rp is period
                else f"{rp.start}..{rp.end}")
+        if r.get("not_applicable"):
+            # GATE.md 2026-09-25: reported, excluded from G3 and C4, and not
+            # run as a duplicate of the row it was derived from.
+            lines.append(f"| {row} | — | — | — | — | — | — | "
+                         f"not applicable to {getattr(period, 'name', '?')} |")
+            continue
         if r.get("error"):
             lines.append(f"| {row} | {win} | — | — | — | — | — | "
                          f"HALTED: {r['error']} |")
@@ -613,6 +658,12 @@ def criteria_inputs(results: dict, table: Optional[dict] = None) -> dict:
     out = {"rows": {}, "benchmarks": {k: liq(v) for k, v in bench.items()}}
     for row in rows_present(results, table):
         r = results[row]
+        # GATE.md 2026-09-25: a row that does not apply to this period is
+        # carried with its reason and NO metrics, so the G3 and C4 counters
+        # -- which count rows that hold -- can neither credit nor debit it.
+        if r.get("not_applicable"):
+            out["rows"][row] = {"not_applicable": True, "reason": r.get("reason")}
+            continue
         out["rows"][row] = {"error": r.get("error"), **liq(r.get("metrics")),
                             "turnover_annual": (r.get("metrics") or {}).get("turnover_annual")}
     return out

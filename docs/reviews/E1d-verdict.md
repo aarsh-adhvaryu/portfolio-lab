@@ -89,7 +89,11 @@ fails in development. **No stack meets the mandate.**
    19.67% / 32.47% on 458 trades. That is correct behaviour, but it means
    validation's G3 count of 2/12 includes one row counted twice. Both
    copies fail, so the verdict is unaffected; a future charter adding a
-   short-window row should say which periods it applies to.
+   short-window row should say which periods it applies to. **Fixed in
+   reporting on 2026-09-25** (`GATE.md`, "A short-window row must say which
+   periods it applies to"): such a row is now reported as not applicable and
+   excluded from the G3 and C4 counts rather than run as a duplicate. E1d's
+   verdict is not revisited.
 
 3. **§7 stands, and cuts the other way now.** E1d's hypothesis came from
    E1c's S6 on these same years, so a *pass* here would have been weak
@@ -97,6 +101,41 @@ fails in development. **No stack meets the mandate.**
    evidence than a pass would have been: the years that suggested the
    hypothesis did not sustain it. The §7 block is carried in
    `verdict.json`.
+
+## Where the trade came from (reporting only, added 2026-09-25)
+
+Aarsh asked whether volatility scaling tilted away from the most volatile
+names in 2017–2021. It did, in every year, and by a wide margin.
+
+Median turnover rank of holdings — rank 1 is the most traded name in the
+eligible universe, so **higher means thinner names**:
+
+| year | E1d | E1 base | diff | E1d names | E1 names |
+|---|---|---|---|---|---|
+| 2017 | 296.5 | 325.0 | −28.5 | 20.8 | 23.5 |
+| 2018 | 160.5 | 292.8 | **−132.3** | 26.7 | 29.7 |
+| 2019 | 141.5 | 289.0 | **−147.5** | 20.1 | 20.0 |
+| 2020 | 233.8 | 242.2 | −8.4 | 17.2 | 18.4 |
+| 2021 | 270.0 | 305.0 | −35.0 | 27.8 | 27.1 |
+| **mean** | **220.5** | **290.8** | **−70.3** | | |
+
+E1d held names about 70 ranks closer to the top of the traded-value list,
+every year, on essentially the same number of positions. Dividing momentum
+by each name's own volatility penalises exactly the thin, volatile names
+that E1 base was drifting into — the drift E1's own diagnostic recorded
+(rank 240–340 in both periods).
+
+**This is the mechanism behind the one-for-one trade, and it also explains
+its sign.** A more liquid book falls less, which is the 3.10 pp of drawdown
+E1d bought. But 2017–2021 is precisely when the names below rank 200 ran,
+which is where E1's 27.36% came from (E1b's verdict established this
+directly: confining E1 to the Nifty 200 cost 10.7 pp in exactly these
+years). E1d did not confine the universe, but the score tilted within it in
+the same direction, and paid a smaller version of the same bill: 3.09 pp.
+
+So E1d and E1b failed validation for the same underlying reason, reached by
+different routes — one by rule, one by ranking. Reporting only; it changes
+no verdict, and it was measured after the verdict was computed.
 
 ## The stack is unchanged
 

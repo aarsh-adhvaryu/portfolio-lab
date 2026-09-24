@@ -90,6 +90,29 @@ an unmeasurable weighting artefact, and a bar must not move on an artefact.
 C2 moves only on a replication built with real free-float weights, which
 would be a new experiment with a new charter.
 
+## A short-window row must say which periods it applies to
+
+**Convention, 2026-09-25.** A sweep row that shortens the window (E1b's S13,
+E1c's S11, E1d's S11) exists to ask its question on a sub-period. In a
+period that already starts at or after the row's own start, the row has no
+question to ask.
+
+Such a row is **reported as not applicable and excluded from the G3 and C4
+row counts. It is never run as a duplicate of the row it was derived from.**
+
+The case that produced this: E1d's S11 declared `period.start = 2012-01-01`
+to ask S10's question on the years Nifty 200 membership is published.
+Validation begins in 2017, so the start was already past, the period was
+returned unchanged, and S11 ran settings identical to S10 — reporting the
+same 19.67% / 32.47% on the same 458 trades. Validation's G3 count of 2 of
+12 therefore counted one row twice. Both copies failed, so **E1d's verdict
+does not move and is not revisited**; the convention exists so the next one
+cannot be counted wrong in a direction that matters.
+
+A charter's row table declares this by carrying the row's start; the code
+derives applicability from it rather than from a second list, so a row
+cannot be declared in the charter and forgotten in the counting.
+
 ## What never changes an outcome
 
 Re-running with different thresholds after seeing results. Adding a row to
