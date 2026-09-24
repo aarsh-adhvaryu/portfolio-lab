@@ -299,3 +299,70 @@ def test_rebuild_ledger_removes_shard_ledgers(tmp_path):
     sh.rebuild_ledger_from_data(root)
     assert not list((root / "bse_shareholding").glob("_verified.shard*.txt"))
     assert (root / "bse_shareholding" / "_verified.txt").exists()
+
+
+def test_npnp_percent_comes_from_components_not_the_subtotal_row():
+    """The C1C2 subtotal reports 0.00% even when C2 is real.
+
+    Found 2026-09-24: 22 records failed the adds-up check by exactly their
+    employee-trust percentage (500214 by 16.18 pp). Reading the subtotal's
+    percentage understates the category, and every record with an employee
+    trust smaller than the 1.0 pp tolerance was silently wrong rather than
+    quarantined.
+    """
+    cats = [_cat("STA1A2", "(A)", 56077970, 50.21, 7),
+            _cat("STB1B2B3", "(B)", 54365230, 48.67, 72006),
+            _cat("STC1", "(C1) DRs", 0, 0.0, 0),
+            _cat("STC2", "(C2) Employee Trust", 1252480, 1.12, 1),
+            _cat("STC1C2", "(C)", 1252480, 0.0, 1),          # BSE says 0.00
+            _cat("STABC", "Grand Total", 111695680, 100.0, 72014)]
+    payload = {"Table": [{"Fld_AuthoriseDate": "2023-10-20T12:00:00"}], "Table1": cats}
+    s, _ = sh.fetch_new_era("500040", 119, _FakeSession(payload), 1)
+    assert s["nonpromoter_nonpublic_pct"] == pytest.approx(1.12)
+    assert s["nonpromoter_nonpublic_shares"] == 1252480       # shares were right
+    # and the record now reconciles instead of being quarantined
+    sh.check_adds_up(s, "new")
+
+
+def test_npnp_percent_still_zero_when_only_drs_exist():
+    """C1's percentage is 0.00 by construction -- the denominator A+B+C2
+    excludes shares underlying DRs -- so a DR-only company must not gain a
+    percentage it does not have."""
+    cats = [_cat("STA1A2", "(A)", 460, 46.0, 7),
+            _cat("STB1B2B3", "(B)", 540, 54.0, 700),
+            _cat("STC1", "(C1) DRs", 101, 0.0, 1),
+            _cat("STC2", "(C2)", 0, 0.0, 0),
+            _cat("STC1C2", "(C)", 101, 0.0, 1),
+            _cat("STABC", "Grand Total", 1101, 100.0, 708)]
+    payload = {"Table": [{"Fld_AuthoriseDate": "2016-01-21T15:52:14"}], "Table1": cats}
+    s, _ = sh.fetch_new_era("1", 88, _FakeSession(payload), 1)
+    assert s["nonpromoter_nonpublic_pct"] == 0.0
+    assert s["nonpromoter_nonpublic_shares"] == 101
+
+
+def test_repair_npnp_fixes_silent_records_and_releases_quarantined(tmp_path):
+    """The two populations the C1C2 defect created."""
+    root = tmp_path
+    d = root / "bse_shareholding"
+    d.mkdir(parents=True)
+    # one silently-wrong ok record, one quarantined record
+    pd.DataFrame([
+        {"scrip_code": "500040", "qtrid": 119, "status": "ok", "reason": None,
+         "nonpromoter_nonpublic_pct": 0.0},
+        {"scrip_code": "500214", "qtrid": 128, "status": "unavailable",
+         "reason": "500214 q128: A+B+C2 = 83.810%, off 100 by more than 1.0",
+         "nonpromoter_nonpublic_pct": None},
+    ]).to_parquet(d / "summary.parquet", index=False)
+    pd.DataFrame([
+        {"scrip_code": "500040", "qtrid": 119, "code": "STC1", "pct_of_total": 0.0},
+        {"scrip_code": "500040", "qtrid": 119, "code": "STC2", "pct_of_total": 1.12},
+    ]).to_parquet(d / "categories.parquet", index=False)
+
+    out = sh.repair_npnp_pct(root)
+    assert out["repaired"] == 1
+    assert out["released_for_recollection"] == 1
+    s = pd.read_parquet(d / "summary.parquet")
+    assert len(s) == 1                                   # quarantined row removed
+    assert s["nonpromoter_nonpublic_pct"].iloc[0] == pytest.approx(1.12)
+    # and the ledger no longer claims the released pair, so it is collected again
+    assert sh.done_pairs(root) == {"500040:119"}

@@ -1,23 +1,48 @@
 # E1d — readiness note
 
-Written 2026-09-22; **updated 2026-09-24, when the four pieces were built.**
+Written 2026-09-22; **updated 2026-09-24 at the lock.**
 
-E1d (`docs/strategies/E1d.md`, DRAFT, written by Aarsh 2026-09-21) is E1
+E1d (`docs/strategies/E1d.md`, LOCKED 2026-09-24, written by Aarsh 2026-09-21) is E1
 with one change: E1c's volatility-scaled 6+12 score, standardised within the
 eligible universe and clipped at ±3, replaces raw 12-1 momentum as the
 **ranking** signal. Everything else stays E1's, including equal-weight
 shortfall buys.
 
-**Status: buildable end to end and ready for Aarsh's lock. NOT RUN.**
-All four missing pieces are built and tested; `pytest -q` is **479 passed**.
-Nothing about E1d has been executed against real data.
+**Status: LOCKED 2026-09-24.** All pieces built and tested; `pytest -q` is
+**497 passed**.
+
+## 0. The locked span, for future verification
+
+    E1d §3–§7 at the 2026-09-24 LOCK
+    chars   2727
+    sha256  5ba0b73d830f7118b00124574a93b1eb8337287c15b2d308dfbb08c13666274e
+
+Recompute with the same section-span extractor used for E1, E1b, E1-P and
+E1c (from the `## 3.` heading up to, but not including, `## 8.`, trailing
+whitespace stripped and one newline restored). A mismatch means §3–§7 moved
+after the lock, which the charter forbids.
+
+**Change-log entries that apply** (CLAUDE.md non-negotiable 1 — a locked
+span is always read with its change log):
+
+- **2026-09-24, §3** — "as amended 2026-09-21" replaced by its substance.
+  The score is standardised and clipped within the **eligible universe at
+  the decision date**. E1c's three weighting amendments of 2026-09-21 do
+  **not** reach E1d, which is equal weight.
+- **2026-09-24, §5** — S11 added (Nifty 200 published-only, development
+  2012–2016, E1 base re-run on that window).
+- **2026-09-21** — the original draft.
+
+E1c's entries that E1d depends on: the **2026-09-21 code fix** (standardise
+within the universe, no charter text changed). E1c's 2026-09-21 weighting
+entries are explicitly out of scope, per §3 as amended.
 
 ## 1. The four pieces, as built
 
 | # | piece | where | tests |
 |---|---|---|---|
 | 1 | `strategy.score_windows` (default `[126, 252]`) passed to `vol_scaled_ratios`, so S1 = `[126]` and S2 = `[252]` | `backtest/engine.py`, the signal block | `test_e1d.py` × 4 |
-| 2 | `sweep.e1d_rows()` — base plus S1–S10 — and the `strategy.id == "E1d"` branch | `eval/sweep.py` (`E1D_ROWS`), `backtest/runner.py` | `test_e1d.py` × 3 |
+| 2 | `sweep.e1d_rows()` — base plus S1–S11 — and the `strategy.id == "E1d"` branch | `eval/sweep.py` (`E1D_ROWS`), `backtest/runner.py` | `test_e1d.py` × 3 |
 | 3 | `configs/e1d.toml` — E1's config plus the score block and a `[membership]` section for S10 | `configs/e1d.toml` | `test_e1d.py` × 4 |
 | 4 | `classify.classify_e1d` — GATE vs E1 base, C1–C4, mandate | `eval/classify.py` | `test_e1d.py` × 4 |
 
@@ -55,17 +80,18 @@ their recorded hashes (`bbf90dc8…`, `10c6f6ee…`).
 | §5 S3–S7, S9 (N/band, costs, trend, delisting) | **yes** — existing E1 knobs |
 | §5 S8 NSE's order | **yes** — `score_order = "z_then_average"` |
 | §5 S10 Nifty 200 point-in-time | **yes** — see the caveat in §3 below |
+| §5 S11 Nifty 200 published-only, 2012–2016, stack re-run | **yes** — `period.start` plus the `_<row>_stack` companion |
 | §6 GATE + C1–C4 + mandate | **yes** — piece 4 |
 | §8 selection overlap with E1 base each month-end | **yes, post hoc** — both E1 regression directories carry `rows/base/decisions.json` |
 | §8 other extras | **yes** — already in every sweep's `extras.json` |
 
 **No line of E1d is unsupported by the engine.** Three things the lock
-should nevertheless settle, below.
+settled are recorded below, so the verdict can be read with them.
 
-## 3. Three things for Aarsh to settle at the lock
+## 3. Three things the lock settled
 
-**(a) §3's "as amended 2026-09-21" is ambiguous, and it defines E1d's one
-change.** E1c's change log carries four entries dated 2026-09-21. Three are
+**(a) SETTLED at the lock — §3 now states the substance.** The ambiguity
+was real and is recorded here because it shaped the amendment. E1c's change log carries four entries dated 2026-09-21. Three are
 about *weighting* — weights proportional to `max(score, 0)` capped at 5%,
 S6's raw momentum, S4's weights through the band — and E1d uses none of
 them, because it weights equally. The fourth is a **code fix**, declared as
@@ -86,7 +112,8 @@ weighting rule. The rule changed in the change log without §3's text
 changing. That is recorded here because it was noticed, not because E1d
 depends on it — E1d does not.
 
-**(b) S10's first five years are a declared proxy, not the Nifty 200.**
+**(b) SETTLED at the lock — S11 added.** S10's first five years are a
+declared proxy, not the Nifty 200.
 Nifty 200 membership is published and exact only from 2012-01-01
 (`docs/data/index_membership_finding.md`); before it, `index_membership`
 substitutes the declared proxy (CNX 100 ∪ CNX Midcap, point-in-time) and
@@ -101,7 +128,9 @@ fully published.
 Worth recalling alongside it: E1b measured a 2.14 pp development spread
 between `earliest` and `latest` inclusion bounds, so membership timing alone
 moves the answer by more than GATE's G1 threshold of 0.5 pp. S10 uses
-`earliest`, as E1b's base did.
+`earliest`, as E1b's base did. **S11 (added at the lock) asks S10's question
+on 2012–2016 only, where membership is published rather than reconstructed,
+with E1 base re-run on that window as its stack.**
 
 **(c) §7 is right, and the classifier now carries it.** E1d's hypothesis
 came from E1c's S6 on these same development and validation years, so those
@@ -121,8 +150,6 @@ meets §3 and §5.
 
 ## 5. Readiness
 
-**Ready to lock and run.** After Aarsh settles §3(a) — or decides it needs
-no settling — the sequence is the usual one: append the LOCK line to E1d
-§10, run the development sweep, Aarsh writes `docs/reviews/E1d-development.md`,
-run the validation sweep, classify with `classify_e1d`, write the verdict
-note. Do not touch the sealed period.
+**LOCKED 2026-09-24; development sweep run the same day.** Remaining:
+Aarsh writes `docs/reviews/E1d-development.md`, then the validation sweep,
+then `classify_e1d` and the verdict note. The sealed period stays shut.

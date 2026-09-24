@@ -84,10 +84,29 @@ def test_engine_reads_score_windows_and_rejects_an_empty_one():
 
 
 # -- §5 the sweep table -------------------------------------------------
-def test_e1d_sweep_is_the_base_row_plus_ten():
+def test_e1d_sweep_is_the_base_row_plus_eleven():
     rows = S.e1d_rows()
-    assert list(rows) == ["base"] + [f"S{i}" for i in range(1, 11)]
+    assert list(rows) == ["base"] + [f"S{i}" for i in range(1, 12)]
     assert rows["base"] == {}
+
+
+def test_s11_is_the_published_only_membership_window():
+    """S10's first five development years run on a declared proxy; S11 asks
+    the same question where Nifty 200 membership is published (2012 on)."""
+    rows = S.e1d_rows()
+    assert rows["S11"]["period.start"] == "2012-01-01"
+    assert rows["S11"]["universe.mode"] == "index_members"
+    assert rows["S11"]["universe.index"] == "NIFTY200"
+
+
+def test_s11_shortens_the_period_and_s10_does_not():
+    from datetime import date
+    from pflab.eval.periods import Period
+    table = S.e1d_rows()
+    dev = Period("development", date(2007, 1, 1), date(2016, 12, 31))
+    assert S.period_for_row(dev, "S10", table).start == date(2007, 1, 1)
+    assert S.period_for_row(dev, "S11", table).start == date(2012, 1, 1)
+    assert S.period_for_row(dev, "base", table).start == date(2007, 1, 1)
 
 
 def test_e1d_rows_match_the_charter_table():

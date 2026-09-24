@@ -146,6 +146,16 @@ E1D_ROWS = {
     # the [membership] section that `runner.prepare` needs to load the table.
     "S10": {"universe.mode": "index_members", "universe.index": "NIFTY200",
             "universe.membership_bound": "earliest"},
+    # §5 S11, added 2026-09-24: S10's development years 2007-2011 run on a
+    # declared proxy (CNX 100 union CNX Midcap) because Nifty 200 membership
+    # is published and exact only from 2012-01-01, and E1b measured a 2.14 pp
+    # development spread from inclusion timing alone -- four times G1's
+    # threshold. `period.start` shortens the window and the `_<row>_stack`
+    # companion re-runs E1 base on it, the same mechanism as E1b's S13 and
+    # E1c's S11.
+    "S11": {"universe.mode": "index_members", "universe.index": "NIFTY200",
+            "universe.membership_bound": "earliest",
+            "period.start": "2012-01-01"},
 }
 
 

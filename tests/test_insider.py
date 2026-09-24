@@ -130,3 +130,28 @@ def test_probed_span_is_recorded_on_the_module():
     them collected."""
     assert ni.FIRST_DATA_DATE == date(2015, 11, 19)
     assert ni.LAST_DATA_DATE == date(2026, 5, 2)
+
+
+def test_empty_months_past_the_feed_end_are_not_ledgered(tmp_path, monkeypatch):
+    """NSE stopped on 2026-05-02. An empty month after that is a fact about
+    the feed being behind, not about the month, so ledgering it would make
+    the gap permanent if NSE ever resumes."""
+    import pflab.data.nse_insider as m
+
+    monkeypatch.setattr(m, "_session", lambda: _Scripted({}))
+    stats = m.collect(date(2026, 6, 1), date(2026, 8, 31), root=tmp_path, sleep=0)
+    assert stats["pending_beyond_feed_end"] == 3
+    assert stats["months"] == 0
+    assert m.verified_months(tmp_path) == set()          # nothing claimed
+    assert not list((tmp_path / "nse_insider").glob("*/*.parquet"))
+
+
+def test_an_empty_month_inside_the_known_span_is_ledgered(tmp_path, monkeypatch):
+    """Inside the span, empty means empty -- that is a fact and it settles."""
+    import pflab.data.nse_insider as m
+
+    monkeypatch.setattr(m, "_session", lambda: _Scripted({}))
+    stats = m.collect(date(2017, 3, 1), date(2017, 3, 31), root=tmp_path, sleep=0)
+    assert stats["pending_beyond_feed_end"] == 0
+    assert stats["empty"] == 1
+    assert m.verified_months(tmp_path) == {"2017-03"}

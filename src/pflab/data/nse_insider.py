@@ -192,7 +192,8 @@ def collect(start: date = FIRST_DATA_DATE, end: date = LAST_DATA_DATE,
     s = _session()
     done = verified_months(root)
     stats = {"months": 0, "rows": 0, "empty": 0, "skipped": 0, "failed": 0,
-             "whole_window_deficit_rows": 0, "months_with_deficit": 0}
+             "whole_window_deficit_rows": 0, "months_with_deficit": 0,
+             "pending_beyond_feed_end": 0}
     y, m = start.year, start.month
     while (y, m) <= (end.year, end.month):
         tag = f"{y}-{m:02d}"
@@ -207,14 +208,23 @@ def collect(start: date = FIRST_DATA_DATE, end: date = LAST_DATA_DATE,
                 if deficit:
                     stats["whole_window_deficit_rows"] += deficit
                     stats["months_with_deficit"] += 1
-                p = month_path(root, y, m)
-                p.parent.mkdir(parents=True, exist_ok=True)
-                df.to_parquet(p, index=False)
-                _mark(root, y, m)
-                stats["months"] += 1
-                stats["rows"] += len(df)
-                if not len(df):
-                    stats["empty"] += 1
+                if not len(df) and b > LAST_DATA_DATE:
+                    # An empty month PAST the feed's known end is a fact about
+                    # the feed being behind, not about the month. Ledgering it
+                    # would make it permanent: NSE stopped on 2026-05-02, and
+                    # if it resumes these months must be collected, not
+                    # skipped for ever. Left unledgered so the next pass asks
+                    # again.
+                    stats["pending_beyond_feed_end"] += 1
+                else:
+                    p = month_path(root, y, m)
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    df.to_parquet(p, index=False)
+                    _mark(root, y, m)
+                    stats["months"] += 1
+                    stats["rows"] += len(df)
+                    if not len(df):
+                        stats["empty"] += 1
             except Exception as e:
                 stats["failed"] += 1
                 lp = root / "nse_insider" / "_log.jsonl"

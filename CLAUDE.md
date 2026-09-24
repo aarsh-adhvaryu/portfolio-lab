@@ -10,6 +10,16 @@ touching code. The charter is the spec; the code implements it.
 1. **Never change `docs/strategies/E1.md` §2–§13** except by appending
    to §15 with a date and reason, and only when Aarsh asks. If the charter
    and the code disagree, the charter wins; fix the code.
+   **A locked section is always read together with its charter's change
+   log.** Amendments made after a lock live only in the change log, which
+   is why a locked span's hash is unchanged even when the rule it states
+   has moved — E1c §3–§7 still hashes to its 2026-09-19 anchor while the
+   change log carries four amendments dated 2026-09-21. The locked text
+   alone is therefore **not** the current rule, and the hash proves only
+   that the text has not been edited, never that the rule is unamended.
+   Every readiness note and every verdict note **cites the change-log
+   entries that apply**, by date and subject, so a reader cannot pick up
+   a rule without its amendments.
 2. **Never load data beyond a period's end.** `pflab.eval.periods.truncate_end`
    is the only path from raw data to the engine. The sealed period requires
    `--unseal "reason"` and is journaled to `research/journal.jsonl`.

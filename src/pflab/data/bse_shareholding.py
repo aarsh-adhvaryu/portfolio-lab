@@ -175,10 +175,19 @@ def fetch_new_era(scrip: str, qtrid: int, session: requests.Session,
 
     prom = by.get(CODE_PROMOTER, {})
     head = (j.get("Table") or [{}])[0]
+    # The C1C2 SUBTOTAL row reports its percentage as 0.00 even when C2 is
+    # real, so the category percentage must come from the COMPONENTS. Found
+    # 2026-09-24: 22 records failed the adds-up check by exactly their C2
+    # (shares held by an Employee Trust) -- 500040 by 1.12 pp, 500215 by
+    # 4.61, 500214 by 16.18 -- and A + B + C2 comes to 100.00 in every one.
+    # The shares on that row ARE right (C1 + C2), so only the percentage is
+    # taken from the parts. C1's own percentage is 0.00 by construction:
+    # the denominator is A+B+C2, which excludes shares underlying DRs.
+    npnp_pct = pct("STC1") + pct("STC2")
     summary = {
         "promoter_pct": pct(CODE_PROMOTER), "promoter_shares": shares(CODE_PROMOTER),
         "public_pct": pct(CODE_PUBLIC), "public_shares": shares(CODE_PUBLIC),
-        "nonpromoter_nonpublic_pct": pct(CODE_NPNP),
+        "nonpromoter_nonpublic_pct": npnp_pct,
         "nonpromoter_nonpublic_shares": shares(CODE_NPNP),
         "pledged_shares": int(_f(prom, "Fld_PledgeEncumberedNoOfShares", 0) or 0),
         "pledged_pct_of_promoter": float(_f(prom, "Fld_PledgeEncumberedPercentage", 0.0) or 0.0),
@@ -439,6 +448,60 @@ def _flush(root: Path, summaries: list, cats: list, shard: Optional[int] = None)
             df = pd.concat([pd.read_parquet(p), df], ignore_index=True)
             df = df.drop_duplicates(["scrip_code", "qtrid", "code"], keep="last")
         df.to_parquet(p, index=False)
+
+
+def repair_npnp_pct(root: Optional[Path] = None) -> dict:
+    """Re-derive nonpromoter_nonpublic_pct from the stored category rows.
+
+    The C1C2 subtotal reports 0.00% even when C2 (shares held by an
+    Employee Trust) is real, so records collected before the 2026-09-24
+    parser fix understate that category. Two populations:
+
+      * records recorded `ok` whose error was INSIDE the 1.0 pp tolerance,
+        so they carry a wrong number and were never flagged -- the silent
+        case, and the reason the tolerance was left alone rather than
+        widened;
+      * records quarantined as `unavailable` because A+B+C missed 100 by
+        more than the tolerance. Those have no category rows stored (a
+        failed record writes none), so they cannot be repaired here and are
+        released from the ledger to be collected again.
+
+    Checked over 5,968 collected records: summing the components reconciles
+    to 100 in 100.00% of them (median deviation 0.0000) against 97.62% for
+    the subtotal row, and none then misses by more than 1 pp. The tolerance
+    was never the problem.
+
+    Needs no network: the category rows hold the same numbers the fixed
+    parser would read.
+    """
+    root = root or data_dir()
+    d = root / "bse_shareholding"
+    cats = [pd.read_parquet(f) for f in
+            sorted(d.glob("categories.shard*.parquet")) + [d / "categories.parquet"]
+            if f.exists()]
+    sums = [(f, pd.read_parquet(f)) for f in
+            sorted(d.glob("summary.shard*.parquet")) + [d / "summary.parquet"]
+            if f.exists()]
+    if not cats or not sums:
+        return {"repaired": 0, "released": 0}
+    c = (pd.concat(cats, ignore_index=True)
+           .drop_duplicates(["scrip_code", "qtrid", "code"], keep="last"))
+    true = (c[c["code"].isin(["STC1", "STC2"])]
+            .groupby(["scrip_code", "qtrid"])["pct_of_total"].sum())
+
+    repaired = released = 0
+    for path, s in sums:
+        key = list(zip(s["scrip_code"].astype(str), s["qtrid"].astype(int)))
+        want = pd.Series([true.get(k, None) for k in key], index=s.index)
+        fix = (s["status"] == "ok") & want.notna() & (
+            (want.fillna(0) - s["nonpromoter_nonpublic_pct"].fillna(0)).abs() > 1e-9)
+        s.loc[fix, "nonpromoter_nonpublic_pct"] = want[fix]
+        repaired += int(fix.sum())
+        drop = s["reason"].fillna("").str.contains("off 100 by more than")
+        released += int(drop.sum())
+        s[~drop].to_parquet(path, index=False)
+    rebuild_ledger_from_data(root)
+    return {"repaired": repaired, "released_for_recollection": released}
 
 
 def rebuild_ledger_from_data(root: Optional[Path] = None) -> dict:

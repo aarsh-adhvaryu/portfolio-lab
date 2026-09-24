@@ -18,8 +18,10 @@ liking for them.
 - A held name receives a new flag between month-ends → sold at the open of the
   next session after dissemination (not waiting for month-end). This is the
   only intra-month action in the stack.
-- Point-in-time key: BSE `DissemDT`. An announcement disseminated after 15:30
-  is usable from the next session.
+- Point-in-time key: BSE `DissemDT` **where present, `NEWS_DT` otherwise**,
+  declared per row. The after-15:30 rule applies to **either**: an
+  announcement whose key timestamp falls after 15:30 is usable from the
+  next session. (Draft amendment 2026-09-24; see §10.)
 
 ## 4. Flags (frozen; the rules in `pflab/data/red_flags.py` as of the freeze commit)
 AUDITOR_RESIGNATION, REGULATORY_ACTION (SEBI/SAT/ED/CBI enforcement),
@@ -45,6 +47,7 @@ E1 stack re-run on this window for the comparison. Sealed untouched.
 | S2 | window 24 months |
 | S3 | exclusion only, no intra-month exit |
 | S4–S12 | each flag type removed one at a time (nine rows) |
+| S13 | **2016 onward only** — the years in which `DissemDT` exists, so the rule runs on the exchange's own dissemination timestamp with no substitution. E1 base is re-run on the same window as its stack. (Draft amendment 2026-09-24.) |
 
 ## 8. Reported extras (not gating)
 Number of flagged names per month; how many E1 base holdings would have been
@@ -57,3 +60,24 @@ extraction experiment; if adopted it is E2-A2 with its own charter).
 
 ## 10. Change log
 - 2026-09-16 — draft.
+- 2026-09-24 — **draft amendment, not locked.** §3's point-in-time key was
+  `DissemDT` alone. BSE's API returns `DissemDT` as **null for every
+  announcement before 2016** — confirmed against the raw API, not a
+  collector artefact — which is 2010-01-01 to 2015-12-31, six of the seven
+  years of this charter's own development window (§6). The key is now
+  `DissemDT` where present and `NEWS_DT` otherwise, declared per row, with
+  the after-15:30 rule applying to whichever is used.
+
+  The substitution is measured, not assumed. Over 222,419 announcements in
+  the 2016–2022 overlap where both timestamps exist, `DissemDT − NEWS_DT`
+  has a **median of 5.1 seconds** (p75 6.8 s, p90 8.2 s, p99 10.3 s);
+  99.77% are within five minutes and **0.009% cross a session boundary**,
+  which is the only difference that can change a decision. So the
+  substitution misdates roughly one announcement in 11,000 by one session,
+  in the years where it is used at all.
+
+  **S13 exists so the substitution can be priced.** It restricts the
+  experiment to 2016 onward, where no substitution happens, and re-runs E1
+  base on the same window; the gap between the full-window verdict and
+  S13's is the measured cost of the earlier years. Evidence:
+  `docs/data/insider_finding.md` §3.
