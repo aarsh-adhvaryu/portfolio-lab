@@ -40,7 +40,14 @@ locked charter spans re-verified after the code changes.
    `docs/data/xbrl_results_finding.md` has the field list and the answer to
    the cash-flow question (**half-yearly, never quarterly**) and a decision
    for Aarsh about the window.
-5. **Two things Aarsh must decide** before E2-A and E2-D can run as chartered:
+5. **E6-V (value: operating cash flow yield) — not chartered; blocked on a
+   historical fundamentals source.** Exchange XBRL resolves from 2018,
+   operating cash flow half-yearly from 2020, no balance sheet. Routes: BSE
+   XBRL probe for 2011-2017 (queued after the shareholding backfill); a
+   licensed database such as CMIE Prowess, pending a point-in-time check.
+   See `docs/data/xbrl_results_finding.md`.
+
+6. **Two things Aarsh must decide** before E2-A and E2-D can run as chartered:
    - **E2-A §3 names `DissemDT` as the point-in-time key, and BSE returns it
      as null for every announcement before 2016** — six of the seven years of
      E2-A's own development window. `NEWS_DT` is a near-perfect substitute

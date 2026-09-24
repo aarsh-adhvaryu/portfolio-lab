@@ -47,7 +47,7 @@ next), then the rest:
 | 7 | **E2-D** | positioning: bulk deals, insiders, promoters | `E2-D.md`, draft |
 | 8 | **E2-E** | *named in the order; no charter or description exists yet* | — |
 | 9 | **E3** | defensive sleeve during RISK_OFF | `E3.md`, draft |
-| 10 | **E6-V** | *named in the order; no charter or description exists yet* | — |
+| 10 | **E6-V** | value: operating cash flow yield — not chartered; **blocked on a historical fundamentals source.** Exchange XBRL resolves from 2018, operating cash flow half-yearly from 2020, no balance sheet. Routes: BSE XBRL probe for 2011-2017 (queued after the shareholding backfill); a licensed database such as CMIE Prowess, pending a point-in-time check. | to be written |
 | 11 | **E5-A** | LightGBM on the cross-section | `E5.md`, draft |
 
 **Off the list:** **E4** (IPO listing gains), and **any stop-loss**. E1-P's

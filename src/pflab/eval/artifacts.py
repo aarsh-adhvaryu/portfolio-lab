@@ -307,12 +307,17 @@ def equity_sleeve_return(result) -> dict:
 
     idx = pd.to_datetime(eq["date"])
     value = pd.Series(eq["equity_value"].astype(float).values, index=idx)
-    if "dividends" in eq.columns:
-        value = value + pd.Series(eq["dividends"].astype(float).values,
-                                  index=idx).cumsum()
-        div_total = float(eq["dividends"].sum())
-    else:
-        div_total = None        # older run: price return only, say so
+    # A dividend leaves `equity_value` for cash on the ex-date. Version 3
+    # added the cumulative total BACK into the equity level, which credits
+    # the dividend to equity correctly but then double-counts it in
+    # `total = equity + cash`, because the same rupee is already sitting in
+    # cash. That inflated the combined series by about 0.38 pp a year on
+    # E1d's base row. The dividend is a FLOW out of equity, so it belongs in
+    # `flows` -- which credits it to equity exactly as before and leaves the
+    # portfolio total alone (found 2026-09-25).
+    div = (pd.Series(eq["dividends"].astype(float).values, index=idx)
+           if "dividends" in eq.columns else pd.Series(0.0, index=idx))
+    div_total = float(div.sum()) if "dividends" in eq.columns else None
 
     tr = result.trades
     flows = pd.Series(0.0, index=idx)
@@ -332,6 +337,8 @@ def equity_sleeve_return(result) -> dict:
         signed[credits] = -notional[credits]
         byday = signed.groupby(t["date"]).sum()
         flows = flows.add(byday.reindex(idx).fillna(0.0), fill_value=0.0)
+    # the dividend as a withdrawal from the equity sleeve (see above)
+    flows = flows.sub(div.reindex(idx).fillna(0.0), fill_value=0.0)
 
     # Two readings, and the first is the one to quote.
     #
@@ -443,6 +450,7 @@ def equity_sleeve_return(result) -> dict:
         "cagr_book_after_tax_for_reconciliation": float(total_book),
         # and the bridge back to the pre-tax headline
         "tax_effect_pp": (100 * float(tax_effect)) if tax_effect is not None else None,
+        "dividends_credited_to_equity": div_total,
         "cagr_pre_tax_for_reconciliation": total_pre,
         "mean_equity_weight": float(np.nanmean(np.divide(
             v, total, out=np.zeros_like(v), where=total > 0))),
