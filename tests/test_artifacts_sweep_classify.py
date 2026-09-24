@@ -1,6 +1,7 @@
 """Benchmarks, artifacts, sweep and verdict — Phase 2 tasks 2.2, 2.3, 2.6, 2.7."""
 import json
 from datetime import date
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -494,3 +495,56 @@ def test_sweep_refuses_to_overwrite_a_different_run(tmp_path, base_config,
                     tax_policy, out_dir=tmp_path, rows=["base"], manifest=dirty)
     assert "code" in str(e.value)
     assert (tmp_path / "summary.md").read_text(encoding="utf-8") == before
+
+
+# -- a formatting bug must not destroy a run (2026-09-25) ---------------
+def test_summary_sections_cannot_lose_the_run(tmp_path, monkeypatch):
+    """E1d's validation sweep died on `100 * None` in one extras column and
+    took twelve rows and five benchmarks with it: summary.md was written
+    BEFORE criteria.json and rows/, so the directory was left empty and a
+    30-minute run had to be recomputed to recover numbers it already held.
+    """
+    from pflab.eval import sweep as S
+
+    def boom(*a, **k):
+        raise TypeError("unsupported operand type(s) for *: 'int' and 'NoneType'")
+
+    monkeypatch.setattr(S, "_extras_section", boom)
+    results = {"base": {"metrics": {"paths": {"nav_liq": {"cagr": 0.11,
+                                                          "max_drawdown": 0.49}},
+                                    "turnover_annual": 1.8,
+                                    "trades": {"n": 800}},
+                        "extras": {"x": 1}, "adv_skips": {"skips": 0}}}
+    out = S.write_summary(results, tmp_path, _P("development"), table={"base": {}})
+
+    # the durable artifacts exist despite the section blowing up
+    assert (tmp_path / "criteria.json").exists()
+    assert (tmp_path / "extras.json").exists()
+    text = (tmp_path / "summary.md").read_text(encoding="utf-8")
+    assert "SECTION FAILED" in text
+    assert "11.00%" in text          # the rows still made it into the summary
+
+
+class _P:
+    def __init__(self, name):
+        self.name = name
+        self.start = date(2007, 1, 1)
+        self.end = date(2016, 12, 31)
+
+
+def test_extras_table_renders_none_as_a_dash(tmp_path):
+    """`_ann` returns None when a series compounds to zero or below, which a
+    wiped sleeve does. Formatting that None killed E1d's validation sweep."""
+    import json
+    from pflab.eval import sweep as S
+
+    src = Path("experiments/E1d/sweeps/development-a8d5d7cda901a63f/extras.json")
+    if not src.exists():
+        pytest.skip("needs a real sweep's extras.json")
+    ex = json.loads(src.read_text(encoding="utf-8"))
+    base = ex["base"]
+    base["equity_sleeve"]["time_weighted_sleeve_cagr"] = None
+    lines = S._extras_section({"base": {"extras": base}}, {"base": {}})
+    row = [l for l in lines if l.startswith("| base |")][0]
+    assert row.rstrip().endswith("— |")          # the None column
+    assert "10.90" in row or "11.01" in row           # the equity leg still renders

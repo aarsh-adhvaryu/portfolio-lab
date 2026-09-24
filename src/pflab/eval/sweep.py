@@ -554,10 +554,19 @@ def write_summary(results: dict, out_dir: Path, period, experiment="E1",
                          f"{100*pp.get('cagr', float('nan')):.2f}% | "
                          f"{100*pp.get('max_drawdown', float('nan')):.2f}% | "
                          f"{_b('B1')} | {_b('B2')} | {_b('B3')} |")
-    lines += _skip_section(results)
-    lines += _extras_section(results, table)
-    lines += _patience_section(results, table)
-    (out_dir / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # ---- DATA FIRST, PROSE SECOND -----------------------------------
+    # Until 2026-09-25 summary.md was written before any of this, and the
+    # narrative sections were composed inline with no guard. E1d's
+    # validation sweep then died on `100 * None` in one extras column -- a
+    # latent formatting bug that validation data happened to trigger --
+    # and took the whole 30-minute run with it: the directory was created
+    # and left EMPTY, so twelve rows and five benchmarks had to be
+    # recomputed to recover numbers the process already held.
+    #
+    # The durable artifacts are now written first, and composing the
+    # summary cannot destroy them. A section that raises is recorded in
+    # the summary as a failure and the rest of the file is still written,
+    # because a formatting defect is not a reason to lose a run.
     # Persist each row's skip detail so it survives the process (§7, §15).
     (out_dir / "extras.json").write_text(
         json.dumps({r: (results.get(r) or {}).get("extras")
@@ -577,6 +586,19 @@ def write_summary(results: dict, out_dir: Path, period, experiment="E1",
         (out_dir / "manifest.json").write_text(
             json.dumps({**manifest, "persisted_rows": persisted}, indent=2,
                        default=str), encoding="utf-8")
+
+    for label, fn in (("ADV skips", _skip_section),
+                      ("extras", _extras_section),
+                      ("patience", _patience_section)):
+        try:
+            lines += (fn(results) if fn is _skip_section
+                      else fn(results, table))
+        except Exception as e:                      # never lose the run
+            lines += ["", f"### {label} — SECTION FAILED",
+                      f"`{type(e).__name__}: {e}`", "",
+                      "The numbers are intact in extras.json and criteria.json;",
+                      "only this narrative section could not be composed."]
+    (out_dir / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return out_dir / "summary.md"
 
 
@@ -670,20 +692,26 @@ def _extras_section(results: dict, table: Optional[dict] = None) -> list:
             out.append(f"| {name} | unavailable: {e.get('reason', '?')} | "
                        f"— | — | — | — | — | — | — |")
             continue
-        rec = e.get("cagr_pre_tax_for_reconciliation")
-        tw = e.get("time_weighted_sleeve_cagr")
-        inter = e.get("contribution_interaction_pp")
-        book = e.get("cagr_book_after_tax_for_reconciliation")
-        taxpp = e.get("tax_effect_pp")
+        # Every one of these can be None: `_ann` returns None when a series
+        # compounds to zero or below, which a wiped sleeve does. Formatting
+        # None killed E1d's validation sweep on 2026-09-25.
+        def _pp(x, sign=False):
+            if x is None:
+                return "—"
+            return f"{x:+.2f}" if sign else f"{x:.2f}"
+
+        def _pct(x, dp=2):
+            return "—" if x is None else f"{100 * x:.{dp}f}%"
+
         out.append(
-            f"| {name} | {e['contribution_equity_pp']:.2f} | "
-            f"{e['contribution_cash_pp']:.2f} | "
-            f"{inter:+.2f} | "
-            f"{e['contribution_sum_pp']:.2f} | "
-            f"{taxpp:+.2f} | "
-            f"{(100 * rec):.2f}% | "
-            f"{100 * e['mean_equity_weight']:.0f}% | "
-            f"{(100 * tw):.2f}% |")
+            f"| {name} | {_pp(e.get('contribution_equity_pp'))} | "
+            f"{_pp(e.get('contribution_cash_pp'))} | "
+            f"{_pp(e.get('contribution_interaction_pp'), True)} | "
+            f"{_pp(e.get('contribution_sum_pp'))} | "
+            f"{_pp(e.get('tax_effect_pp'), True)} | "
+            f"{_pct(e.get('cagr_pre_tax_for_reconciliation'))} | "
+            f"{_pct(e.get('mean_equity_weight'), 0)} | "
+            f"{_pct(e.get('time_weighted_sleeve_cagr'))} |")
 
     out += ["", "### Pre-tax CAGR and tax paid, per row", "",
            "| row | CAGR pre-tax | CAGR after tax | tax drag pp | tax paid | "
