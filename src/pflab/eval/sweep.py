@@ -644,26 +644,43 @@ def _extras_section(results: dict, table: Optional[dict] = None) -> list:
     out = ["", "## Extras (reporting only, no decision re-run)", "",
            "### Where the return came from, per row", "",
            "Each day's equity P&L and cash P&L as a share of the whole",
-           "portfolio, chained. The two ADD UP to the pre-tax return, which is",
-           "what separates the signal from the cash carry.", "",
+           "portfolio, chained. **The row closes exactly**: equity + cash +",
+           "interaction = the after-tax book return, and + tax effect = the",
+           "pre-tax CAGR.", "",
+           "The **interaction** term is not a residual to ignore. Returns",
+           "compose multiplicatively, so two contributions that chain to the",
+           "total do not sum to it; the column is the difference between the",
+           "product and the plain sum. Version 3 of this table annualised the",
+           "two series separately, added the CAGRs, and reconciled the result",
+           "against the PRE-tax figure, which the post-tax book can never",
+           "reach. The two errors ran opposite ways and cancelled on some",
+           "rows, so a row that appeared to close was not evidence that it",
+           "did (E1d development: base off by 1.07 pp, S11 by 0.01 pp for no",
+           "better reason than luck).", "",
            "The time-weighted sleeve column is reported but is **not** the",
            "headline: it weights every day equally regardless of capital at",
            "risk, so it is distorted whenever §6 has gone to cash.", "",
-           "| row | from equity pp | from cash pp | sum | pre-tax CAGR | "
+           "| row | from equity pp | from cash pp | interaction pp | "
+           "= after-tax book | tax effect pp | = pre-tax CAGR | "
            "mean equity weight | t-w sleeve |",
-           "|---|---|---|---|---|---|---|"]
+           "|---|---|---|---|---|---|---|---|---|"]
     for name, x in rows:
         e = x.get("equity_sleeve") or {}
         if not e.get("available"):
             out.append(f"| {name} | unavailable: {e.get('reason', '?')} | "
-                       f"— | — | — | — | — |")
+                       f"— | — | — | — | — | — | — |")
             continue
         rec = e.get("cagr_pre_tax_for_reconciliation")
         tw = e.get("time_weighted_sleeve_cagr")
+        inter = e.get("contribution_interaction_pp")
+        book = e.get("cagr_book_after_tax_for_reconciliation")
+        taxpp = e.get("tax_effect_pp")
         out.append(
             f"| {name} | {e['contribution_equity_pp']:.2f} | "
             f"{e['contribution_cash_pp']:.2f} | "
+            f"{inter:+.2f} | "
             f"{e['contribution_sum_pp']:.2f} | "
+            f"{taxpp:+.2f} | "
             f"{(100 * rec):.2f}% | "
             f"{100 * e['mean_equity_weight']:.0f}% | "
             f"{(100 * tw):.2f}% |")

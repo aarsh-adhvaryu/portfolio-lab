@@ -389,17 +389,60 @@ def equity_sleeve_return(result) -> dict:
         g = float(np.prod(1.0 + series))
         return (g ** (1 / years) - 1) if g > 0 else None
 
-    eq_c, cash_c = _ann(r_eq), _ann(r_cash)
+    # --- version 4, 2026-09-25 -----------------------------------------
+    # Version 3 annualised r_eq and r_cash SEPARATELY and added the two
+    # CAGRs, then reconciled the sum against the PRE-tax CAGR. Both steps
+    # were wrong, in opposite directions, which is why the table sometimes
+    # appeared to close:
+    #
+    #   * r_eq and r_cash are built from the POST-tax book (tax has already
+    #     left the cash sleeve), so they can only ever chain to the
+    #     after-tax return. Reconciling their sum against nav_liq_pre --
+    #     which adds paid tax back -- left a gap the size of the tax drag.
+    #   * adding two separately annualised CAGRs is not how returns
+    #     compose: (A^(1/y)-1) + (B^(1/y)-1) != (AB)^(1/y)-1.
+    #
+    # On E1d's development sweep the two errors were 1.34 and 0.27 pp on
+    # the base row, netting to the 1.07 pp gap; on S11 they were 0.84 and
+    # 0.83 and CANCELLED, so that row "reconciled" by luck. Earlier sweeps
+    # that closed to 0.2-0.3 pp were the same coincidence, not evidence.
+    #
+    # The split is now done in LOG space on the combined daily return, so
+    # the two parts compose exactly: (1+eq)(1+cash) = 1 + total. The
+    # interaction term -- the difference between that product and the plain
+    # sum -- is reported explicitly so the ADDITIVE table also closes. The
+    # reconciliation target is the after-tax book return the series can
+    # actually reach, and the tax effect is reported beside it so the
+    # pre-tax figure stays derivable.
+    r_tot = r_eq + r_cash
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ln_tot = np.log1p(r_tot)
+        w_eq = np.where(np.abs(r_tot) > 1e-15, r_eq / np.where(r_tot == 0, 1, r_tot), 0.0)
+    L = float(np.nansum(ln_tot))
+    L_eq = float(np.nansum(ln_tot * w_eq))
+    L_cash = L - L_eq
+    eq_c = np.expm1(L_eq / years)
+    cash_c = np.expm1(L_cash / years)
+    total_book = np.expm1(L / years)          # the after-tax book return
+    interaction = total_book - (eq_c + cash_c)
+
     tw = _ann(r_tw)
     total_pre = _cagr_of(result, "nav_liq_pre") or _cagr_of(result, "nav_liq")
+    tax_effect = (total_pre - total_book) if total_pre is not None else None
 
     return {
         "available": True,
-        # headline: the decomposition, which adds up
-        "contribution_equity_pp": (100 * eq_c) if eq_c is not None else None,
-        "contribution_cash_pp": (100 * cash_c) if cash_c is not None else None,
-        "contribution_sum_pp": ((100 * (eq_c + cash_c))
-                                if None not in (eq_c, cash_c) else None),
+        "decomposition_version": 4,
+        # headline: the decomposition, which now adds up by construction
+        "contribution_equity_pp": 100 * float(eq_c),
+        "contribution_cash_pp": 100 * float(cash_c),
+        # (1+eq)(1+cash) = 1+total exactly; this is what the plain sum omits
+        "contribution_interaction_pp": 100 * float(interaction),
+        "contribution_sum_pp": 100 * float(total_book),
+        # what the two series can actually reach: the book is already taxed
+        "cagr_book_after_tax_for_reconciliation": float(total_book),
+        # and the bridge back to the pre-tax headline
+        "tax_effect_pp": (100 * float(tax_effect)) if tax_effect is not None else None,
         "cagr_pre_tax_for_reconciliation": total_pre,
         "mean_equity_weight": float(np.nanmean(np.divide(
             v, total, out=np.zeros_like(v), where=total > 0))),

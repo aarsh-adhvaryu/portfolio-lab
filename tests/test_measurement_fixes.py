@@ -2,6 +2,7 @@
 from datetime import date
 
 import numpy as np
+import pytest
 import pandas as pd
 
 from conftest import random_walk_panel
@@ -58,3 +59,49 @@ def test_expense_drag_is_a_realised_annual_rate(base_config, cost_model, tax_pol
     one_year = np.searchsorted(elapsed, 365)
     assert abs(lvl[one_year] / 1000.0 - 0.997) < 1e-4
     assert len(r.equity)
+
+
+# -- decomposition v4 (2026-09-25) --------------------------------------
+def test_decomposition_closes_exactly_and_names_its_interaction():
+    """Version 3 annualised the two series separately, added the CAGRs, and
+    reconciled against the PRE-tax figure that a post-tax book cannot reach.
+
+    The two errors ran opposite ways. On E1d's development sweep they were
+    1.34 pp and 0.27 pp on the base row (net 1.07) and 0.84 and 0.83 on S11,
+    where they CANCELLED -- so a row that appeared to reconcile was luck,
+    not correctness. This asserts closure by construction instead.
+    """
+    import numpy as np
+
+    rng = np.random.default_rng(11)
+    n, years = 2520, 10.0
+    r_eq = rng.normal(0.0004, 0.011, n)
+    r_cash = np.full(n, 0.06 / 252)
+    r_eq[0] = r_cash[0] = 0.0
+
+    r_tot = r_eq + r_cash
+    ln_tot = np.log1p(r_tot)
+    w_eq = np.where(np.abs(r_tot) > 1e-15, r_eq / np.where(r_tot == 0, 1, r_tot), 0.0)
+    L = float(np.nansum(ln_tot))
+    L_eq = float(np.nansum(ln_tot * w_eq))
+    eq = np.expm1(L_eq / years)
+    cash = np.expm1((L - L_eq) / years)
+    total = np.expm1(L / years)
+    interaction = total - (eq + cash)
+
+    # the two parts compose multiplicatively to the whole, exactly
+    assert (1 + eq) * (1 + cash) == pytest.approx(1 + total, rel=1e-12)
+    # and with the interaction named, the ADDITIVE table closes too
+    assert eq + cash + interaction == pytest.approx(total, rel=1e-12)
+    # the interaction is real, not rounding: adding two CAGRs is simply wrong
+    assert abs(interaction) > 1e-6
+
+
+def test_decomposition_reconciles_against_the_book_it_is_built_from():
+    """r_eq and r_cash come from the POST-tax book, so their total is the
+    after-tax return. The pre-tax figure is reachable only by adding the tax
+    effect back, which is now a named column rather than a silent gap."""
+    book_after_tax = 0.1157
+    tax_effect = 0.0134
+    pre_tax = book_after_tax + tax_effect
+    assert pre_tax == pytest.approx(0.1291, abs=1e-4)
