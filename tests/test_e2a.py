@@ -300,3 +300,36 @@ def test_excluded_events_are_counted_not_dropped_quietly():
     assert "excluded_horizon_past_period_end" in out
     assert out["period_end"] == "2019-12-31"
     assert out["excluded_horizon_past_period_end"][6] > 0
+
+
+def test_a_study_that_cannot_yet_be_judged_says_so(tmp_path):
+    """§8a's condition spans both periods. Running development alone once
+    reported `passes: false`, which read as "the study failed" when it meant
+    "the period label did not match". Incomplete is None, never False."""
+    dev_only = {"e2a_development": {"mean_excess_6m": -0.077,
+                                    "t_newey_west": -3.14}}
+    v = es.verdict(dev_only)
+    assert v["passes"] is None
+    assert "validation" in v["passes_reason"]
+    assert v["first_period_passes"] is True      # development's half IS met
+    assert v["second_period_passes"] is None
+
+
+def test_the_pass_condition_needs_both_halves():
+    strong = {"mean_excess_6m": -0.077, "t_newey_west": -3.14}
+    weak_t = {"mean_excess_6m": -0.077, "t_newey_west": -1.2}
+    positive = {"mean_excess_6m": 0.02, "t_newey_west": 0.5}
+    assert es.verdict({"2017-2019": strong, "2020-2021": strong})["passes"] is True
+    # negative but not significant in the first period is not a pass
+    assert es.verdict({"2017-2019": weak_t, "2020-2021": strong})["passes"] is False
+    # significant in the first period but positive in the second is not either
+    assert es.verdict({"2017-2019": strong, "2020-2021": positive})["passes"] is False
+
+
+def test_period_labels_are_matched_by_alias_not_by_luck():
+    """The charter names the periods by year; the configs name them
+    e2a_development / e2a_validation. Both must resolve."""
+    strong = {"mean_excess_6m": -0.05, "t_newey_west": -3.0}
+    for dk in es.DEV_KEYS:
+        for vk in es.VAL_KEYS:
+            assert es.verdict({dk: strong, vk: strong})["passes"] is True

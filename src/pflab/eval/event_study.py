@@ -219,18 +219,54 @@ def run(events: pd.DataFrame, month_ends: Sequence[date], eligible_at_fn,
                  "mean_excess": float(cdf.loc[cdf["horizon"] == h, "mean_excess"].mean())}
         for h in HORIZONS if (cdf["horizon"] == h).any()}
 
-    # THE PASS CONDITION, as written in the charter before any of this ran
-    a = out["periods"].get("2017-2019", {})
-    b = out["periods"].get("2020-2021", {})
-    first_ok = (a.get("mean_excess_6m") is not None and a["mean_excess_6m"] < 0
-                and a.get("t_newey_west") is not None
-                and a["t_newey_west"] < T_THRESHOLD)
-    second_ok = (b.get("mean_excess_6m") is not None and b["mean_excess_6m"] < 0)
-    out["passes"] = bool(first_ok and second_ok)
     out["condition"] = (f"mean 6-month excess < 0 with t < {T_THRESHOLD} "
                         f"(Newey-West, {NEWEY_WEST_LAGS} lags) in 2017-2019, "
                         f"AND < 0 in 2020-2021")
-    out["first_period_passes"], out["second_period_passes"] = first_ok, second_ok
+    out.update(verdict(out["periods"]))
+    return out
+
+
+DEV_KEYS = ("2017-2019", "e2a_development", "development")
+VAL_KEYS = ("2020-2021", "e2a_validation", "validation")
+
+
+def _pick(periods: dict, keys) -> Optional[dict]:
+    for k in keys:
+        if k in periods:
+            return periods[k]
+    return None
+
+
+def verdict(periods: dict) -> dict:
+    """§8a's pass condition over BOTH periods.
+
+    Separated from `run` on 2026-09-25 because `run` computes one period at
+    a time, and the first version evaluated the condition inside it against
+    hard-coded period labels. Running development alone then reported
+    `passes: false` -- which read as "the study failed" when it meant "the
+    label did not match". A study that cannot yet be judged must say so:
+    `passes` is None until both periods are in, never False.
+    """
+    a, b = _pick(periods, DEV_KEYS), _pick(periods, VAL_KEYS)
+    first_ok = (a is not None and a.get("mean_excess_6m") is not None
+                and a["mean_excess_6m"] < 0
+                and a.get("t_newey_west") is not None
+                and a["t_newey_west"] < T_THRESHOLD)
+    second_ok = (b is not None and b.get("mean_excess_6m") is not None
+                 and b["mean_excess_6m"] < 0)
+    out = {"first_period_passes": (first_ok if a is not None else None),
+           "second_period_passes": (second_ok if b is not None else None)}
+    if a is None or b is None:
+        out["passes"] = None
+        out["passes_reason"] = (
+            f"incomplete: {'development' if a is None else 'validation'} "
+            f"has not been run; §8a's condition spans both periods")
+    else:
+        out["passes"] = bool(first_ok and second_ok)
+        out["passes_reason"] = (
+            f"2017-2019 {'meets' if first_ok else 'does not meet'} "
+            f"negative-with-t<{T_THRESHOLD}; "
+            f"2020-2021 {'is' if second_ok else 'is not'} negative")
     return out
 
 
