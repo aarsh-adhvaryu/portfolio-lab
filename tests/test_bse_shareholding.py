@@ -214,15 +214,23 @@ def test_a_throttleable_absence_is_re_asked():
     assert sh.needs_confirmation("x q95: no STABC grand-total row", 95)
 
 
-def test_a_pre_2016_skeleton_is_not_re_asked():
-    """It is structural and deterministic, so confirming it would add a
-    request to each of the 23 old-era quarters and learn nothing."""
+def test_a_skeleton_is_never_re_asked_in_either_era():
+    """Narrowed 2026-09-25 on evidence: the skeleton is SELF-IDENTIFYING.
+
+    It carries all six correct category labels with zeros, a shape the
+    endpoint produces only for "no filing in this format". Re-asking it
+    caught nothing in 9,121 attempts (`unstable` stayed zero) and cost about
+    four hours. A throttle does not look like this -- it kills the TLS
+    connection or returns an empty table, and those shapes are still
+    re-asked.
+    """
     r = "x: zero-filled skeleton (no SEBI-format filing)"
-    assert not sh.needs_confirmation(r, 70)
-    assert not sh.needs_confirmation(r, sh.QTRID_NEW_ERA - 1)
-    # but after Dec 2015 a skeleton is unexpected, so it IS re-asked
-    assert sh.needs_confirmation(r, sh.QTRID_NEW_ERA)
-    assert sh.needs_confirmation(r, 128)
+    for q in (70, sh.QTRID_NEW_ERA - 1, sh.QTRID_NEW_ERA, 128):
+        assert not sh.needs_confirmation(r, q)
+    # the AMBIGUOUS shapes are still re-asked, in both eras
+    for q in (70, 128):
+        assert sh.needs_confirmation("x: no promoter rows", q)
+        assert sh.needs_confirmation("x: no Table1", q)
 
 
 def test_an_adds_up_failure_is_not_re_asked():

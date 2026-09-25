@@ -369,13 +369,30 @@ _ABSENCE_MARKERS = ("no promoter rows", "no Table1", "grand-total row")
 
 
 def needs_confirmation(reason: Optional[str], qtrid: int) -> bool:
-    """True if this 'unavailable' might be a throttled answer, not a fact."""
+    """True if this 'unavailable' might be a throttled answer, not a fact.
+
+    Narrowed 2026-09-25, on evidence. The rule used to re-ask a zero-filled
+    skeleton in the SEBI era on the grounds that a skeleton after Dec 2015
+    is unexpected. Measured over the first 110,000 scrip-quarters: **9,850
+    of 10,363 unavailable rows were re-asked, 9,121 of them skeletons, and
+    not one re-ask ever disagreed** (`unstable` is zero). The cost was about
+    four hours of wall clock and rising.
+
+    It was never going to catch anything, because the skeleton is
+    SELF-IDENTIFYING: it carries all six correct category labels with zeros
+    in every numeric field, which is a shape the endpoint produces only for
+    "no filing in this format". A throttled answer does not look like that
+    -- under load this endpoint kills the TLS connection (1,103 SSLErrors
+    observed, in bursts), or returns an empty or short table. Those are the
+    ambiguous shapes, and those are still re-asked.
+
+    So the guard stays exactly where it can distinguish a fact from a
+    throttle, and is dropped where the answer identifies itself. This is a
+    narrowing on structural grounds, not because the check was inconvenient.
+    """
     if not reason:
         return False
-    if any(m in reason for m in _ABSENCE_MARKERS):
-        return True
-    # a skeleton is expected before Dec 2015 and suspicious after it
-    return "zero-filled skeleton" in reason and int(qtrid) >= QTRID_NEW_ERA
+    return any(m in reason for m in _ABSENCE_MARKERS)
 
 
 def _mark(root: Path, scrip: str, qtrid: int, shard: Optional[int] = None) -> None:
@@ -581,8 +598,14 @@ def merge_shards(root: Optional[Path] = None) -> dict:
     return out
 
 
-def _log(root: Path, scrip: str, qtrid: int, message: str) -> None:
-    lp = root / "bse_shareholding" / "_log.jsonl"
+def _log(root: Path, scrip: str, qtrid: int, message: str,
+         shard: Optional[int] = None) -> None:
+    # Per shard. Three workers appending to one _log.jsonl interleaved their
+    # writes and corrupted 26 of 1,166 lines (2026-09-25) -- the same defect
+    # the ledger had, in a file nobody reads until something has gone wrong,
+    # which is the worst place for it.
+    name = "_log.jsonl" if shard is None else f"_log.shard{shard}.jsonl"
+    lp = root / "bse_shareholding" / name
     lp.parent.mkdir(parents=True, exist_ok=True)
     with open(lp, "a", encoding="utf-8") as f:
         f.write(json.dumps({"scrip": scrip, "qtrid": qtrid, "error": message,
@@ -592,7 +615,8 @@ def _log(root: Path, scrip: str, qtrid: int, message: str) -> None:
 def collect(scrips, qtrid_from: int = QTRID_2010Q1, qtrid_to: int = QTRID_MAX,
             root: Optional[Path] = None, sleep: float = 0.35,
             flush_every: int = 500, progress=None, shard: Optional[int] = None,
-            confirm_sleep: float = 1.5) -> dict:
+            confirm_sleep: float = 0.5, retries: int = 3,
+            retry_backoff: float = 2.0) -> dict:
     """Backfill shareholding for `scrips` over a quarter range. Idempotent.
 
     Safe to run in parallel **only** as disjoint shards: pass `shard`, give
@@ -613,7 +637,8 @@ def collect(scrips, qtrid_from: int = QTRID_2010Q1, qtrid_to: int = QTRID_MAX,
     s = requests.Session()
     done = done_pairs(root, shard)
     stats = {"ok": 0, "unavailable": 0, "adds_up_failed": 0, "error": 0,
-             "skipped": 0, "confirmed": 0, "unstable": 0, "rescued": 0}
+             "skipped": 0, "confirmed": 0, "unstable": 0, "rescued": 0,
+             "retried_ok": 0}
     buf_s, buf_c, n = [], [], 0
     scrips = [str(x) for x in scrips]
     for scrip in scrips:
@@ -633,16 +658,34 @@ def collect(scrips, qtrid_from: int = QTRID_2010Q1, qtrid_to: int = QTRID_MAX,
                     elif row2["reason"] != row["reason"]:
                         stats["unstable"] += 1
                         _log(root, scrip, q, f"unstable unavailable: "
-                                             f"{row['reason']!r} then {row2['reason']!r}")
+                                             f"{row['reason']!r} then {row2['reason']!r}", shard)
                         time.sleep(sleep)
                         continue                 # not settled; next pass retries
                     else:
                         stats["confirmed"] += 1
-            except Exception as e:                      # transport only: retry next pass
-                stats["error"] += 1
-                _log(root, scrip, q, repr(e))
-                time.sleep(sleep)
-                continue
+            except Exception as e:
+                # Transport failure. Retry IN PLACE with backoff rather than
+                # leaving it for the next pass: under load this endpoint kills
+                # TLS connections in bursts (1,103 SSLErrors on 2026-09-25,
+                # 786 of them in one hour), and deferring every one of those
+                # to a second full sweep costs far more than waiting a few
+                # seconds here. A pair that still fails after `retries` is
+                # left unledgered, so the next pass does pick it up.
+                ok = False
+                for attempt in range(retries):
+                    time.sleep(retry_backoff * (2 ** attempt))
+                    try:
+                        row, cats = collect_one(scrip, q, s)
+                        stats["retried_ok"] += 1
+                        ok = True
+                        break
+                    except Exception:
+                        continue
+                if not ok:
+                    stats["error"] += 1
+                    _log(root, scrip, q, repr(e), shard)
+                    time.sleep(sleep)
+                    continue
             buf_s.append(row)
             buf_c.extend(cats)
             if row["status"] == "ok":

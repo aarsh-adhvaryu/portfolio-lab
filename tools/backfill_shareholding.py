@@ -43,7 +43,17 @@ import pandas as pd
 
 from pflab.data import bse_scrip_isin, bse_shareholding as sh, data_dir
 
-MAX_SAFE_WORKERS = 3          # four throttle; see the module docstring
+# Raised from 3 to 6 on 2026-09-25, on evidence rather than by preference.
+# The old cap came from the ANNOUNCEMENTS backfill, where four workers drew
+# throttled answers that a count check had to catch. This endpoint fails
+# differently: under load it kills the TLS connection (1,103 SSLErrors
+# observed, 786 in one hour), which RAISES and is retried, so a throttle here
+# costs time and cannot become data. The accidental 18-worker episode of
+# 2026-09-24 confirms it from the other side -- zero `unstable` rows and an
+# ok-rate slightly HIGHER than the single-worker baseline. Six is a step, not
+# a limit found by experiment; measure the rate and the SSLError count before
+# going further, and stop if `unstable` is ever non-zero.
+MAX_SAFE_WORKERS = 6
 
 
 class ShardBusy(RuntimeError):
@@ -167,6 +177,10 @@ def main(argv=None) -> int:
     ap.add_argument("--from-qtr", type=int, default=sh.QTRID_2010Q1)
     ap.add_argument("--to-qtr", type=int, default=sh.QTRID_MAX)
     ap.add_argument("--sleep", type=float, default=0.35)
+    ap.add_argument("--confirm-sleep", type=float, default=0.5,
+                    help="pause before re-asking an ambiguous 'unavailable'")
+    ap.add_argument("--retries", type=int, default=3,
+                    help="in-place retries for a transport failure")
     a = ap.parse_args(argv)
 
     if a.check:
@@ -181,10 +195,11 @@ def main(argv=None) -> int:
         if not (0 <= a.shard < a.of):
             ap.error(f"--shard must be in [0, {a.of})")
         if a.of > MAX_SAFE_WORKERS:
-            print(f"WARNING: {a.of} workers. Four were shown to draw throttled "
-                  f"answers on 2026-09-22; {MAX_SAFE_WORKERS} is the tested "
-                  f"maximum. Confirmation-on-unavailable will catch a throttled "
-                  f"empty, but an adds-up failure under load is not re-asked.",
+            print(f"WARNING: {a.of} workers, above the {MAX_SAFE_WORKERS} this "
+                  f"endpoint has been measured at. It fails by killing TLS "
+                  f"connections, which raises and is retried, so the risk is "
+                  f"wasted time rather than bad data -- but watch the "
+                  f"SSLError count and STOP if `unstable` is ever non-zero.",
                   flush=True)
 
     scrips = universe(a.shard, a.of)
@@ -204,7 +219,8 @@ def main(argv=None) -> int:
     t0 = time.time()
     try:
         stats = sh.collect(scrips, a.from_qtr, a.to_qtr, sleep=a.sleep,
-                           progress=_progress(tag), shard=a.shard)
+                           progress=_progress(tag), shard=a.shard,
+                           confirm_sleep=a.confirm_sleep, retries=a.retries)
     finally:
         lock.unlink(missing_ok=True)
     stats["elapsed_s"] = round(time.time() - t0, 1)
