@@ -141,6 +141,7 @@ def run(events: pd.DataFrame, month_ends: Sequence[date], eligible_at_fn,
     per_flag: dict = {}
     # §8a 2026-09-25: events whose horizon runs past the period end, counted
     excluded = {h: 0 for h in HORIZONS}
+    detail: list = []
     for m in month_ends:
         elig = set(eligible_at_fn(m))
         if not elig:
@@ -186,7 +187,19 @@ def run(events: pd.DataFrame, month_ends: Sequence[date], eligible_at_fn,
                         pr.append(v)
                 if not pr:
                     continue
-                ex.append(r - float(np.median(pr)))
+                excess = r - float(np.median(pr))
+                ex.append(excess)
+                # Per-event detail, for the reporting-only breakdowns E2-A
+                # asks for (per flag, and by the flagged name's momentum
+                # quintile). Recorded in one pass so the breakdowns cannot
+                # come from a differently-built population than the headline.
+                detail.append({
+                    "month_end": m, "horizon": h, "isin": isin,
+                    "excess": excess,
+                    "flags": sorted(set(first.loc[first["isin"] == isin, "flag"])),
+                    "momentum_quintile": (_BUCKET.get(isin) or (None, None))[1],
+                    "turnover_decile": (_BUCKET.get(isin) or (None, None))[0],
+                })
             if ex:
                 cohorts.append({"month_end": m, "horizon": h,
                                 "n_events": len(ex),
@@ -199,6 +212,7 @@ def run(events: pd.DataFrame, month_ends: Sequence[date], eligible_at_fn,
     out = {"cohorts": int(len(cdf)), "events_by_flag": per_flag, "periods": {},
            "excluded_horizon_past_period_end": {int(k): int(v)
                                                 for k, v in excluded.items()},
+           "event_detail": detail,
            "period_end": str(period_end) if period_end else None}
     if not len(cdf):
         out.update({"passes": False, "reason": "no cohorts"})

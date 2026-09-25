@@ -6,25 +6,20 @@
 Sealed period still untouched; `research/journal.jsonl` still absent. All four
 locked charter spans re-verified after the code changes.
 
-1. **E1d is DONE: INCONCLUSIVE** (2026-09-25).
-   `docs/reviews/E1d-verdict.md`; verdict.json in
-   `experiments/E1d/sweeps/validation-7d350769a6907044`. Development
-   11.55% / 49.54%, validation 24.27% / 36.72%, against E1 base's
-   8.97% / 55.40% and 27.36% / 39.82%. **GATE passes all four in
-   development and fails G2 and G3 in validation** (+2.58 pp then
-   −3.09 pp on return; drawdown 5.86 then 3.10 pp shallower). The score
-   bought drawdown with return in both periods; only one decade made that
-   a good trade. C1–C4 INCONCLUSIVE. **Mandate not met** — §5 fails in
-   both, though validation's +1.79 pp against B5 is the closest anything
-   has come to the +2 it needs. **The adopted stack is still E1 base.**
-   Next: **E2-A** (order changed 2026-09-25; reason in `docs/ROADMAP.md`),
-   then E3-R. **E2-A readiness: `docs/notes/E2A-readiness.md` — it is NOT
-   ready, and the blocker is the charter, not the code.** §6's development
-   window (2010-2016) has almost no flags to test: 0.8% of the universe in
-   2010 rising to 5.9% in 2016, because the IBC only came into force in
-   Dec 2016 and SEBI's encumbrance and default disclosure regimes date from
-   2019. Three of the nine frozen flags are structurally absent from
-   development. Aarsh decides the window before anything is built.
+1. **E2-A is DONE: REJECT** (2026-09-25). `docs/reviews/E2A-verdict.md`.
+   GATE fails in BOTH periods the strict way (G1 fails both, G2 violated
+   both): development 11.85% / 33.18% against E1 base's 14.60% / 31.37%,
+   validation 41.84% / 8.41% against 50.04% / 7.19%. **§8a also fails, and
+   it is the informative part**: flagged names underperformed by 7.73%
+   (t = −3.14) in 2017–2019 and OUTPERFORMED by 12.16% (t = +3.48) in
+   2020–2021. The flags' information is not stable in sign, and even where
+   it was genuine the rule could not convert it. **E1d is DONE:
+   INCONCLUSIVE** (2026-09-25), `docs/reviews/E1d-verdict.md`. **The
+   adopted stack is still E1 base.** Next: E3-R.
+
+   **Waiting on Aarsh: `docs/data/flag_audit.md`** — 251 masked events, no
+   returns, an empty label column. Precision per flag and the false-positive
+   patterns get reported once it is labelled. No new charter until then.
 
 2. **A shareholding backfill is RUNNING as three shards**
    (`tools/backfill_shareholding.py --shard i --of 3`), ~12.6 h at 247/min,

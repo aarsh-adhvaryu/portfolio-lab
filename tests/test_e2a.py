@@ -333,3 +333,43 @@ def test_period_labels_are_matched_by_alias_not_by_luck():
     for dk in es.DEV_KEYS:
         for vk in es.VAL_KEYS:
             assert es.verdict({dk: strong, vk: strong})["passes"] is True
+
+
+# -- the precision audit must not leak what it is asking about ----------
+def test_masking_removes_the_company_and_every_date():
+    from tools.flag_audit_sample import mask_text, _mask_company
+    h = ("Reliance Industries Ltd has informed BSE that CRISIL downgraded its "
+         "rating on 15-Mar-2019, effective March 20, 2019, for FY19")
+    m = mask_text(h, "Reliance Industries Ltd")
+    assert "Reliance" not in m and "Industries" not in m
+    assert "2019" not in m and "Mar" not in m.replace("[DATE]", "")
+    assert "downgraded" in m          # the substance survives
+    # the pseudonym is stable and never the name
+    a = _mask_company("Reliance Industries Ltd")
+    assert a == _mask_company("reliance industries ltd  ")
+    assert "Reliance" not in a and a.startswith("COMPANY-")
+
+
+def test_the_audit_file_carries_no_returns_and_an_empty_label_column(tmp_path):
+    import pandas as pd
+    from tools.flag_audit_sample import write
+    df = pd.DataFrame([{"row": 1, "flag": "FRAUD",
+                        "headline": "[CO] informed BSE of alleged fraud",
+                        "category": "Company Update", "subcategory": "General",
+                        "_company_masked": "COMPANY-ABC123"}])
+    df.attrs["population"] = {"FRAUD": 38}
+    p = write(df, tmp_path / "flag_audit.md")
+    text = p.read_text(encoding="utf-8")
+    # no return DATA (the prose does say the word, deliberately), no regex,
+    # no pseudonym leaking into the table, and a blank label cell
+    import re as _re
+    banned_data = ("mean_excess", "t_newey", "cagr", "max_drawdown",
+                   "COMPANY-ABC123")
+    for b in banned_data:
+        assert b.lower() not in text.lower(), b
+    # no signed percentages or decimal figures that could be a return
+    table = " ".join(l for l in text.splitlines() if l.startswith("| 1 |"))
+    assert not _re.search(r"[-+]?\d+\.\d+\s*%?", table), table
+    assert "| 1 | FRAUD |" in text
+    assert text.rstrip().endswith("|  |")      # the label cell is empty
+    assert "TRUE" in text and "FALSE" in text and "UNSURE" in text
