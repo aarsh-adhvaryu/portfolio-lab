@@ -1,0 +1,66 @@
+[strategy]
+id = "E2-A"
+charter = "docs/strategies/E2-A.md"
+
+# --- everything here is E1 as LOCKED ------------------------------------
+# E2-A adds a rule; it changes no E1 parameter. These are byte-for-byte the
+# values in configs/e1.toml.
+lookback_sessions = 252
+skip_sessions = 21
+n_hold = 25
+band_exit_rank = 50
+max_buys_per_month = 6
+sip_amount = 50000.0
+initial_cash = 0.0
+cash_rate_annual = 0.06
+trend_filter = "sma10"
+delisting = "last_close"
+delist_confirm_sessions = 250
+
+# --- E2-A §3: THE ONE CHANGE --------------------------------------------
+[red_flags]
+# A name with any frozen flag usable in the trailing 12 months is
+# ineligible at month-end M. `usable_from` carries §3's point-in-time key
+# (DissemDT else NEWS_DT, after 15:30 means the next session), so nothing
+# downstream reads a timestamp.
+enabled = true
+window_months = 12
+# §7 S4-S12 remove one flag at a time; empty means all nine are live.
+exclude_flags = []
+
+[hooks]
+# §3's second limb: a held name that receives a NEW flag is sold at the
+# open of the next session. The only intra-month action in the stack.
+side_sleeve_capital = 0.0
+intra_month_exit = "red_flag"
+red_flag_months = 12
+
+[universe]
+# E1's §2, untouched. The exclusion is applied AFTER this ranking, so §2's
+# universe is still "the 500 most traded" with some of them ineligible.
+mode = "turnover_top_n"
+series = ["EQ"]
+min_sessions = 250
+top_n_by_turnover = 500
+turnover_window = 126
+min_price = 10.0
+max_adv_fraction = 0.01
+
+[evaluation]
+period = "e2a_development"
+periods_path = "configs/evaluation_periods.toml"
+
+[costs]
+path = "configs/costs_zerodha.toml"
+multiplier = 1.0
+
+[tax]
+path = "configs/tax_policy_in.toml"
+
+[benchmarks]
+primary = "NIFTY500_TRI"
+list = ["NIFTY50_TRI", "NIFTY500_TRI", "NIFTY200_MOMENTUM30_TRI", "EQUAL_WEIGHT_UNIVERSE"]
+mom30_expense_ratio = 0.003
+
+[report]
+output_dir = "experiments/E2-A"

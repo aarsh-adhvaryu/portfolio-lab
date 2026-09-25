@@ -25,3 +25,18 @@ sealed = true
 start = "2026-10-01"
 end = "2027-09-30"
 sealed = false
+
+# Charter E2-A §6, as amended 2026-09-25. Its own window, because the rule's
+# INPUTS do not exist for most of E1's: the IBC came into force in December
+# 2016, and SEBI's encumbrance and default disclosure regimes date from 2019.
+# The charter declares this a low-power test; these names exist so a config
+# can reference it without widening anything.
+[periods.e2a_development]
+start = "2017-01-01"
+end = "2019-12-31"
+sealed = false
+
+[periods.e2a_validation]
+start = "2020-01-01"
+end = "2021-12-31"
+sealed = false

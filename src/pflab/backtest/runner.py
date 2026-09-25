@@ -127,6 +127,8 @@ def main(config_path, period_name=None, unseal_reason=None, sweep=False,
             table = sweep_mod.e1c_rows()
         elif experiment == "E1d":
             table = sweep_mod.e1d_rows()
+        elif experiment == "E2-A":
+            table = sweep_mod.e2a_rows()
         else:
             table = sweep_mod.ROWS
         rows = list(table) if rows is None else [r for r in table if r in rows]

@@ -232,6 +232,11 @@ def extras_report(result, config=None, membership=None,
         "realised_pnl": float(gain),
         "pnl_pct_of_contributions": (100 * gain / invested) if invested else None,
         "pnl_pct_of_final_value": (100 * gain / final) if final else None,
+        # E2-A §8, added 2026-09-25: the permanent-loss question in its most
+        # direct form. The rule's purpose is to be EARLY, and a flag that
+        # arrives after the exit is worth nothing, so the lead time matters
+        # more than the hit rate.
+        "flag_lead_time": _flag_lead_time(keys),
     }
 
     # 3 -- RISK_OFF months and cash share by year ------------------------
@@ -273,6 +278,45 @@ def extras_report(result, config=None, membership=None,
         "market_cap_proxy": ("unavailable: charter section 2 ranks by traded value "
                              "precisely to avoid needing point-in-time shares "
                              "outstanding, which the panel does not carry"),
+    }
+
+
+def _flag_lead_time(exit_keys) -> dict:
+    """For every holding that was suspended or delisted, whether a flag
+    preceded it and by how long (E2-A §8).
+
+    Returns "unavailable" rather than zeros when the flag table has not been
+    built: no flags found and no table built look identical in a count, and
+    only one of them is a finding.
+    """
+    try:
+        from pflab.data import red_flag_events as rfe
+        ev = rfe.load()
+    except Exception as e:
+        return {"available": False,
+                "reason": f"flag table not built ({type(e).__name__})"}
+    if not len(ev) or not exit_keys:
+        return {"available": True, "exits": len(exit_keys), "with_prior_flag": 0,
+                "lead_months": [], "no_prior_flag": len(exit_keys)}
+    u = pd.to_datetime(ev["usable_from"])
+    leads, without = [], 0
+    for isin, d in sorted(exit_keys):
+        prior = ev[(ev["isin"] == isin) & (u.dt.date <= d)]
+        if not len(prior):
+            without += 1
+            continue
+        first = pd.to_datetime(prior["usable_from"]).min().date()
+        leads.append({"isin": isin, "exit": str(d), "first_flag": str(first),
+                      "lead_months": round((d - first).days / 30.44, 1),
+                      "flags": sorted(set(prior["flag"]))})
+    return {
+        "available": True,
+        "exits": len(exit_keys),
+        "with_prior_flag": len(leads),
+        "no_prior_flag": without,
+        "median_lead_months": (float(pd.Series([x["lead_months"] for x in leads]).median())
+                               if leads else None),
+        "detail": sorted(leads, key=lambda x: -x["lead_months"]),
     }
 
 

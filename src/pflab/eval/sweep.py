@@ -164,6 +164,31 @@ def e1d_rows() -> dict:
     return dict(E1D_ROWS)
 
 
+# Charter E2-A §7. The base row is §3's rule as written; S1/S2 move the
+# window, S3 drops the intra-month limb, and S4-S12 remove one flag each so
+# no single keyword rule can carry the result on its own.
+FLAGS_IN_ORDER = ["AUDITOR_RESIGNATION", "REGULATORY_ACTION", "INSOLVENCY",
+                  "PROMOTER_ENCUMBRANCE", "RATING_DOWNGRADE", "RESULTS_DELAY",
+                  "FORENSIC_AUDIT", "DEFAULT", "FRAUD"]
+
+E2A_ROWS = {
+    "base": {},
+    "S1": {"red_flags.window_months": 6, "hooks.red_flag_months": 6},
+    "S2": {"red_flags.window_months": 24, "hooks.red_flag_months": 24},
+    # §7 S3: exclusion only. The held-name exit is the stack's ONLY
+    # intra-month action, so the row that turns it off is the one that says
+    # how much of the effect needs it.
+    "S3": {"hooks.intra_month_exit": None},
+}
+for _i, _f in enumerate(FLAGS_IN_ORDER, start=4):
+    E2A_ROWS[f"S{_i}"] = {"red_flags.exclude_flags": [_f]}
+
+
+def e2a_rows() -> dict:
+    """E2-A's sweep (§7): the base row, S1-S3, then one row per flag."""
+    return dict(E2A_ROWS)
+
+
 def e1b_rows() -> dict:
     """E1b's sweep: the base row, E1's nine, then S10 and S11."""
     return {**ROWS, **E1B_EXTRA_ROWS}
