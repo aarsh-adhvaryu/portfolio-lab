@@ -140,21 +140,26 @@ exist as disclosures for most of development:
 So a third of the frozen flag set is structurally absent from development,
 and a fourth (RESULTS_DELAY) is near-zero before 2017.
 
-**What I did not do:** change the window, drop a flag, or weight anything.
-All three would be choosing a parameter after seeing the data. The options
-are Aarsh's:
+**DECIDED 2026-09-25 (Aarsh): option 1.** §6's development window moves to
+**2017-01-01 .. 2019-12-31** and validation to **2020-01-01 .. 2021-12-31**,
+with the reason recorded in the charter's change log *before any return on
+the new window was computed*: the window is set by when the rule's inputs
+exist — IBC from December 2016, SEBI encumbrance and default disclosures
+from 2019 — and choosing a window from input availability is not choosing it
+from results.
 
-1. **Move §6's development start to 2017** and validation to a later span,
-   accepting a shorter test.
-2. **Keep 2010 and read the development result as uninformative by
-   construction**, recorded in the charter before the run so it cannot be
-   mistaken for evidence of no effect.
-3. **Drop the three post-2017 flags from §4** and test the six that span
-   the window — a different experiment, and one that discards the flags
-   most directly tied to permanent loss.
+Two consequences went into the charter with it:
 
-Option 2 preserves the charter as written and is the only one that needs no
-amendment; option 1 is the one that actually buys a test.
+- **§6 declares the low-power limitation.** Five years split three and two,
+  on a 25-name portfolio. A null result means *not shown*, never *no
+  effect*.
+- **§8a was added, and ADOPT now requires it alongside GATE.** A
+  pre-registered event study on every flagged name, not just the handful
+  the portfolio held, with its pass condition written before the study was
+  implemented. That is the second line of evidence: GATE asks whether
+  acting on flags helps the fund, §8a asks whether the flags carry
+  information at all, and only together can they separate an uninformative
+  flag from an undetectable one.
 
 ## 4. E1 base re-run on E2-A's windows
 
@@ -175,18 +180,20 @@ why the worst fall is 17 pp shallower.
 
 | E2-A line | supported? |
 |---|---|
-| §3 ineligible on a trailing-12-month flag | **needs code** — no eligibility hook reads a flag set; `universe` has no exclusion input |
-| §3 held name sold at the next open after dissemination | **partly** — `hooks.intra_month_exit` exists and `engine._intra_month_exits` calls it, but only `stop_loss` and `profit_take` are implemented; a `red_flag` implementation must be written |
-| §3 point-in-time key `DissemDT` else `NEWS_DT`, after-15:30 rule | **NOT implemented** — nothing in `backtest/` or `eval/` reads either column. The amendment of 2026-09-24 is drafted in the charter only |
+| §3 ineligible on a trailing-12-month flag | **BUILT** — `eligible_at(..., exclude=)`, fed by `[red_flags]` |
+| §3 held name sold at the next open after dissemination | **BUILT** — `hooks.red_flag_exit`, wired as `intra_month_exit = "red_flag"` |
+| §3 point-in-time key `DissemDT` else `NEWS_DT`, after-15:30 rule | **BUILT** — `red_flag_events.usable_from`, the only code that reads a timestamp; zero lookahead on the real 2019+ table |
 | §4 the nine frozen flags | **yes** — `red_flags.RULES`, freeze commit `77abb08` |
 | §5 BSE announcements from 2010, daily thereafter | **yes** — complete and verified |
-| §5 NSE announcements if BSE coverage of NSE-listed names < 95% on a 200-name sample | **NOT measured** — §5 requires this check *before the first run* and it has not been done |
+| §5 NSE announcements if BSE coverage < 95% on a 200-name sample | **MEASURED — 97.0%, so not required** (§6 below) |
 | §6 window, stack re-run on the same window | **yes** — §4 above |
 | §7 sweep rows S1–S12 | **yes** — existing knobs plus a flag-window parameter |
-| §7 S13 (2016 onward, draft) | **yes** — `period.start`, and it now declares its periods per GATE.md |
+| §7 S13 | **REMOVED 2026-09-25** — §6 now begins inside the `DissemDT` era, so S13 would duplicate the base row |
+| §8 suspension/delisting lead time | needs the extra, reading `red_flag_events` against the delisting list |
+| §8a event study | **BUILT** — `eval/event_study.py`, pass condition frozen in the charter |
 | §8 reported extras | **yes** once the rule exists |
 
-### Four pieces of code E2-A needs
+### The four pieces (all now built — see §6)
 
 1. **A flag table**: `(isin, flag, usable_from)` built once from the
    announcement feed, where `usable_from` applies §3's key and the
@@ -202,13 +209,84 @@ why the worst fall is 17 pp shallower.
 Plus the §5 coverage check, which is a measurement the charter demands
 before the first run, not a code task.
 
-## 6. Readiness
+## 6. What was built (2026-09-25)
 
-**Not ready to run, and not only for code reasons.** The four pieces above
-are a day's work. The window question in §3 is the one that needs Aarsh
-first, because building the rule and running it on 2010–2016 would produce
-a number that looks like a verdict and is not one.
+All four pieces, plus §5's check. **E2-A is still NOT RUN.**
 
-Recommended sequence: settle §6's window, then build the four pieces, then
-run the §5 coverage check, then lock, then run. The sealed period stays
-shut throughout.
+| piece | where | tests |
+|---|---|---|
+| flag table, §3's key and the after-15:30 rule | `pflab/data/red_flag_events.py` | `test_e2a.py` × 9 |
+| universe exclusion | `engine.eligible_at(..., exclude=)`, `exclude_fn` from `[red_flags]` | × 1 |
+| `hooks.red_flag_exit` | `backtest/hooks.py`, wired as `intra_month_exit = "red_flag"` | × 1 |
+| `classify_e2a` with the §8a block | `eval/classify.py` | × 4 |
+| §8a's event study | `eval/event_study.py` | × 4 |
+
+**The point-in-time rule lives in one place.** `red_flag_events.usable_from`
+is the only code that reads a timestamp; the exclusion, the exit hook and
+the event study all read `usable_from` and nothing else. That is the only
+arrangement in which the rule can be tested once and relied on everywhere.
+
+**The exclusion is applied AFTER the turnover ranking**, not before.
+Excluding first would promote a thinner name into the top 500 and change
+§2's universe as well as §3's eligibility — which would make E2-A two
+changes, and GATE judges one. A test asserts a three-name universe with one
+excluded yields two, not three.
+
+**Lookahead, checked on the real table.** Built for 2019+ as a smoke test:
+14,034 events, 13,949 keyed on `DissemDT`, 21 on `NEWS_DT`, 64 with no
+timestamp. Of 8,783 flags stamped after 15:30, **zero are usable on or
+before their own date**, and zero early flags are usable before theirs. The
+90 rows with no `usable_from` are announcements with no timestamp or dated
+after the last session; they return `None` rather than a guess. The
+invariant is now a test over every session and six times of day.
+
+### §5's coverage check — passed, so no NSE feed is needed
+
+§5 requires this *before the first run*: add NSE announcements only if BSE
+coverage of NSE-listed names is below 95% on a 200-name sample.
+
+- Sample: 200 names drawn from the 500 most traded over 2017–2021, seed
+  `20260925` (fixed, so it is reproducible).
+- **194 of 200 carry a BSE scrip code — 97.0%, above the 95% threshold.**
+- **The NSE announcement feed is not required.**
+- The six misses are `NHIT`, `INDINFR`, `PGINVIT` (InvIT units, not
+  equities), plus `AMIORG`, `DAAWAT` and `CDSL`.
+
+### A D S Diagnostics — resolved, and correctly unresolvable
+
+Scrip 523031 is in the BSE master and Active, but **BSE publishes no ISIN
+for it** (`ISIN_NUMBER` is empty), market cap ₹2.55 crore, Group Y. It is
+not NSE-traded and not in the panel, so it could never be held. Nothing to
+fix by hand: the map is right to leave it unresolved.
+
+### To build the full table
+
+The 2019+ smoke test took 195s; the whole feed from 2010 is roughly ten
+minutes. It is a prerequisite for running E2-A, not for locking it:
+
+    python -c "from pflab.data import red_flag_events as r; print(len(r.build()))"
+
+## 7. Readiness
+
+**Ready to lock.** The charter's amendments are in (§6 window and its
+reason, S13 removed, §8a, the §8 lead-time extra), all four code pieces are
+built and tested, §5's precondition is measured and passed, and
+`pytest -q` is **522 passed**.
+
+Not run, and nothing about E2-A has touched real returns. The remaining
+steps are Aarsh's: lock §3–§8a, build the full flag table, run development
+2017–2019, Aarsh writes the development review, run validation 2020–2021,
+then `classify_e2a` — which returns **INCOMPLETE until §8a has been run**,
+because ADOPT needs both.
+
+Two things to carry into the lock:
+
+- **§6 is a low-power test and the charter says so.** Three years of
+  development on a 25-name portfolio. A null result is "not shown". §8a
+  exists precisely because GATE cannot tell that apart from "no effect".
+- **§8a's pass condition is written and must not move.** Negative mean
+  6-month excess with t < −2 (Newey-West, 5 lags) in 2017–2019, and
+  negative in 2020–2021. It was recorded in the charter before the study
+  was implemented, and no flag may be dropped or weighted on its result.
+
+The sealed period stays shut throughout.

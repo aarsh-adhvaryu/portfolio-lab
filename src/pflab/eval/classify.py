@@ -420,3 +420,66 @@ def classify_e1d(dev_sweep_dir, val_sweep_dir,
                             "for a stack that meets §3 and §5."),
         },
     }
+
+
+def classify_e2a(dev_sweep_dir, val_sweep_dir, stack_dev_dir, stack_val_dir,
+                 event_study: Optional[dict] = None) -> dict:
+    """E2-A §6 and §8a: GATE vs E1 base, the mandate block, and the
+    pre-registered event study.
+
+    **ADOPT requires GATE and §8a together.** E2-A §6's window is five years
+    of a 25-name portfolio and the charter declares it a low-power test, so
+    GATE alone cannot separate "flags carry no information" from "this
+    portfolio could not detect it". §8a tests the information on every
+    flagged name; GATE tests whether acting on it helps the fund. Neither
+    substitutes for the other, and `verdict` here is ADOPT only when both
+    pass.
+
+    C1-C4 are NOT reported: E2-A is a change on the adopted stack, not a
+    candidate base, so E1 §13's bar does not apply to it.
+
+    **Change-log entries that apply** (CLAUDE.md non-negotiable 1): E2-A §6,
+    §7, §8 and §8a as amended 2026-09-25 -- window moved to 2017-2019 /
+    2020-2021 on input availability, S13 removed, the suspension/delisting
+    lead-time extra added, and §8a added as a second ADOPT requirement.
+    """
+    load = lambda d: json.loads((Path(d) / "criteria.json").read_text(encoding="utf-8"))
+    cand_dev, cand_val = load(dev_sweep_dir), load(val_sweep_dir)
+    st_dev, st_val = load(stack_dev_dir), load(stack_val_dir)
+
+    g_dev, g_val = gate_for_period(cand_dev, st_dev), gate_for_period(cand_val, st_val)
+    gate = gate_verdict(g_dev, g_val)
+
+    es = dict(event_study or {})
+    es_pass = bool(es.get("passes")) if es else None
+
+    if es_pass is None:
+        overall = "INCOMPLETE"
+        why = "§8a has not been run; ADOPT requires it alongside GATE"
+    elif gate == "ADOPT" and es_pass:
+        overall, why = "ADOPT", "GATE and §8a both pass"
+    elif gate == "REJECT" and es_pass is False:
+        overall, why = "REJECT", "GATE and §8a both fail"
+    else:
+        overall = "INCONCLUSIVE"
+        why = f"GATE says {gate}; §8a {'passes' if es_pass else 'does not pass'}"
+
+    return {
+        "verdict": overall,
+        "verdict_reason": why,
+        "gate": {"development": g_dev, "validation": g_val, "verdict": gate,
+                 "thresholds": GATE_THRESHOLDS, "stack": "E1 base"},
+        "event_study_8a": es or {"run": False,
+                                 "note": "required for ADOPT (E2-A §8a)"},
+        "mandate": _mandate_block(cand_dev, cand_val),
+        "window": {
+            "development": "2017-01-01..2019-12-31",
+            "validation": "2020-01-01..2021-12-31",
+            "why": ("set by when the rule's inputs exist, before any return "
+                    "was computed: IBC from December 2016, SEBI encumbrance "
+                    "and default disclosures from 2019"),
+            "declared_limitation": (
+                "five years of a 25-name portfolio is a LOW-POWER test; a "
+                "null result means 'not shown', never 'no effect'"),
+        },
+    }

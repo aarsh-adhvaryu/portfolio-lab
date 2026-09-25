@@ -183,8 +183,17 @@ def precompute_universe(panel: pd.DataFrame, config, membership=None) -> dict:
     return out
 
 
-def eligible_at(pre: dict, m, min_sessions: int, top_n: int, min_price: float):
-    """§2's eligible set at month-end `m`, from `precompute_universe`."""
+def eligible_at(pre: dict, m, min_sessions: int, top_n: int, min_price: float,
+                exclude=None):
+    """§2's eligible set at month-end `m`, from `precompute_universe`.
+
+    `exclude` is E2-A §3's red-flag set: names carrying a flag usable in the
+    trailing window at `m`. It is applied AFTER the turnover ranking, not
+    before, so excluding a name does not promote a thinner one into the top
+    `top_n` -- the universe is still "the 500 most traded", with some of them
+    ineligible. Applying it first would silently change §2's universe as well
+    as §3's eligibility, which would make E2-A two changes.
+    """
     if m not in pre["n"].index:
         return pd.Index([])
     n = pre["n"].loc[m]
@@ -199,9 +208,15 @@ def eligible_at(pre: dict, m, min_sessions: int, top_n: int, min_price: float):
         if not members:
             return pd.Index([])
         keep = ok.fillna(False) & pd.Series(ok.index.isin(members), index=ok.index)
-        return pd.Index(sorted(ok.index[keep]))
+        sel = ok.index[keep]
+        if exclude:
+            sel = [i for i in sel if i not in exclude]
+        return pd.Index(sorted(sel))
     ranked = turn[ok.fillna(False)].dropna().sort_values(ascending=False).head(top_n)
-    return pd.Index(sorted(ranked.index))
+    idx = ranked.index
+    if exclude:
+        idx = [i for i in idx if i not in exclude]
+    return pd.Index(sorted(idx))
 
 
 def run(config, period, panel, indices, cost_model, tax_policy,
@@ -293,6 +308,23 @@ def run(config, period, panel, indices, cost_model, tax_policy,
             return standardise(rows, order=_order, clip=3.0)
     else:
         raise ValueError(f"unknown strategy.signal={signal!r}")
+    # E2-A §3: names carrying a flag usable in the trailing window are
+    # ineligible at month-end M. `usable_from` carries the point-in-time
+    # rule, so nothing here reads a timestamp. Absent config leaves this
+    # None and the universe is E1's, untouched.
+    exclude_fn = None
+    _rf = (config.get("red_flags") or {})
+    if _rf.get("enabled"):
+        from pflab.data import red_flag_events as rfe
+        _events = rfe.load()
+        _months = int(_rf.get("window_months", 12))
+        _drop = set(_rf.get("exclude_flags") or ())      # §7 S4-S12
+        if _drop:
+            _events = _events[~_events["flag"].isin(_drop)]
+
+        def exclude_fn(_m, _e=_events, _w=_months):
+            return rfe.flagged_at(_e, _m, months=_w)
+
     uni_pre = precompute_universe(panel, config, membership)
     traded_by_date = {d: set(g) for d, g in panel.groupby("date")["isin"]}
 
@@ -416,7 +448,8 @@ def run(config, period, panel, indices, cost_model, tax_policy,
                     selection_n=selection_n, weighting=weighting,
                     weight_cap=weight_cap, rebalance_months=rebalance_months,
                     score_lag_months=score_lag_months, on_negative=on_negative,
-                    carried=carried_weights, score_fn=score_fn)
+                    carried=carried_weights, score_fn=score_fn,
+                    exclude_fn=exclude_fn)
                 if pending.get("target_weights"):
                     carried_weights = dict(pending["target_weights"])
             elif rebalance == "monthly_band":
@@ -424,7 +457,8 @@ def run(config, period, panel, indices, cost_model, tax_policy,
                                   positions, risk_off, trend_filter, config,
                                   hooks, state, decisions, book,
                                   weighting=weighting, weight_cap=weight_cap,
-                                  on_negative=on_negative, score_fn=score_fn)
+                                  on_negative=on_negative, score_fn=score_fn,
+                                  exclude_fn=exclude_fn)
             else:
                 raise ValueError(f"unknown strategy.rebalance={rebalance!r}")
         prev_session = t
@@ -449,12 +483,13 @@ def run(config, period, panel, indices, cost_model, tax_policy,
 def _decide(m, mom_w, uni_pre, close_w, n_hold, band, positions,
             risk_off, trend_filter, config, hooks, state, decisions, book,
             weighting="equal", weight_cap=0.05, on_negative="zero",
-            score_fn=None) -> dict:
+            score_fn=None, exclude_fn=None) -> dict:
     elig = eligible_at(
         uni_pre, m,
         min_sessions=int(_cfg(config, "universe.min_sessions", 250)),
         top_n=int(_cfg(config, "universe.top_n_by_turnover", 500)),
-        min_price=float(_cfg(config, "universe.min_price", 10.0)))
+        min_price=float(_cfg(config, "universe.min_price", 10.0)),
+        exclude=(exclude_fn(m) if exclude_fn else None))
     if score_fn is not None:
         scores = score_fn(m, elig)          # E1c: standardised within elig
     else:
@@ -559,7 +594,7 @@ def _decide_rebalance(m, mom_w, uni_pre, close_w, positions, risk_off,
                       trend_filter, config, decisions, month_ends,
                       selection_n, weighting, weight_cap, rebalance_months,
                       score_lag_months, on_negative, carried,
-                      score_fn=None) -> dict:
+                      score_fn=None, exclude_fn=None) -> dict:
     """E1c §3's decision: sells at rebalance only, no band, no intra-month.
 
     On a rebalance month-end the universe is re-scored and the top
@@ -601,7 +636,8 @@ def _decide_rebalance(m, mom_w, uni_pre, close_w, positions, risk_off,
         uni_pre, m,
         min_sessions=int(_cfg(config, "universe.min_sessions", 250)),
         top_n=int(_cfg(config, "universe.top_n_by_turnover", 500)),
-        min_price=float(_cfg(config, "universe.min_price", 10.0)))
+        min_price=float(_cfg(config, "universe.min_price", 10.0)),
+        exclude=(exclude_fn(m) if exclude_fn else None))
     sd = _score_date(m, month_ends, score_lag_months)
     if score_fn is not None:
         # standardised within the universe being selected from (the eligible

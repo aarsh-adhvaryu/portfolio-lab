@@ -247,6 +247,33 @@ def profit_take(pct: float = 0.50) -> IntraMonthExit:
     return _threshold_exit(+1, pct)
 
 
+def red_flag_exit(events, months: int = 12) -> IntraMonthExit:
+    """E2-A §3. Sell a held name at the next open after a NEW flag.
+
+    `events` is `red_flag_events`' table. The trigger is a flag whose
+    `usable_from` is exactly this session, not merely one in the trailing
+    window: a name already carrying a flag was excluded at the last
+    month-end and re-selling it every session would be nonsense.
+
+    `usable_from` already carries §3's point-in-time rule -- DissemDT else
+    NEWS_DT, and after 15:30 means the next session -- so nothing here
+    reads a timestamp. That rule lives in exactly one place
+    (`red_flag_events.usable_from`), which is the only way it can be tested
+    once and relied on everywhere.
+
+    This is the only intra-month action in the stack.
+    """
+    from pflab.data import red_flag_events as rfe
+
+    def _exit(t, held, state) -> List[str]:
+        if not held:
+            return []
+        fresh = rfe.new_flags_on(events, t)
+        return [i for i in held if i in fresh]
+
+    return _exit
+
+
 def from_config(config: dict) -> HookSet:
     """Build the hook set from a config's [hooks] table. Absent means off."""
     h = config.get("hooks", {}) or {}
@@ -274,6 +301,13 @@ def from_config(config: dict) -> HookSet:
             hs.intra_month_exit = stop_loss(float(h.get("stop_loss_pct", 0.20)))
         elif name == "profit_take":
             hs.intra_month_exit = profit_take(float(h.get("profit_take_pct", 0.50)))
+        elif name == "red_flag":
+            # E2-A §3. The table is loaded once here rather than per session;
+            # it is read-only and carries `usable_from`, so nothing about the
+            # point-in-time rule depends on when it was loaded.
+            from pflab.data import red_flag_events as rfe
+            hs.intra_month_exit = red_flag_exit(
+                rfe.load(), months=int(h.get("red_flag_months", 12)))
         else:
             raise ValueError(f"unknown hooks.intra_month_exit={name!r}")
     return hs
