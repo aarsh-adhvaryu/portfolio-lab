@@ -14,6 +14,32 @@ applying to either, and S13 was added.
 
 ---
 
+## 0. The locked span, for future verification
+
+**E2-A LOCKED 2026-09-25.**
+
+    E2-A §3–§8a at the 2026-09-25 LOCK
+    chars   5819
+    sha256  f2972309a9793cd53c07551e19408112fef56543baf90b43aa4708e1541bf0b9
+
+Recompute with the same section-span extractor used for E1, E1b, E1-P, E1c
+and E1d (from `## 3.` up to, but not including, `## 9.`, trailing whitespace
+stripped and one newline restored).
+
+**Change-log entries that apply** (CLAUDE.md non-negotiable 1 — a locked
+span is always read with its change log):
+
+- **2026-09-24, §3** — point-in-time key is `DissemDT` where present,
+  `NEWS_DT` otherwise, after-15:30 applying to either.
+- **2026-09-25, §6** — window moved to development 2017–2019, validation
+  2020–2021, on input availability; low-power limitation declared.
+- **2026-09-25, §7** — S13 removed.
+- **2026-09-25, §8** — suspension/delisting lead-time extra added.
+- **2026-09-25, §8a** — pre-registered event study added, **required for
+  ADOPT alongside GATE**; and its truncation rule: each period reads data
+  only through its own end, horizons running past it are excluded and
+  counted, and no forward return may read a price after 2021-12-31.
+
 ## 1. Data: the announcement feed joined to the panel
 
 BSE announcements 2010-01-01 → 2026-09-22, 6,109 of 6,109 days verified

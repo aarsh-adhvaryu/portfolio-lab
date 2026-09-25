@@ -68,12 +68,30 @@ def newey_west_t(x: Sequence[float], lags: int = NEWEY_WEST_LAGS) -> Optional[fl
     return float(mu / np.sqrt(s / n))
 
 
+class HorizonPastPeriodEnd(Exception):
+    """The horizon would need a price the period has not been shown.
+
+    §8a, 2026-09-25: an event whose 1-, 3- or 6-month horizon ends after the
+    period end is excluded from that horizon and COUNTED. Without this a
+    six-month horizon opened in late 2019 reaches into 2020 -- data
+    development has not seen -- and the last months of validation read into
+    the sealed period. Counted rather than silent, because a horizon that
+    quietly drops its most recent cohorts is a different study.
+    """
+
+
 def _forward_return(open_w: pd.DataFrame, isin: str, entry: date,
-                    months: int, calendar) -> Optional[float]:
+                    months: int, calendar, period_end: Optional[date] = None
+                    ) -> Optional[float]:
     """Return from the open after `entry` to the open `months` later.
 
     The entry is the NEXT open, per §8a, because a flag usable on session t
     can only be acted on at t's open at the earliest.
+
+    Raises HorizonPastPeriodEnd when the horizon would read a price after
+    `period_end`. That is deliberately an exception rather than a None: a
+    missing price and a horizon running off the end of the period are
+    different facts and the report counts them apart.
     """
     if isin not in open_w.columns:
         return None
@@ -81,10 +99,17 @@ def _forward_return(open_w: pd.DataFrame, isin: str, entry: date,
     if start is None:
         return None
     end_target = start + pd.Timedelta(days=int(round(months * 30.44)))
-    end = calendar.asof(end_target.date() if hasattr(end_target, "date") else end_target)
+    end_target = end_target.date() if hasattr(end_target, "date") else end_target
+    if period_end is not None and end_target > period_end:
+        raise HorizonPastPeriodEnd(
+            f"{months}m horizon from {start} ends {end_target}, past {period_end}")
+    end = calendar.asof(end_target)
     if end is None:
         return None
     end = calendar[end]
+    if period_end is not None and end > period_end:
+        raise HorizonPastPeriodEnd(
+            f"{months}m horizon from {start} lands {end}, past {period_end}")
     if end <= start:
         return None
     try:
@@ -100,7 +125,8 @@ def _forward_return(open_w: pd.DataFrame, isin: str, entry: date,
 def run(events: pd.DataFrame, month_ends: Sequence[date], eligible_at_fn,
         open_w: pd.DataFrame, turnover_w: pd.DataFrame, momentum_w: pd.DataFrame,
         calendar, periods: Optional[dict] = None,
-        first_flag_window_months: int = 12) -> dict:
+        first_flag_window_months: int = 12,
+        period_end: Optional[date] = None) -> dict:
     """The §8a study. Returns cohort means, t-statistics and the pass flag.
 
     `eligible_at_fn(m)` gives E1's eligible universe at month-end `m`;
@@ -113,6 +139,8 @@ def run(events: pd.DataFrame, month_ends: Sequence[date], eligible_at_fn,
 
     cohorts: list = []
     per_flag: dict = {}
+    # §8a 2026-09-25: events whose horizon runs past the period end, counted
+    excluded = {h: 0 for h in HORIZONS}
     for m in month_ends:
         elig = set(eligible_at_fn(m))
         if not elig:
@@ -137,13 +165,25 @@ def run(events: pd.DataFrame, month_ends: Sequence[date], eligible_at_fn,
         for h in HORIZONS:
             ex = []
             for isin in sorted(set(first["isin"])):
-                r = _forward_return(open_w, isin, m, h, calendar)
+                # §8a 2026-09-25: a horizon that would read a price after the
+                # period end is excluded from that horizon and counted.
+                try:
+                    r = _forward_return(open_w, isin, m, h, calendar, period_end)
+                except HorizonPastPeriodEnd:
+                    excluded[h] += 1
+                    continue
                 if r is None:
                     continue
-                peers = matched.get(_bucket_of(isin, matched), [])
-                pr = [_forward_return(open_w, p, m, h, calendar) for p in peers
-                      if p != isin]
-                pr = [x for x in pr if x is not None]
+                pr = []
+                for peer in matched.get(_bucket_of(isin, matched), []):
+                    if peer == isin:
+                        continue
+                    try:
+                        v = _forward_return(open_w, peer, m, h, calendar, period_end)
+                    except HorizonPastPeriodEnd:
+                        continue
+                    if v is not None:
+                        pr.append(v)
                 if not pr:
                     continue
                 ex.append(r - float(np.median(pr)))
@@ -156,7 +196,10 @@ def run(events: pd.DataFrame, month_ends: Sequence[date], eligible_at_fn,
             per_flag[fl] += int((first["flag"] == fl).sum())
 
     cdf = pd.DataFrame(cohorts)
-    out = {"cohorts": int(len(cdf)), "events_by_flag": per_flag, "periods": {}}
+    out = {"cohorts": int(len(cdf)), "events_by_flag": per_flag, "periods": {},
+           "excluded_horizon_past_period_end": {int(k): int(v)
+                                                for k, v in excluded.items()},
+           "period_end": str(period_end) if period_end else None}
     if not len(cdf):
         out.update({"passes": False, "reason": "no cohorts"})
         return out

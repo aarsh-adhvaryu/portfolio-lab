@@ -1,6 +1,7 @@
 # E2-A — Firm-level red flags
 
-Status: DRAFT. Locks at its first development run. Judged by `GATE.md`.
+Status: **LOCKED** 2026-09-25 (see §10). Changes go only through §10.
+Judged by `GATE.md` **and** §8a: ADOPT requires both.
 
 ## 1. Purpose
 Test whether excluding and exiting names with a recent distress-type
@@ -114,6 +115,11 @@ written here before the study is run.**
 - **No flag is ever dropped or weighted on the basis of this study.** It
   decides whether the rule is tested further, not what the rule is. A flag
   whose individual result looks poor stays in §4.
+- **Truncation (added 2026-09-25).** Each period's event study reads data
+  only through that period's end, via `periods.truncate_end`. An event
+  whose 1-, 3- or 6-month horizon ends after the period end is **excluded
+  from that horizon and counted in the report**. No forward return may read
+  a price after 2021-12-31.
 
 ## 9. Not claimed
 No prediction of fraud. No reading of attachments (that is a later
@@ -145,6 +151,16 @@ extraction experiment; if adopted it is E2-A2 with its own charter).
   quintile. No flag may be dropped or weighted on its result.
 - 2026-09-25 — **§8 extra added**: for every E1 base holding later
   suspended or delisted, whether a flag preceded it and by how long.
+- 2026-09-25 — **§8a truncation declared**: "Each period's event study reads
+  data only through that period's end, via `periods.truncate_end`. An event
+  whose 1-, 3- or 6-month horizon ends after the period end is excluded from
+  that horizon and counted in the report. No forward return may read a price
+  after 2021-12-31." Without this a six-month horizon opened in late 2019
+  would reach into 2020 — data the development period has not been shown —
+  and the last months of validation would read into the sealed period. The
+  exclusion is counted rather than silent, because a horizon that quietly
+  drops its most recent cohorts is a different study from the one
+  chartered.
 - 2026-09-24 — **draft amendment, not locked.** §3's point-in-time key was
   `DissemDT` alone. BSE's API returns `DissemDT` as **null for every
   announcement before 2016** — confirmed against the raw API, not a
@@ -166,3 +182,4 @@ extraction experiment; if adopted it is E2-A2 with its own charter).
   base on the same window; the gap between the full-window verdict and
   S13's is the measured cost of the earlier years. Evidence:
   `docs/data/insider_finding.md` §3.
+- 2026-09-25 — **LOCKED. No changes to §3–§8a after this line.**

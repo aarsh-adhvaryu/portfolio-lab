@@ -233,3 +233,70 @@ def test_usable_from_is_never_earlier_than_the_announcement():
             if dt.time(hh, mm) > dt.time(15, 30):
                 assert u > d, f"{ts} after 15:30 must not be usable on {d}"
             assert u in c, f"{u} is not a trading session"
+
+
+# -- §8a truncation (added 2026-09-25) ----------------------------------
+def _open_panel(days, names, price=100.0):
+    return pd.DataFrame(price, index=list(days), columns=list(names))
+
+
+def test_a_horizon_running_past_the_period_end_is_refused_not_silently_shortened():
+    """§8a: no forward return may read a price after the period end.
+
+    A six-month horizon opened in late 2019 would otherwise reach into 2020
+    -- data development has not been shown -- and the last months of
+    validation would read into the sealed period.
+    """
+    days = pd.bdate_range("2019-01-01", "2020-12-31").date
+    c = _cal(days)
+    ow = _open_panel(days, ["INE1"])
+    # 1 month from 2019-10-31 lands inside 2019; 6 months does not
+    r1 = es._forward_return(ow, "INE1", date(2019, 10, 31), 1, c,
+                            period_end=date(2019, 12, 31))
+    assert r1 is not None
+    with pytest.raises(es.HorizonPastPeriodEnd):
+        es._forward_return(ow, "INE1", date(2019, 10, 31), 6, c,
+                           period_end=date(2019, 12, 31))
+
+
+def test_no_forward_return_reads_a_price_after_the_period_end():
+    """The invariant, swept across every month-end of both periods and every
+    chartered horizon: whatever comes back, it never touched 2021-12-31+."""
+    days = pd.bdate_range("2016-06-01", "2023-12-31").date
+    c = _cal(days)
+    ow = _open_panel(days, ["INE1"])
+    for pend in (date(2019, 12, 31), date(2021, 12, 31)):
+        for m in pd.date_range("2017-01-31", pend, freq="ME").date:
+            if m not in c:
+                m = c[c.asof(m)]
+            for h in es.HORIZONS:
+                try:
+                    v = es._forward_return(ow, "INE1", m, h, c, period_end=pend)
+                except es.HorizonPastPeriodEnd:
+                    continue                      # excluded, and counted by run()
+                if v is None:
+                    continue
+                start = c.next_session(m)
+                target = start + pd.Timedelta(days=int(round(h * 30.44)))
+                target = target.date() if hasattr(target, "date") else target
+                end = c[c.asof(target)]
+                assert end <= pend, f"{h}m from {m} read {end}, past {pend}"
+
+
+def test_excluded_events_are_counted_not_dropped_quietly():
+    """A horizon that silently drops its most recent cohorts is a different
+    study from the one chartered."""
+    days = pd.bdate_range("2019-01-01", "2019-12-31").date
+    c = _cal(days)
+    names = [f"INE{i}" for i in range(60)]
+    ow = _open_panel(days, names)
+    ev = _events([[n, n, n, "FRAUD", pd.Timestamp("2019-11-01 10:00"), "DissemDT",
+                   date(2019, 11, 1), "h", "c", "s"] for n in names[:5]])
+    me = [d for d in (date(2019, 10, 31), date(2019, 11, 29)) if d in c]
+    tw = pd.DataFrame(1.0, index=list(days), columns=names)
+    mw = pd.DataFrame(0.1, index=list(days), columns=names)
+    out = es.run(ev, me, lambda m: names, ow, tw, mw, c,
+                 period_end=date(2019, 12, 31))
+    assert "excluded_horizon_past_period_end" in out
+    assert out["period_end"] == "2019-12-31"
+    assert out["excluded_horizon_past_period_end"][6] > 0
