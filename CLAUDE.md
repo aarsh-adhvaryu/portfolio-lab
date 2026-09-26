@@ -43,6 +43,14 @@ touching code. The charter is the spec; the code implements it.
    the relative `./data`, but never rely on that). On Aarsh's machine it is
    set explicitly to `D:\portfolio_lab\data` — see "Repo layout" below.
    It is gitignored.
+10. **Results live under `PFLAB_EXPERIMENTS_DIR`** (env var; falls back to
+   the relative `./experiments`, and never rely on that either). Set to
+   `D:\portfolio_lab\experiments`. It matters more than the data one: from
+   2026-09-26 a locked experiment runs from a detached worktree at
+   `D:\pl_runs\<ID>`, so the working directory is **not** the repo, and a
+   relative path would scatter results into each worktree where the next
+   `git worktree prune` would delete them. Verify with
+   `python -c "from pflab.data import experiments_dir; print(experiments_dir().resolve())"`.
 
 ## Repo layout (flattened 2026-09-19)
 
@@ -222,6 +230,45 @@ Next tasks, in order, are in `docs/HANDOFF.md` §9.
 - `execution/kite.py` using Kite Connect Personal: month-end job that
   produces the order list, places after-market orders at next open,
   reconciles fills into the ledger. Paper mode first (log only).
+
+## Running jobs (2026-09-26)
+
+**Hand long jobs to Aarsh.** Anything over about five minutes — a sweep, an
+event study, a backfill, a rebuild — is his to run, not Claude's. Give the
+exact PowerShell command from `D:\portfolio_lab`, what it produces and
+where, its expected duration, whether it can run alongside what is already
+going, and how to tell it has finished. `docs/RUNNING.md` is the queue.
+
+**A locked experiment runs from its tag, not from the working tree.**
+`tools/run_locked.ps1 -Experiment <ID> -Period <period>` refuses unless
+`lock/<ID>` exists and the charter's locked span still hashes to what was
+recorded (`tools/check_lock.py`), runs from `D:\pl_runs\<ID>`, **proves the
+`pflab` that actually imported is inside that worktree** before running
+anything, and records the tag and code path in the sweep manifest. The
+editable install means `import pflab` normally resolves to the live tree,
+so setting `PYTHONPATH` alone is not evidence — a run on live code would
+produce numbers indistinguishable from a correct one.
+
+**How many sweeps may run at once: four.**
+
+Measured 2026-09-26: **2.81 GB peak working set** for a panel load plus
+universe precompute plus a full engine run, and the engine run adds nothing
+on top of the panel — the panel is the whole cost, and a sweep's rows reuse
+it. Budgeting 3.5 GB to allow for accumulated row artifacts and benchmarks,
+four sweeps is about 14 GB against 31.4 GB total, inside the 75% ceiling
+and inside the ~16 GB typically free.
+
+**Check `tools\status.ps1` before starting another**: it prints free RAM,
+and four is the ceiling only when the machine is otherwise quiet. Never
+trust a completion notice over the process table and the artifacts on
+disk — on this machine a background task has reported exit 0 over a Python
+traceback, a 0-byte log has meant "buffered" rather than "not running", and
+a `ps | grep` could not see Windows command lines and declared a live sweep
+dead.
+
+**Sweeps never write under `data/`.** Verified 2026-09-26: nothing in
+`backtest/` or `eval/` calls `data_dir()` for a write. Any future cache
+goes under `experiments/`, so concurrent runs cannot collide.
 
 ## Conventions
 - Dates are `datetime.date`; sessions are integer positions in the

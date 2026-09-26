@@ -1,12 +1,33 @@
 # STATE — verdicts and where things stand
 
-One page. Updated 2026-09-22. The narrative is in `docs/HANDOFF.md`; the
+One page. Updated 2026-09-26. The narrative is in `docs/HANDOFF.md`; the
 order and reasons in `docs/ROADMAP.md`; the rules for judging in
 `docs/strategies/GATE.md` (adoption) and `docs/MANDATE.md` (ADVANCE).
 
 **Adopted stack: E1 base**, read from `experiments/E1/regression/` since the
 2026-09-21 measurement correction. Sealed period (2022–2025) never opened;
 `research/journal.jsonl` absent.
+
+## How many experiments have been tested
+
+`GATE.md`'s parallel-running rule 3. **Every added test raises the chance of
+a lucky pass**, and from 2026-09-26 several may run at once, which raises it
+faster. The sealed period is the correction — seen once, by one stack — and
+this count is what a reader needs in order to weigh any pass at all. A stack
+that passes on the twentieth attempt is not the evidence a stack that passed
+on the second would be.
+
+| | |
+|---|---|
+| **experiments with a computed verdict** | **6** |
+| ADOPTED | **0** |
+| REJECT | 3 (E1-P, E1c, E2-A) |
+| INCONCLUSIVE | 3 (E1, E1b, E1d) |
+| sealed-period reveals used | **0 of 1** |
+| stacks meeting MANDATE §3 and §5 | **0** |
+
+Locked and awaiting a run: none. In preparation: E3-R, E2-D, E2-B, E2-C, E3
+(readiness notes); E1-S, E2-E (drafts).
 
 ## Verdicts
 
@@ -21,6 +42,12 @@ drag compounded by calendar days).
 | **E1b** | LOCKED 2026-09-18 | **INCONCLUSIVE** (GATE vs E1) | **changed** from REJECT; re-run from scratch 2026-09-22 | 9.74% / 54.96% | 15.51% / 43.34% | `docs/reviews/E1b-verdict-rerun.md` (supersedes `docs/notes/E1b-diagnostic.md`) |
 | **E1-P** | LOCKED 2026-09-19 | **REJECT** (GATE vs E1) | **holds** | 9.14% / 55.78% | 25.85% / 43.52% | `docs/reviews/E1-P-verdict.md` |
 | **E1c** | LOCKED 2026-09-19, amended after lock (blind) 2026-09-21 | **REJECT** (GATE vs E1) | **holds** | 6.73% / 70.19% | 20.10% / 36.33% | `docs/reviews/E1c-verdict.md` |
+| **E1d** | LOCKED 2026-09-24 | **INCONCLUSIVE** (GATE vs E1) | n/a — run under it | 11.55% / 49.54% | 24.27% / 36.72% | `docs/reviews/E1d-verdict.md` |
+| **E2-A** | LOCKED 2026-09-25 | **REJECT** (GATE **and** §8a) | n/a — run under it | 11.85% / 33.18% *(2017–19)* | 41.84% / 8.41% *(2020–21)* | `docs/reviews/E2A-verdict.md` |
+
+E2-A's windows are its own (§6: 2017–2019 / 2020–2021), set by when its
+inputs exist, so its figures are not comparable with the rows above. E1
+base on **those** windows is 14.60% / 31.37% and 50.04% / 7.19%.
 
 **Why the three that hold need no re-run.** Each is decided by base-row and
 benchmark arithmetic alone, which the 2026-09-21 regression re-ran; the other
