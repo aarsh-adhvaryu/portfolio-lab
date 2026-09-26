@@ -113,6 +113,46 @@ A charter's row table declares this by carrying the row's start; the code
 derives applicability from it rather than from a second list, so a row
 cannot be declared in the charter and forgotten in the counting.
 
+## Running experiments in parallel (2026-09-26)
+
+Until now experiments ran one at a time and the forward order in this file
+decided which. From today several may be prepared, locked and run at once.
+The gate's arithmetic does not change; what follows is how a concurrent
+result stays interpretable.
+
+1. **Experiments may be prepared, locked and run concurrently.** Each is
+   **one change on the stack in force at its lock** — today, E1 base. The
+   lock fixes which stack the experiment is a change to, so two experiments
+   locked on the same day are both measured against the same thing.
+
+2. **If a concurrent experiment is ADOPTED before another's verdict is
+   final, the other is re-run on the new stack before its verdict is
+   final.** Its result against the old stack **stays on record, labelled**
+   as "against E1 base, superseded by the re-run on <new stack>". A verdict
+   is a property of the stack it was measured against, not of the
+   experiment alone — the rule `docs/ROADMAP.md` already applies to E1-P.
+
+3. **`docs/STATE.md` keeps a running count of every experiment tested,
+   with its verdict.** Six so far: E1, E1b, E1-P, E1c, E1d, E2-A. **Every
+   added test raises the chance of a lucky pass.** Running several at once
+   raises it faster, which is the cost of the speed. The sealed period is
+   the correction — it is seen once, by one stack — and **the count is what
+   a reader needs in order to weigh any pass at all.** A stack that passed
+   on the twentieth attempt is not the same evidence as one that passed on
+   the second, and only the count makes that visible.
+
+4. **An experiment's development and validation sweeps run on the same
+   frozen code: its lock commit.** Concurrency makes this load-bearing
+   rather than tidy — with several experiments in flight the working tree
+   changes under a run that takes an hour, and two halves of one verdict
+   computed on different code are not one verdict. `tools/run_locked.ps1`
+   enforces it from a detached worktree at `lock/<ID>`.
+
+5. **Development reviews are still written before validation runs.**
+   Unchanged, and unchanged for a reason: a review written after both
+   periods are known is not a prediction, and the point of writing it
+   first is that it cannot be edited into one.
+
 ## What never changes an outcome
 
 Re-running with different thresholds after seeing results. Adding a row to

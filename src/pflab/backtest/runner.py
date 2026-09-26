@@ -90,6 +90,7 @@ def prepare(config: dict, period_name: Optional[str] = None,
 
 
 def main(config_path, period_name=None, unseal_reason=None, sweep=False,
+         extra_manifest=None,
          rows=None, kind="sweeps") -> str:
     """`rows` restricts a sweep to named rows; `kind` is the directory the
     run lands in. A regression re-run (the base row and the benchmarks only,
@@ -101,7 +102,15 @@ def main(config_path, period_name=None, unseal_reason=None, sweep=False,
     cfg = load_config(config_path)
     period, panel, indices, actions, cost_factory, tax, membership = prepare(
         cfg, period_name, unseal_reason)
-    out_root = _repo_root() / cfg.get("report", {}).get("output_dir", "experiments/E1")
+    # PFLAB_EXPERIMENTS_DIR (2026-09-26). A locked run executes from a
+    # detached worktree, so `_repo_root()` is that worktree, not the repo --
+    # results would land inside it and be lost to the next `git worktree
+    # prune`. The env var names the one real experiments directory; the
+    # config still says which experiment's subdirectory.
+    from pflab.data import experiments_dir
+    rel = cfg.get("report", {}).get("output_dir", "experiments/E1")
+    rel = rel[len("experiments/"):] if rel.startswith("experiments/") else rel
+    out_root = experiments_dir().resolve() / rel
 
     cfg_text = json.dumps(cfg, sort_keys=True, default=str)
     fp = artifacts.data_fingerprint(panel)
@@ -145,6 +154,10 @@ def main(config_path, period_name=None, unseal_reason=None, sweep=False,
         # does, so re-running the same inputs verifies and different inputs
         # refuse rather than overwriting (see sweep.SweepConflict).
         manifest = {
+            # GATE.md rule 4 (2026-09-26): a locked run records WHICH frozen
+            # code produced it, so a result can be traced to the tag it was
+            # computed at rather than to whatever the tree held afterwards.
+            **(extra_manifest or {}),
             "run_id": rid, "experiment": experiment, "period": period.name,
             "period_start": str(period.start), "period_end": str(period.end),
             "config_sha": artifacts._sha(cfg_text), "data_fingerprint": fp,
