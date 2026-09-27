@@ -89,6 +89,9 @@ class RunResult:
         columns=["date", "isin", "buy_value", "adv", "ratio", "planned"]))
     realised: List = field(default_factory=list)
     universe_pre: Optional[dict] = None
+    # E3-R: per-month T/V/B, the gear, and the months V was undefined (§11 (a)).
+    # None for every run that is not in gears mode.
+    regime: Optional[dict] = None
 
 
 @dataclass
@@ -325,8 +328,56 @@ def run(config, period, panel, indices, cost_model, tax_policy,
         def exclude_fn(_m, _e=_events, _w=_months):
             return rfe.flagged_at(_e, _m, months=_w)
 
+    # E2-D1 §3: a name whose promoters' SHARES fell by more than `threshold`
+    # of shares outstanding over the trailing two reported quarters is
+    # ineligible at M, and a held one leaves through the "ineligible" exit in
+    # `_decide`. The threshold has no default: it is the charter's number.
+    # Rows usable after the period end are dropped at load (non-negotiable 2).
+    _ps_record = None
+    _ps = (config.get("promoter_selling") or {})
+    if _ps.get("enabled"):
+        if exclude_fn is not None:
+            raise ValueError("red_flags and promoter_selling are both enabled; "
+                             "an experiment is ONE change (GATE.md)")
+        from pflab.data import positioning
+        if "threshold" not in _ps:
+            raise ValueError("promoter_selling.threshold must come from the "
+                             "charter's config (E2-D1 §3)")
+        exclude_fn, _ps_record = positioning.promoter_exclusion(
+            period.end, actions, float(_ps["threshold"]),
+            dated_only=bool(_ps.get("dated_only", False)))
+    _pos_key = "promoter_selling"
+
+    # E2-D2 §3: net insider selling (NSE PIT) over the trailing window above
+    # `threshold` of market cap at M -- total reported shares outstanding x
+    # the close at M -- makes a name ineligible. Every §4 choice is a config
+    # key without a default. A name with no close at M has no measure.
+    _is = (config.get("insider_selling") or {})
+    if _is.get("enabled"):
+        if exclude_fn is not None:
+            raise ValueError("more than one exclusion rule is enabled; an "
+                             "experiment is ONE change (GATE.md)")
+        from pflab.data import positioning
+
+        def _close_at(i, m, _w=close_w):
+            if i not in _w.columns or m not in _w.index:
+                return None
+            v = _w.at[m, i]
+            return None if pd.isna(v) else float(v)
+        exclude_fn, _ps_record = positioning.insider_exclusion(
+            period.end, _is, _close_at)
+        _pos_key = "insider_selling"
+
     uni_pre = precompute_universe(panel, config, membership)
     traded_by_date = {d: set(g) for d, g in panel.groupby("date")["isin"]}
+
+    # E3-R §4: three exposure gears replace E1 §6's on/off rule. Every other
+    # trend_filter value leaves `gears` None and the E1 path untouched
+    # (tests/test_engine_golden.py holds its bytes).
+    gears = None
+    if trend_filter == "gears":
+        gears = _gear_setup(config, period, panel, sessions, indices, uni_pre,
+                            mom_w, adj_w, signal, rebalance)
 
     book = LotBook(tax_policy)
     cash = float(strat.get("initial_cash", 0.0))
@@ -368,9 +419,15 @@ def run(config, period, panel, indices, cost_model, tax_policy,
             cash += sip
             flow += sip
             if pending is not None:
-                cash = _execute(pending, t, book, cash, open_w, close_w, turn_w,
-                                cost_model, trades, warnings, max_adv, max_buys,
-                                n_hold, hooks, state, last_close, skips)
+                if pending.get("gear"):
+                    cash = _execute_gears(pending, t, book, cash, open_w, close_w,
+                                          turn_w, cost_model, trades, warnings,
+                                          max_adv, max_buys, n_hold, hooks, state,
+                                          last_close, skips, gears)
+                else:
+                    cash = _execute(pending, t, book, cash, open_w, close_w, turn_w,
+                                    cost_model, trades, warnings, max_adv, max_buys,
+                                    n_hold, hooks, state, last_close, skips)
                 pending = None
 
         # --- 1b. intra-month exits (E2-A red flags; E1-P §4 N1/N2) ------
@@ -459,9 +516,20 @@ def run(config, period, panel, indices, cost_model, tax_policy,
                                   weighting=weighting, weight_cap=weight_cap,
                                   on_negative=on_negative, score_fn=score_fn,
                                   exclude_fn=exclude_fn)
+                if gears is not None:
+                    _annotate_gear(pending, t, gears, book, state, close_w,
+                                   mom_w, tax_policy)
             else:
                 raise ValueError(f"unknown strategy.rebalance={rebalance!r}")
         prev_session = t
+
+    if _ps_record is not None:
+        # E2-D1 / E2-D2 §8: which names the rule excluded at each decision,
+        # and why.
+        for d in decisions:
+            d[_pos_key] = {
+                i: {k: (str(x) if isinstance(x, date) else x) for k, x in v.items()}
+                for i, v in (_ps_record.get(d["month_end"]) or {}).items()}
 
     equity = pd.DataFrame(rows)
     equity, tax_rows = _finalise(equity, book, last_close, cost_model,
@@ -476,7 +544,8 @@ def run(config, period, panel, indices, cost_model, tax_policy,
                      adv_skips=(pd.DataFrame(skips) if skips else pd.DataFrame(
                          columns=["date", "isin", "buy_value", "adv", "ratio",
                                   "planned"])),
-                     realised=list(book.realised), universe_pre=uni_pre)
+                     realised=list(book.realised), universe_pre=uni_pre,
+                     regime=(gears["record"] if gears is not None else None))
 
 
 # -- decision ----------------------------------------------------------
@@ -719,6 +788,10 @@ def _execute(dec, t, book, cash, open_w, close_w, turn_w, cost_model, trades,
         candidates = list(tw)
     else:
         candidates = [i for i in list(held) + dec["entries"]]
+    # E3-R §11 (c): the gear's ETF is held by the gear, not by the rank, so
+    # E1's shortfall buys never top it up. Absent from every E1 decision.
+    if dec.get("no_buy"):
+        candidates = [i for i in candidates if i not in dec["no_buy"]]
     prices = {i: p for i in candidates if (p := _price(open_w, t, i)) is not None}
     if not prices or cash <= 0:
         return cash
@@ -774,6 +847,213 @@ def _execute(dec, t, book, cash, open_w, close_w, turn_w, cost_model, trades,
         book.buy(isin, t, qty, px, c)
         cash -= notional + c
         trades.append(_trade(t, isin, "BUY", qty, dec["reference_close"].get(isin), px, c))
+    return cash
+
+
+# -- E3-R: risk gears ----------------------------------------------------
+GEAR_KEYS = ("instrument_isin", "cautious_target", "selldown_fraction", "trigger",
+             "high_gear", "high_mode", "v_source", "basket_n", "v_window",
+             "v_percentile", "v_lookback_months", "b_window", "b_level",
+             "min_cautious_run", "disposal_tranches")
+
+
+def _gear_setup(config, period, panel, sessions, indices, uni_pre, mom_w, adj_w,
+                signal, rebalance) -> dict:
+    """E3-R §3: T, V and B at every month-end in the truncated panel, and the
+    gear at every month-end in the window.
+
+    Computed over the whole truncated panel, not just the window, because V's
+    percentile needs 36 earlier values; every series is backward-looking, so
+    no value at M reads a row after M. The gear machine itself starts at the
+    window's first month-end, in normal gear.
+    """
+    from pflab.signals import regime as rg
+    g = config.get("gears") or {}
+    missing = [k for k in GEAR_KEYS if k not in g]
+    if missing:
+        raise ValueError(f"gears.{missing} must come from the charter's config "
+                         f"(E3-R §3-§4, §11)")
+    if signal != "mom_12_1" or rebalance != "monthly_band":
+        raise ValueError("E3-R's gears run on E1's stack: signal mom_12_1, "
+                         "monthly band")
+    min_s = int(_cfg(config, "universe.min_sessions", 250))
+    top_n = int(_cfg(config, "universe.top_n_by_turnover", 500))
+    min_px = float(_cfg(config, "universe.min_price", 10.0))
+    mes = sorted(_month_ends(sessions))   # a set: the gear path needs order
+    t_flags = _risk_off_series(indices, sessions, "sma10")
+
+    elig_by_m, vraw = {}, {}
+    vix = None
+    if g["v_source"] == "india_vix":                     # §6 S8
+        from pflab.data import data_dir
+        vix = pd.read_parquet(data_dir() / "indices" / "INDIA_VIX.parquet")
+        vix["date"] = pd.to_datetime(vix["date"]).dt.date
+        vix = vix[vix["date"] <= period.end].set_index("date")["close"].sort_index()
+    elif g["v_source"] != "realised":
+        raise ValueError(f"unknown gears.v_source {g['v_source']!r}")
+    for m in mes:
+        elig = eligible_at(uni_pre, m, min_sessions=min_s, top_n=top_n,
+                           min_price=min_px)
+        elig_by_m[m] = elig
+        if vix is not None:
+            prior = vix.loc[:m]
+            vraw[m] = float(prior.iloc[-1]) if len(prior) else None
+            continue
+        sc = mom_w.loc[m].dropna() if m in mom_w.index else pd.Series(dtype=float)
+        sc = sc[sc.index.isin(elig)]
+        top = list(rank_desc(sc).sort_values().index[:int(g["basket_n"])])
+        vraw[m] = (rg.basket_vol(adj_w, m, top, int(g["v_window"]))
+                   if len(top) >= int(g["basket_n"]) else None)
+    v = rg.above_trailing_percentile(vraw, float(g["v_percentile"]),
+                                     int(g["v_lookback_months"]))
+    sma = rg.own_sma(panel, int(g["b_window"])).reindex(adj_w.index).ffill()
+    adj_ff = adj_w.ffill()
+    braw = {m: rg.breadth(adj_ff.loc[m], sma.loc[m], elig_by_m[m]) for m in mes}
+    b = rg.below(braw, float(g["b_level"]))
+
+    win = [m for m in mes if period.start <= m <= period.end]
+    caut = [rg.cautious_at(bool(t_flags.get(m, False)), v.get(m), b.get(m),
+                           g["trigger"]) for m in win]
+    path = rg.gear_path(caut, bool(g["high_gear"]), int(g["min_cautious_run"]))
+    gear_by_m = dict(zip(win, path))
+    record = {
+        "v_undefined_months": [str(m) for m in win if v.get(m) is None],
+        "b_undefined_months": [str(m) for m in win if b.get(m) is None],
+        "months": {str(m): {"gear": gear_by_m[m], "T": bool(t_flags.get(m, False)),
+                            "V": v.get(m), "B": b.get(m), "V_raw": vraw.get(m),
+                            "B_raw": braw.get(m)} for m in win},
+    }
+    return {"cfg": g, "gear": gear_by_m, "record": record, "tranches": {}}
+
+
+def _annotate_gear(d, m, G, book, state, close_w, mom_w, tax_policy) -> None:
+    """Attach the gear and its planned sales to E1's own decision at M."""
+    from pflab.portfolio import selldown
+    from pflab.signals.regime import CAUTIOUS, NORMAL
+    from pflab.tax.india_lots import is_long_term
+    g, etf = G["cfg"], G["cfg"]["instrument_isin"]
+    gear = G["gear"][m]
+    d["gear"] = gear
+    d["signals"] = G["record"]["months"][str(m)]
+    # §11 (c): exempt from §2's eligibility and from the band
+    d["exits"] = [e for e in d["exits"] if e["isin"] != etf]
+    d["no_buy"] = [etf]
+    hv = dict(state.holdings_value)
+    equity = float(sum(hv.values()))
+    total = equity + float(state.cash)
+    d["equity_share"] = equity / total if total > 0 else None
+    px_m = {i: float(close_w.at[m, i]) for i in hv
+            if i in close_w.columns and not pd.isna(close_w.at[m, i])}
+    d.setdefault("reference_close", {}).update(px_m)
+    if etf in close_w.columns and not pd.isna(close_w.at[m, etf]):
+        d["reference_close"][etf] = float(close_w.at[m, etf])
+    if gear == CAUTIOUS:
+        exiting = {e["isin"] for e in d["exits"]}
+        after = equity - sum(hv.get(i, 0.0) for i in exiting)
+        target = float(g["cautious_target"]) * total
+        excess = max(0.0, after - target)
+        amount = float(g["selldown_fraction"]) * excess
+        scores = (mom_w.loc[m].dropna().to_dict() if m in mom_w.index else {})
+        lots = {i: book.lots(i) for i in hv if i not in exiting}
+        ranked = selldown.rank(lots, px_m, scores, m, tax_policy)
+        plan = selldown.plan(ranked, amount)
+        d["selldown"] = {
+            "equity": equity, "portfolio": total, "target_equity": target,
+            "excess": excess, "amount": amount,
+            "plan": [[i, q] for i, q in plan],
+            "ranked": [[c.isin, selldown.CATEGORY_NAMES[c.category],
+                        c.tax_per_rupee] for c in ranked]}
+    elif gear == NORMAL:
+        # §11 (d): the instrument's lots that have turned long-term are sold
+        # in thirds over this and the next two normal month-ends
+        tr = G["tranches"]
+        lots = book.lots(etf) if book.holdings(etf) > 0 else []
+        for lot in lots:
+            if (is_long_term(lot.buy_date, m, tax_policy.long_term_months)
+                    and lot.buy_date not in tr):
+                tr[lot.buy_date] = int(g["disposal_tranches"])
+        due = 0
+        for lot in lots:
+            k = tr.get(lot.buy_date)
+            if k:
+                due += lot.qty if k == 1 else lot.qty // k
+        if due > 0:
+            d["tranche_sell"] = {"isin": etf, "qty": int(due),
+                                 "lots": {str(k): v for k, v in tr.items()}}
+
+
+def _execute_gears(dec, t, book, cash, open_w, close_w, turn_w, cost_model, trades,
+                   warnings, max_adv, max_buys, n_hold, hooks, state, last_close,
+                   skips, G) -> float:
+    """E3-R §4 at the open after M: the gear's own sales, then E1's exits and
+    (where the gear allows) E1's buys through `_execute` itself, then the high
+    gear's purchase of the instrument."""
+    from pflab.signals.regime import CAUTIOUS, HIGH, NORMAL
+    g, etf, gear = G["cfg"], G["cfg"]["instrument_isin"], dec["gear"]
+    sells = []
+    if gear == CAUTIOUS:
+        sells = [tuple(x) for x in dec["selldown"]["plan"]]
+    elif gear == NORMAL and dec.get("tranche_sell"):
+        sells = [(etf, int(dec["tranche_sell"]["qty"]))]
+    sold_etf = False
+    for isin, qty in sells:
+        qty = min(int(qty), book.holdings(isin))
+        if qty <= 0:
+            continue
+        px = _price(open_w, t, isin)
+        if px is None:
+            warnings.append({"kind": "gear_sell_no_price", "isin": isin, "date": t})
+            continue
+        proceeds = qty * px
+        c = cost_model.sell_cost(proceeds, 1)
+        book.sell(isin, t, qty, px, c)
+        cash += proceeds - c
+        trades.append(_trade(t, isin, "SELL_GEAR", qty,
+                             dec["reference_close"].get(isin), px, c))
+        sold_etf = sold_etf or isin == etf
+    if gear == NORMAL and sold_etf:
+        live = {l.buy_date for l in book.lots(etf)} if book.holdings(etf) > 0 else set()
+        for k in list(G["tranches"]):
+            G["tranches"][k] -= 1
+            if G["tranches"][k] <= 0 or k not in live:
+                del G["tranches"][k]
+
+    stack_high = gear == HIGH and g["high_mode"] == "stack"          # §6 S7
+    if g["high_mode"] not in ("instrument", "stack"):
+        raise ValueError(f"unknown gears.high_mode {g['high_mode']!r}")
+    block = gear == CAUTIOUS or (gear == HIGH and not stack_high)
+    dec2 = {**dec, "risk_off": block, "trend_filter": "sma10"}
+    cash = _execute(dec2, t, book, cash, open_w, close_w, turn_w, cost_model,
+                    trades, warnings, max_adv, n_hold if stack_high else max_buys,
+                    n_hold, hooks, state, last_close, skips)
+
+    if gear == HIGH and g["high_mode"] == "instrument" and cash > 0:
+        px = _price(open_w, t, etf)
+        if px is None:
+            warnings.append({"kind": "gear_buy_no_price", "isin": etf, "date": t})
+            return cash
+        qty = _fit_to_cash(int(math.floor(cash / px)), px, cash, cost_model)
+        if qty < 1:
+            return cash
+        adv = _adv(turn_w, t, etf)
+        if adv is None or not (adv > 0):
+            raise ADVDataError(f"{t} {etf}: 20-session ADV is {adv!r} for the "
+                               f"high gear's instrument -- §7 halt (data error)")
+        ratio = qty * px / adv
+        if ratio > max_adv:
+            # §11 (c): subject to the ADV guard like any buy. There is no next
+            # candidate for the gear's instrument, so the cash waits.
+            skips.append({"date": t, "isin": etf, "buy_value": qty * px,
+                          "adv": adv, "ratio": ratio, "planned": 1})
+            warnings.append({"kind": "high_gear_adv_skip", "date": t,
+                             "buy_value": qty * px, "adv": adv})
+            return cash
+        notional = qty * px
+        c = cost_model.buy_cost(notional)
+        book.buy(etf, t, qty, px, c)
+        cash -= notional + c
+        trades.append(_trade(t, etf, "BUY", qty, dec["reference_close"].get(etf),
+                             px, c))
     return cash
 
 

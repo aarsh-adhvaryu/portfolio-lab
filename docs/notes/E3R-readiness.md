@@ -5,8 +5,9 @@ filter with three exposure gears. **No new data is needed.** It is
 nonetheless the largest build any experiment has required so far, and
 **three lines of the charter cannot be run as written**.
 
-**NOT READY TO LOCK.** §3's four open questions need Aarsh first; §5 lists
-what to build after.
+**2026-09-27: BUILT — READY TO LOCK once §8 is settled.** Aarsh decided §3's
+four questions (E3-R §11, 2026-09-27); the build is §7, what the lock must
+settle is §8. §1–§6 below are the original note, kept as written.
 
 **Change-log entries that apply** (CLAUDE.md non-negotiable 1): the
 2026-09-19 draft, and the **2026-09-25 prediction** recorded before any
@@ -137,3 +138,101 @@ four charter decisions — V's undefined period, the lot-order tie-breaks,
 the index position's exemptions, and what interrupts the high-gear
 disposal — and each one changes a number, so none should be decided by
 whoever writes the code.
+
+---
+
+## 7. Build (2026-09-27), after Aarsh's four decisions
+
+**Change-log entries that apply:** E3-R §11 — 2026-09-19 draft,
+2026-09-25 prediction, **2026-09-27 decisions (a)–(d)**.
+
+| piece | where | tests |
+|---|---|---|
+| T, V, B as month-end series; undefined kept as `None` and counted as not firing; the gear state machine | `signals/regime.py` | `tests/test_regime.py` (6) |
+| sell-down: names ranked by FIFO tax cost per rupee (loss → long-term → short-term, lowest tax per rupee, weakest score), whole names then one partial in whole shares | `portfolio/selldown.py`; `india_lots.py` **unchanged** | `tests/test_selldown.py` (5, incl. FIFO within the chosen name) |
+| target-equity mechanism: `trend_filter = "gears"`; each decision carries its gear, signals, equity share, sell-down plan or NIFTYBEES tranche; execution through a wrapper that calls E1's own `_execute` for exits and buys | `backtest/engine.py` (`_gear_setup`, `_annotate_gear`, `_execute_gears`) | `tests/test_e3r_engine.py` (12) |
+| the 2019-12-19 ETF split and ISIN switch, declared, ETF rows only, applied after truncation when a config sets `data.etf_events` | `data/etf_events.py`, `runner.prepare` | `tests/test_etf_events.py` (5, incl. the real panel) |
+| months with undefined V, per row, in the sweep manifest | `sweep.run_sweep` | |
+| §8 extras: gear months and equity share by year, false alarms, gains realised by gear sales, worst fall in each named episode | `artifacts.e3r_extras` | yes |
+| `configs/e3r.toml`, `sweep.e3r_rows()` (base + S1–S10), runner dispatch, `classify_e3r` (GATE + mandate + the 2026-09-25 prediction) | | yes |
+
+**Byte-identity of E1.** `tests/test_engine_golden.py` holds three E1
+configurations (SMA-10, sell-to-cash, filter off, RISK_OFF firing in 29
+months) to digests captured from the engine **before** these changes and
+confirmed on HEAD c33feb3's own code in a detached worktree. They still
+match after the target-equity mechanism and after the sell-down code. The
+real-data check — E1 base development and validation against
+`experiments/E1/regression/` — is `tools/e1_identity.py`, queued in
+`docs/RUNNING.md` for Aarsh (a long job).
+
+**Bug caught by a test during the build**: the engine's `_month_ends`
+returns a set, so the first gear path ran over month-ends out of order —
+which breaks "two consecutive cautious month-ends". Fixed by sorting;
+`test_undefined_v_months_are_recorded_and_do_not_fire` is the guard.
+
+### On the real data (signals only, no returns; 30 s)
+
+| | development 2007–2016 | validation 2017–2021 |
+|---|---|---|
+| months V undefined (§11 (a)) | **11: 2007-01 → 2007-11** | 0 |
+| T / V / B fire | 40 / 33 / 31 | 11 / 6 / 11 |
+| cautious / normal / high months | **35 / 78 / 7** | **9 / 48 / 3** |
+| cautious spells | 2008-03→2009-03, 2011, 2013-07→09, 2015-04→2016-03 | 2018-10, 2019-01/02, 2019-07/08, 2020-03→06 |
+
+V is undefined longer than the "about 2007-07" §3(a) estimated, because V's
+basket is the top 25 **by the stack's score**, and 12-1 momentum needs 252
+sessions before it exists; V's first value is 2004-12, and its percentile
+over 36 previous values first exists in 2007-12.
+**T does not fire before 2008-03**, so decision (a) changes no gear in
+practice.
+
+NIFTYBEES's adjusted series is continuous after the fix (largest one-day
+move 14.6%, the 2009-05-18 election rally).
+
+## 8. What the lock must settle
+
+1. **The ADV guard may block the high gear where it matters most.** §11 (c)
+   applies E1 §7's guard to NIFTYBEES, and §7 *skips* a buy over 1% of
+   20-session traded value — it never fills part of one. At the seven
+   development high months that 1% was **₹3.3–6.8 lakh**:
+
+   | high month | 1% of NIFTYBEES 20-session ADV |
+   |---|---|
+   | 2009-04 | ₹6.82 lakh |
+   | 2011-03 / 07 / 10 | ₹6.08 / 3.86 / 4.91 lakh |
+   | 2012-02 | ₹6.63 lakh |
+   | 2013-10 | ₹3.32 lakh |
+   | 2016-04 | ₹5.90 lakh |
+   | validation 2019-03 / 09, 2020-07 | ₹8.14 / 14.73 / 26.23 lakh |
+
+   After 2008–09's thirteen cautious months the waiting cash is at least
+   the SIP alone (₹6.5 lakh) plus the sell-downs, so **the 2009-04 high
+   month — the one the hypothesis is most about — is likely skipped**, and
+   the cash then re-enters through E1's six-a-month buys, i.e. S6. I have
+   not run the engine to confirm, since that is the run. The lock can
+   accept it (the guard is the guard), or say whether a high-gear buy is
+   filled up to the guard's limit instead of skipped.
+2. **Readings built in, to confirm** (each is in the code's docstrings):
+   V's percentile over the 36 *previous* month-end values, all required;
+   V's basket rebalanced daily, sample std of 126 daily returns; B over each
+   name's own 200 rows; the sell-down amount = fraction × (equity after the
+   month's band exits − target × (equity + cash)), priced at M's close; lots
+   long- or short-term as of M; tax per rupee = 20% × short-term gain +
+   12.5% × long-term gain over the position, before set-off and exemption;
+   tranches sell this month-end and the next two **normal** ones, waiting
+   through cautious and high months; the high month still runs the band
+   exits, buys no stock, and puts all cash into NIFTYBEES; S7's high month
+   buys the stack's names with no six-name cap; the gear machine starts
+   each period in normal gear.
+3. **Costs**: the cost model charges the stock STT (0.1% each side) on
+   NIFTYBEES; the ETF rate is 0.001% on the sell only. The high gear's costs
+   are overstated by about 0.2% a round trip. Declared in `classify_e3r`.
+4. **Dividends**: NIFTYBEES has **no dividend rows**. It tracks the Nifty 50
+   *price* index over 2008–2013 (0.47% vs 0.43% price vs 1.58% TRI), so the
+   high gear is understated there by up to ~1 pp a year of holding
+   (`docs/notes/E3-readiness.md` §3(b)). Declared in `classify_e3r`.
+5. **S8** (India VIX): its percentile exists from **2011-03** (VIX begins
+   2008-03), not 2009 as §6 says; before that S8's cautious gear is T and B.
+6. **The ETF fix is a data fix**, logged in §11 at the lock with its
+   evidence (`data/etf_events.DECLARED`).
+7. `tools/check_lock.py` needs an `E3-R` entry (§3–§7) at the lock.

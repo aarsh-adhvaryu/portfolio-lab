@@ -1,0 +1,68 @@
+[strategy]
+id = "E2-D2"
+charter = "docs/strategies/E2-D2.md"
+
+# --- everything here is E1 as LOCKED ------------------------------------
+# E2-D2 adds a rule; it changes no E1 parameter. These are byte-for-byte the
+# values in configs/e1.toml.
+lookback_sessions = 252
+skip_sessions = 21
+n_hold = 25
+band_exit_rank = 50
+max_buys_per_month = 6
+sip_amount = 50000.0
+initial_cash = 0.0
+cash_rate_annual = 0.06
+trend_filter = "sma10"
+delisting = "last_close"
+delist_confirm_sessions = 250
+
+# --- E2-D2 §3: THE ONE CHANGE -------------------------------------------
+[insider_selling]
+# Net insider value (sells minus buys, NSE PIT, by broadcast date; after
+# 15:30 usable the next day) over the trailing window, divided by market
+# cap at M = TOTAL reported shares outstanding (latest usable shareholding
+# filing) x the close at M. Above the threshold -> ineligible; a held name
+# leaves through E1's "ineligible" exit.
+enabled = true
+threshold = 0.01
+# E2-D2 §4 -- PROPOSED READINGS, NOT YET DECIDED. The literal reading of
+# "sells minus buys disclosed": every person category, every mode, over the
+# six calendar months ending at M. The lock sets these.
+window_months = 6
+categories = "all"
+modes = "all"
+transaction_types = "all"
+
+[hooks]
+side_sleeve_capital = 0.0
+
+[universe]
+# E1's §2, untouched. The exclusion is applied AFTER this ranking, so §2's
+# universe is still "the 500 most traded" with some of them ineligible.
+mode = "turnover_top_n"
+series = ["EQ"]
+min_sessions = 250
+top_n_by_turnover = 500
+turnover_window = 126
+min_price = 10.0
+max_adv_fraction = 0.01
+
+[evaluation]
+period = "e2a_development"
+periods_path = "configs/evaluation_periods.toml"
+
+[costs]
+path = "configs/costs_zerodha.toml"
+multiplier = 1.0
+
+[tax]
+path = "configs/tax_policy_in.toml"
+
+[benchmarks]
+primary = "NIFTY500_TRI"
+list = ["NIFTY50_TRI", "NIFTY500_TRI", "NIFTY200_MOMENTUM30_TRI", "EQUAL_WEIGHT_UNIVERSE"]
+mom30_expense_ratio = 0.003
+
+[report]
+output_dir = "experiments/E2-D2"

@@ -7,6 +7,12 @@ be computed as written**, and it is the insider limb's denominator.
 
 **NOT READY TO LOCK** — §3 below needs Aarsh.
 
+> **2026-09-27: superseded.** Aarsh split E2-D into E2-D1 and E2-D2 and
+> made §2's three declarations. See `docs/notes/E2D1-readiness.md`. One
+> correction to §3 below: the forced month-end exit does **not** need new
+> code — `_decide` already exits a held name that has left the eligible
+> set, which is how E2-A's exclusion worked too.
+
 **Change-log entries that apply** (CLAUDE.md non-negotiable 1): the
 2026-09-16 draft and the **2026-09-25 amendments** — promoter holding and
 pledge 2010 onward; an undated quarter usable from the second month-end

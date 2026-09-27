@@ -64,6 +64,13 @@ def prepare(config: dict, period_name: Optional[str] = None,
     except Exception:
         actions = None
 
+    # E3-R §11 (c) / E3 §3: the declared ETF split and ISIN switch of
+    # 2019-12-19/20, applied after truncation and only for a config that holds
+    # ETFs, so every stock-only config sees the panel exactly as before.
+    if (config.get("data") or {}).get("etf_events"):
+        from pflab.data import etf_events
+        panel, actions, _ = etf_events.apply(panel, actions)
+
     cost_path = root / config["costs"]["path"]
     tax = TaxPolicy.from_toml(root / config["tax"]["path"])
 
@@ -138,6 +145,12 @@ def main(config_path, period_name=None, unseal_reason=None, sweep=False,
             table = sweep_mod.e1d_rows()
         elif experiment == "E2-A":
             table = sweep_mod.e2a_rows()
+        elif experiment == "E2-D1":
+            table = sweep_mod.e2d1_rows()
+        elif experiment == "E3-R":
+            table = sweep_mod.e3r_rows()
+        elif experiment == "E2-D2":
+            table = sweep_mod.e2d2_rows()
         else:
             table = sweep_mod.ROWS
         rows = list(table) if rows is None else [r for r in table if r in rows]
@@ -165,6 +178,10 @@ def main(config_path, period_name=None, unseal_reason=None, sweep=False,
             "first_session": str(panel["date"].min()),
             "last_session": str(panel["date"].max()),
         }
+        if (cfg.get("data") or {}).get("etf_events"):
+            from pflab.data import etf_events
+            manifest["etf_events"] = [{k: str(v) for k, v in e.items()}
+                                      for e in etf_events.DECLARED]
         # STACK = the adopted stack, currently E1 base (E1b and E1-P were
         # REJECTED). Used for the short-window companion runs; change this
         # line, with a dated note, when a change is adopted.

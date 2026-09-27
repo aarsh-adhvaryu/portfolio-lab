@@ -1,6 +1,6 @@
 # STATE — verdicts and where things stand
 
-One page. Updated 2026-09-26. The narrative is in `docs/HANDOFF.md`; the
+One page. Updated 2026-09-27. The narrative is in `docs/HANDOFF.md`; the
 order and reasons in `docs/ROADMAP.md`; the rules for judging in
 `docs/strategies/GATE.md` (adoption) and `docs/MANDATE.md` (ADVANCE).
 
@@ -26,8 +26,16 @@ on the second would be.
 | sealed-period reveals used | **0 of 1** |
 | stacks meeting MANDATE §3 and §5 | **0** |
 
-Locked and awaiting a run: none. In preparation: E3-R, E2-D, E2-B, E2-C, E3
-(readiness notes); E1-S, E2-E (drafts).
+Locked and awaiting a run: none. **Built and ready to lock** (2026-09-27):
+E2-D1, E3-R, E2-D2 — each note's last section says what the lock must settle.
+Readiness notes: E2-B, E2-C, E3. Drafts: E1-S, E2-E.
+
+**E2-D was split in two on 2026-09-27** (Aarsh): **E2-D1** promoter selling
+(2010–2016 / 2017–2021) and **E2-D2** insider selling from PIT (2017–2019 /
+2020–2021), because the PIT input exists only from 2016 and one charter
+would have tested different rules in its two periods. **The split adds one
+to the count of experiments that will be tested**: when both have verdicts
+the table above grows by two, not one.
 
 ## Verdicts
 

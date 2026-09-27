@@ -1,6 +1,8 @@
 # E2-D — Positioning (bulk deals, insiders, promoters)
 
-Status: DRAFT. Locks at its first development run. Judged by `GATE.md`.
+Status: **SUPERSEDED 2026-09-27 — split into `E2-D1.md` (promoter selling)
+and `E2-D2.md` (insider selling, PIT)**; see §9. Kept for the record; not
+law, never run.
 
 ## 1. Purpose
 The Indian-equity analogue of on-chain "whale" tracking: exchanges publish
@@ -109,3 +111,14 @@ No tracking of specific investors. No copying of any fund's trades.
   PIT limb on 2016–2021. Each re-runs E1 base on its own window as its
   stack. Evidence: `docs/data/shareholding_finding.md`,
   `docs/data/insider_finding.md`.
+- 2026-09-27 — **split into two charters by Aarsh**, each testing one rule
+  over the years its input exists: **E2-D1** (promoter selling, windows
+  2010–2016 / 2017–2021) and **E2-D2** (insider selling from NSE PIT,
+  windows 2017–2019 / 2020–2021, as E2-A). *Reason:* the PIT limb's input
+  exists only from 2016, so a single charter would test different rules in
+  its two periods (`docs/notes/E2D-readiness.md` §4(a)). The split adds one
+  to the experiment count. Decisions made with the split, recorded in the
+  new charters: promoter selling measured in **shares**, not percent; the
+  insider limb's market cap = total reported shares outstanding × close at
+  M; a held name that trips the rule exits at the next month-end; §7's
+  bulk-deal extra reported as unavailable, not collected.

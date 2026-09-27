@@ -1,0 +1,85 @@
+[strategy]
+id = "E3-R"
+charter = "docs/strategies/E3-R.md"
+
+# --- everything here is E1 as LOCKED ------------------------------------
+# E3-R replaces E1 §6's on/off trend rule and nothing else. Every other
+# value here is byte-for-byte configs/e1.toml.
+lookback_sessions = 252
+skip_sessions = 21
+n_hold = 25
+band_exit_rank = 50
+max_buys_per_month = 6
+sip_amount = 50000.0
+initial_cash = 0.0
+cash_rate_annual = 0.06
+trend_filter = "gears"          # E3-R §4: replaces E1 §6
+delisting = "last_close"
+delist_confirm_sessions = 250
+
+# --- E3-R §3-§4 and §11 (2026-09-27): THE ONE CHANGE ---------------------
+[gears]
+# §11 (c): the high gear holds NIFTYBEES -- its successor ISIN, which the
+# declared ETF fix (pflab/data/etf_events.py) makes the one key across the
+# 2019-12-20 switch. Exempt from §2 and the band; ADV guard applies.
+instrument_isin = "INF204KB14I2"
+# §4 cautious: target equity 50% of portfolio value, selling at most half
+# the excess a month; §6 S1/S2 move the target, S3 (0) and S10 (1) the pace.
+cautious_target = 0.5
+selldown_fraction = 0.5
+# §4: cautious = T and (V or B); S4 "V", S5 "B". §11 (a): undefined = not firing.
+trigger = "V_or_B"
+# §4 high: the first normal month-end after at least two cautious ones; all
+# waiting cash into the instrument. S6 turns it off, S7 sends it to the stack.
+high_gear = true
+high_mode = "instrument"
+min_cautious_run = 2
+# §3 V: 126-session realised vol of the top 25 by the stack's score, above
+# its own trailing 36-month 80th percentile. S8: India VIX instead.
+v_source = "realised"
+basket_n = 25
+v_window = 126
+v_percentile = 0.8
+v_lookback_months = 36
+# §3 B: share of eligible names above their own 200-session average < 40%
+b_window = 200
+b_level = 0.4
+# §11 (d): long-term lots of the instrument leave in thirds in normal gear
+disposal_tranches = 3
+
+[data]
+# the declared 2019-12-19 ETF unit split and ISIN switch (E3 readiness §2)
+etf_events = true
+
+[hooks]
+side_sleeve_capital = 0.0
+
+[universe]
+# E1's §2, untouched. The exclusion is applied AFTER this ranking, so §2's
+# universe is still "the 500 most traded" with some of them ineligible.
+mode = "turnover_top_n"
+series = ["EQ"]
+min_sessions = 250
+top_n_by_turnover = 500
+turnover_window = 126
+min_price = 10.0
+max_adv_fraction = 0.01
+
+[evaluation]
+period = "development"
+periods_path = "configs/evaluation_periods.toml"
+
+[costs]
+path = "configs/costs_zerodha.toml"
+multiplier = 1.0
+
+[tax]
+path = "configs/tax_policy_in.toml"
+
+[benchmarks]
+primary = "NIFTY500_TRI"
+list = ["NIFTY50_TRI", "NIFTY500_TRI", "NIFTY200_MOMENTUM30_TRI", "EQUAL_WEIGHT_UNIVERSE"]
+mom30_expense_ratio = 0.003
+
+[report]
+output_dir = "experiments/E3-R"

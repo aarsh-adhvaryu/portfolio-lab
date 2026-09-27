@@ -40,3 +40,11 @@ sealed = false
 start = "2020-01-01"
 end = "2021-12-31"
 sealed = false
+
+# Charter E2-D1 §6 (2026-09-27). Development starts in 2010 because the
+# shareholding backfill does: the BSE quarterly patterns begin with the March
+# 2010 quarter. Validation is E1's own `validation` period, 2017-2021.
+[periods.e2d1_development]
+start = "2010-01-01"
+end = "2016-12-31"
+sealed = false

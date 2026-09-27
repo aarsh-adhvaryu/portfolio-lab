@@ -189,6 +189,68 @@ def e2a_rows() -> dict:
     return dict(E2A_ROWS)
 
 
+# Charter E2-D1 §7 (2026-09-27). S1/S2 move the threshold; S3 drops the
+# quarters dated by E2-D §4's second-month-end convention; S4 asks the
+# question on 2016 onward only, where every quarter carries a filing date,
+# with E1 base re-run on that window as its stack. S4 starts before
+# validation's 2017, so in validation it does not apply (GATE.md,
+# 2026-09-25) and is reported as such, never run as a duplicate.
+E2D1_ROWS = {
+    "base": {},
+    "S1": {"promoter_selling.threshold": 0.005},
+    "S2": {"promoter_selling.threshold": 0.02},
+    "S3": {"promoter_selling.dated_only": True},
+    "S4": {"period.start": "2016-01-01"},
+}
+
+
+def e2d1_rows() -> dict:
+    """E2-D1's sweep (§7): the base row and S1-S4."""
+    return dict(E2D1_ROWS)
+
+
+# Charter E3-R §6, each row one term of §4 or §11 moved. The base row is the
+# charter's gears as amended 2026-09-27 (configs/e3r.toml).
+E3R_ROWS = {
+    "base": {},
+    "S1": {"gears.cautious_target": 0.30},
+    "S2": {"gears.cautious_target": 0.70},
+    # no selling in cautious gear: new cash waits only
+    "S3": {"gears.selldown_fraction": 0.0},
+    "S4": {"gears.trigger": "V"},
+    "S5": {"gears.trigger": "B"},
+    # two gears: the month after a cautious run is normal, and waiting cash
+    # re-enters through E1's six-a-month buys
+    "S6": {"gears.high_gear": False},
+    # the high month's cash goes straight into the stack's names (the
+    # rebound trap), with no six-name limit that month
+    "S7": {"gears.high_mode": "stack"},
+    "S8": {"gears.v_source": "india_vix"},
+    "S9": {"costs.multiplier": 2.0},
+    "S10": {"gears.selldown_fraction": 1.0},
+}
+
+
+def e3r_rows() -> dict:
+    """E3-R's sweep (§6): the base row and S1-S10."""
+    return dict(E3R_ROWS)
+
+
+# Charter E2-D2 §6. S3 (insider net buying as a tiebreak among entry
+# candidates) is not built: "tiebreak" needs defining at the lock first, and
+# a row that was guessed would be a second rule (E2-D2 readiness §3).
+E2D2_ROWS = {
+    "base": {},
+    "S1": {"insider_selling.threshold": 0.005},
+    "S2": {"insider_selling.threshold": 0.02},
+}
+
+
+def e2d2_rows() -> dict:
+    """E2-D2's sweep (§6) as built: the base row, S1 and S2."""
+    return dict(E2D2_ROWS)
+
+
 def e1b_rows() -> dict:
     """E1b's sweep: the base row, E1's nine, then S10 and S11."""
     return {**ROWS, **E1B_EXTRA_ROWS}
@@ -475,6 +537,8 @@ def run_sweep(config, period, panel, indices, cost_model_factory, tax_policy,
             cw = _close_wide(panel) if (deferred_any or control_any) else None
             extras["deferred_lots"] = artifacts.deferred_lot_outcomes(res, close_w=cw)
             extras["control_sells"] = artifacts.control_sell_outcomes(res, close_w=cw)
+            if getattr(res, "regime", None):                   # E3-R §8
+                extras["e3r"] = artifacts.e3r_extras(res, trend_index)
             out[row] = {"result": res, "metrics": artifacts.metrics_of(res, bench),
                         "error": None, "adv_skips": artifacts.adv_skip_report(res),
                         "extras": extras}
@@ -527,6 +591,17 @@ def run_sweep(config, period, panel, indices, cost_model_factory, tax_policy,
                         "row's comparison"}
         except Exception as e:
             out[f"_{row}_stack"] = {"row": row, "error": f"{type(e).__name__}: {e}"}
+
+    # E3-R §11 (a): the months each row's V signal was undefined -- and so
+    # counted as not firing -- go into the manifest, per row, because S8
+    # (India VIX) has a different undefined span from the realised-vol rows.
+    if manifest is not None:
+        und = {r: v["result"].regime["v_undefined_months"]
+               for r, v in out.items()
+               if isinstance(v, dict) and v.get("result") is not None
+               and getattr(v["result"], "regime", None)}
+        if und:
+            manifest["v_undefined_months"] = und
 
     _say("  benchmarks and artifacts")
     out["_benchmarks"] = {k: artifacts.metrics_of(v) for k, v in bench.items()}

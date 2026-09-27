@@ -31,6 +31,8 @@ The evidence it rests on:
   development 49.2% vs 54.7%; E1 development 53.3% vs 55.4%).
 
 ## 3. Signals at month-end M (point-in-time; no new data)
+*Amended 2026-09-27, §11 (a): an undefined signal counts as not firing.*
+
 - **T, trend**: Nifty 50 month-end close below its 10-month average
   (E1 §6, unchanged).
 - **V, volatility**: realised daily volatility over the last 126 sessions
@@ -40,6 +42,9 @@ The evidence it rests on:
   200-session average is below 40%.
 
 ## 4. The one change: E1 §6's on/off rule is replaced by three gears
+*Amended 2026-09-27, §11 (b)–(d): the sell-down ranks names, not lots;
+the high gear buys NIFTYBEES; what interrupts its disposal.*
+
 - **Cautious**: T and (V or B). Target equity is 50% of portfolio value.
   If equity is above target, sell down at the next open, at most half the
   excess per month, choosing lots in this order: realised loss first,
@@ -108,3 +113,45 @@ they never give certainty, and false alarms are counted, not hidden.
   passes only if the high gear's recovery return exceeds the cautious
   gear's cost in 2017–2021.** No rule changes on this line — it is recorded
   so the prediction cannot be written after the result is known.
+- 2026-09-27 — **four decisions by Aarsh, before lock and before any E3-R
+  run**, settling the four questions in `docs/notes/E3R-readiness.md` §3.
+  §3 and §4 above are read together with these entries.
+
+  **(a) An undefined signal counts as not firing.** V needs 126 sessions and
+  then 36 months before its percentile exists, so it is undefined until
+  about 2007-07. Until then the cautious condition is effectively **T and
+  B**. The months with undefined V are recorded in the manifest. *Reason:*
+  the readiness note's three readings each change the 2008 result; this one
+  uses every signal that exists and invents none.
+
+  **(b) The sell-down chooses names and share counts, never lots.** Within
+  a name the lot book sells **FIFO**, as Indian demat rules require, so
+  `tax/india_lots.py` does not change. Held names are ranked by the tax
+  cost per rupee raised if the whole position were sold FIFO: **net loss
+  first, then net long-term gain, then short-term gain, lowest tax per
+  rupee first; ties broken by the weakest current score.** Whole names are
+  sold down the ranking, the last one partially in whole shares, until the
+  month's sell-down amount is met. *Reason:* §4's "lot order" is a ranking
+  across the book, but a broker cannot sell a chosen lot of a name out of
+  FIFO order; ranking names by what a FIFO sale would cost is the version
+  that can actually be executed.
+
+  **(c) The high gear's broad-market instrument is NIFTYBEES**, not a
+  synthetic Nifty 500 index: tradable, with real traded value and its fees
+  already in its price, so there is no injected index row and no synthetic
+  expense drag. It is **exempt from E1 §2's eligibility and from the band**
+  (the gear holds it, not the rank); **subject to the ADV guard** like any
+  buy; **equity tax class**. Its adjusted series is to be confirmed free of
+  unexplained jumps across the window, and whether its dividends are in the
+  dividend table recorded (if not, the high gear is slightly understated,
+  and the verdict note says so). *Reason:* an index cannot be bought; the
+  ETF can, and it removes three of the readiness note's open questions at
+  once. This replaces §4's "Nifty 500 index security (as used for B2, with
+  a declared 0.30% p.a. expense drag)".
+
+  **(d) The NIFTYBEES holding is one position.** In **normal** gear, its
+  lots that have turned long-term are sold in thirds over the next three
+  month-ends, proceeds going to the stack's buy rules. In **cautious** gear
+  it is ranked with every other holding by (b). A new high-gear month adds
+  to it; its lots keep their own dates. *Reason:* settles what interrupts
+  the disposal clock without giving the position a lifecycle of its own.

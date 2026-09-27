@@ -24,10 +24,22 @@ _(none)_ — verified 2026-09-27 with `tools\status.ps1`.
 |---|---|---|---|---|---|
 | 1 | **Infrastructure end-to-end test** — reproduce E1 base development through the locked-run path | see "The end-to-end test" below | `experiments\_infratest\` | ~15 min | yes |
 
+**Reading the E1 identity check** (done 2026-09-27, both PASS). Exit code 0 and `IDENTICAL` is the pass. If either
+says `DIFFERENT`, do not start any E3-R, E2-D1 or E2-D2 run: re-run the
+same tool from a worktree at commit `c33feb3` (before this session's engine
+changes) to tell whether the difference is this session's or older.
+
+**After the locks, not before** (each needs Aarsh's lock first): E2-D1's
+STACK run and sweeps (`docs/notes/E2D1-readiness.md` §5), E3-R's sweeps
+(`.\tools\run_locked.ps1 -Experiment E3-R -Period development`, then
+`validation`), E2-D2's sweeps (`docs/notes/E2D2-readiness.md` §4).
+
 ## Done
 
 | job | finished | output | result |
 |---|---|---|---|
+| E1 identity, development (`tools/e1_identity.py`) | 2026-09-27 | `experiments\_identity\development.log` | **PASS** — equity and trades identical; decisions identical in content; `reference_close` key order differs (set iteration, varies per process, predates this session) |
+| E1 identity, validation | 2026-09-27 | `experiments\_identity\validation.log` | **PASS** — same |
 | shareholding backfill 2010–2026 | 2026-09-25 | `data\bse_shareholding\` | 194,035 / 194,040 (100.0%), 2,940 scrips, `unstable` 0 |
 | red-flag table 2010–2026 | 2026-09-25 | `data\red_flag_events\events.parquet` | 16,054 events, 15,962 with ISIN |
 | E1d development sweep | 2026-09-24 | `experiments\E1d\sweeps\development-a8d5d7cda901a63f` | 11.55% / 49.54% |

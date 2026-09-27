@@ -1,0 +1,64 @@
+[strategy]
+id = "E2-D1"
+charter = "docs/strategies/E2-D1.md"
+
+# --- everything here is E1 as LOCKED ------------------------------------
+# E2-D1 adds a rule; it changes no E1 parameter. These are byte-for-byte the
+# values in configs/e1.toml.
+lookback_sessions = 252
+skip_sessions = 21
+n_hold = 25
+band_exit_rank = 50
+max_buys_per_month = 6
+sip_amount = 50000.0
+initial_cash = 0.0
+cash_rate_annual = 0.06
+trend_filter = "sma10"
+delisting = "last_close"
+delist_confirm_sessions = 250
+
+# --- E2-D1 §3: THE ONE CHANGE -------------------------------------------
+[promoter_selling]
+# A name whose promoter SHARES fell by more than 1.0% of shares outstanding
+# between the latest quarterly pattern usable at M and the one two quarters
+# before is ineligible at M; a held one exits through E1's "ineligible" exit.
+# Usable dates, the split/bonus restatement and the denominator are in
+# pflab/data/positioning.py (charter §3-§4).
+enabled = true
+threshold = 0.01
+# §7 S3: quarters dated by the second-month-end convention dropped
+dated_only = false
+
+[hooks]
+# No intra-month action: §3 exits at the month-end decision.
+side_sleeve_capital = 0.0
+
+[universe]
+# E1's §2, untouched. The exclusion is applied AFTER this ranking, so §2's
+# universe is still "the 500 most traded" with some of them ineligible.
+mode = "turnover_top_n"
+series = ["EQ"]
+min_sessions = 250
+top_n_by_turnover = 500
+turnover_window = 126
+min_price = 10.0
+max_adv_fraction = 0.01
+
+[evaluation]
+period = "e2d1_development"
+periods_path = "configs/evaluation_periods.toml"
+
+[costs]
+path = "configs/costs_zerodha.toml"
+multiplier = 1.0
+
+[tax]
+path = "configs/tax_policy_in.toml"
+
+[benchmarks]
+primary = "NIFTY500_TRI"
+list = ["NIFTY50_TRI", "NIFTY500_TRI", "NIFTY200_MOMENTUM30_TRI", "EQUAL_WEIGHT_UNIVERSE"]
+mom30_expense_ratio = 0.003
+
+[report]
+output_dir = "experiments/E2-D1"

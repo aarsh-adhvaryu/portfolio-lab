@@ -483,3 +483,100 @@ def classify_e2a(dev_sweep_dir, val_sweep_dir, stack_dev_dir, stack_val_dir,
                 "null result means 'not shown', never 'no effect'"),
         },
     }
+
+
+def classify_e2d1(dev_sweep_dir, val_sweep_dir, stack_dev_dir, stack_val_dir) -> dict:
+    """E2-D1: GATE vs E1 base on the charter's own window, plus the mandate
+    block.
+
+    C1-C4 are NOT reported: E2-D1 is a change on the adopted stack, not a
+    candidate base. STACK development is E1 base re-run on 2010-2016
+    (`e2d1_development`); STACK validation is E1's own regression run on
+    2017-2021.
+
+    **Change-log entries that apply** (CLAUDE.md non-negotiable 1): E2-D1
+    §10 (2026-09-27, the split from E2-D and the decisions made with it)
+    and, carried over from E2-D, the 2026-09-24 amendments to data and
+    dating.
+    """
+    load = lambda d: json.loads((Path(d) / "criteria.json").read_text(encoding="utf-8"))
+    cand_dev, cand_val = load(dev_sweep_dir), load(val_sweep_dir)
+    st_dev, st_val = load(stack_dev_dir), load(stack_val_dir)
+    g_dev, g_val = gate_for_period(cand_dev, st_dev), gate_for_period(cand_val, st_val)
+    return {
+        "verdict": gate_verdict(g_dev, g_val),
+        "gate": {"development": g_dev, "validation": g_val,
+                 "verdict": gate_verdict(g_dev, g_val),
+                 "thresholds": GATE_THRESHOLDS, "stack": "E1 base"},
+        "mandate": _mandate_block(cand_dev, cand_val),
+        "window": {
+            "development": "2010-01-01..2016-12-31",
+            "validation": "2017-01-01..2021-12-31",
+            "declared": ("2010-2015 quarters are dated by the second-month-end "
+                         "convention, 2016 onward by filing date; the rule is "
+                         "inert until 2010-11-30, when the first two-quarter "
+                         "comparison becomes usable"),
+        },
+    }
+
+
+def classify_e3r(dev_sweep_dir, val_sweep_dir, stack_dev_dir, stack_val_dir) -> dict:
+    """E3-R §7: GATE vs the stack (E1 base, read from experiments/E1/regression/)
+    and the mandate block. C1-C4 are not reported: E3-R replaces one rule of
+    the stack and is not a candidate base.
+
+    **Change-log entries that apply** (CLAUDE.md non-negotiable 1): §11,
+    2026-09-25 (the prediction below, recorded before any run) and
+    2026-09-27 (Aarsh's four decisions: undefined = not firing; the
+    sell-down ranks names by FIFO tax cost; the high gear holds NIFTYBEES;
+    its disposal and what interrupts it).
+    """
+    load = lambda d: json.loads((Path(d) / "criteria.json").read_text(encoding="utf-8"))
+    cand_dev, cand_val = load(dev_sweep_dir), load(val_sweep_dir)
+    st_dev, st_val = load(stack_dev_dir), load(stack_val_dir)
+    g_dev, g_val = gate_for_period(cand_dev, st_dev), gate_for_period(cand_val, st_val)
+    return {
+        "verdict": gate_verdict(g_dev, g_val),
+        "gate": {"development": g_dev, "validation": g_val,
+                 "verdict": gate_verdict(g_dev, g_val),
+                 "thresholds": GATE_THRESHOLDS, "stack": "E1 base"},
+        "mandate": _mandate_block(cand_dev, cand_val),
+        "prediction_2026_09_25": (
+            "Recorded before any E3-R run: E3-R passes only if the high gear's "
+            "recovery return exceeds the cautious gear's cost in 2017-2021."),
+        "declared": [
+            "NIFTYBEES carries no dividend rows; where its dividends were paid "
+            "out (2008-2013 on the evidence in docs/notes/E3-readiness.md) the "
+            "high gear is understated",
+            "the cost model charges the stock STT schedule on NIFTYBEES",
+        ],
+    }
+
+
+def classify_e2d2(dev_sweep_dir, val_sweep_dir, stack_dev_dir, stack_val_dir) -> dict:
+    """E2-D2: GATE vs E1 base on E2-A's windows (2017-2019 / 2020-2021) and
+    the mandate block. STACK is E1 base on those windows -- the same stack
+    E2-A was judged against (experiments/E2-A/_stack_sd, _stack_sv).
+
+    **Change-log entries that apply** (CLAUDE.md non-negotiable 1): E2-D2 §9
+    (2026-09-27, the split and the denominator) and, from E2-D, 2026-09-24
+    (the PIT limb from 2016-01-01; NSE's feed the only source with values).
+    """
+    load = lambda d: json.loads((Path(d) / "criteria.json").read_text(encoding="utf-8"))
+    cand_dev, cand_val = load(dev_sweep_dir), load(val_sweep_dir)
+    st_dev, st_val = load(stack_dev_dir), load(stack_val_dir)
+    g_dev, g_val = gate_for_period(cand_dev, st_dev), gate_for_period(cand_val, st_val)
+    return {
+        "verdict": gate_verdict(g_dev, g_val),
+        "gate": {"development": g_dev, "validation": g_val,
+                 "verdict": gate_verdict(g_dev, g_val),
+                 "thresholds": GATE_THRESHOLDS, "stack": "E1 base"},
+        "mandate": _mandate_block(cand_dev, cand_val),
+        "window": {"development": "2017-01-01..2019-12-31",
+                   "validation": "2020-01-01..2021-12-31",
+                   "declared_limitation": (
+                       "five years of a 25-name portfolio is a LOW-POWER test; "
+                       "a null result means 'not shown', never 'no effect'"),
+                   "declared": ("market cap uses TOTAL shares outstanding; free "
+                                "float exists in no dataset here")},
+    }

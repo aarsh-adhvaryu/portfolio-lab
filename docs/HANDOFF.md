@@ -1,3 +1,72 @@
+# HANDOFF — 2026-09-27, second session
+
+`pytest -q`: **599 passed** (530 at the start + 69 new). All six locked spans
+verify. Sealed period untouched; `research/journal.jsonl` absent. Nothing
+was running at the start or the end (`tools\status.ps1`). **Nothing in this
+session is committed.**
+
+## Start here (2026-09-27, second session)
+
+**Adopted stack: still E1 base. Nothing locked, nothing run.** Every
+remaining charter question is now in front of Aarsh at once, as the
+instruction asked.
+
+### Done this session
+
+- **Lanes 3–6** of the 2026-09-26 instruction:
+  - **E2-B** readiness (`docs/notes/E2B-readiness.md`), plus the
+    point-in-time **sector map** (`data/sector_map.py`, written to
+    `data/index_membership/sector_map.parquet`) and the **factor betas**
+    (`signals/shock_betas.py`), both tested. Findings: three NSE taxonomies;
+    only **52.8% / 69.5%** of E1's held names are mapped point-in-time; and
+    two of the five caps (Brent, US 10-year) are **degenerate** — the index's
+    own beta crosses zero 16 and 11 times.
+  - **E2-C** readiness (`docs/notes/E2C-readiness.md`): as read, the
+    composite adds **zero** RISK_OFF months to E1's in either period.
+  - **E3** readiness (`docs/notes/E3-readiness.md`): a **data error** —
+    NIFTYBEES and GOLDBEES split 1:10 / 1:100 on 2019-12-19 and changed ISIN
+    the next day, unadjusted in the panel (fixed for ETF rows by
+    `data/etf_events.py`, built with E3-R); the liquid-ETF fallback earns
+    ~2.2 pp less than the stack's own cash by construction.
+  - **Drafts**: `docs/strategies/E1-S.md` (seven ◆ readings of MANDATE §7
+    for Aarsh) and `docs/strategies/E2-E.md` (retail crowding,
+    cross-sectional top decile proposed on priors).
+- **Decisions recorded**: E3-R §11 (a)–(d), with pointers in §3/§4; E2-D
+  split into **`E2-D1.md`** and **`E2-D2.md`**, `E2-D.md` marked superseded;
+  `STATE.md` notes the split adds one to the count.
+- **Built, tested, ready to lock** — each note's last section is what the
+  lock must settle:
+  - **E2-D1** (`docs/notes/E2D1-readiness.md`): the rule acts (a held name
+    flagged in 92 of 144 months), but **16% of flags coincide with an
+    unexplained fall in shares outstanding** (capital reductions,
+    consolidations) that reads as promoter selling.
+  - **E3-R** (`docs/notes/E3R-readiness.md` §7–§8): 35 cautious / 7 high
+    months in development, 9 / 3 in validation; **the ADV guard likely
+    skips the 2009-04 high month** (1% of NIFTYBEES ADV was ₹6.8 lakh);
+    E1's paths byte-identical on synthetic data (`tests/test_engine_golden.py`).
+  - **E2-D2** (`docs/notes/E2D2-readiness.md`): **93% of insider sell value
+    is promoters**, so it largely re-measures E2-D1; 57% of sell value is
+    not a market sale.
+
+### Waiting on Aarsh
+
+1. ~~Run the E1 identity check~~ **Done 2026-09-27, PASS in both periods**:
+   equity and trades identical; decisions identical in content. The only
+   difference is the key order inside `reference_close`, which is built
+   from a Python set and so varies between any two processes (the same at
+   `c33feb3`; not this session's). Logs in `experiments\_identity\`.
+2. **Locks**: E2-D1 (§3: the share-count problem), E3-R (§8: ADV guard and
+   the readings), E2-D2 (§3: categories, modes, S3). Each needs a
+   `tools/check_lock.py` entry at its lock.
+3. **Readiness decisions**: E2-B (six items), E2-C (whether to run a rule
+   that as read never acts), E3 (five items).
+4. **Draft reviews**: E1-S (seven ◆), E2-E (three ◆).
+5. **Unchanged from the first session**: `docs/data/flag_audit_labels.md`
+   is Claude's draft; Section C stays untriggered until Aarsh says
+   "labels reviewed".
+
+---
+
 # HANDOFF — 2026-09-27
 
 `pytest -q`: **530 passed.** Sealed period untouched; `research/journal.jsonl`

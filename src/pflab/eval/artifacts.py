@@ -787,3 +787,80 @@ def control_sell_outcomes(result, close_w=None, months: int = 6) -> dict:
                   f"control sold names that then ROSE -- impatience cost "
                   f"return, which is what §4 exists to measure."),
     }
+
+
+# E3-R §8. Episodes exactly as the charter names them; "2015-16" is both years.
+E3R_EPISODES = {"2008": ("2008-01-01", "2008-12-31"), "2011": ("2011-01-01", "2011-12-31"),
+                "2013": ("2013-01-01", "2013-12-31"),
+                "2015-16": ("2015-01-01", "2016-12-31"),
+                "2018": ("2018-01-01", "2018-12-31"), "2020": ("2020-01-01", "2020-12-31")}
+
+
+def e3r_extras(result, market: Optional[pd.DataFrame] = None) -> dict:
+    """E3-R §8, read off a finished run: months in each gear by year, equity
+    share over time, false alarms, tax realised by gear sales, and the worst
+    fall inside each named episode. Reporting only.
+
+    A false alarm is a cautious month-end followed by a positive three-month
+    Nifty 50 return (month-end to the third month-end after). A month whose
+    third month-end falls after the period end is left out, not guessed.
+    """
+    decs = [d for d in (result.decisions or []) if d.get("gear")]
+    if not decs:
+        return {}
+    by_year: dict = {}
+    share: dict = {}
+    for d in decs:
+        y = str(d["month_end"])[:4]
+        by_year.setdefault(y, {"cautious": 0, "normal": 0, "high": 0})[d["gear"]] += 1
+        if d.get("equity_share") is not None:
+            share.setdefault(y, []).append(float(d["equity_share"]))
+    out = {"gear_months_by_year": by_year,
+           "mean_equity_share_by_year": {y: sum(v) / len(v) for y, v in share.items()},
+           "v_undefined_months": (result.regime or {}).get("v_undefined_months", [])}
+
+    if market is not None and len(market):
+        mk = market.copy()
+        mk["date"] = pd.to_datetime(mk["date"]).dt.date
+        s = mk.set_index("date")["close"].sort_index()
+        mes = [d["month_end"] for d in decs]
+        pos = {m: i for i, m in enumerate(mes)}
+        alarms, judged = [], 0
+        for d in decs:
+            if d["gear"] != "cautious":
+                continue
+            i = pos[d["month_end"]]
+            if i + 3 >= len(mes):
+                continue
+            a, b = s.loc[:d["month_end"]], s.loc[:mes[i + 3]]
+            if not len(a) or not len(b):
+                continue
+            judged += 1
+            r = float(b.iloc[-1] / a.iloc[-1] - 1.0)
+            if r > 0:
+                alarms.append({"month_end": str(d["month_end"]), "market_3m": r})
+        out["false_alarms"] = {"cautious_months_judged": judged,
+                               "false_alarms": len(alarms), "months": alarms}
+
+    tr = result.trades
+    gear_sells = (set(zip(pd.to_datetime(tr.loc[tr["side"] == "SELL_GEAR", "date"]).dt.date,
+                          tr.loc[tr["side"] == "SELL_GEAR", "isin"]))
+                  if len(tr) else set())
+    st = lt = 0.0
+    for r in result.realised or []:
+        if (r.sell_date, r.isin) in gear_sells:
+            if r.long_term:
+                lt += r.gain
+            else:
+                st += r.gain
+    out["gear_sales_realised"] = {"short_term_gain": st, "long_term_gain": lt}
+
+    eq = result.equity
+    if "nav_post" in eq.columns:
+        nav = pd.Series(eq["nav_post"].values, index=pd.to_datetime(eq["date"]))
+        worst = {}
+        for name, (a, b) in E3R_EPISODES.items():
+            w = nav.loc[a:b].dropna()
+            worst[name] = (float((w / w.cummax() - 1.0).min()) if len(w) > 1 else None)
+        out["worst_fall_by_episode"] = worst
+    return out
