@@ -20,7 +20,7 @@ _(none)_ — verified 2026-09-27 with `tools\status.ps1`.
 
 ## Queued
 
-**5. Full re-runs after the D1/D2 base-row flips (E1b's procedure; Aarsh's decision).**
+**5. DONE 2026-09-27 at `1a6ce55`** (E1-P dev/val, E1d dev/val; E1d ADOPT, E1-P INCONCLUSIVE). Full re-runs after the D1/D2 base-row flips (E1b's procedure; Aarsh's decision).**
 Four windows at once, ~15-20 min each, at HEAD (not `run_locked`: the fix is the
 code change). Each prints its output dir when done:
 `$env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; .venv\Scripts\python.exe -u -m pflab.cli sweep configs\e1p.toml --period development`

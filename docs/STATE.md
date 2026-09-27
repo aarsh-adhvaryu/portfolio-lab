@@ -17,7 +17,7 @@ order and reasons in `docs/ROADMAP.md`; the rules for judging in
 > sweeps); E2-A's a–d flip did not survive. Not applied until the full
 > re-runs (E1b's procedure): `docs/reviews/E1-gap-attribution.md` §3.
 
-**Adopted stack: E1 base** (provisional until re-run), read from `experiments/E1/regression/` since the
+**Adopted stack: E1 base — E1d ADOPTED by GATE on 2026-09-27 re-run; the stack becomes E1 + E1d once Aarsh confirms** (E1d §7 caveat). Read from `experiments/E1/regression/` since the
 2026-09-21 measurement correction. Sealed period (2022–2025) never opened;
 `research/journal.jsonl` absent.
 
@@ -33,9 +33,9 @@ on the second would be.
 | | |
 |---|---|
 | **experiments with a computed verdict** | **6** |
-| ADOPTED | **0** |
-| REJECT | 3 (E1-P, E1c, E2-A) |
-| INCONCLUSIVE | 3 (E1, E1b, E1d) |
+| ADOPTED | **1** (E1d, 2026-09-27 re-run; awaiting Aarsh's confirmation) |
+| REJECT | 2 (E1c, E2-A) |
+| INCONCLUSIVE | 3 (E1, E1b, E1-P) |
 | sealed-period reveals used | **0 of 1** |
 | stacks meeting MANDATE §3 and §5 | **0** |
 
@@ -66,9 +66,9 @@ drag compounded by calendar days).
 |---|---|---|---|---|---|---|
 | **E1** | LOCKED 2026-09-17 | **INCONCLUSIVE** (E1 §13) — *provisional until re-run* | **holds** | 8.97% / 55.40% | 27.36% / 39.82% | `docs/notes/E1-diagnostic.md` |
 | **E1b** | LOCKED 2026-09-18 | **INCONCLUSIVE** (GATE vs E1) — *provisional until re-run* | **changed** from REJECT; re-run from scratch 2026-09-22 | 9.74% / 54.96% | 15.51% / 43.34% | `docs/reviews/E1b-verdict-rerun.md` (supersedes `docs/notes/E1b-diagnostic.md`) |
-| **E1-P** | LOCKED 2026-09-19 | **REJECT** (GATE vs E1) — *provisional until re-run* | **holds** | 9.14% / 55.78% | 25.85% / 43.52% | `docs/reviews/E1-P-verdict.md` |
+| **E1-P** | LOCKED 2026-09-19 | **INCONCLUSIVE** (GATE vs E1) — re-run 2026-09-27 | **changed** from REJECT (D1/D2) | 6.92% / 59.75% | 22.18% / 47.99% | `docs/reviews/E1-P-verdict-rerun.md` |
 | **E1c** | LOCKED 2026-09-19, amended after lock (blind) 2026-09-21 | **REJECT** (GATE vs E1) — *provisional until re-run* | **holds** | 6.73% / 70.19% | 20.10% / 36.33% | `docs/reviews/E1c-verdict.md` |
-| **E1d** | LOCKED 2026-09-24 | **INCONCLUSIVE** (GATE vs E1) — *provisional until re-run* | n/a — run under it | 11.55% / 49.54% | 24.27% / 36.72% | `docs/reviews/E1d-verdict.md` |
+| **E1d** | LOCKED 2026-09-24 | **ADOPT** (GATE vs E1) — re-run 2026-09-27 | **changed** from INCONCLUSIVE (D1/D2) | 8.14% / 54.45% | 26.19% / 42.96% | `docs/reviews/E1d-verdict-rerun.md` |
 | **E2-A** | LOCKED 2026-09-25 | **REJECT** (GATE **and** §8a) — *provisional until re-run* | n/a — run under it | 11.85% / 33.18% *(2017–19)* | 41.84% / 8.41% *(2020–21)* | `docs/reviews/E2A-verdict.md` |
 
 E2-A's windows are its own (§6: 2017–2019 / 2020–2021), set by when its

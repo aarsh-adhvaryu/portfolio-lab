@@ -3,6 +3,19 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-09-27, session 3 of 4, final)
+
+**Full re-runs done (commit `1a6ce55`) and classified.** **E1d: ADOPT** (GATE
+11/12 dev, 10/11 val; mandate not met; E1d §7 caveat). **E1-P: INCONCLUSIVE**
+(was REJECT). Notes: `docs/reviews/E1d-verdict-rerun.md`,
+`E1-P-verdict-rerun.md`; STATE counts updated.
+
+**Decision for Aarsh:** confirm E1 + E1d as the stack. If confirmed:
+`runner.main`'s `stack_config` line, `configs/`, STATE banner and every later
+readiness note move to E1d base.
+**Session 4:** that switch; refresh STATE's other figures to D1/D2 numbers
+(E1, E1b, E1c, E2-A, benchmarks); the three open items below.
+
 ## Start here (2026-09-27, session 3 of 4, closing)
 
 **Session 3 is done.** D1/D2 are approved, implemented and regressed (14/14 at
