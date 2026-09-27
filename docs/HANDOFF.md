@@ -3,6 +3,22 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-09-27, session 4 of 4)
+
+**E5-A readiness only, no code, no runs.** E5-A now has its own charter,
+`docs/strategies/E5-A.md` (DRAFT; `E5.md` points to it). It covers: A0, a
+price/volume control; issuer events, positioning, world exposure and
+company news each added alone against A0; purging by stored label
+interval; tuning on data truncated at 2010-12-31, with 2007–2010
+exploratory and development from 2011; a feature store holding
+availability and publication time; a price-only fallback with its share
+reported.
+
+**Not ready to lock.** Nine decisions are in `docs/notes/E5A-readiness.md`
+§4 (order, stack, lightgbm, tuning, refit, activation/windows, positioning
+scope, A4 source, adoption rule); the build list is §3. Still open from
+session 3: the E1 + E1d stack confirmation and STATE refresh.
+
 ## Start here (2026-09-27, session 3 of 4, final)
 
 **Full re-runs done (commit `1a6ce55`) and classified.** **E1d: ADOPT** (GATE

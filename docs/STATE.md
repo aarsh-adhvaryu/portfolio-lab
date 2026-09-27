@@ -41,7 +41,7 @@ on the second would be.
 
 Locked and awaiting a run: none. **Built and ready to lock** (2026-09-27):
 E2-D1, E3-R, E2-D2 — each note's last section says what the lock must settle.
-Readiness notes: E2-B, E3. Drafts: E1-S, E2-E.
+Readiness notes: E2-B, E3, E5-A (2026-09-27, not ready: 9 decisions). Drafts: E1-S, E2-E.
 
 **Closed or parked, not counted as tested** (2026-09-27, Aarsh): **E2-C
 closed, NOT RUN** — its trigger fired only in months already RISK_OFF, so it
