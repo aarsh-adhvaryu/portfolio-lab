@@ -114,3 +114,37 @@ reading: `trend_off` **lowers** CAGR by 1.24 pp (MaxDD 75.84%) yet **raises**
 XIRR by 3.14 pp and terminal wealth by ₹11.7 L. The unit-NAV CAGR and the
 money-weighted return disagree on the trend filter's sign, so this note
 reports both throughout. 0.9 min per row: the full job is ~15 min.
+
+### Results (Aarsh's run, `5bba5f8`; `experiments/E1/diagnostics/gap-development-ce4403d3ad65303b/`)
+
+Full table in that directory's `summary.md`. The same evening's regression
+re-run at `5bba5f8` reproduced every one of the 14 base rows to 0.01 pp:
+D1/D2 are not implemented there, and the new knobs are off by default.
+
+Required (§5): XIRR 17.53%, terminal ₹1.51 cr. Base: XIRR 2.11%, ₹0.67 cr.
+**Gap: 15.42 pp XIRR, ₹0.84 cr.** One change each, Δ vs base:
+
+| bucket | CAGR pp | XIRR pp | terminal ₹L | reading |
+|---|---:|---:|---:|---|
+| six-buy cap off | +3.19 | +3.24 | +12.1 | largest single item; the cap strands cash (eq. wt 73% → 82%) |
+| trend filter off | −1.24 | +3.14 | +11.7 | CAGR and XIRR disagree on sign; MaxDD 55.6% → 75.8% |
+| rank top-up ≤25 | −0.04 | −0.01 | −0.0 | nil |
+| ADV skips off | −0.30 | −0.10 | −0.3 | nil to slightly negative |
+| all four together | −3.03 | +1.33 | +4.7 | interaction ≈ −4.9 pp XIRR vs the sum (+6.27) |
+| selection (base − mean of 5 lotteries) | −0.37 | **−1.28** | −4.7 | momentum picks did **no better than random** (lotteries 0.45–4.80% XIRR) |
+| weighting (momentum-tilted) | −0.26 | −0.33 | −1.1 | equal weight is not the problem |
+| costs zero | +0.45 | +0.57 | +2.0 | |
+| tax zero | +1.50 | +2.05 | +7.4 | |
+| frictionless (all above) | −1.22 | +3.66 | +13.9 | still 5.77% XIRR vs B5 frictionless 17.38% |
+
+**Findings.** (1) Removing every friction closes 3.7 of 15.4 pp. The other
+**11.6 pp XIRR is selection and universe against the index**, and in this
+decade E1's momentum selection earned less than a random pick from the same
+universe. (2) **This is contaminated by D1**: base has 13 write-downs, the
+lotteries 4–9, frictionless 19. Momentum holds split-heavy winners, so the
+ISIN-handover write-downs fall mostly on it. The selection finding cannot be
+read until D1 is fixed. (3) Deployment frictions overlap heavily. Taken
+alone, the cap and the trend filter are each worth ≈3 pp XIRR; together with
+the rest they are worth 1.3.
+
+Decisions for Aarsh: none new. D1 first; then re-run this job (same command).
