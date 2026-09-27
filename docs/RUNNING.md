@@ -23,7 +23,7 @@ _(none)_ — verified 2026-09-27 with `tools\status.ps1`.
 | # | job | command (from `D:\portfolio_lab`) | output | expect | can share the machine? |
 |---|---|---|---|---|---|
 | 1 | **Infrastructure end-to-end test** — reproduce E1 base development through the locked-run path | see "The end-to-end test" below | `experiments\_infratest\` | ~15 min | yes |
-| 3 | **E1 gap attribution, development** (audit Deliverable 2; diagnostic, not promotable) — 12 one-change controls + 3 combined rows + B2/B5 twice | `$env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; .venv\Scripts\python.exe tools\gap_attribution.py` | `experiments\E1\diagnostics\gap-development-<id>\summary.md`; prints `DONE ->` | see smoke timing in `docs/reviews/E1-gap-attribution.md` | yes (one panel, ~3 GB) |
+| 3 | **E1 gap attribution, development** (audit Deliverable 2; diagnostic, not promotable) — 12 one-change controls + 3 combined rows + B2/B5 twice | `$env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; .venv\Scripts\python.exe tools\gap_attribution.py` | `experiments\E1\diagnostics\gap-development-<id>\summary.md`; prints `DONE ->` | ~15 min (0.9 min a row) | yes (one panel, ~3 GB) |
 | 2 | ~~Regression under the 2026-09-27 corrections~~ **DONE 2026-09-27**, 14/14 markers, commit 19f1ea2 | `tools/regress_bases.py --report` | `experiments\_regress\` | — | — |
 
 **2026-09-27, accounting corrections (E1 §15):** job 1 and `tools/e1_identity.py`

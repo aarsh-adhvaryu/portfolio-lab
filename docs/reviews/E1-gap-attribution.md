@@ -104,3 +104,13 @@ the panel has no shares outstanding for a cap weight.
 
 **Pending: Aarsh's run** (`docs/RUNNING.md`). Run it once now and once
 after D1/D2 with the same command; the second run is the one to read.
+
+**Smoke run (Claude, `0642432`, base + `trend_off`)**:
+`experiments/E1/diagnostics/gap-development-4a30f7b5ab154849/`. Base
+reproduces the regression exactly (2.87% / 55.58%, 839 trades, 39 skips,
+13 write-downs; B2/B5 as in the sweep). Required (§5): CAGR 15.73%, XIRR
+17.53%, terminal ₹1.51 cr; base XIRR 2.11%, terminal ₹0.67 cr. First
+reading: `trend_off` **lowers** CAGR by 1.24 pp (MaxDD 75.84%) yet **raises**
+XIRR by 3.14 pp and terminal wealth by ₹11.7 L. The unit-NAV CAGR and the
+money-weighted return disagree on the trend filter's sign, so this note
+reports both throughout. 0.9 min per row: the full job is ~15 min.
