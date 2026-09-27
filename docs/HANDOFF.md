@@ -3,6 +3,23 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-09-27, session 3 of 4, closing)
+
+**Session 3 is done.** D1/D2 are approved, implemented and regressed (14/14 at
+`0926a5b`); the gap attribution was re-run. Everything is in
+`docs/reviews/E1-gap-attribution.md` §3. `pytest -q`: 648 passed. Nothing running.
+
+- On base rows, **E1-P flips REJECT → INCONCLUSIVE** (G1 val +0.52 pp,
+  knife-edge) and **E1d is a candidate ADOPT**. Both need full sweeps under
+  E1b's procedure (RUNNING.md job 5). E2-A's a–d flip did not survive.
+- Gap (dev): 10.52 pp XIRR. Frictions explain 2.0 pp; tax is the largest.
+  Momentum selection is indistinguishable from random.
+
+**Next (session 4):** Aarsh decides whether to run job 5. Then `classify_e1p` /
+`classify_e1d` against the E1 regression base, verdict notes, STATE. Still
+open from earlier: `collect_daily` factor overwrite (session 1 finding 1),
+dividends inside BE stints, and the ADV-skip rise (§3).
+
 ## Start here (2026-09-27, session 3 of 4, D1/D2 implemented)
 
 **D1/D2 approved by Aarsh and implemented** (`pflab/data/repairs.py`, E1 §15

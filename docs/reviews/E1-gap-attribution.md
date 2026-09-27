@@ -148,3 +148,86 @@ alone, the cap and the trend filter are each worth ≈3 pp XIRR; together with
 the rest they are worth 1.3.
 
 Decisions for Aarsh: none new. D1 first; then re-run this job (same command).
+
+## 3. Under D1/D2 — supersedes §1 and §2's results (regression at `0926a5b`)
+
+D1/D2 approved 2026-09-27 (E1 §15 entry of that date, with the declared
+transition-action refinement). All 14 regression jobs at `0926a5b`; gap
+attribution `experiments/E1/diagnostics/gap-development-8e9bd6ce8a0f01e8/`.
+
+### Base rows, original → D1/D2 (CAGR / MaxDD)
+
+| exp. | development | validation |
+|---|---|---|
+| E1 | 8.97 / 55.40 → **6.43 / 59.02** | 27.36 / 39.82 → **21.65 / 48.76** |
+| E1b | 9.74 / 54.96 → 8.40 / 54.96 | 15.51 / 43.34 → 15.90 / 46.14 |
+| E1-P | 9.14 / 55.78 → 6.92 / 59.75 | 25.85 / 43.52 → 22.18 / 47.99 |
+| E1c | 6.73 / 70.19 → 5.90 / 71.20 | 20.10 / 36.33 → 18.55 / 35.86 |
+| E1d | 11.55 / 49.54 → 8.14 / 54.45 | 24.27 / 36.72 → 26.19 / 42.96 |
+| E2-A | 11.85 / 33.18 → 8.28 / 38.32 | 41.84 / 8.41 → 44.89 / 8.47 |
+| E1 on E2-A windows | 14.60 / 31.37 → 8.13 / 39.54 | 50.04 / 7.19 → 48.70 / 7.36 |
+
+Benchmarks unchanged (index series). E1 base write-downs: dev 13 → 6, val 2.
+
+### Verdicts on base rows (REJECT/INCONCLUSIVE need only base rows; ADOPT also needs G3)
+
+| exp. | recorded | GATE Δ dev / val (CAGR pp, MaxDD pp) | on D1/D2 | flips? |
+|---|---|---|---|---|
+| E1 | INCONCLUSIVE | C1 −1.63 ✗ / +6.88 ✓ | INCONCLUSIVE | no |
+| E1b | INCONCLUSIVE | +1.97, −4.06 ✓✓ / −5.75, −2.61 ✓✗ | INCONCLUSIVE | no |
+| **E1-P** | **REJECT** | +0.49, +0.73 ✗✓ / **+0.52, −0.77 ✓✓** | **INCONCLUSIVE** | **yes** |
+| E1c | REJECT | −0.53, +12.18 ✗✗ / −3.11, −12.89 ✓✗ | REJECT (G2 fails both) | no |
+| **E1d** | **INCONCLUSIVE** | +1.71, −4.56 ✓✓ / **+4.54, −5.80 ✓✓** | **ADOPT if G3 holds** | **candidate** |
+| E2-A | REJECT | +0.16, −1.22 ✗✓ / −3.81, +1.11 ✗✗ | REJECT (G1 fails both; §8a unchanged) | no — §1's a–d flip did not survive |
+
+- **E1-P** flips on a knife-edge. Its validation G1 is +0.52 pp against a
+  0.5 bar, and development misses by 0.01 pp. It cannot ADOPT, because
+  development G1 fails.
+- **E1d** passes G1, G2 and G4 on base rows in both periods. ADOPT would
+  make it the stack. That needs G3 (two thirds of its 12 rows) in both
+  periods, which only full sweeps can show.
+- Both follow E1b's procedure: full sweeps of both periods from scratch at
+  HEAD with the fix declared, by Aarsh's decision, then `classify_e1p` /
+  `classify_e1d` against the E1 regression base.
+- **Mandate:** still no stack meets it. E1 base is −7.30 pp against B5 in
+  development.
+
+### Gap attribution under D1/D2 (development, diagnostic, not promotable)
+
+Required (§5): XIRR 17.53%, ₹1.51 cr. Base: XIRR **7.01%**, ₹0.86 cr, so
+the gap is **10.52 pp, ₹0.65 cr** (it was 15.42 pp before D1/D2).
+
+| bucket | CAGR pp | XIRR pp | terminal ₹L |
+|---|---:|---:|---:|
+| six-buy cap off | +2.11 | +1.21 | +5.7 |
+| trend filter off | −3.28 | +1.44 | +6.8 (MaxDD 80.5%) |
+| rank top-up ≤25 | −1.13 | −0.25 | −1.1 |
+| ADV skips off | −0.07 | −0.75 | −3.3 |
+| all four | −4.56 | +0.12 | +0.5 |
+| selection (base − mean of 5 lotteries) | +0.61 | −1.20 | — (lotteries 5.69–11.11% XIRR) |
+| weighting (momentum-tilted) | −1.15 | −1.44 | −6.2 |
+| costs zero | +0.38 | +0.24 | +1.1 |
+| tax zero | +1.68 | +2.11 | +10.1 |
+| frictionless | −3.05 | +2.01 | +9.6 |
+
+**Findings.**
+1. Frictions close **2.0 of 10.5 pp**. Tax is the largest single item
+   (2.1 pp XIRR); the cap and the trend filter are each worth about 1.2–1.4.
+   Together the deployment changes net to about zero: removing all four adds
+   cash to the worst drawdowns (MaxDD 80.7%).
+2. The **residual is 8.35 pp XIRR**: frictionless E1 at 9.03% against
+   frictionless B5 at 17.38%. That residual is selection plus universe
+   against the index.
+3. E1's momentum selection is **indistinguishable from random** on the same
+   universe and mechanics. It sits inside the five lotteries' range on both
+   measures: +0.6 pp on CAGR, −1.2 pp on XIRR. With write-downs at 6 (5 or
+   fewer for the lotteries), D1 no longer explains that.
+4. CAGR and XIRR disagree on the trend filter and on selection. On the
+   money-weighted return the investor earns, the trend filter costs 1.4 pp
+   while cutting the worst fall by about 21 pp.
+
+**ADV skips 39 → 83** (2013: 9 → 31). Partly explained. 2 of the 10
+largest follow BE rows, whose thin turnover now enters the 20-session ADV.
+The same names are skipped repeatedly (INE978A01019 three times). Not a
+defect, since BE liquidity is real, but it should be read before any
+verdict note cites a skip count.

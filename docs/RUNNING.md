@@ -20,7 +20,13 @@ _(none)_ — verified 2026-09-27 with `tools\status.ps1`.
 
 ## Queued
 
-**4. Regression + gap attribution under D1/D2 (commit after `c8ba002`).** Four
+**5. Full re-runs after the D1/D2 base-row flips (E1b's procedure; Aarsh's decision).**
+Four windows at once, ~15-20 min each, at HEAD (not `run_locked`: the fix is the
+code change). Each prints its output dir when done:
+`$env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; .venv\Scripts\python.exe -u -m pflab.cli sweep configs\e1p.toml --period development`
+(and `--period validation`; and the same two for `configs\e1d.toml`).
+
+**4. DONE 2026-09-27 at `0926a5b`.** Regression + gap attribution under D1/D2 (commit after `c8ba002`).** Four
 lanes in four terminals, then the gap job; commands in HANDOFF / chat of
 2026-09-27. Old marker files are overwritten; old result dirs stay.
 
