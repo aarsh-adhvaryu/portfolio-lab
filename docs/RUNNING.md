@@ -20,6 +20,10 @@ _(none)_ — verified 2026-09-27 with `tools\status.ps1`.
 
 ## Queued
 
+**4. Regression + gap attribution under D1/D2 (commit after `c8ba002`).** Four
+lanes in four terminals, then the gap job; commands in HANDOFF / chat of
+2026-09-27. Old marker files are overwritten; old result dirs stay.
+
 | # | job | command (from `D:\portfolio_lab`) | output | expect | can share the machine? |
 |---|---|---|---|---|---|
 | 1 | **Infrastructure end-to-end test** — reproduce E1 base development through the locked-run path | see "The end-to-end test" below | `experiments\_infratest\` | ~15 min | yes |

@@ -3,6 +3,15 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-09-27, session 3 of 4, D1/D2 implemented)
+
+**D1/D2 approved by Aarsh and implemented** (`pflab/data/repairs.py`, E1 §15
+entry, `tests/test_repairs.py`; 648 passed). Smoke: E1 dev base 6.43% / 59.02%,
+XIRR 7.01%, 6 write-downs (was 2.87% / 13). ADV skips 39 -> 83 (BE turnover
+now in the 20-session ADV); read it in the regression. **Next: Aarsh re-runs
+`regress_bases.py` (4 lanes) and `gap_attribution.py`; then re-read E2-A's
+flip and the selection finding.**
+
 ## Start here (2026-09-27, session 3 of 4)
 
 D1/D2 still undecided, so session 3 did the audit's other two items on the
