@@ -155,3 +155,11 @@ they never give certainty, and false alarms are counted, not hidden.
   it is ranked with every other holding by (b). A new high-gear month adds
   to it; its lots keep their own dates. *Reason:* settles what interrupts
   the disposal clock without giving the position a lifecycle of its own.
+
+- 2026-09-27 (Aarsh, session 1 of 4) — **(e) the high gear's NIFTYBEES buy is split across sessions**, each
+  session's slice capped at 1% of NIFTYBEES's trailing 20-session average
+  traded value, until the month's amount is bought; it is **never
+  skipped**. Replaces the ADV-guard skip for this buy only (E1 §7's skip is
+  unchanged for stocks). *Reason:* the readiness note (§8) found the guard
+  would skip the 2009-04 high month outright (1% of ADV was ₹6.8 lakh); a
+  skipped high gear tests nothing.

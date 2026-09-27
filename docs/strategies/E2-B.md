@@ -62,3 +62,11 @@ causes.
 
 ## 10. Change log
 - 2026-09-16 — draft.
+- 2026-09-27 (Aarsh, session 1 of 4) — **beta cap and sector source settled
+  before build.** Cap: |portfolio beta − Nifty 500 beta| ≤ **1.0
+  cross-sectional SD** of the eligible names' betas at M (S1 / S2: 0.5 /
+  1.5 SD). *Reason:* a cap proportional to the index's own beta collapses
+  to zero width when that beta crosses zero (Brent 16 times, US 10-year 11
+  times; `docs/notes/E2B-readiness.md`). Sectors: a hand-verified
+  crosswalk of NSE's three schemes; gaps filled from BSE's scrip master,
+  which is current rather than point-in-time (declared).

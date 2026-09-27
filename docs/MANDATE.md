@@ -54,7 +54,8 @@ fell about 63% in 2008 and 38% in 2020 in this engine.
 effective 2026-09-21.**
 
 ## 4. Universe
-The whole Nifty 500 (E1's universe), not large caps only. E1b showed
+E1 §2's universe — the 500 most-traded eligible NSE stocks, recomputed
+monthly — not Nifty 500 index membership, and not large caps only. E1b showed
 E1's 2017–2021 return came from outside the top 200; this mandate chooses
 that exposure deliberately.
 
@@ -195,6 +196,11 @@ response to a result the change would alter.
   2026-09-21 measurement correction and its verdict changed
   (`docs/reviews/E1b-verdict-rerun.md`). A factual correction only; nothing
   else in the mandate changes.
+- 2026-09-27 — §4 wording fix (Aarsh): the universe is **E1 §2's** (the 500
+  most-traded eligible NSE stocks), not Nifty 500 membership; the old text
+  called it "the whole Nifty 500". The two rules differ; E1's is the one
+  every run has used, so this records the governing definition and moves
+  no result.
 
 ---
 

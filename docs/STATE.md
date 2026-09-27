@@ -28,7 +28,12 @@ on the second would be.
 
 Locked and awaiting a run: none. **Built and ready to lock** (2026-09-27):
 E2-D1, E3-R, E2-D2 — each note's last section says what the lock must settle.
-Readiness notes: E2-B, E2-C, E3. Drafts: E1-S, E2-E.
+Readiness notes: E2-B, E3. Drafts: E1-S, E2-E.
+
+**Closed or parked, not counted as tested** (2026-09-27, Aarsh): **E2-C
+closed, NOT RUN** — its trigger fired only in months already RISK_OFF, so it
+equals the stack; thresholds not loosened. **E2-D2 parked** until E2-D1's
+verdict.
 
 **E2-D was split in two on 2026-09-27** (Aarsh): **E2-D1** promoter selling
 (2010–2016 / 2017–2021) and **E2-D2** insider selling from PIT (2017–2019 /

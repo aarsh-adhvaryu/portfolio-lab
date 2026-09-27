@@ -52,3 +52,8 @@ No prediction of crashes. Four episodes are anecdotes.
 
 ## 9. Change log
 - 2026-09-16 — draft.
+- 2026-09-27 (Aarsh, session 1 of 4) — **closed, NOT RUN.** As read, its
+  trigger fires only in months E1's trend rule already has RISK_OFF, so the
+  experiment equals the stack (`docs/notes/E2C-readiness.md`). Thresholds
+  are **not** loosened to make it act. Recorded in `docs/STATE.md`; not
+  counted as tested.
