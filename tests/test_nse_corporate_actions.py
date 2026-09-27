@@ -155,7 +155,7 @@ def test_identical_duplicate_rows_do_not_compound():
 def test_empty_feed_gives_the_right_columns():
     raw = pd.DataFrame({"isin": [], "series": [], "ex_date": [], "subject": []})
     out = nca.factors(raw=raw)
-    assert list(out.columns) == ["isin", "ex_date", "factor"]
+    assert list(out.columns) == ["isin", "ex_date", "factor", "bonus_factor"]
 
 
 # -- PREVCLOSE-derived factors (charter §9 / §15, 2026-09-16) -----------

@@ -8,6 +8,9 @@ Loop over sessions in the truncated panel, trading only inside
 [period.start, period.end] (history before start feeds signals):
 
   each session t:
+    0. corporate actions and dividends going ex on t, on the holdings carried
+       into t, BEFORE any of t's trades (E1 §15, 2026-09-27); then exits
+       deferred for want of a quote are retried at open(t)
     1. if t is the first session of a month:
          a. if t is the first session of a new FY: settle FY(t-1) on the
             LotBook; deduct liability from cash (may go negative)
@@ -17,13 +20,16 @@ Loop over sessions in the truncated panel, trading only inside
               then buys from portfolio.construct.buy_list at open(t),
               subject to the RISK_OFF flag from M and the ADV guard
             record reference_price=close(M), fill_price=open(t)
-    2. credit dividends going ex on t (shares held x dps) to cash
-    3. accrue cash at cash_rate_annual / 365 on a positive balance
+    2. suspension: a held name missing for the confirm window is written
+       down to zero -- a valuation, not a sale
+    3. accrue cash at cash_rate_annual / 365 on a positive balance; the
+       interest is taxable income of the FY it accrues in
     4. mark to market; append (t, equity_value, cash, external_flow)
     5. if t is a month-end M: compute eligibility, momentum ranks, RISK_OFF
        and the decision; store it with the inputs it used
 
-  at the end: simulate liquidation tax on the last session; produce three
+  at the end: simulate liquidation tax on the last session (on every book,
+  including an all-cash one; a failure raises); produce three
   NAV paths: pre-tax, after-tax (taxes paid), liquidation-adjusted.
 
 Prices
@@ -53,7 +59,7 @@ from pflab.portfolio.construct import buy_list, buy_list_weighted
 from pflab.signals.momentum import momentum_panel, rank_desc
 from pflab.signals.vol_scaled import (momentum_ratios, standardise,
                                       vol_scaled_ratios)
-from pflab.tax.india_lots import FractionalEntitlement, LotBook, fy_of
+from pflab.tax.india_lots import LotBook, fy_of
 
 # §9 operational thresholds. A name whose rows stop is not known to have
 # stopped until enough sessions pass; the charter's "session after its last
@@ -237,6 +243,11 @@ def run(config, period, panel, indices, cost_model, tax_policy,
     cash_rate = float(strat.get("cash_rate_annual", 0.06))
     trend_filter = strat.get("trend_filter", "sma10")
     delisting = strat.get("delisting", "last_close")
+    # Both values now write down at the confirm window and differ only in its
+    # default length (E1 §15, 2026-09-27); the names are kept so every config
+    # and manifest still reads.
+    if delisting not in ("last_close", "total_loss"):
+        raise ValueError(f"unknown strategy.delisting={delisting!r}")
     confirm = int(strat.get("delist_confirm_sessions",
                             DELIST_CONFIRM_SESSIONS_S9 if delisting == "total_loss"
                             else DELIST_CONFIRM_SESSIONS))
@@ -383,6 +394,7 @@ def run(config, period, panel, indices, cost_model, tax_policy,
     cash = float(strat.get("initial_cash", 0.0))
     pending: Optional[dict] = None
     suspended: Dict[str, int] = {}        # isin -> consecutive missing sessions
+    pending_exits: Dict[str, Optional[int]] = {}  # isin -> qty, None = all
     last_close: Dict[str, float] = {}
     trades: List[dict] = []
     decisions: List[dict] = []
@@ -402,6 +414,28 @@ def run(config, period, panel, indices, cost_model, tax_policy,
         in_window = period.start <= t <= period.end
         flow = 0.0
 
+        # --- 0. ex-date events and dividends (§9), at the START of t ------
+        # E1 §15, 2026-09-27 (audit defect 1): entitlements come from the
+        # holdings carried into t, so a first buy on the ex-date gets neither
+        # the split nor the dividend, and a seller on the ex-date keeps both.
+        factors_today: Dict[str, float] = {}
+        credited_today, dividends_today = _apply_ex_date_events(
+            t, book, act_map, div_map, tax_policy, warnings, trades,
+            last_close=last_close, share_factors=factors_today)
+        cash += credited_today
+        if factors_today:
+            pending = _rescale_pending(pending, factors_today)
+            for isin, q in list(pending_exits.items()):
+                if q is not None and isin in factors_today:
+                    pending_exits[isin] = int(math.floor(q / factors_today[isin] + 1e-6))
+
+        # --- 0b. exits waiting for a quote, and written-down names that
+        # trade again, execute at open(t) (§9; E1 §15 2026-09-17/27)
+        if in_window and (pending_exits or book.written_down):
+            cash = _retry_exits(t, book, cash, open_w, cost_model, trades,
+                                warnings, pending_exits)
+        n_warn = len(warnings)
+
         # --- 1. month start: FY settlement, SIP, execute the stored decision
         if t in month_starts and in_window:
             fy = fy_of(t)
@@ -415,6 +449,7 @@ def run(config, period, panel, indices, cost_model, tax_policy,
                         taxes.append({"fy": prior, "stcg": ft.stcg_realised,
                                       "ltcg": ft.ltcg_realised,
                                       "dividends": ft.dividends,
+                                      "interest": ft.interest,
                                       "tax": ft.total, "paid_on": t})
             cash += sip
             flow += sip
@@ -440,7 +475,14 @@ def run(config, period, panel, indices, cost_model, tax_policy,
             cash = _intra_month_exits(t, book, cash, open_w, cost_model,
                                       trades, warnings, hooks, state)
 
-        # --- suspension / delisting (§9) -------------------------------
+        # An exit that found no quote today is retried every session (§9).
+        _register_deferred(warnings[n_warn:], pending_exits)
+
+        # --- 2. suspension (§9; E1 §15 2026-09-17, corrected 2026-09-27) --
+        # A held name without a row stays marked at its last close. On the
+        # `confirm`-th missing session (250; S9 20) it is written down to
+        # zero: no cash moves, because there is no quote to sell at, and no
+        # capital loss is booked, because nothing was sold (audit defect 2).
         for isin in list(book.positions()):
             if isin in traded_today:
                 suspended.pop(isin, None)
@@ -448,30 +490,15 @@ def run(config, period, panel, indices, cost_model, tax_policy,
             n = suspended.get(isin, 0) + 1
             suspended[isin] = n
             if n >= confirm and in_window:
-                px = last_close.get(isin, 0.0)
-                if delisting == "total_loss":
-                    book.write_off(isin, t)
-                    warnings.append({"kind": "write_off", "isin": isin, "date": t,
-                                     "missing_sessions": n})
-                else:
-                    qty = book.holdings(isin)
-                    proceeds = qty * px
-                    c = cost_model.sell_cost(proceeds, 1) if proceeds > 0 else 0.0
-                    book.sell(isin, t, qty, px, c)
-                    cash += proceeds - c
-                    trades.append(_trade(t, isin, "SELL_DELIST", qty, px, px, c))
-                    warnings.append({"kind": "delist_exit", "isin": isin, "date": t,
-                                     "missing_sessions": n, "price": px})
+                _write_down(t, book, isin, n, last_close, warnings)
+                pending_exits.pop(isin, None)
                 suspended.pop(isin, None)
 
-        # --- 2. ex-date events and dividends (§9) -----------------------
-        credited_today, dividends_today = _apply_ex_date_events(
-            t, book, act_map, div_map, tax_policy, warnings, trades)
-        cash += credited_today
-
-        # --- 3. cash accrual -------------------------------------------
+        # --- 3. cash accrual, taxable at slab in its FY -----------------
         if prev_session is not None and cash > 0:
-            cash *= (1.0 + cash_rate * (t - prev_session).days / 365.0)
+            grown = cash * (1.0 + cash_rate * (t - prev_session).days / 365.0)
+            book.interest(t, grown - cash)
+            cash = grown
         hooks.side_sleeve.accrue(cash_rate, (t - prev_session).days if prev_session else 0)
 
         # --- 4. mark to market -----------------------------------------
@@ -538,7 +565,8 @@ def run(config, period, panel, indices, cost_model, tax_policy,
                      trades=pd.DataFrame(trades) if trades else _empty_trades(),
                      decisions=decisions,
                      taxes=pd.DataFrame(tax_rows) if tax_rows else pd.DataFrame(
-                         columns=["fy", "stcg", "ltcg", "dividends", "tax", "paid_on"]),
+                         columns=["fy", "stcg", "ltcg", "dividends", "interest",
+                                  "tax", "paid_on"]),
                      warnings=warnings, config=config,
                      hooks_active=hooks.active(),
                      adv_skips=(pd.DataFrame(skips) if skips else pd.DataFrame(
@@ -771,7 +799,7 @@ def _execute(dec, t, book, cash, open_w, close_w, turn_w, cost_model, trades,
             continue
         proceeds = qty * px
         c = cost_model.sell_cost(proceeds, 1)
-        book.sell(isin, t, qty, px, c)
+        book.sell(isin, t, qty, px, c - cost_model.sell_stt(qty * px))
         cash += proceeds - c
         trades.append(_trade(t, isin, "SELL", qty, dec["reference_close"].get(isin), px, c))
 
@@ -844,7 +872,7 @@ def _execute(dec, t, book, cash, open_w, close_w, turn_w, cost_model, trades,
             continue
         notional = qty * px
         c = cost_model.buy_cost(notional)
-        book.buy(isin, t, qty, px, c)
+        book.buy(isin, t, qty, px, c - cost_model.buy_stt(qty * px))
         cash -= notional + c
         trades.append(_trade(t, isin, "BUY", qty, dec["reference_close"].get(isin), px, c))
     return cash
@@ -1002,11 +1030,12 @@ def _execute_gears(dec, t, book, cash, open_w, close_w, turn_w, cost_model, trad
             continue
         px = _price(open_w, t, isin)
         if px is None:
-            warnings.append({"kind": "gear_sell_no_price", "isin": isin, "date": t})
+            warnings.append({"kind": "gear_sell_no_price", "isin": isin, "date": t,
+                             "qty": int(qty)})
             continue
         proceeds = qty * px
         c = cost_model.sell_cost(proceeds, 1)
-        book.sell(isin, t, qty, px, c)
+        book.sell(isin, t, qty, px, c - cost_model.sell_stt(qty * px))
         cash += proceeds - c
         trades.append(_trade(t, isin, "SELL_GEAR", qty,
                              dec["reference_close"].get(isin), px, c))
@@ -1050,7 +1079,7 @@ def _execute_gears(dec, t, book, cash, open_w, close_w, turn_w, cost_model, trad
             return cash
         notional = qty * px
         c = cost_model.buy_cost(notional)
-        book.buy(etf, t, qty, px, c)
+        book.buy(etf, t, qty, px, c - cost_model.buy_stt(qty * px))
         cash -= notional + c
         trades.append(_trade(t, etf, "BUY", qty, dec["reference_close"].get(etf),
                              px, c))
@@ -1080,7 +1109,7 @@ def _intra_month_exits(t, book, cash, open_w, cost_model, trades, warnings,
             continue
         proceeds = qty * px
         c = cost_model.sell_cost(proceeds, 1)
-        book.sell(isin, t, qty, px, c)
+        book.sell(isin, t, qty, px, c - cost_model.sell_stt(qty * px))
         cash += proceeds - c
         # No reference close: this is not a month-end decision, so there is
         # no reference price to measure slippage against.
@@ -1137,17 +1166,25 @@ def _empty_trades():
 
 # -- §9 ex-date events -------------------------------------------------
 def _apply_ex_date_events(t, book, act_map, div_map, tax_policy, warnings,
-                          trades) -> tuple:
-    """The four rules, in the charter's precedence. Returns cash credited.
+                          trades, last_close=None, share_factors=None) -> tuple:
+    """The four rules, in the charter's precedence. Returns (cash credited,
+    dividends). Called at the START of t, on the holdings carried into t.
 
-    purpose factor          -> share count
+    purpose factor          -> share count: its bonus part (`bonus_factor`)
+                               as a new nil-cost lot dated t, the rest as a
+                               split that keeps dates and spreads basis
     prevclose factor < 1    -> cash credit, unless it snaps to a standard
                                ratio, which means it is a split or bonus the
-                               PURPOSE text failed to name
+                               PURPOSE text failed to name (treated as a split)
     prevclose factor > 1    -> share count (a consolidation)
     dividend                -> cash
     never two on one date   -> the factor wins; the dividend feed has already
                                had its colliding rows removed upstream
+
+    A fractional entitlement is paid in cash at the post-action price -- the
+    prior close times the factor -- and realised against its own basis (E1
+    §15, 2026-09-27). `share_factors`, if given, receives {isin: factor} for
+    every share-count action applied, so pending quantities can follow.
     """
     credited = 0.0
     for ev in act_map.get(t, ()):
@@ -1157,22 +1194,25 @@ def _apply_ex_date_events(t, book, act_map, div_map, tax_policy, warnings,
         f = float(ev["factor"])
         src = ev.get("source", "purpose")
         if src == "purpose" or f > 1.0 or _snaps_to_standard_ratio(f):
-            try:
-                added = book.adjust_shares(isin, f)
-            except FractionalEntitlement:
-                # Cash in lieu of a fractional entitlement is a disposal, so it
-                # is a sale at the prevailing price, not a §9 cash credit.
-                qty = book.holdings(isin)
-                px = float(ev.get("prior_close") or 0.0)
-                if px > 0:
-                    book.sell(isin, t, qty, px, 0.0)
-                    credited += qty * px
-                    trades.append(_trade(t, isin, "SELL_FRACTIONAL", qty, px, px, 0.0))
-                warnings.append({"kind": "fractional_entitlement", "isin": isin,
-                                 "date": t, "factor": f, "qty": qty, "price": px})
-                continue
+            bf = ev.get("bonus_factor") if src == "purpose" else None
+            bf = float(bf) if bf is not None and not pd.isna(bf) and 0 < float(bf) < 1 else 1.0
+            sf = f / bf
+            prior = (last_close or {}).get(isin)
+            if prior is None:
+                pc = ev.get("prior_close")
+                prior = float(pc) if pc is not None and not pd.isna(pc) else None
+            added = 0
+            if abs(sf - 1.0) > 1e-12:
+                added += book.adjust_shares(isin, sf)
+                credited += _settle_fractions(t, book, isin, prior, sf, f, trades, warnings)
+            if bf < 1.0:
+                added += book.bonus(isin, bf, t)
+                credited += _settle_fractions(t, book, isin, prior, f, f, trades, warnings)
+            if share_factors is not None:
+                share_factors[isin] = share_factors.get(isin, 1.0) * f
             warnings.append({"kind": "share_count_action", "isin": isin, "date": t,
-                             "factor": f, "source": src, "shares_added": added})
+                             "factor": f, "bonus_factor": bf, "source": src,
+                             "shares_added": added})
         else:
             per_share = ev.get("cash_per_share")
             if per_share is None:
@@ -1202,6 +1242,106 @@ def _apply_ex_date_events(t, book, act_map, div_map, tax_policy, warnings,
     # holding that leaves `equity_value` for cash on the ex-date. Nothing here
     # changes a decision, a cash balance or a tax.
     return credited, dividends
+
+
+def _settle_fractions(t, book, isin, prior, price_factor, factor, trades,
+                      warnings) -> float:
+    """Cash in lieu of every open fraction of `isin`, at prior x price_factor.
+    A disposal: realised against the fraction's basis, recorded with qty 0."""
+    paid = 0.0
+    for fr in [x for x in book.fractions if x.isin == isin]:
+        if prior is None or not prior > 0:
+            raise ValueError(f"{t} {isin}: a fractional entitlement needs the "
+                             f"prior close to price it, and there is none")
+        px = prior * price_factor
+        proceeds = fr.units * px
+        book.settle_fraction(fr, t, proceeds)
+        paid += proceeds
+        trades.append(_trade(t, isin, "SELL_FRACTIONAL", 0, None, px, 0.0))
+        warnings.append({"kind": "fractional_entitlement", "isin": isin, "date": t,
+                         "factor": factor, "units": fr.units, "price": px,
+                         "proceeds": proceeds, "basis": fr.basis})
+    return paid
+
+
+def _rescale_pending(dec, factors):
+    """A share-count action between a decision at M and its execution: the
+    planned partial quantities and the reference closes follow it, so a
+    2-for-1 split does not halve a planned sale or read as -50% slippage.
+    Returns a COPY -- the decision as recorded at M is never rewritten with
+    what happened after M."""
+    if not dec:
+        return dec
+    d = dict(dec)
+    if d.get("reference_close"):
+        d["reference_close"] = {i: (v * factors[i] if i in factors else v)
+                                for i, v in d["reference_close"].items()}
+    if d.get("selldown"):
+        d["selldown"] = {**d["selldown"], "plan": [
+            [i, int(math.floor(q / factors[i] + 1e-6)) if i in factors else q]
+            for i, q in d["selldown"]["plan"]]}
+    ts = d.get("tranche_sell")
+    if ts and ts.get("isin") in factors:
+        d["tranche_sell"] = {**ts, "qty": int(math.floor(ts["qty"] / factors[ts["isin"]] + 1e-6))}
+    return d
+
+
+# Warnings that mean "this exit found no quote today"; qty None = whole holding.
+_DEFERRED = ("exit_deferred_no_price", "intra_month_exit_no_price", "gear_sell_no_price")
+
+
+def _register_deferred(new_warnings, pending_exits) -> None:
+    for w in new_warnings:
+        if w.get("kind") in _DEFERRED:
+            q = w.get("qty")
+            prev = pending_exits.get(w["isin"], 0)
+            pending_exits[w["isin"]] = (None if q is None or prev is None
+                                        else prev + int(q))
+
+
+def _retry_exits(t, book, cash, open_w, cost_model, trades, warnings,
+                 pending_exits) -> float:
+    """At open(t): every exit still waiting for a quote, then every
+    written-down name that trades again (a recovery, sold at its first real
+    quote against its original basis and dates). No quote, no cash."""
+    for isin in list(pending_exits):
+        held = book.holdings(isin)
+        if held <= 0:
+            pending_exits.pop(isin)
+            continue
+        px = _price(open_w, t, isin)
+        if px is None:
+            continue
+        q = pending_exits.pop(isin)
+        qty = held if q is None else min(int(q), held)
+        if qty <= 0:
+            continue
+        c = cost_model.sell_cost(qty * px, 1)
+        book.sell(isin, t, qty, px, c - cost_model.sell_stt(qty * px))
+        cash += qty * px - c
+        trades.append(_trade(t, isin, "SELL", qty, None, px, c))
+        warnings.append({"kind": "exit_retried", "isin": isin, "date": t,
+                         "qty": int(qty), "price": px})
+    for isin in list(book.written_down):
+        px = _price(open_w, t, isin)
+        if px is None:
+            continue
+        qty = book.recover(isin)
+        c = cost_model.sell_cost(qty * px, 1)
+        book.sell(isin, t, qty, px, c - cost_model.sell_stt(qty * px))
+        cash += qty * px - c
+        trades.append(_trade(t, isin, "SELL_RECOVERY", qty, None, px, c))
+        warnings.append({"kind": "recovery", "isin": isin, "date": t,
+                         "qty": int(qty), "price": px})
+    return cash
+
+
+def _write_down(t, book, isin, n, last_close, warnings) -> None:
+    basis = sum(l.qty * l.cost_per_share for l in book.lots(isin))
+    qty = book.write_down(isin)
+    warnings.append({"kind": "write_down", "isin": isin, "date": t,
+                     "missing_sessions": n, "qty": int(qty),
+                     "last_close": last_close.get(isin), "basis": basis})
 
 
 def _action_map(actions) -> Dict[date, List[dict]]:
@@ -1283,14 +1423,14 @@ def _finalise(equity, book, last_close, cost_model, tax_policy, sessions, taxes)
 
     last = equity["date"].iloc[-1]
     prices = {i: last_close.get(i, 0.0) for i in book.positions()}
-    liq_tax = 0.0
-    if prices:
-        try:
-            ft = book.simulate_liquidation(last, prices,
-                                           lambda n: cost_model.sell_cost(n, 1))
-            liq_tax = ft.total
-        except Exception:
-            liq_tax = 0.0
+    # E1 §15, 2026-09-27 (audit defect 3): every book owes FY(last)'s tax --
+    # realised gains, dividends and interest -- whether or not it still holds
+    # anything, and a failure here invalidates the run rather than reading as
+    # zero tax. The lot book gets the deductible cost only (no STT, s.48).
+    ft = book.simulate_liquidation(
+        last, prices,
+        lambda n: cost_model.sell_cost(n, 1) - cost_model.sell_stt(n))
+    liq_tax = ft.total
     sell_costs = sum(cost_model.sell_cost(q * prices.get(i, 0.0), 1)
                      for i, q in book.positions().items())
     adj = equity["total"].copy()
@@ -1392,10 +1532,24 @@ def run_equal_weight_universe(config, period, panel, cost_model, tax_policy,
     pending: Optional[list] = None
     seen_fy, prev = set(), None
     month_ends, month_starts = _month_ends(sessions), _month_starts(sessions)
+    traded_by_date = {d: set(g) for d, g in panel.groupby("date")["isin"]}
+    suspended: Dict[str, int] = {}
+    confirm = int(strat.get("delist_confirm_sessions",
+                            DELIST_CONFIRM_SESSIONS_S9
+                            if strat.get("delisting") == "total_loss"
+                            else DELIST_CONFIRM_SESSIONS))
 
     for t in sessions:
         in_window = period.start <= t <= period.end
         flow = 0.0
+        # the same order and the same §9 treatment as `run` (E1 §15, 2026-09-27)
+        _credited, _dividends = _apply_ex_date_events(
+            t, book, act_map, div_map, tax_policy, warnings, trades,
+            last_close=last_close)
+        cash += _credited
+        if in_window and book.written_down:
+            cash = _retry_exits(t, book, cash, open_w, cost_model, trades,
+                                warnings, {})
         if t in month_starts and in_window:
             fy = fy_of(t)
             if fy not in seen_fy:
@@ -1405,6 +1559,7 @@ def run_equal_weight_universe(config, period, panel, cost_model, tax_policy,
                     cash -= ft.total
                     taxes.append({"fy": fy - 1, "stcg": ft.stcg_realised,
                                   "ltcg": ft.ltcg_realised, "dividends": ft.dividends,
+                                  "interest": ft.interest,
                                   "tax": ft.total, "paid_on": t})
             cash += sip
             flow += sip
@@ -1412,12 +1567,19 @@ def run_equal_weight_universe(config, period, panel, cost_model, tax_policy,
                 cash = _rebalance(pending, t, book, cash, open_w, cost_model, trades)
                 pending = None
 
-        _credited, _dividends = _apply_ex_date_events(
-            t, book, act_map, div_map, tax_policy, warnings, trades)
-        cash += _credited
+        traded_today = traded_by_date.get(t, set())
+        for isin in list(book.positions()):
+            if isin in traded_today:
+                suspended.pop(isin, None)
+                continue
+            suspended[isin] = suspended.get(isin, 0) + 1
+            if suspended[isin] >= confirm and in_window:
+                _write_down(t, book, isin, suspended.pop(isin), last_close, warnings)
         if prev is not None and cash > 0:
-            cash *= (1.0 + cash_rate * (t - prev).days / 365.0)
-        for isin in panel.loc[panel["date"] == t, "isin"]:
+            grown = cash * (1.0 + cash_rate * (t - prev).days / 365.0)
+            book.interest(t, grown - cash)
+            cash = grown
+        for isin in traded_today:
             v = close_w.at[t, isin] if isin in close_w.columns else None
             if v is not None and not pd.isna(v):
                 last_close[isin] = float(v)
@@ -1451,7 +1613,7 @@ def run_equal_weight_universe(config, period, panel, cost_model, tax_policy,
                      trades=pd.DataFrame(trades) if trades else _empty_trades(),
                      decisions=[], taxes=pd.DataFrame(tax_rows) if tax_rows
                      else pd.DataFrame(columns=["fy", "stcg", "ltcg", "dividends",
-                                                "tax", "paid_on"]),
+                                                "interest", "tax", "paid_on"]),
                      warnings=warnings, config=config,
                      hooks_active=hk.HookSet().active())
 
@@ -1465,7 +1627,7 @@ def _rebalance(target_names, t, book, cash, open_w, cost_model, trades) -> float
             continue
         px = prices[isin]
         c = cost_model.sell_cost(qty * px, 1)
-        book.sell(isin, t, qty, px, c)
+        book.sell(isin, t, qty, px, c - cost_model.sell_stt(qty * px))
         cash += qty * px - c
         trades.append(_trade(t, isin, "SELL_REBAL", qty, px, px, c))
 
@@ -1482,7 +1644,7 @@ def _rebalance(target_names, t, book, cash, open_w, cost_model, trades) -> float
             qty = min(held, int(excess // px))
             if qty > 0:
                 c = cost_model.sell_cost(qty * px, 1)
-                book.sell(isin, t, qty, px, c)
+                book.sell(isin, t, qty, px, c - cost_model.sell_stt(qty * px))
                 cash += qty * px - c
                 trades.append(_trade(t, isin, "SELL_REBAL", qty, px, px, c))
     for isin in investable:
@@ -1497,7 +1659,7 @@ def _rebalance(target_names, t, book, cash, open_w, cost_model, trades) -> float
         if qty < 1:
             continue
         c = cost_model.buy_cost(qty * px)
-        book.buy(isin, t, qty, px, c)
+        book.buy(isin, t, qty, px, c - cost_model.buy_stt(qty * px))
         cash -= qty * px + c
         trades.append(_trade(t, isin, "BUY_REBAL", qty, px, px, c))
     return cash

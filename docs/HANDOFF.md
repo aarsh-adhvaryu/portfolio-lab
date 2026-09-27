@@ -1,3 +1,43 @@
+# HANDOFF — 2026-09-27, session 1 of 4 (audit repairs)
+
+`pytest -q`: **626 passed** (599 + 27). Six locked spans verify. Sealed
+period untouched. Nothing running. Everything committed.
+
+## Start here (2026-09-27, session 1 of 4)
+
+**Adopted stack: still E1 base — but every saved result is now provisional**
+(E1 §15, 2026-09-27: four accounting corrections). Nothing re-run.
+
+### Done
+- Step 0: audit at `docs/reviews/portfolio_system_audit.md`; reproducer at
+  `tools/audit/`; "Working style" in CLAUDE.md.
+- Step 1: Aarsh's decisions in change logs (E2-D1, E2-D2 parked, E2-C closed
+  NOT RUN, E3-R (e), E2-B, E3, MANDATE §4, E1 determinism). Recorded only.
+- Step 2: `tools/scan_etf_events.py`, `docs/data/etf_splits.md`. NIFTYBEES /
+  GOLDBEES / LIQUIDBEES clean; 31 unused ETFs carry the same unrepaired
+  split pattern; benchmarks read index series only.
+- Step 3: defects a–d fixed (`tests/test_accounting_audit.py`, 24 cases;
+  golden change attributed to STT + interest tax alone).
+
+### Findings for Aarsh
+1. `tools/collect_daily.py` writes `nca.factors()` (PURPOSE only) over
+   `factors.parquet`, which holds 8,903 PREVCLOSE factors too. A scheduled
+   run would silently drop them. Not fixed; decide before scheduling.
+2. Declared choices to confirm (E1 §15 2026-09-27): recovery sale if a
+   written-down name trades again (S9 too); bonus allotment = ex-date;
+   unnamed standard-ratio factors = splits; fraction share dated by the
+   completing lot.
+3. Not done from the audit: dividend payment dates/receivables, demerger
+   shortcut, input provenance (runner hashes), determinism build, E1-P side
+   sleeve interest (inert).
+
+### Next
+Session 2: re-run E1 regression (dev + validation) and benchmarks under the
+corrections — Aarsh's to run; RUNNING.md job 1 now compares against stale
+numbers.
+
+---
+
 # HANDOFF — 2026-09-27, second session
 
 `pytest -q`: **599 passed** (530 at the start + 69 new). All six locked spans

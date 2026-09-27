@@ -2,6 +2,11 @@
 
 Usage: python verify_accounting.py /path/to/portfolio_system
 No market data, sealed results, network, or source edits are required.
+
+As delivered (2026-09-27) the assertions identified the DEFECTIVE behaviour.
+They were flipped the same day to the corrected outcomes, after the E1 §15
+measurement corrections; `tests/test_accounting_audit.py` holds the same
+cases as the suite's acceptance tests.
 """
 from __future__ import annotations
 
@@ -122,11 +127,12 @@ class BrokenTaxBook(LotBook):
 
 b = BrokenTaxBook(POLICY)
 b.buy("TEST", date(2019, 1, 1), 1, 100.0)
-e, _ = engine._finalise(terminal_rows(), b, {"TEST": 100.0}, COST, POLICY, [], [])
-findings["terminal_tax_exception"] = {
-    "exception_propagated": False,
-    "reported_terminal_tax": float(e.liquidation_tax.iloc[-1]),
-}
+try:
+    engine._finalise(terminal_rows(), b, {"TEST": 100.0}, COST, POLICY, [], [])
+    propagated = False
+except RuntimeError:
+    propagated = True
+findings["terminal_tax_exception"] = {"exception_propagated": propagated}
 
 # Keep another security trading so the market calendar continues after TEST
 # disappears. TEST is bought before disappearance; it never returns.
@@ -139,20 +145,22 @@ p = pd.concat([
 cfg = config()
 cfg["universe"]["min_price"] = 10.0
 r = run(cfg, p)
-sales = r.trades.loc[r.trades.side == "SELL_DELIST"]
+sales = r.trades.loc[r.trades.side.isin(["SELL_DELIST", "SELL"])
+                    & (r.trades["isin"] == "TEST")]
 findings["suspension_old_price_sale"] = {
     "nontrading_exit_count": int(len(sales)),
     "recovered_cash_gross": float((sales.qty * sales.fill_price).sum()),
     "transactions": sales.to_dict("records"),
     "last_market_quote": "2019-02-04",
-    "missing_sessions_before_exit": [w["missing_sessions"] for w in r.warnings
-                                      if w["kind"] == "delist_exit"],
+    "missing_sessions_before_write_down": [w["missing_sessions"] for w in r.warnings
+                                           if w["kind"] == "write_down"],
+    "realised_on_write_down": [vars(x) for x in r.realised if x.isin == "TEST"],
 }
 
 # The common adjustment does not create distinct zero-basis bonus lots.
 b = LotBook(POLICY)
 b.buy("TEST", date(2018, 1, 1), 100, 100.0)
-b.adjust_shares("TEST", 0.5)
+b.bonus("TEST", 0.5, date(2020, 2, 3))
 rs = b.sell("TEST", date(2020, 2, 4), 200, 60.0)
 findings["bonus_lots"] = {
     "assumed_bonus_allotment": "2020-02-03",
@@ -168,15 +176,29 @@ for i, qty in enumerate([1, 1, 3]):
 b.adjust_shares("TEST", 4.0)
 findings["consolidation_zero_allocation"] = {
     "shares_before": 5, "factor": 4.0, "shares_after": b.holdings("TEST"),
+    "fraction_units": sum(f.units for f in b.fractions),
+    "basis_conserved": sum(l.qty * l.cost_per_share for l in b.lots("TEST"))
+                       + sum(f.basis for f in b.fractions),
     "expected_whole_shares_plus_fractional_claim": "1 whole share and a 0.25-share fractional entitlement",
 }
 
-assert findings["ex_date_purchase_split"]["value_after_ex_date_purchase"] == 40000.0
-assert findings["ex_date_purchase_dividend"]["dividend_credited_to_first_time_buyer"] > 0
-assert findings["cash_interest_tax"]["cash_earned"] > 0
-assert findings["cash_interest_tax"]["tax_paid"] == 0
-assert findings["terminal_tax_after_complete_sale"]["actual_terminal_tax"] == 0
-assert findings["terminal_tax_after_complete_sale"]["tax_due_under_project_policy"] == 2080.0
-assert findings["suspension_old_price_sale"]["nontrading_exit_count"] == 1
-assert findings["consolidation_zero_allocation"]["shares_after"] == 3
+# Corrected outcomes (2026-09-27).
+assert findings["ex_date_purchase_split"]["value_after_ex_date_purchase"] == 20000.0
+assert findings["ex_date_purchase_split"]["shares_credited_by_action"] == 0
+assert findings["ex_date_purchase_dividend"]["dividend_credited_to_first_time_buyer"] == 0
+ci = findings["cash_interest_tax"]
+assert ci["cash_earned"] > 0 and ci["tax_paid"] > 0 and ci["terminal_tax"] > 0
+tt = findings["terminal_tax_after_complete_sale"]
+assert tt["actual_terminal_tax"] == tt["tax_due_under_project_policy"] == 2080.0
+assert findings["terminal_tax_exception"]["exception_propagated"] is True
+so = findings["suspension_old_price_sale"]
+assert so["nontrading_exit_count"] == 0 and so["recovered_cash_gross"] == 0.0
+assert so["missing_sessions_before_write_down"] == [250]
+assert so["realised_on_write_down"] == []
+bl = findings["bonus_lots"]["realised_lots"]
+assert [(x["buy_date"], x["qty"], x["cost"]) for x in bl] == [
+    (date(2018, 1, 1), 100, 10000.0), (date(2020, 2, 3), 100, 0.0)]
+cz = findings["consolidation_zero_allocation"]
+assert cz["shares_after"] == 1 and abs(cz["fraction_units"] - 0.25) < 1e-9
+assert abs(cz["basis_conserved"] - 500.0) < 1e-9
 print(json.dumps(findings, indent=2, default=str))

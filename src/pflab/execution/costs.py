@@ -39,3 +39,12 @@ class CostModel:
     def sell_cost(self, notional: float, n_scrips: int = 1) -> float:
         c = self._common(notional) + notional * self.stt_sell_pct + self.dp_charge_per_sell * n_scrips
         return c * self.multiplier
+
+    # STT is paid in cash but is not deductible in computing capital gains
+    # (Income Tax Act s.48). The lot book is given cost minus these (E1 §15,
+    # 2026-09-27); stamp duty and the other charges stay in basis/proceeds.
+    def buy_stt(self, notional: float) -> float:
+        return notional * self.stt_buy_pct * self.multiplier
+
+    def sell_stt(self, notional: float) -> float:
+        return notional * self.stt_sell_pct * self.multiplier

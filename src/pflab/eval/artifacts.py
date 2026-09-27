@@ -217,8 +217,12 @@ def extras_report(result, config=None, membership=None,
 
     # 2 -- suspended / delisted holdings ---------------------------------
     tr = result.trades
-    exits = tr[tr["side"] == "SELL_DELIST"] if len(tr) else tr
-    wo = [w for w in (result.warnings or ()) if w.get("kind") == "write_off"]
+    # SELL_DELIST and write_off are the pre-2026-09-27 records (a sale at the
+    # last close; a deductible total loss); write_down and SELL_RECOVERY are
+    # the corrected ones (E1 §15). Old artifacts still read.
+    exits = (tr[tr["side"].isin(["SELL_DELIST", "SELL_RECOVERY"])] if len(tr) else tr)
+    wo = [w for w in (result.warnings or ())
+          if w.get("kind") in ("write_off", "write_down")]
     names = set(exits["isin"]) | {w["isin"] for w in wo}
     keys = {(r.isin, pd.Timestamp(r.date).date()) for r in exits.itertuples(index=False)}
     keys |= {(w["isin"], w["date"]) for w in wo}

@@ -2,12 +2,14 @@
 
 FIFO per ISIN; short/long split at the 12-month boundary (held for MORE
 than 12 months is long-term); FY netting with statutory set-off order;
-carry-forward by character; LTCG exemption; cess; dividends at slab.
-Today's regime is applied to every year: a policy counterfactual.
+carry-forward by character; LTCG exemption; cess; dividends and cash
+interest at slab. Today's regime is applied to every year: a policy
+counterfactual.
 """
 from __future__ import annotations
 
 import copy
+import math
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import date
@@ -18,14 +20,22 @@ from dateutil.relativedelta import relativedelta
 from pflab import _toml
 
 
-class FractionalEntitlement(ValueError):
-    """A share-count action leaves a holding below one whole share.
+# A share entitlement within this of a whole number IS that whole number:
+# 300 shares at a factor of 1/3 is 900.0000000001 in floating point.
+_WHOLE_TOL = 1e-6
 
-    Real life pays cash in lieu of the fraction, which is a disposal and
-    therefore a taxable event -- unlike the §9 cash credit, which is not.
-    The engine catches this and sells the position at the prevailing price.
-    NOT covered by charter §9 as written; flagged for a §15 line.
+
+@dataclass(frozen=True)
+class Fraction:
+    """A fractional entitlement left by a share-count action (E1 §15,
+    2026-09-27): the company pays cash in lieu, which is a disposal. `units`
+    are new shares (< 1), `basis` the cost that goes with them, `buy_date`
+    the date the gain is measured from. Settled by `LotBook.settle_fraction`.
     """
+    isin: str
+    units: float
+    basis: float
+    buy_date: date
 
 
 @dataclass(frozen=True)
@@ -35,6 +45,9 @@ class TaxPolicy:
     ltcg_exemption: float = 125_000.0
     cess: float = 0.04
     dividend_rate: float = 0.30
+    # Cash-sleeve interest at slab, in the FY it accrues (E1 §15, 2026-09-27).
+    # Declared conservative: taxed on accrual, as a deposit's interest is.
+    interest_rate: float = 0.30
     long_term_months: int = 12
     loss_carry_years: int = 8
 
@@ -99,6 +112,8 @@ class FYTax:
     tax_dividend: float
     total: float
     carried_forward: List[CarriedLoss]
+    interest: float = 0.0
+    tax_interest: float = 0.0
 
 
 def _net(stcg: float, ltcg: float, carried: List[CarriedLoss], fy: int, p: TaxPolicy):
@@ -144,6 +159,11 @@ class LotBook:
         self._lots: Dict[str, Deque[Lot]] = defaultdict(deque)
         self.realised: List[Realised] = []
         self._dividends: Dict[int, float] = defaultdict(float)
+        self._interest: Dict[int, float] = defaultdict(float)
+        # Fractional entitlements awaiting cash in lieu, and holdings written
+        # to zero while suspended (E1 §15, 2026-09-27). Neither is a position.
+        self.fractions: List[Fraction] = []
+        self.written_down: Dict[str, List[Lot]] = {}
         self._carried: List[CarriedLoss] = []
         self.settled: Dict[int, FYTax] = {}
 
@@ -179,41 +199,79 @@ class LotBook:
 
     # --- corporate actions on held lots (charter E1 §9) -------------------
     def adjust_shares(self, isin: str, factor: float) -> int:
-        """A share-count action: bonus, split, or a PREVCLOSE factor that
-        snaps to a standard ratio. Shares scale by 1/factor and the cost per
-        share by `factor`, so total basis and buy dates are untouched. Not a
-        sale: nothing is realised and no tax event occurs.
+        """A split or consolidation (or an unnamed PREVCLOSE factor that snaps
+        to a standard ratio). Shares scale by 1/factor; buy dates are kept and
+        each lot's basis moves with its shares, so total basis is conserved.
+        Not a sale.
 
-        Returns the share count added (can be negative for a consolidation).
+        Lots are walked in FIFO order, carrying the fractional units a lot
+        cannot make whole into the next, so a whole share formed from several
+        small lots carries their pooled basis and is dated by the lot that
+        completes it (the later date: the conservative reading). The
+        holding's final fraction (< 1 share) goes to `self.fractions` for
+        cash in lieu. Lots 1, 1, 3 at 4-for-1 become one share and a 0.25
+        fraction, not three shares (audit 2026-09-27, defect 4).
+
+        Returns the whole-share count added (negative for a consolidation).
         """
         if factor <= 0:
             raise ValueError(f"factor must be positive, got {factor}")
         before = self.holdings(isin)
         if before == 0:
             return 0
-        # Apply to the HOLDING, not lot by lot. A consolidation of 100 shares
-        # at 1/3 is 33 shares; rounding each lot separately compounds the
-        # error and can erase a 1-share lot that the holding as a whole keeps.
-        after = int(round(before / factor))
-        if after <= 0:
-            raise FractionalEntitlement(
-                f"{isin}: factor {factor} leaves {before} shares below one "
-                f"whole share; the holder receives cash in lieu")
-        lots = self._lots[isin]
-        remaining = after
-        for i, lot in enumerate(lots):
-            share = (int(round(after * lot.qty / before)) if i < len(lots) - 1
-                     else remaining)
-            share = max(0, min(share, remaining))
-            if share == 0:
-                # this lot's entitlement rounded away; fold its basis into the
-                # next lot so total cost is preserved
-                continue
-            lot.cost_per_share = lot.cost_per_share * lot.qty / share
-            lot.qty = share
-            remaining -= share
-        self._lots[isin] = deque(l for l in lots if l.qty > 0)
+        new: Deque[Lot] = deque()
+        carry_u, carry_b, last_date = 0.0, 0.0, None
+        for lot in self._lots[isin]:
+            units = carry_u + lot.qty / factor
+            basis = carry_b + lot.qty * lot.cost_per_share
+            last_date = lot.buy_date
+            whole = math.floor(units + _WHOLE_TOL)
+            if whole > 0:
+                share_basis = basis * min(1.0, whole / units)
+                new.append(Lot(isin, lot.buy_date, whole, share_basis / whole))
+                carry_u, carry_b = max(0.0, units - whole), basis - share_basis
+            else:
+                carry_u, carry_b = units, basis
+        if carry_u > _WHOLE_TOL:
+            self.fractions.append(Fraction(isin, carry_u, carry_b, last_date))
+        elif carry_b and new:
+            # rounding dust: keep total basis exact on the last lot
+            new[-1].cost_per_share += carry_b / new[-1].qty
+        self._lots[isin] = new
         return self.holdings(isin) - before
+
+    def bonus(self, isin: str, factor: float, d: date) -> int:
+        """A bonus issue, `factor` = b / (a + b) for a:b. The held lots keep
+        their shares, dates and cost; the bonus shares are a NEW lot dated at
+        allotment `d` with nil cost (Income Tax Department: holding period
+        from allotment, nil cost for post-2001 bonuses). Allotment is taken as
+        the ex-date, declared. The entitlement is on the whole holding; its
+        fraction goes to `self.fractions` at nil basis.
+
+        Returns the bonus shares added.
+        """
+        if not 0 < factor < 1:
+            raise ValueError(f"bonus factor must be in (0, 1), got {factor}")
+        before = self.holdings(isin)
+        if before == 0:
+            return 0
+        units = before * (1.0 / factor - 1.0)
+        whole = math.floor(units + _WHOLE_TOL)
+        if whole > 0:
+            self._lots[isin].append(Lot(isin, d, whole, 0.0))
+        if units - whole > _WHOLE_TOL:
+            self.fractions.append(Fraction(isin, units - whole, 0.0, d))
+        return whole
+
+    def settle_fraction(self, fr: Fraction, d: date, proceeds: float) -> "Realised":
+        """Cash in lieu of a fractional entitlement: a disposal realised
+        against the fraction's own basis and date. `qty` is 0 on the record
+        because no whole share changed hands."""
+        self.fractions.remove(fr)
+        r = Realised(fr.isin, fr.buy_date, d, 0, proceeds, fr.basis,
+                     is_long_term(fr.buy_date, d, self.policy.long_term_months))
+        self.realised.append(r)
+        return r
 
     def reduce_basis(self, isin: str, factor: float) -> None:
         """A cash-credit action: a demerger or capital reduction, where the
@@ -226,11 +284,27 @@ class LotBook:
         for lot in self._lots.get(isin, ()):
             lot.cost_per_share *= factor
 
-    def write_off(self, isin: str, d: date) -> List["Realised"]:
-        """§12 S9: the position is a total loss. Realised at zero proceeds, so
-        the capital loss is available for set-off like any other."""
-        qty = self.holdings(isin)
-        return self.sell(isin, d, qty, 0.0, 0.0) if qty else []
+    def write_down(self, isin: str) -> int:
+        """E1 §15 (2026-09-17, corrected 2026-09-27): a holding suspended for
+        the confirm window is valued at zero. A valuation, not a disposal: the
+        shares are still owned, so nothing is realised and no capital loss is
+        created. The lots wait in `written_down` until the name trades again.
+        Returns the share count written down."""
+        lots = list(self._lots.pop(isin, ()))
+        if lots:
+            self.written_down.setdefault(isin, []).extend(lots)
+        return sum(l.qty for l in lots)
+
+    def recover(self, isin: str) -> int:
+        """A written-down name trades again: its lots return to the book with
+        their dates and basis, so the engine can sell them at a real quote."""
+        lots = self.written_down.pop(isin, [])
+        self._lots[isin].extend(lots)
+        return sum(l.qty for l in lots)
+
+    def interest(self, d: date, amount: float) -> None:
+        """Cash-sleeve interest, taxed at slab in the FY it accrues."""
+        self._interest[fy_of(d)] += amount
 
     def dividend(self, d: date, amount: float) -> None:
         self._dividends[fy_of(d)] += amount
@@ -257,16 +331,24 @@ class LotBook:
         st, lt, tax_cap, remaining = _net(stcg, ltcg, carried, fy, p)
         div = self._dividends.get(fy, 0.0)
         tax_div = div * p.dividend_rate
-        total = (tax_cap + tax_div) * (1.0 + p.cess)
-        res = FYTax(fy, stcg, ltcg, st, lt, div, tax_cap * (1 + p.cess), tax_div * (1 + p.cess), total, remaining)
+        intr = self._interest.get(fy, 0.0)
+        tax_int = intr * p.interest_rate
+        total = (tax_cap + tax_div + tax_int) * (1.0 + p.cess)
+        res = FYTax(fy, stcg, ltcg, st, lt, div, tax_cap * (1 + p.cess),
+                    tax_div * (1 + p.cess), total, remaining,
+                    interest=intr, tax_interest=tax_int * (1 + p.cess))
         self._carried = remaining
         self.settled[fy] = res
         return res
 
     def simulate_liquidation(self, d: date, prices: Dict[str, float],
                              sell_cost: Callable[[float], float]) -> FYTax:
-        """Tax due for FY(d) if every position were sold on `d` at `prices`.
-        Does not mutate this book. Prior FYs must already be settled."""
+        """Tax due for FY(d) if every position were sold on `d` at `prices`,
+        including what FY(d) has already realised, received and accrued -- so
+        an all-cash book still owes its FY's tax. Written-down holdings have
+        no quote and are not sold. `sell_cost` must return the DEDUCTIBLE
+        cost (no STT, s.48). Does not mutate this book. Prior FYs must
+        already be settled."""
         book = copy.deepcopy(self)
         for isin, qty in book.positions().items():
             px = prices[isin]

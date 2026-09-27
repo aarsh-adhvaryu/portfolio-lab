@@ -183,9 +183,10 @@ def test_trend_filter_off_ignores_the_index(base_config, cost_model, tax_policy)
 
 
 # -- §9 suspension ------------------------------------------------------
-def test_suspended_name_is_held_then_exits_at_last_close(base_config, cost_model, tax_policy):
-    """A held name whose rows stop stays held at its last close, and exits at
-    that close once the run is confident the rows have stopped."""
+def test_suspended_name_is_held_then_written_down(base_config, cost_model, tax_policy):
+    """A held name whose rows stop stays held at its last close, and is
+    written down to zero once the run is confident the rows have stopped --
+    no sale at a stale price (E1 §15, 2026-09-27)."""
     sessions, names, panel = random_walk_panel(seed=6, n_names=12,
                                                start="2014-01-01", end="2019-12-31")
     victim = names[0]
@@ -196,11 +197,12 @@ def test_suspended_name_is_held_then_exits_at_last_close(base_config, cost_model
            "strategy": {**base_config["strategy"], "delist_confirm_sessions": 30}}
     r = engine.run(cfg, per, panel, flat_index(sessions), cost_model, tax_policy)
     kinds = [w["kind"] for w in r.warnings]
-    assert "delist_exit" in kinds or "exit_deferred_no_price" in kinds
+    assert "write_down" in kinds
+    assert not (r.trades["side"] == "SELL_DELIST").any()
 
 
-def test_total_loss_row_writes_off_instead_of_selling(base_config, cost_model, tax_policy):
-    """§12 S9 takes -100% where the base row recovers the last close."""
+def test_total_loss_row_writes_down_sooner(base_config, cost_model, tax_policy):
+    """§12 S9: the same write-down, on the 20th missing session."""
     sessions, names, panel = random_walk_panel(seed=7, n_names=12,
                                                start="2014-01-01", end="2019-12-31")
     victim = names[0]
@@ -211,7 +213,8 @@ def test_total_loss_row_writes_off_instead_of_selling(base_config, cost_model, t
                                        "delist_confirm_sessions": 20}}
     r = engine.run(cfg, per, panel, flat_index(sessions), cost_model, tax_policy)
     kinds = {w["kind"] for w in r.warnings}
-    assert "write_off" in kinds or "exit_deferred_no_price" in kinds
+    wd = [w for w in r.warnings if w["kind"] == "write_down"]
+    assert wd and all(w["missing_sessions"] == 20 for w in wd)
 
 
 # -- §11 truncation -----------------------------------------------------

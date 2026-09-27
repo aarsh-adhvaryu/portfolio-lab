@@ -10,6 +10,7 @@ run; this is the fast guard that runs with every `pytest -q`.
 """
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 from datetime import date
@@ -48,22 +49,45 @@ def digest(res) -> str:
     return h.hexdigest()
 
 
-def run(tf):
+class _STTInBasis(CostModel):
+    """The pre-2026-09-27 lot book: STT deducted in computing gains."""
+    def buy_stt(self, notional):
+        return 0.0
+
+    def sell_stt(self, notional):
+        return 0.0
+
+
+def run(tf, neutralised=False):
     sessions, names, panel = random_walk_panel(seed=11, n_names=40,
                                                start="2013-01-01", end="2019-12-31",
                                                annual_drift=0.08, sigma=0.02)
+    cm = CostModel.from_toml("configs/costs_zerodha.toml")
+    tp = TaxPolicy.from_toml("configs/tax_policy_in.toml")
+    if neutralised:
+        cm = _STTInBasis(**{f.name: getattr(cm, f.name) for f in dataclasses.fields(cm)})
+        tp = dataclasses.replace(tp, interest_rate=0.0)
     return engine.run(_cfg(tf), Period("g", date(2014, 6, 1), date(2019, 12, 31)),
-                      panel, _wavy_index(sessions),
-                      CostModel.from_toml("configs/costs_zerodha.toml"),
-                      TaxPolicy.from_toml("configs/tax_policy_in.toml"))
+                      panel, _wavy_index(sessions), cm, tp)
 
 
 # Captured 2026-09-27 and confirmed identical on HEAD c33feb3's own code,
 # imported from a detached worktree.
-GOLDEN = {
+GOLDEN_BEFORE_ACCOUNTING = {
     "sma10": "c3dea6f0c0dc46cef6582698da78235fca646e506d5b00752b53f8f877ae0ec2",
     "sell_to_cash": "78fa2bef88e83409293eead2a0d37c8c996d5b695e76a1ecfec210617a5bafe3",
     "off": "bf378702b8c25181dbdcb81464d2bb330e9a326c6fadf0a56c64bc5a1cf66280",
+}
+# Re-pinned 2026-09-27 after the audit's accounting corrections (E1 §15).
+# Attributed, not blindly updated: with STT kept in basis and cash interest
+# untaxed (`neutralised` below) the corrected engine reproduces every
+# GOLDEN_BEFORE_ACCOUNTING digest exactly, so these two corrections are the
+# whole of the change on this fixture (it has no corporate actions,
+# dividends or suspensions).
+GOLDEN = {
+    "sma10": "e81d4d14c1da5994fdad68b48d32070c9a65652b3da424d5a5a9b3479bf89435",
+    "sell_to_cash": "dd40d9c5ac4f9eb131bdebb89a7b59c563b4022c4db1359e08b1b3852fecbbbe",
+    "off": "b0a1e22839734d64df01ca37d7f6ef8e26589777f2b76a3acfad0827c10b40d8",
 }
 
 
@@ -73,3 +97,8 @@ def test_e1_paths_are_byte_identical_to_before_e3r(tf):
     if tf != "off":
         assert any(d["risk_off"] for d in res.decisions), "fixture must exercise RISK_OFF"
     assert digest(res) == GOLDEN[tf]
+
+
+@pytest.mark.parametrize("tf", sorted(GOLDEN_BEFORE_ACCOUNTING))
+def test_accounting_corrections_are_the_whole_change(tf):
+    assert digest(run(tf, neutralised=True)) == GOLDEN_BEFORE_ACCOUNTING[tf]

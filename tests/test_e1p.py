@@ -195,7 +195,7 @@ def test_delisting_exits_are_never_deferred(base_config, cost_model, tax_policy)
     r = engine.run(cand, per, panel, flat_index(sessions), cost_model, tax_policy)
     # even with a defer rule that says "always", the delisting still exits
     kinds = {w["kind"] for w in r.warnings}
-    assert "delist_exit" in kinds or "write_off" in kinds
+    assert "write_down" in kinds          # E1 §15, 2026-09-27
     for d in r.decisions:
         assert victim not in d["deferred"] or victim in d["held"]
 

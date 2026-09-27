@@ -24,6 +24,10 @@ _(none)_ — verified 2026-09-27 with `tools\status.ps1`.
 |---|---|---|---|---|---|
 | 1 | **Infrastructure end-to-end test** — reproduce E1 base development through the locked-run path | see "The end-to-end test" below | `experiments\_infratest\` | ~15 min | yes |
 
+**2026-09-27, accounting corrections (E1 §15):** job 1 and `tools/e1_identity.py`
+compare against pre-correction results and will now differ by design. Re-run
+the E1 regression under the corrections first (session 2 writes the command).
+
 **Reading the E1 identity check** (done 2026-09-27, both PASS). Exit code 0 and `IDENTICAL` is the pass. If either
 says `DIFFERENT`, do not start any E3-R, E2-D1 or E2-D2 run: re-run the
 same tool from a worktree at commit `c33feb3` (before this session's engine

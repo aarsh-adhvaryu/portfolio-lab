@@ -154,7 +154,11 @@ def parse_purpose(subject: str) -> list[tuple]:
 
 def factors(root: Optional[Path] = None, raw: Optional[pd.DataFrame] = None,
             series: tuple = ("EQ",)) -> pd.DataFrame:
-    """(isin, ex_date, factor) -- one row per security per ex-date."""
+    """(isin, ex_date, factor, bonus_factor) -- one row per security per
+    ex-date. `factor` is the product of every action that day; `bonus_factor`
+    the product of its bonus actions alone (1.0 if none), because a bonus
+    creates new nil-cost lots where a split re-denominates old ones (E1 §15,
+    2026-09-27)."""
     df = raw if raw is not None else load_raw(root)
     if series:
         df = df[df["series"].isin(series)]
@@ -165,11 +169,13 @@ def factors(root: Optional[Path] = None, raw: Optional[pd.DataFrame] = None,
             recs.append({"isin": r.isin, "ex_date": r.ex_date, "factor": f,
                          "kind": kind, "subject": r.subject})
     if not recs:
-        return pd.DataFrame(columns=["isin", "ex_date", "factor"])
+        return pd.DataFrame(columns=["isin", "ex_date", "factor", "bonus_factor"])
     ev = pd.DataFrame(recs)
     # Two actions on one ex-date compound; identical duplicate rows do not.
     ev = ev.drop_duplicates(["isin", "ex_date", "kind", "factor"])
-    out = ev.groupby(["isin", "ex_date"], as_index=False)["factor"].prod()
+    ev["bonus_factor"] = ev["factor"].where(ev["kind"] == "bonus", 1.0)
+    out = ev.groupby(["isin", "ex_date"], as_index=False)[
+        ["factor", "bonus_factor"]].prod()
     return out.sort_values(["isin", "ex_date"]).reset_index(drop=True)
 
 
@@ -281,11 +287,13 @@ def combined_factors(panel: pd.DataFrame, parsed: Optional[pd.DataFrame] = None,
     # prior_close / adj_prev_close let the engine compute the §9 cash credit
     # directly: (prior_close - adj_prev_close) x shares held. They are null for
     # PURPOSE factors, which are share-count events, not cash events.
-    keep = ["isin", "ex_date", "factor", "source", "prior_close", "adj_prev_close"]
+    keep = ["isin", "ex_date", "factor", "bonus_factor", "source", "prior_close",
+            "adj_prev_close"]
     base = parsed.copy()
     base["source"] = "purpose"
     base["prior_close"] = pd.NA
     base["adj_prev_close"] = pd.NA
+    extra = extra.assign(bonus_factor=float("nan"))   # unnamed: treated as a split
     both = pd.concat([base[keep], extra[keep]], ignore_index=True)
     rep["purpose"] = int(len(base))
     rep["prevclose"] = int(len(extra))
@@ -301,8 +309,17 @@ def write(f: pd.DataFrame, root: Optional[Path] = None) -> Path:
 
 
 def load(root: Optional[Path] = None) -> pd.DataFrame:
+    """The combined factor table. A table written before 2026-09-27 has no
+    `bonus_factor`; it is re-derived from the raw PURPOSE files (a parse, no
+    network) and joined onto the PURPOSE rows, so the engine can create bonus
+    lots without a rebuild of the PREVCLOSE factors."""
     root = root or data_dir()
-    return pd.read_parquet(root / "corporate_actions" / "factors.parquet")
+    f = pd.read_parquet(root / "corporate_actions" / "factors.parquet")
+    if "bonus_factor" not in f.columns:
+        b = factors(root)[["isin", "ex_date", "bonus_factor"]]
+        b = b.assign(source="purpose")
+        f = f.merge(b, on=["isin", "ex_date", "source"], how="left")
+    return f
 
 
 def cash_credit_per_share(row) -> float:
