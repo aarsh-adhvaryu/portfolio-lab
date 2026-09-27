@@ -11,6 +11,8 @@ order and reasons in `docs/ROADMAP.md`; the rules for judging in
 > defects (D1/D2), so no figure below is replaced yet. None was computed on
 > fully corrected code. Per-defect effects:
 > `docs/reviews/accounting-correction-2.md`. Re-runs: `tools/regress_bases.py`.
+> On those numbers only **E2-A** would flip (REJECT → INCONCLUSIVE, driven by
+> its stack's fall): `docs/reviews/E1-gap-attribution.md` §1. Not applied.
 
 **Adopted stack: E1 base** (provisional until re-run), read from `experiments/E1/regression/` since the
 2026-09-21 measurement correction. Sealed period (2022–2025) never opened;

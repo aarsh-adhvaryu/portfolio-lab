@@ -44,6 +44,7 @@ Lookahead guarantee: nothing dated after t is read on session t.
 """
 from __future__ import annotations
 
+import hashlib
 import math
 from dataclasses import dataclass, field
 from datetime import date
@@ -302,6 +303,17 @@ def run(config, period, panel, indices, cost_model, tax_policy,
     score_fn = None
     if signal == "mom_12_1":
         mom_w = momentum_panel(adj_w, lookback=lookback, skip=skip)
+    elif signal == "lottery":
+        # DIAGNOSTIC ONLY, never a charter signal (E1 gap attribution,
+        # 2026-09-27): a fixed pseudo-random score per ISIN, defined exactly
+        # where 12-1 momentum is, so the eligible set, dates, band and cash
+        # mechanics are E1's and only WHICH names are picked changes. Fixed
+        # per name so the band does not churn on noise.
+        mom_w = momentum_panel(adj_w, lookback=lookback, skip=skip)
+        seed = str(strat.get("lottery_seed", 0))
+        draw = {c: int(hashlib.sha256(f"{seed}:{c}".encode()).hexdigest()[:12], 16)
+                / float(16 ** 12) for c in mom_w.columns}
+        mom_w = mom_w.notna().mul(pd.Series(draw)).where(mom_w.notna())
     elif signal in ("vol_scaled_6_12", "mom_12_1_z"):
         # E1c §3 (and §5 S6 as amended 2026-09-21). The raw ingredients are
         # built once over the whole panel -- backward shifts and rolling
@@ -646,6 +658,15 @@ def _decide(m, mom_w, uni_pre, close_w, n_hold, band, positions,
          "trend_filter": trend_filter}
     if tw:
         d["target_weights"] = tw
+    # DIAGNOSTIC ONLY (E1 gap attribution, 2026-09-27): E1 §5 tops up every
+    # held name, including those ranked 26-50 in the band. With a ceiling,
+    # held names ranked above it receive no new money. Absent for every
+    # charter config, so `no_buy` stays absent and E1's path is unchanged.
+    ceiling = _cfg(config, "strategy.topup_max_rank")
+    if ceiling is not None:
+        nb = [i for i in held if float(ranks.get(i, np.inf)) > float(ceiling)]
+        if nb:
+            d["no_buy"] = nb
     decisions.append(d)
     return d
 

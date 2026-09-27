@@ -3,6 +3,31 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-09-27, session 3 of 4)
+
+D1/D2 still undecided, so session 3 did the audit's other two items on the
+a–d numbers, all marked provisional. `docs/reviews/E1-gap-attribution.md`.
+
+### Done
+- §1 of that note: old vs a–d base and stack numbers for every experiment.
+  **Only E2-A flips**: GATE REJECT → INCONCLUSIVE, because its stack fell
+  5.21 pp in 2017–19 and E2-A fell 1.13 pp. That makes the overall verdict
+  INCONCLUSIVE. STATE keeps REJECT (provisional) until E1b's procedure is
+  followed.
+- `tools/gap_attribution.py` (diagnostic, not promotable) plus two
+  diagnostic-only engine knobs (`signal="lottery"`, `topup_max_rank`);
+  `tests/test_gap_attribution.py`; golden digests unchanged.
+
+### Decisions for Aarsh
+D1/D2 (unchanged). Whether E2-A gets full re-runs if the flip survives D1/D2.
+Two readings in the note's design (rank eligibility, weighting control).
+
+### Next
+Aarsh runs RUNNING.md job 3 (gap attribution); session 4 fills in the note's
+Results. After D1/D2, re-run `regress_bases.py` and job 3.
+
+---
+
 ## Start here (2026-09-27, session 2 of 4)
 
 **Every verdict is provisional until re-run** (STATE.md banner). Nothing re-run.
