@@ -1,3 +1,58 @@
+# HANDOFF — 2026-09-27
+
+`pytest -q`: **530 passed.** Sealed period untouched; `research/journal.jsonl`
+still absent. All six locked spans verify (`python tools/check_lock.py --all`).
+
+## Start here (2026-09-27)
+
+**Adopted stack: still E1 base. Nothing has been adopted, ever.**
+`docs/STATE.md` now carries the running count: 6 experiments tested,
+**0 adopted**, 3 REJECT, 3 INCONCLUSIVE, 0 of 1 sealed reveals used.
+
+### Finished this session
+
+- **E2-A: REJECT** (`docs/reviews/E2A-verdict.md`). GATE fails in both
+  periods the strict way, and §8a fails because the flags' information
+  **reverses sign**: −7.73% (t −3.14) in 2017–2019, +12.16% (t +3.48) in
+  2020–2021. The useful part: in development the flags carried real
+  information and the rule *still* lost 2.75 pp, because E1 holds 25 of
+  ~500 names so excluding one mostly changes which unflagged name is
+  bought instead.
+- **Parallel running is now allowed** (`GATE.md`, 2026-09-26): experiments
+  may be locked and run concurrently, each one change on the stack in
+  force at its lock; an adoption forces a re-run of anything in flight.
+- **Locked-run infrastructure**, tested live: `tools/check_lock.py`,
+  `tools/run_locked.ps1`, `tools/status.ps1`, `PFLAB_EXPERIMENTS_DIR`,
+  `docs/RUNNING.md`. Four concurrent sweeps is the measured ceiling.
+
+### Waiting on Aarsh — nothing proceeds without these
+
+1. **`docs/data/flag_audit_labels.md`** holds *Claude's draft* labels, not
+   Aarsh's. **Section C of the 2026-09-26 instruction is not triggered
+   until Aarsh has reviewed them.** Read the caution in that file's header
+   and in this session's report: the draft was labelled after seeing
+   E2-A's per-flag results, and 22 of 30 RATING_DOWNGRADE rows were marked
+   UNSURE — RATING_DOWNGRADE being exactly the flag the sweep showed was
+   costliest. That pattern is what bias would produce. RATING_DOWNGRADE
+   and FRAUD need Aarsh's eyes first.
+2. **E3-R: four charter decisions** (`docs/notes/E3R-readiness.md` §3) —
+   V's undefined first six months, the cross-book lot-order tie-breaks,
+   the index position's exemptions, and what interrupts the high-gear
+   disposal. Each changes a number.
+3. **E2-D: three declarations** (`docs/notes/E2D-readiness.md` §2) — total
+   shares or free float, market cap at which date, and which
+   shares-outstanding figure. §3's insider limb cannot be computed
+   without them.
+
+### Next, unstarted
+
+Lanes 3–6 of the 2026-09-26 instruction: **E2-B** readiness (including a
+point-in-time sector map from the captured Nifty 500 industry field),
+then **E2-C** and **E3** readiness notes, then drafts of **E1-S** and
+**E2-E**. None started.
+
+---
+
 # HANDOFF — 2026-09-24
 
 ## Start here (2026-09-24 session)

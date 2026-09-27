@@ -16,7 +16,7 @@ measured peak, ~3.5 GB budgeted, 31.4 GB total. Check the free-RAM line in
 
 ## Running
 
-_(none)_
+_(none)_ — verified 2026-09-27 with `tools\status.ps1`.
 
 ## Queued
 
