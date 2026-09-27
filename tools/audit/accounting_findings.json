@@ -1,0 +1,70 @@
+{
+  "ex_date_purchase_split": {
+    "contributed": 20000.0,
+    "value_after_ex_date_purchase": 40000.0,
+    "purchased_shares": 400,
+    "shares_credited_by_action": 400,
+    "expected_value_before_tax_and_zero_costs": 20000.0
+  },
+  "ex_date_purchase_dividend": {
+    "dividend_credited_to_first_time_buyer": 2220.0,
+    "expected_dividend": 0.0
+  },
+  "cash_interest_tax": {
+    "contributed": 240000.0,
+    "cash_earned": 15703.357588480721,
+    "tax_paid": 0.0,
+    "terminal_tax": 0.0
+  },
+  "terminal_tax_after_complete_sale": {
+    "realised_gain": 10000.0,
+    "actual_terminal_tax": 0.0,
+    "tax_due_under_project_policy": 2080.0
+  },
+  "terminal_tax_exception": {
+    "exception_propagated": false,
+    "reported_terminal_tax": 0.0
+  },
+  "suspension_old_price_sale": {
+    "nontrading_exit_count": 1,
+    "recovered_cash_gross": 20000.0,
+    "transactions": [
+      {
+        "date": "2020-01-20",
+        "isin": "TEST",
+        "side": "SELL_DELIST",
+        "qty": 200,
+        "reference_price": 100.0,
+        "fill_price": 100.0,
+        "costs": 0.0,
+        "slippage": 0.0
+      }
+    ],
+    "last_market_quote": "2019-02-04",
+    "missing_sessions_before_exit": [
+      250
+    ]
+  },
+  "bonus_lots": {
+    "assumed_bonus_allotment": "2020-02-03",
+    "realised_lots": [
+      {
+        "isin": "TEST",
+        "buy_date": "2018-01-01",
+        "sell_date": "2020-02-04",
+        "qty": 200,
+        "proceeds": 12000.0,
+        "cost": 10000.0,
+        "long_term": true,
+        "gain": 2000.0
+      }
+    ],
+    "expected_lot_structure": "100 original shares at basis 100; 100 new shares at basis 0 with their allotment date"
+  },
+  "consolidation_zero_allocation": {
+    "shares_before": 5,
+    "factor": 4.0,
+    "shares_after": 3,
+    "expected_whole_shares_plus_fractional_claim": "1 whole share and a 0.25-share fractional entitlement"
+  }
+}

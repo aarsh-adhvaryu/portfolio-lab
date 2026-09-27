@@ -1,0 +1,300 @@
+{
+  "development": {
+    "E1": {
+      "artifact_path": "experiments/E1/regression/development-64343858a094c09e/rows/base",
+      "cagr_after_tax_liquidation": 0.08965776625073474,
+      "max_drawdown": 0.5540061439391485,
+      "contributions": 6000000.0,
+      "terminal_net_value": 10328975.441364937,
+      "xirr": 0.10474034134706123,
+      "mean_daily_cash_fraction": 0.2718284279070238,
+      "tax_paid": 941817.9290587907,
+      "terminal_tax": 7039.2504,
+      "trade_counts": {
+        "BUY": 441,
+        "SELL": 392,
+        "SELL_DELIST": 13,
+        "CASH_CREDIT": 2
+      },
+      "stale_price_liquidation_gross": 1887520.6,
+      "stale_price_liquidations": [
+        {
+          "date": "2008-11-20",
+          "isin": "NSESYM:TELEDATAIN",
+          "side": "SELL_DELIST",
+          "qty": 140,
+          "reference_price": 67.25,
+          "fill_price": 67.25,
+          "costs": 25.09606779,
+          "slippage": 0.0
+        },
+        {
+          "date": "2011-08-19",
+          "isin": "NSESYM:BANKRAJAS",
+          "side": "SELL_DELIST",
+          "qty": 564,
+          "reference_price": 212.6,
+          "fill_price": 212.6,
+          "costs": 139.59012924639998,
+          "slippage": 0.0
+        },
+        {
+          "date": "2012-06-22",
+          "isin": "INE280A01010",
+          "side": "SELL_DELIST",
+          "qty": 20,
+          "reference_price": 228.9,
+          "fill_price": 228.9,
+          "costs": 20.083842628,
+          "slippage": 0.0
+        },
+        {
+          "date": "2012-10-29",
+          "isin": "INE054A01019",
+          "side": "SELL_DELIST",
+          "qty": 2070,
+          "reference_price": 173.2,
+          "fill_price": 173.2,
+          "costs": 386.851890424,
+          "slippage": 0.0
+        },
+        {
+          "date": "2013-03-06",
+          "isin": "INE507B01022",
+          "side": "SELL_DELIST",
+          "qty": 114,
+          "reference_price": 1083.45,
+          "fill_price": 1083.45,
+          "costs": 143.32769280579998,
+          "slippage": 0.0
+        },
+        {
+          "date": "2013-04-09",
+          "isin": "INE427A01017",
+          "side": "SELL_DELIST",
+          "qty": 34,
+          "reference_price": 3946.95,
+          "fill_price": 3946.95,
+          "costs": 154.3976951638,
+          "slippage": 0.0
+        },
+        {
+          "date": "2013-05-27",
+          "isin": "INE024L01019",
+          "side": "SELL_DELIST",
+          "qty": 800,
+          "reference_price": 189.0,
+          "fill_price": 189.0,
+          "costs": 172.0173712,
+          "slippage": 0.0
+        },
+        {
+          "date": "2013-08-12",
+          "isin": "INE031B01015",
+          "side": "SELL_DELIST",
+          "qty": 414,
+          "reference_price": 377.15,
+          "fill_price": 377.15,
+          "costs": 177.13643126259998,
+          "slippage": 0.0
+        },
+        {
+          "date": "2013-10-29",
+          "isin": "INE516K01016",
+          "side": "SELL_DELIST",
+          "qty": 6770,
+          "reference_price": 27.5,
+          "fill_price": 27.5,
+          "costs": 208.25937555000002,
+          "slippage": 0.0
+        },
+        {
+          "date": "2014-01-28",
+          "isin": "INE144J01019",
+          "side": "SELL_DELIST",
+          "qty": 2552,
+          "reference_price": 71.75,
+          "fill_price": 71.75,
+          "costs": 205.079197956,
+          "slippage": 0.0
+        },
+        {
+          "date": "2015-04-07",
+          "isin": "INE952H01019",
+          "side": "SELL_DELIST",
+          "qty": 1584,
+          "reference_price": 152.45,
+          "fill_price": 152.45,
+          "costs": 265.5686834608,
+          "slippage": 0.0
+        },
+        {
+          "date": "2015-12-24",
+          "isin": "INE850A01010",
+          "side": "SELL_DELIST",
+          "qty": 269,
+          "reference_price": 573.95,
+          "fill_price": 573.95,
+          "costs": 175.32557451630004,
+          "slippage": 0.0
+        },
+        {
+          "date": "2016-04-28",
+          "isin": "INE615H01012",
+          "side": "SELL_DELIST",
+          "qty": 567,
+          "reference_price": 114.45,
+          "fill_price": 114.45,
+          "costs": 82.58396925190002,
+          "slippage": 0.0
+        }
+      ],
+      "synthetic_action_credit_gross": 21088.300000000014
+    },
+    "B2": {
+      "artifact_path": "experiments/E1/regression/development-64343858a094c09e/rows/_B2",
+      "cagr_after_tax_liquidation": 0.08068593190569207,
+      "max_drawdown": 0.634875007019515,
+      "contributions": 6000000.0,
+      "terminal_net_value": 9629774.808431828,
+      "xirr": 0.09149386563717492,
+      "mean_daily_cash_fraction": 0.009501759153824849,
+      "tax_paid": 0.0,
+      "terminal_tax": 524467.796498353,
+      "trade_counts": {
+        "BUY": 119
+      },
+      "stale_price_liquidation_gross": 0.0,
+      "stale_price_liquidations": [],
+      "synthetic_action_credit_gross": 0.0
+    },
+    "B5": {
+      "artifact_path": "experiments/E1/regression/development-64343858a094c09e/rows/_B5",
+      "cagr_after_tax_liquidation": 0.1374195848237858,
+      "max_drawdown": 0.7014924629245514,
+      "contributions": 6000000.0,
+      "terminal_net_value": 13532195.894241408,
+      "xirr": 0.15532135651551052,
+      "mean_daily_cash_fraction": 0.009033913052989498,
+      "tax_paid": 0.0,
+      "terminal_tax": 1106527.5943564333,
+      "trade_counts": {
+        "BUY": 119
+      },
+      "stale_price_liquidation_gross": 0.0,
+      "stale_price_liquidations": [],
+      "synthetic_action_credit_gross": 0.0
+    },
+    "mandate_base_return_hurdle": 0.1574195848237858,
+    "base_return_gap_to_hurdle": 0.06776181857305105
+  },
+  "validation": {
+    "E1": {
+      "artifact_path": "experiments/E1/regression/validation-303190300ed98ced/rows/base",
+      "cagr_after_tax_liquidation": 0.2736088244718835,
+      "max_drawdown": 0.3981991704013377,
+      "contributions": 3000000.0,
+      "terminal_net_value": 6478610.272706935,
+      "xirr": 0.31371536555843516,
+      "mean_daily_cash_fraction": 0.19577747304813137,
+      "tax_paid": 14756.58057420522,
+      "terminal_tax": 653374.9044206803,
+      "trade_counts": {
+        "BUY": 243,
+        "SELL": 201,
+        "CASH_CREDIT": 12,
+        "SELL_DELIST": 5
+      },
+      "stale_price_liquidation_gross": 292861.55000000005,
+      "stale_price_liquidations": [
+        {
+          "date": "2018-03-23",
+          "isin": "INE018B01012",
+          "side": "SELL_DELIST",
+          "qty": 11,
+          "reference_price": 377.7,
+          "fill_price": 377.7,
+          "costs": 19.6452081622,
+          "slippage": 0.0
+        },
+        {
+          "date": "2018-03-23",
+          "isin": "INE594A01014",
+          "side": "SELL_DELIST",
+          "qty": 42,
+          "reference_price": 130.75,
+          "fill_price": 130.75,
+          "costs": 21.030435079,
+          "slippage": 0.0
+        },
+        {
+          "date": "2019-01-01",
+          "isin": "INE247D01013",
+          "side": "SELL_DELIST",
+          "qty": 250,
+          "reference_price": 573.15,
+          "fill_price": 573.15,
+          "costs": 163.818232975,
+          "slippage": 0.0
+        },
+        {
+          "date": "2019-04-24",
+          "isin": "INE602A01015",
+          "side": "SELL_DELIST",
+          "qty": 23,
+          "reference_price": 236.95,
+          "fill_price": 236.95,
+          "costs": 20.9872762661,
+          "slippage": 0.0
+        },
+        {
+          "date": "2021-10-01",
+          "isin": "INE947Q01010",
+          "side": "SELL_DELIST",
+          "qty": 465,
+          "reference_price": 289.2,
+          "fill_price": 289.2,
+          "costs": 154.689600028,
+          "slippage": 0.0
+        }
+      ],
+      "synthetic_action_credit_gross": 334880.3
+    },
+    "B2": {
+      "artifact_path": "experiments/E1/regression/validation-303190300ed98ced/rows/_B2",
+      "cagr_after_tax_liquidation": 0.14793792379935988,
+      "max_drawdown": 0.37931412138167775,
+      "contributions": 3000000.0,
+      "terminal_net_value": 4601582.745915863,
+      "xirr": 0.17131029512090595,
+      "mean_daily_cash_fraction": 0.023839977245622045,
+      "tax_paid": 0.0,
+      "terminal_tax": 227539.41790902687,
+      "trade_counts": {
+        "BUY": 59
+      },
+      "stale_price_liquidation_gross": 0.0,
+      "stale_price_liquidations": [],
+      "synthetic_action_credit_gross": 0.0
+    },
+    "B5": {
+      "artifact_path": "experiments/E1/regression/validation-303190300ed98ced/rows/_B5",
+      "cagr_after_tax_liquidation": 0.22483523661015847,
+      "max_drawdown": 0.3812080590756811,
+      "contributions": 3000000.0,
+      "terminal_net_value": 5919818.051659723,
+      "xirr": 0.2756195182642846,
+      "mean_daily_cash_fraction": 0.026816582445226,
+      "tax_paid": 0.0,
+      "terminal_tax": 435256.1954843086,
+      "trade_counts": {
+        "BUY": 59
+      },
+      "stale_price_liquidation_gross": 0.0,
+      "stale_price_liquidations": [],
+      "synthetic_action_credit_gross": 0.0
+    },
+    "mandate_base_return_hurdle": 0.24483523661015846,
+    "base_return_gap_to_hurdle": -0.028773587861725042
+  }
+}

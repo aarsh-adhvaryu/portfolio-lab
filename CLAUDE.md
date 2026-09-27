@@ -270,6 +270,14 @@ dead.
 `backtest/` or `eval/` calls `data_dir()` for a write. Any future cache
 goes under `experiments/`, so concurrent runs cannot collide.
 
+## Working style (2026-09-27)
+
+- Reports to Aarsh: 15 lines or fewer. Commit messages: 10 lines or fewer.
+- Notes are findings plus decisions needed; no essays.
+- Never re-read a file already read in the same session.
+- At each STOP: update `docs/HANDOFF.md` "Start here" with what is done and
+  what is next, commit, and stop.
+
 ## Conventions
 - Dates are `datetime.date`; sessions are integer positions in the
   trading calendar derived from bhavcopy; money is float rupees.
