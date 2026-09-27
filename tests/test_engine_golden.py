@@ -61,7 +61,8 @@ class _STTInBasis(CostModel):
 def run(tf, neutralised=False):
     sessions, names, panel = random_walk_panel(seed=11, n_names=40,
                                                start="2013-01-01", end="2019-12-31",
-                                               annual_drift=0.08, sigma=0.02)
+                                               annual_drift=0.08, sigma=0.02,
+                                               tick=0.01)
     cm = CostModel.from_toml("configs/costs_zerodha.toml")
     tp = TaxPolicy.from_toml("configs/tax_policy_in.toml")
     if neutralised:
@@ -72,11 +73,15 @@ def run(tf, neutralised=False):
 
 
 # Captured 2026-09-27 and confirmed identical on HEAD c33feb3's own code,
-# imported from a detached worktree.
+# imported from a detached worktree. Re-captured the same day on a paise-
+# rounded fixture (`tick=0.01`) from 8dea146's code in a detached worktree:
+# the unrounded fixture's digest moved with the last bit of np.exp, which is
+# why the audit's Linux run disagreed on all three (a 1-ULP change to 30% of
+# panel prices changes the digest; see docs/reviews/accounting-correction-2.md).
 GOLDEN_BEFORE_ACCOUNTING = {
-    "sma10": "c3dea6f0c0dc46cef6582698da78235fca646e506d5b00752b53f8f877ae0ec2",
-    "sell_to_cash": "78fa2bef88e83409293eead2a0d37c8c996d5b695e76a1ecfec210617a5bafe3",
-    "off": "bf378702b8c25181dbdcb81464d2bb330e9a326c6fadf0a56c64bc5a1cf66280",
+    "sma10": "32cbcab4992cccbc79fd80481383f81eb307e1bf56c348f1c9c4448b86c0f28d",
+    "sell_to_cash": "4a0128fe71d55481bc02e545d0ca142b31f500c38176bb113a90c487b92c19fb",
+    "off": "9fdd48dcd7c5d49ed83c9d0c78564754402315a652bfca8ee80b24a4835a1a86",
 }
 # Re-pinned 2026-09-27 after the audit's accounting corrections (E1 §15).
 # Attributed, not blindly updated: with STT kept in basis and cash interest
@@ -85,9 +90,9 @@ GOLDEN_BEFORE_ACCOUNTING = {
 # whole of the change on this fixture (it has no corporate actions,
 # dividends or suspensions).
 GOLDEN = {
-    "sma10": "e81d4d14c1da5994fdad68b48d32070c9a65652b3da424d5a5a9b3479bf89435",
-    "sell_to_cash": "dd40d9c5ac4f9eb131bdebb89a7b59c563b4022c4db1359e08b1b3852fecbbbe",
-    "off": "b0a1e22839734d64df01ca37d7f6ef8e26589777f2b76a3acfad0827c10b40d8",
+    "sma10": "aec38a666caadefe66a91f59e76a16de15a21fb8038ea850466d9686f876583e",
+    "sell_to_cash": "34c260d1359be400c3b3ec0a9973edcbd93bc45411f7c13fb107cc7c3b8791b9",
+    "off": "fdbe0ca044857393b668f72c57da6635bc254abf58b135efce830e11a9d33da9",
 }
 
 

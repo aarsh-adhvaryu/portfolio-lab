@@ -1,3 +1,35 @@
+# HANDOFF — 2026-09-27, session 2 of 4 (audit repairs)
+
+`pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
+data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
+
+## Start here (2026-09-27, session 2 of 4)
+
+**Every verdict is provisional until re-run** (STATE.md banner). Nothing re-run.
+
+### Done
+- e/f: `tools/audit/reconcile_events.py`; results in
+  `docs/reviews/accounting-correction-2.md`. All 14 CASH_CREDITs are
+  BE-series gaps, not demergers. Of the 18 SELL_DELISTs, 11 are ISIN
+  handovers, 2 a merger scheme, 5 unresolved from local data.
+- g: `runner.input_fingerprints` — every consumed input, cut at period end,
+  plus policy-file contents, in the run id and the manifest (`inputs`).
+- h: 2999 sentinel (`positioning._as_date`); exclusivity checked before I/O;
+  golden explained (last-bit `np.exp`), fixture rounded to paise,
+  attribution re-proved against 8dea146.
+- `tools/regress_bases.py` (14 jobs, lanes A–D, `--report`).
+
+### Decisions for Aarsh (before the regression)
+D1 ISIN handovers and D2 BE-series factors: `accounting-correction-2.md`
+top. Running before them bakes in a known downward bias (live holdings
+written to zero).
+
+### Next
+Aarsh: decide D1/D2, then run the regression (RUNNING.md). Session 3:
+implement D1/D2 if approved; read `regress_bases.py --report`; re-classify.
+
+---
+
 # HANDOFF — 2026-09-27, session 1 of 4 (audit repairs)
 
 `pytest -q`: **626 passed** (599 + 27). Six locked spans verify. Sealed

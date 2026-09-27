@@ -23,10 +23,11 @@ _(none)_ — verified 2026-09-27 with `tools\status.ps1`.
 | # | job | command (from `D:\portfolio_lab`) | output | expect | can share the machine? |
 |---|---|---|---|---|---|
 | 1 | **Infrastructure end-to-end test** — reproduce E1 base development through the locked-run path | see "The end-to-end test" below | `experiments\_infratest\` | ~15 min | yes |
+| 2 | **Regression of every base row under the 2026-09-27 corrections** — hold until Aarsh decides D1/D2 (`docs/reviews/accounting-correction-2.md`) | `tools/regress_bases.py`, four windows: see "The regression" below | `experiments\<ID>\regression\`, markers in `experiments\_regress\` | ~15 min per job, ~1 h per lane | four lanes = the four-sweep ceiling; nothing else alongside |
 
 **2026-09-27, accounting corrections (E1 §15):** job 1 and `tools/e1_identity.py`
 compare against pre-correction results and will now differ by design. Re-run
-the E1 regression under the corrections first (session 2 writes the command).
+the E1 regression under the corrections first (job 2 below).
 
 **Reading the E1 identity check** (done 2026-09-27, both PASS). Exit code 0 and `IDENTICAL` is the pass. If either
 says `DIFFERENT`, do not start any E3-R, E2-D1 or E2-D2 run: re-run the
@@ -104,3 +105,29 @@ should arguably have anyway.
 
 That performs every check, prints the tag, the code path, the expected
 duration and where results will go, and stops before running.
+
+
+## The regression (job 2, 2026-09-27)
+
+Commit first: the tool refuses a dirty tree. Four PowerShell windows, one
+lane each, all from `D:\portfolio_lab`. Check `tools\status.ps1` shows about
+14 GB free first.
+
+```powershell
+$env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'
+.\.venv\Scripts\python.exe tools
+egress_bases.py --lane A   # window 1: E1, E1b, E1-P dev; E1 on E2-A dev window
+.\.venv\Scripts\python.exe tools
+egress_bases.py --lane B   # window 2: the same, validation
+.\.venv\Scripts\python.exe tools
+egress_bases.py --lane C   # window 3: E1c, E1d, E2-A development
+.\.venv\Scripts\python.exe tools
+egress_bases.py --lane D   # window 4: E1c, E1d, E2-A validation
+```
+
+Each job prints `== <job> DONE -> <dir>` and writes
+`experiments\_regress\<job>.json`. **Finished = 14 markers.** Then run
+`.\.venv\Scripts\python.exe tools
+egress_bases.py --report` (old vs new
+base rows). The lanes are independent, so a failed job stops only its own
+lane: re-run that lane's remaining jobs by name.

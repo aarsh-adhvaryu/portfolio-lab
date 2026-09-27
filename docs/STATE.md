@@ -1,10 +1,15 @@
 # STATE — verdicts and where things stand
 
-One page. Updated 2026-09-27. The narrative is in `docs/HANDOFF.md`; the
+One page. Updated 2026-09-27 (session 2). The narrative is in `docs/HANDOFF.md`; the
 order and reasons in `docs/ROADMAP.md`; the rules for judging in
 `docs/strategies/GATE.md` (adoption) and `docs/MANDATE.md` (ADVANCE).
 
-**Adopted stack: E1 base**, read from `experiments/E1/regression/` since the
+> **Every verdict and every figure below is PROVISIONAL UNTIL RE-RUN**
+> (E1 §15, 2026-09-27: accounting corrections a–d; audit Deliverable 1).
+> None was computed on corrected code. Per-defect effects:
+> `docs/reviews/accounting-correction-2.md`. Re-runs: `tools/regress_bases.py`.
+
+**Adopted stack: E1 base** (provisional until re-run), read from `experiments/E1/regression/` since the
 2026-09-21 measurement correction. Sealed period (2022–2025) never opened;
 `research/journal.jsonl` absent.
 
@@ -51,18 +56,18 @@ drag compounded by calendar days).
 
 | experiment | charter | verdict | under the correction | development 2007–16 | validation 2017–21 | verdict note |
 |---|---|---|---|---|---|---|
-| **E1** | LOCKED 2026-09-17 | **INCONCLUSIVE** (E1 §13) | **holds** | 8.97% / 55.40% | 27.36% / 39.82% | `docs/notes/E1-diagnostic.md` |
-| **E1b** | LOCKED 2026-09-18 | **INCONCLUSIVE** (GATE vs E1) | **changed** from REJECT; re-run from scratch 2026-09-22 | 9.74% / 54.96% | 15.51% / 43.34% | `docs/reviews/E1b-verdict-rerun.md` (supersedes `docs/notes/E1b-diagnostic.md`) |
-| **E1-P** | LOCKED 2026-09-19 | **REJECT** (GATE vs E1) | **holds** | 9.14% / 55.78% | 25.85% / 43.52% | `docs/reviews/E1-P-verdict.md` |
-| **E1c** | LOCKED 2026-09-19, amended after lock (blind) 2026-09-21 | **REJECT** (GATE vs E1) | **holds** | 6.73% / 70.19% | 20.10% / 36.33% | `docs/reviews/E1c-verdict.md` |
-| **E1d** | LOCKED 2026-09-24 | **INCONCLUSIVE** (GATE vs E1) | n/a — run under it | 11.55% / 49.54% | 24.27% / 36.72% | `docs/reviews/E1d-verdict.md` |
-| **E2-A** | LOCKED 2026-09-25 | **REJECT** (GATE **and** §8a) | n/a — run under it | 11.85% / 33.18% *(2017–19)* | 41.84% / 8.41% *(2020–21)* | `docs/reviews/E2A-verdict.md` |
+| **E1** | LOCKED 2026-09-17 | **INCONCLUSIVE** (E1 §13) — *provisional until re-run* | **holds** | 8.97% / 55.40% | 27.36% / 39.82% | `docs/notes/E1-diagnostic.md` |
+| **E1b** | LOCKED 2026-09-18 | **INCONCLUSIVE** (GATE vs E1) — *provisional until re-run* | **changed** from REJECT; re-run from scratch 2026-09-22 | 9.74% / 54.96% | 15.51% / 43.34% | `docs/reviews/E1b-verdict-rerun.md` (supersedes `docs/notes/E1b-diagnostic.md`) |
+| **E1-P** | LOCKED 2026-09-19 | **REJECT** (GATE vs E1) — *provisional until re-run* | **holds** | 9.14% / 55.78% | 25.85% / 43.52% | `docs/reviews/E1-P-verdict.md` |
+| **E1c** | LOCKED 2026-09-19, amended after lock (blind) 2026-09-21 | **REJECT** (GATE vs E1) — *provisional until re-run* | **holds** | 6.73% / 70.19% | 20.10% / 36.33% | `docs/reviews/E1c-verdict.md` |
+| **E1d** | LOCKED 2026-09-24 | **INCONCLUSIVE** (GATE vs E1) — *provisional until re-run* | n/a — run under it | 11.55% / 49.54% | 24.27% / 36.72% | `docs/reviews/E1d-verdict.md` |
+| **E2-A** | LOCKED 2026-09-25 | **REJECT** (GATE **and** §8a) — *provisional until re-run* | n/a — run under it | 11.85% / 33.18% *(2017–19)* | 41.84% / 8.41% *(2020–21)* | `docs/reviews/E2A-verdict.md` |
 
 E2-A's windows are its own (§6: 2017–2019 / 2020–2021), set by when its
 inputs exist, so its figures are not comparable with the rows above. E1
 base on **those** windows is 14.60% / 31.37% and 50.04% / 7.19%.
 
-**Why the three that hold need no re-run.** Each is decided by base-row and
+**Why the three that hold needed no re-run under the 2026-09-21 correction** (the 2026-09-27 corrections need one for every row). Each is decided by base-row and
 benchmark arithmetic alone, which the 2026-09-21 regression re-ran; the other
 sweep rows cannot change them.
 
@@ -77,7 +82,7 @@ sweep rows cannot change them.
 E1b changed because its development gap moved from +0.13 pp to +0.77 pp,
 past G1's bar.
 
-## Benchmarks, same engine, SIP and tax (corrected)
+## Benchmarks, same engine, SIP and tax (2026-09-21 correction; provisional until re-run)
 
 | | development 2007–16 | validation 2017–21 |
 |---|---|---|

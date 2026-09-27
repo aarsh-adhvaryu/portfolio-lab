@@ -40,6 +40,19 @@ COLUMNS = ["scrip_code", "quarter_end", "usable_from", "dated",
            "promoter_shares", "shares_outstanding", "so_source"]
 
 
+def _as_date(x) -> date:
+    """A date from a date, datetime, Timestamp or ISO string, without going
+    through nanosecond Timestamps: the 2999-12-31 open-ended sentinel is out
+    of their range, and pandas 2.x raises on it where 3.x does not."""
+    if isinstance(x, datetime):
+        return x.date()
+    if isinstance(x, date):
+        return x
+    if isinstance(x, np.datetime64):
+        return x.astype("datetime64[D]").astype(object)
+    return date.fromisoformat(str(x)[:10])
+
+
 def _quarter_end(x) -> date:
     return pd.Timestamp(x).date()
 
@@ -164,8 +177,7 @@ class ScripResolver:
         self.by_scrip: Dict[str, list] = {}
         for r in m.itertuples(index=False):
             self.by_scrip.setdefault(str(r.scrip_code), []).append(
-                (str(r.isin), pd.Timestamp(r.valid_from).date(),
-                 pd.Timestamp(r.valid_to).date()))
+                (str(r.isin), _as_date(r.valid_from), _as_date(r.valid_to)))
 
     def isin_at(self, scrip: str, d: date) -> Optional[str]:
         for isin, lo, hi in self.by_scrip.get(scrip, ()):
@@ -249,8 +261,8 @@ def insider_rows(pit: pd.DataFrame, symbol_map: pd.DataFrame, period_end: date,
     sign = np.where(norm(d["transaction_type"]) == "sell", 1.0, -1.0)
     d = d.assign(signed_value=sign * d["value"].astype(float))
     m = symbol_map.copy()
-    m["valid_from"] = pd.to_datetime(m["valid_from"]).dt.date
-    m["valid_to"] = pd.to_datetime(m["valid_to"]).dt.date
+    m["valid_from"] = [_as_date(x) for x in m["valid_from"]]
+    m["valid_to"] = [_as_date(x) for x in m["valid_to"]]
     by_sym: Dict[str, list] = {}
     for r in m.itertuples(index=False):
         by_sym.setdefault(str(r.symbol), []).append((r.isin, r.valid_from, r.valid_to))

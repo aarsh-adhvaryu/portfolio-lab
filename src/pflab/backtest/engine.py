@@ -327,6 +327,13 @@ def run(config, period, panel, indices, cost_model, tax_policy,
     # rule, so nothing here reads a timestamp. Absent config leaves this
     # None and the universe is E1's, untouched.
     exclude_fn = None
+    # GATE.md: one change per experiment. Checked before any table is read,
+    # so a bad config fails on the config, not on a missing data file.
+    _on = [k for k in ("red_flags", "promoter_selling", "insider_selling")
+           if (config.get(k) or {}).get("enabled")]
+    if len(_on) > 1:
+        raise ValueError(f"{' and '.join(_on)} are all enabled; an experiment "
+                         f"is ONE change (GATE.md)")
     _rf = (config.get("red_flags") or {})
     if _rf.get("enabled"):
         from pflab.data import red_flag_events as rfe

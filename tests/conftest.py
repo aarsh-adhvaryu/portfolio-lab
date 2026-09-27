@@ -37,7 +37,7 @@ def make_panel(sessions, names, prices, turnover=5e9, dividend=None):
 
 
 def random_walk_panel(seed=0, n_names=40, start="2014-01-01", end="2021-12-31",
-                      annual_drift=0.0, sigma=0.015, start_price=100.0):
+                      annual_drift=0.0, sigma=0.015, start_price=100.0, tick=None):
     """A cross-section with NO predictability: every name is an independent
     random walk whose median path grows at `annual_drift`.
 
@@ -54,6 +54,11 @@ def random_walk_panel(seed=0, n_names=40, start="2014-01-01", end="2021-12-31",
     prices = {}
     for n in names:
         prices[n] = start_price * np.exp(np.cumsum(rng.normal(mu, sigma, len(sessions))))
+        if tick:
+            # Real prices are quoted in paise. Rounding also makes a byte-
+            # identity digest independent of the last bit of np.exp, which
+            # differs across CPUs (NumPy dispatches SIMD exp per platform).
+            prices[n] = np.round(prices[n] / tick) * tick
     return sessions, names, make_panel(sessions, names, prices)
 
 

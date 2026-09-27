@@ -96,6 +96,70 @@ def prepare(config: dict, period_name: Optional[str] = None,
     return period, panel, indices, actions, cost_factory, tax, membership
 
 
+def _upto(df, col, end):
+    """Rows of `df` dated <= end in `col` (a snapshot cut at the period end)."""
+    d = pd.to_datetime(pd.Series(df[col], dtype="object"), errors="coerce").dt.date
+    return df[pd.Series([x is not None and not pd.isna(x) and x <= end for x in d],
+                        index=df.index)]
+
+
+def _valid_upto(df, end):
+    """A dated mapping cut at `end`: rows valid from on or before it, with a
+    validity that closes later clipped to end, so a mapping change after the
+    period cannot reach the hash."""
+    d = _upto(df, "valid_from", end).copy()
+    vt = pd.to_datetime(pd.Series(d["valid_to"], dtype="object"), errors="coerce").dt.date
+    d["valid_to"] = [min(x, end) if x is not None and not pd.isna(x) else end for x in vt]
+    return d
+
+
+def input_fingerprints(cfg: dict, period, indices, actions, membership,
+                       overlap=None, root: Optional[Path] = None) -> dict:
+    """{input: sha} for everything the run consumes besides the panel, each
+    cut at the period end, and the CONTENTS of the policy files (audit
+    Deliverable 1 g). Appending data after the end changes nothing here, so
+    seal identity holds; editing any consumed input changes the run id."""
+    from pflab.data import data_dir
+    sha = artifacts.frame_sha
+    root = root or _repo_root()
+    droot = data_dir()
+    end = period.end
+    fp = {
+        "period": f"{period.name}:{period.start}:{period.end}",
+        "periods_file": artifacts.file_sha(root / cfg["evaluation"]["periods_path"]),
+        "costs_file": artifacts.file_sha(root / cfg["costs"]["path"]),
+        "tax_file": artifacts.file_sha(root / cfg["tax"]["path"]),
+        "stack_config": artifacts.file_sha(root / "configs" / "e1.toml"),
+        "actions": sha(actions),
+        "membership": sha(membership),
+        "overlap_membership": sha(overlap),
+    }
+    for key in sorted(indices):
+        fp[f"index:{key}"] = sha(indices[key])
+    # Tables the engine or its hooks load for themselves, when enabled.
+    rf = (cfg.get("red_flags") or {}).get("enabled") or \
+        (cfg.get("hooks") or {}).get("intra_month_exit") == "red_flag"
+    if rf:
+        from pflab.data import red_flag_events as rfe
+        fp["red_flag_events"] = sha(_upto(rfe.load(droot), "usable_from", end))
+    ps = (cfg.get("promoter_selling") or {}).get("enabled")
+    ins = (cfg.get("insider_selling") or {}).get("enabled")
+    if ps or ins:
+        from pflab.data import bse_scrip_isin
+        summ = pd.read_parquet(droot / "bse_shareholding" / "summary.parquet")
+        fp["shareholding"] = sha(_upto(summ, "quarter_end", end))
+        fp["scrip_isin"] = sha(_valid_upto(bse_scrip_isin.load(droot), end))
+    if ins:
+        from pflab.data import nse_insider
+        fp["insider_pit"] = sha(_upto(nse_insider.load(droot), "broadcast_dt", end))
+        fp["symbol_isin"] = sha(_valid_upto(
+            pd.read_parquet(droot / "panel" / "symbol_isin_map.parquet"), end))
+    if (cfg.get("gears") or {}).get("v_source") == "india_vix":
+        fp["india_vix"] = sha(_upto(
+            pd.read_parquet(droot / "indices" / "INDIA_VIX.parquet"), "date", end))
+    return fp
+
+
 def main(config_path, period_name=None, unseal_reason=None, sweep=False,
          extra_manifest=None,
          rows=None, kind="sweeps") -> str:
@@ -119,8 +183,21 @@ def main(config_path, period_name=None, unseal_reason=None, sweep=False,
     rel = rel[len("experiments/"):] if rel.startswith("experiments/") else rel
     out_root = experiments_dir().resolve() / rel
 
+    mcfg = cfg.get("membership") or {}
+    overlap = None
+    if sweep and mcfg.get("overlap_index"):
+        from pflab.data import index_membership as im
+        try:
+            overlap = periods.truncate_membership(
+                im.load(mcfg["overlap_index"]), period)
+        except Exception:
+            overlap = None      # reported as unavailable, never invented
+
     cfg_text = json.dumps(cfg, sort_keys=True, default=str)
-    fp = artifacts.data_fingerprint(panel)
+    # Audit Deliverable 1 g (2026-09-27): the data identity covers every
+    # consumed input cut at the period end, not the panel alone.
+    inputs = input_fingerprints(cfg, period, indices, actions, membership, overlap)
+    fp = artifacts.data_fingerprint(panel, extra={"inputs": inputs})
     commit = artifacts.code_commit()
     # A dirty tree is not pinned by its commit hash, so the code identity
     # carries the source fingerprint too (principle 5).
@@ -154,15 +231,6 @@ def main(config_path, period_name=None, unseal_reason=None, sweep=False,
         else:
             table = sweep_mod.ROWS
         rows = list(table) if rows is None else [r for r in table if r in rows]
-        mcfg = cfg.get("membership") or {}
-        overlap = None
-        if mcfg.get("overlap_index"):
-            from pflab.data import index_membership as im
-            try:
-                overlap = periods.truncate_membership(
-                    im.load(mcfg["overlap_index"]), period)
-            except Exception:
-                overlap = None      # reported as unavailable, never invented
         # Principle 5: a sweep now carries the same manifest a single run
         # does, so re-running the same inputs verifies and different inputs
         # refuse rather than overwriting (see sweep.SweepConflict).
@@ -174,6 +242,7 @@ def main(config_path, period_name=None, unseal_reason=None, sweep=False,
             "run_id": rid, "experiment": experiment, "period": period.name,
             "period_start": str(period.start), "period_end": str(period.end),
             "config_sha": artifacts._sha(cfg_text), "data_fingerprint": fp,
+            "inputs": inputs,
             "code": commit, "rows": list(rows),
             "first_session": str(panel["date"].min()),
             "last_session": str(panel["date"].max()),
@@ -204,7 +273,8 @@ def main(config_path, period_name=None, unseal_reason=None, sweep=False,
     artifacts.write_run(out, res, {
         "run_id": rid, "period": period.name,
         "period_start": period.start, "period_end": period.end,
-        "config": cfg, "config_sha": fp, "code": commit,
+        "config": cfg, "config_sha": artifacts._sha(cfg_text),
+        "data_fingerprint": fp, "inputs": inputs, "code": commit,
         "first_session": str(panel["date"].min()),
         "last_session": str(panel["date"].max()),
     }, benchmarks=bench)

@@ -30,6 +30,26 @@ def run_id(config_text: str, data_fingerprint: str, code_commit: str,
                            period_name]))[:16]
 
 
+def frame_sha(df: Optional[pd.DataFrame]) -> Optional[str]:
+    """Content hash of a table, independent of row order and index. None for
+    an absent table, so "not consumed" and "consumed but empty" differ."""
+    if df is None:
+        return None
+    d = df.reset_index(drop=True)
+    d = d[sorted(map(str, d.columns))]
+    d = d.sort_values(list(d.columns), kind="mergesort").reset_index(drop=True) \
+        if len(d) else d
+    h = hashlib.sha256(json.dumps(list(d.columns)).encode())
+    h.update(pd.util.hash_pandas_object(d.astype(str), index=False).values.tobytes())
+    return h.hexdigest()
+
+
+def file_sha(path) -> str:
+    """SHA-256 of a file's bytes: a cost or tax policy is identified by what it
+    says, not by where it lives."""
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
 def data_fingerprint(panel: pd.DataFrame, extra: Optional[dict] = None) -> str:
     """Identity of the data a run actually saw: a content hash of every row.
 
