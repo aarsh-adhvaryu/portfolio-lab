@@ -19,14 +19,18 @@ data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
   attribution re-proved against 8dea146.
 - `tools/regress_bases.py` (14 jobs, lanes A–D, `--report`).
 
-### Decisions for Aarsh (before the regression)
+### Regression (run by Aarsh, 14/14 at 19f1ea2)
+Every base row fell; E1 dev 8.97% → 2.87%. Mostly D1/D2 write-downs, so
+**not usable for verdicts**; see `accounting-correction-2.md` "Regression result".
+
+### Decisions for Aarsh
 D1 ISIN handovers and D2 BE-series factors: `accounting-correction-2.md`
 top. Running before them bakes in a known downward bias (live holdings
 written to zero).
 
 ### Next
-Aarsh: decide D1/D2, then run the regression (RUNNING.md). Session 3:
-implement D1/D2 if approved; read `regress_bases.py --report`; re-classify.
+Aarsh: decide D1/D2. Session 3: implement them if approved, then Aarsh
+re-runs `regress_bases.py` (all four lanes) and session 3 re-classifies.
 
 ---
 

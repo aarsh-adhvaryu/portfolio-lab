@@ -32,6 +32,31 @@ lot). Nothing below has been re-run; every figure in `docs/STATE.md` is
   again after D1/D2, or (ii) decide D1/D2 first and run once. I recommend
   (ii). The a–d-only numbers carry a known, material downward bias from D1.
 
+## Regression result (run 2026-09-27 at 19f1ea2, all 14 jobs; option (i))
+
+Base row after-tax CAGR / max drawdown, old -> new:
+
+| job | old | new | Δ CAGR |
+|---|---|---|---:|
+| E1 dev / val | 8.97 / 55.40, 27.36 / 39.82 | 2.87 / 55.58, 22.84 / 47.42 | −6.10, −4.52 |
+| E1b dev / val | 9.74 / 54.96, 15.51 / 43.34 | 9.03 / 55.00, 15.22 / 43.53 | −0.71, −0.29 |
+| E1-P dev / val | 9.14 / 55.78, 25.85 / 43.52 | 3.01 / 57.23, 21.43 / 51.25 | −6.13, −4.41 |
+| E1c dev / val | 6.73 / 70.19, 20.10 / 36.33 | 6.19 / 70.38, 18.67 / 35.63 | −0.54, −1.43 |
+| E1d dev / val | 11.55 / 49.54, 24.27 / 36.72 | 7.16 / 49.44, 21.59 / 38.41 | −4.39, −2.68 |
+| E2-A dev / val | 11.85 / 33.18, 41.84 / 8.41 | 10.72 / 34.86, 39.31 / 10.19 | −1.13, −2.53 |
+| E1 on E2-A windows | 14.60 / 31.37, 50.04 / 7.19 (STATE) | 9.39 / 37.07, 48.34 / 7.26 | −5.21, −1.70 |
+
+**Not usable for verdicts.** The E1 dev drop is mostly D1:
+13 holdings were written to zero (₹7.8 L at last quote), 8 of them ISIN
+handovers (GRAVITA, AJANTPHARM, VIPIND, 20MICRONS, TITAN, GOENKA, TWL,
+RAJTV). Terminal wealth fell ₹1.03 cr → ₹0.67 cr, because that capital
+never compounded. Validation write-downs are similar: DIXON and VAIBHAVGBL
+(splits), TATASTLBSL (merged into Tata Steel), and ADANITRANS and CGPOWER
+(in BE at the period end, so D2). E1b and E1c move little because their
+index-member universes hold fewer of these names. The a–d-only effect
+therefore cannot yet be separated from D1/D2. Re-run after D1/D2
+(`regress_bases.py --report` compares against the original dirs).
+
 ## Per defect: what moves in the saved results
 
 | defect | status | saved numbers that move | direction / size (E1 base) |

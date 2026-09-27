@@ -6,7 +6,10 @@ order and reasons in `docs/ROADMAP.md`; the rules for judging in
 
 > **Every verdict and every figure below is PROVISIONAL UNTIL RE-RUN**
 > (E1 §15, 2026-09-27: accounting corrections a–d; audit Deliverable 1).
-> None was computed on corrected code. Per-defect effects:
+> The 2026-09-27 regression (`accounting-correction-2.md`) moved every base
+> row down (E1 dev 2.87%), mostly through the unfixed ISIN-handover and BE
+> defects (D1/D2), so no figure below is replaced yet. None was computed on
+> fully corrected code. Per-defect effects:
 > `docs/reviews/accounting-correction-2.md`. Re-runs: `tools/regress_bases.py`.
 
 **Adopted stack: E1 base** (provisional until re-run), read from `experiments/E1/regression/` since the

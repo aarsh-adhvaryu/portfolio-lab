@@ -23,7 +23,7 @@ _(none)_ — verified 2026-09-27 with `tools\status.ps1`.
 | # | job | command (from `D:\portfolio_lab`) | output | expect | can share the machine? |
 |---|---|---|---|---|---|
 | 1 | **Infrastructure end-to-end test** — reproduce E1 base development through the locked-run path | see "The end-to-end test" below | `experiments\_infratest\` | ~15 min | yes |
-| 2 | **Regression of every base row under the 2026-09-27 corrections** — hold until Aarsh decides D1/D2 (`docs/reviews/accounting-correction-2.md`) | `tools/regress_bases.py`, four windows: see "The regression" below | `experiments\<ID>\regression\`, markers in `experiments\_regress\` | ~15 min per job, ~1 h per lane | four lanes = the four-sweep ceiling; nothing else alongside |
+| 2 | ~~Regression under the 2026-09-27 corrections~~ **DONE 2026-09-27**, 14/14 markers, commit 19f1ea2 | `tools/regress_bases.py --report` | `experiments\_regress\` | — | — |
 
 **2026-09-27, accounting corrections (E1 §15):** job 1 and `tools/e1_identity.py`
 compare against pre-correction results and will now differ by design. Re-run
