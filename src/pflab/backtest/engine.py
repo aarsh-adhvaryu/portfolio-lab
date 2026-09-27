@@ -292,6 +292,12 @@ def run(config, period, panel, indices, cost_model, tax_policy,
     turn_w = _wide(panel, "turnover")
     div_map = _dividend_map(panel)
     act_map = _action_map(actions)
+    # D2: sessions on which a name trades outside `universe.series` (BE/BZ
+    # rows inserted by data.repairs). Empty for any all-EQ panel.
+    no_buy: Dict[date, frozenset] = {}
+    if "series" in panel.columns:
+        off = panel[~panel["series"].isin(tuple(_cfg(config, "universe.series", ["EQ"])))]
+        no_buy = {d: frozenset(g) for d, g in off.groupby("date")["isin"]}
 
     risk_off = _risk_off_series(indices, sessions, trend_filter)
     # Hoisted out of the loop. momentum_panel is pure backward shifts, so its
@@ -477,11 +483,13 @@ def run(config, period, panel, indices, cost_model, tax_policy,
                     cash = _execute_gears(pending, t, book, cash, open_w, close_w,
                                           turn_w, cost_model, trades, warnings,
                                           max_adv, max_buys, n_hold, hooks, state,
-                                          last_close, skips, gears)
+                                          last_close, skips, gears,
+                                          no_buy.get(t, frozenset()))
                 else:
                     cash = _execute(pending, t, book, cash, open_w, close_w, turn_w,
                                     cost_model, trades, warnings, max_adv, max_buys,
-                                    n_hold, hooks, state, last_close, skips)
+                                    n_hold, hooks, state, last_close, skips,
+                                    no_buy.get(t, frozenset()))
                 pending = None
 
         # --- 1b. intra-month exits (E2-A red flags; E1-P §4 N1/N2) ------
@@ -807,7 +815,7 @@ def _decide_rebalance(m, mom_w, uni_pre, close_w, positions, risk_off,
 # -- execution ---------------------------------------------------------
 def _execute(dec, t, book, cash, open_w, close_w, turn_w, cost_model, trades,
              warnings, max_adv, max_buys, n_hold, hooks, state, last_close,
-             skips) -> float:
+             skips, no_buy_today=frozenset()) -> float:
     ro = dec["risk_off"]
     tf = dec.get("trend_filter", "sma10")
 
@@ -848,6 +856,10 @@ def _execute(dec, t, book, cash, open_w, close_w, turn_w, cost_model, trades,
     # E1's shortfall buys never top it up. Absent from every E1 decision.
     if dec.get("no_buy"):
         candidates = [i for i in candidates if i not in dec["no_buy"]]
+    # D2 (E1 §15, 2026-09-27): a name trading in BE/BZ today is priced and
+    # may be sold there, but is never bought -- the universe is EQ (§2).
+    if no_buy_today:
+        candidates = [i for i in candidates if i not in no_buy_today]
     prices = {i: p for i in candidates if (p := _price(open_w, t, i)) is not None}
     if not prices or cash <= 0:
         return cash
@@ -1040,7 +1052,7 @@ def _annotate_gear(d, m, G, book, state, close_w, mom_w, tax_policy) -> None:
 
 def _execute_gears(dec, t, book, cash, open_w, close_w, turn_w, cost_model, trades,
                    warnings, max_adv, max_buys, n_hold, hooks, state, last_close,
-                   skips, G) -> float:
+                   skips, G, no_buy_today=frozenset()) -> float:
     """E3-R §4 at the open after M: the gear's own sales, then E1's exits and
     (where the gear allows) E1's buys through `_execute` itself, then the high
     gear's purchase of the instrument."""
@@ -1082,7 +1094,7 @@ def _execute_gears(dec, t, book, cash, open_w, close_w, turn_w, cost_model, trad
     dec2 = {**dec, "risk_off": block, "trend_filter": "sma10"}
     cash = _execute(dec2, t, book, cash, open_w, close_w, turn_w, cost_model,
                     trades, warnings, max_adv, n_hold if stack_high else max_buys,
-                    n_hold, hooks, state, last_close, skips)
+                    n_hold, hooks, state, last_close, skips, no_buy_today)
 
     if gear == HIGH and g["high_mode"] == "instrument" and cash > 0:
         px = _price(open_w, t, etf)

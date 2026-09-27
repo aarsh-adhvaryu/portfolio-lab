@@ -64,6 +64,18 @@ def prepare(config: dict, period_name: Optional[str] = None,
     except Exception:
         actions = None
 
+    # D1/D2 (E1 §15, 2026-09-27, approved by Aarsh): BE/BZ stints and ISIN
+    # handovers, repaired for every config on the truncated data. The BE rows
+    # pass through truncate_end like the panel; the stored factor table only
+    # sets adj_factor's constant per-ISIN scale, as it already does.
+    from pflab.data import bhavcopy, repairs
+    be = periods.truncate_end(bhavcopy.load(end=period.end, series=repairs.NON_EQ), period)
+    try:
+        all_factors = nca.load()
+    except Exception:
+        all_factors = None
+    panel, actions, _rep = repairs.apply(panel, actions, be, all_factors)
+
     # E3-R §11 (c) / E3 §3: the declared ETF split and ISIN switch of
     # 2019-12-19/20, applied after truncation and only for a config that holds
     # ETFs, so every stock-only config sees the panel exactly as before.
