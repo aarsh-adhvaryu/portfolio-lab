@@ -107,3 +107,12 @@ def test_e1_paths_are_byte_identical_to_before_e3r(tf):
 @pytest.mark.parametrize("tf", sorted(GOLDEN_BEFORE_ACCOUNTING))
 def test_accounting_corrections_are_the_whole_change(tf):
     assert digest(run(tf, neutralised=True)) == GOLDEN_BEFORE_ACCOUNTING[tf]
+
+
+def test_decision_dicts_built_from_sets_are_written_sorted():
+    """E1 §15 2026-09-27 (determinism) and 2026-09-28: a dict built from a
+    set is sorted, so decisions.json is byte-identical across processes
+    without sort_keys."""
+    res = run("sma10")
+    rc = [d["reference_close"] for d in res.decisions if d.get("reference_close")]
+    assert rc and all(list(r) == sorted(r) for r in rc)

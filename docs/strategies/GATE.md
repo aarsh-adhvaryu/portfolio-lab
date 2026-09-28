@@ -4,9 +4,10 @@ Every experiment (E2-A onward) is ONE change applied on top of the current
 adopted stack (E1 base row plus everything adopted before it). It is run under
 the same engine, the same after-tax liquidation-adjusted metrics, the same
 verdict arithmetic, and a sweep of its own declared rows. The sealed period
-(2022–2025) is never used to choose. Forward order is sequential: E1d,
-E3-R, E2-A (when its data is complete), E2-B, E1-S, E2-C, E2-D, E2-E, E3,
-E6-V, E5-A (E1, E1b, E1-P and E1c have verdicts). An experiment does not start until the previous one has a
+(2022–2025) is never used to choose. Forward order is sequential
+(2026-09-28): **E5-A**, E3-R, E2-B, E1-S, E2-D1, E2-D2 (parked until
+E2-D1's verdict), E2-E, E3, E6-V (E1, E1b, E1-P, E1c, E1d and E2-A have
+verdicts; E2-C closed, not run). An experiment does not start until the previous one has a
 verdict written down — written meaning a note in `docs/reviews/`
 naming the verdict and the sweep it came from, for every outcome including
 INCONCLUSIVE and REJECT, not only for the ones that advance.
@@ -77,6 +78,11 @@ that a stale copy is recognisable as stale:
   4.7 pp a year in validation.
 - **2026-09-22** — **E1d and E3-R ahead of E2-A**, on Aarsh's instruction,
   while E2-A's BSE backfill runs. E1c was REJECTED on 2026-09-21.
+- **2026-09-28** — **E5-A next**, on Aarsh's instruction (E5-A readiness
+  §4 D1; the audit's recommendation). The line above also drops E2-C (closed
+  NOT RUN 2026-09-27) and replaces E2-D with E2-D1 / E2-D2 (split 2026-09-27).
+  E5-A's A0 is locked against whichever stack the 2026-09-28 re-classification
+  leaves in force (D2).
 
 ## E1's bar is now fixed
 

@@ -46,7 +46,9 @@ def _corporate_actions(start, end, root):
     """
     from pflab.data import nse_corporate_actions as nca
     nca.collect(start.year, end.year, root, refresh=True)
-    f = nca.factors(root)
+    # Merged, never overwritten: the stored table also holds the PREVCLOSE
+    # factors, which `factors()` does not produce (2026-09-28).
+    f = nca.merge_purpose(nca.factors(root), root)
     nca.write(f, root)
     return {"factors": len(f), "years": sorted({start.year, end.year})}
 

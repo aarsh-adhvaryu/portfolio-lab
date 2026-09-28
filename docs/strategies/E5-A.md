@@ -218,3 +218,19 @@ seeing results. E5-A says nothing about E5-B/C/D.
   exploratory, evaluation from 2011 (replacing "fixed on 2007–2012");
   feature availability and publication time stored; price-only fallback
   with its share reported. Written before any E5-A code or run.
+- 2026-09-28 (Aarsh, session 4) — **readiness decisions** (`docs/notes/E5A-readiness.md` §4).
+  Taken as recommended: **D1** E5-A is next in GATE and ROADMAP order;
+  **D3** `lightgbm` added to CLAUDE.md 7, pinned; **D4** the 8-point grid
+  on 2007–2010, S4 its check; **D5** annual refit (S6 monthly); **D6** one
+  common window, K = 36 cross-sections at ≥ 50% coverage, fallback share
+  reported; **D7** positioning is promoter shares only, insider PIT parked;
+  **D9** a family joins the stack only if ADOPT against both A0 and the stack.
+  **D8: A4 PARKED, not dropped.** GDELT GKG starts 2015, so A4 could not act
+  in the 2011– development window; revisit with an issuer-news source
+  covering 2011 onward, or in the live year. §6(e) stands as written until then.
+  **D2 (stack) waits** for the re-classification after the 2026-09-28 regression.
+  **A2 precondition settled (§6(c)):** A2 carries **both** measures as
+  features — the change in promoter **shares** and the change in promoter
+  **percent** — plus a flag for a change in total shares with no recorded
+  corporate action. **Nothing is thresholded**; the model weighs them. This
+  replaces "E2-D1 readiness §3 settled first" as the precondition.

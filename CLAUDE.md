@@ -38,6 +38,8 @@ touching code. The charter is the spec; the code implements it.
    `pypdf` was added 2026-09-17 for the NSE index constituent-change
    circulars (E1b §3); `pdfplumber` is a named fallback, permitted only for a
    circular whose tables `pypdf` returns garbled, and nothing else.
+   `lightgbm` was added 2026-09-28 for E5-A (readiness §4 D3), pinned to an
+   exact version when it is installed at E5-A's build; it brings scipy.
 8. **ISIN is the security key.** Never join on symbol without a date.
 9. **Data lives under `PFLAB_DATA_DIR`** (env var; the code falls back to
    the relative `./data`, but never rely on that). On Aarsh's machine it is

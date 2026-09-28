@@ -131,16 +131,40 @@ def transition_jumps(p: pd.DataFrame, skip: set) -> pd.DataFrame:
     raw prev close), so neither PREVCLOSE nor the return factor sees it. A
     move is an action if NSE adjusted the prev close (> SAME_PRICE off the
     prior close), or -- on entry to BE/BZ only -- the open is outside
-    JUMP_BAND of it, which the price band does not allow without one. `skip`: (isin, date) already carrying a factor."""
+    JUMP_BAND of it, which the price band does not allow without one. On a
+    return to EQ, a prev close equal to the last EQ close before the stint
+    is stale, not adjusted; on entry, an adjusted prev close counts only if
+    the open agrees with it (within JUMP_BAND). `skip`: (isin, date) already
+    carrying a factor."""
     q = p[["isin", "date", "series", "open", "close", "prev_close"]]         .sort_values(["isin", "date"], kind="mergesort")
     g = q.groupby("isin", sort=False)
     prev_series, prev_close = g["series"].shift(1), g["close"].shift(1)
     t = q[prev_series.notna() & (prev_series.isin(NON_EQ) != q["series"].isin(NON_EQ))].copy()
+    # The last EQ close before the current stint. On a return to EQ, NSE
+    # sometimes carries THAT as the prev close rather than the last BE close
+    # (GOLDTECH 2008-06-13: 224.80, its 2008-05-15 EQ close, against a last
+    # BE close of 246.55). That is a stale value, not an adjustment
+    # (2026-09-28; it had produced false cash credits).
+    eq_close = q["close"].where(~q["series"].isin(NON_EQ))
+    last_eq = eq_close.groupby(q["isin"], sort=False).ffill()
+    last_eq = last_eq.groupby(q["isin"], sort=False).shift(1)
     t["prior"] = prev_close.loc[t.index]
+    t["last_eq"] = last_eq.loc[t.index]
     t = t[t["prior"] > 0]
     t = t[np.array([(i, d) not in skip for i, d in zip(t["isin"], t["date"])], dtype=bool)]
     px = t["open"].where(t["open"] > 0, t["close"])
-    adjusted = (t["prev_close"] > 0) & ((t["prev_close"] / t["prior"] - 1).abs() > SAME_PRICE)
+    stale = (~t["series"].isin(NON_EQ) & (t["last_eq"] > 0)
+             & ((t["prev_close"] / t["last_eq"] - 1).abs() <= SAME_PRICE))
+    adjusted = ((t["prev_close"] > 0) & ((t["prev_close"] / t["prior"] - 1).abs() > SAME_PRICE)
+                & ~stale)
+    # On ENTRY the band holds the first trade near the true prior, so an
+    # adjusted prev close the open contradicts is bad data, not an action:
+    # 2008-06-13 carried round prev closes (ROHITFERRO 30.00, SHREEASHTA
+    # 160.00) on names that opened at their prior close, read as 1:5 and 1:3
+    # splits (2026-09-28). The open decides instead, through `out_band`.
+    entry = t["series"].isin(NON_EQ)
+    agrees = (px / t["prev_close"]).between(*JUMP_BAND)
+    adjusted = adjusted & (~entry | agrees)
     jump = px / t["prior"]
     # Only on ENTRY to BE/BZ, where the price band holds the first trade near
     # the prior close; a return to EQ can open through an unbanded call
@@ -217,12 +241,37 @@ def _adj(rows: pd.DataFrame, factors: pd.DataFrame) -> np.ndarray:
     return out
 
 
+def be_dividends(be_rows: pd.DataFrame, dividends: Optional[pd.DataFrame],
+                 acts: Optional[pd.DataFrame]) -> pd.Series:
+    """Cash per share going ex on each inserted BE/BZ row (2026-09-28).
+
+    The panel's dividend column is joined on EQ rows only, so a dividend
+    with its ex-date inside a stint was never credited. It is joined here on
+    the row's own ISIN, before D1 re-keys it. A date that also carries an
+    action for that ISIN keeps the action alone, as on EQ rows (E1 §15
+    2026-09-16: never two on one date)."""
+    out = pd.Series(0.0, index=be_rows.index)
+    if dividends is None or len(dividends) == 0 or len(be_rows) == 0:
+        return out
+    d = dividends.rename(columns={"ex_date": "date", "dividend_per_share": "dividend"})
+    d = d.assign(date=_as_date(d["date"])).groupby(["isin", "date"])["dividend"].sum()
+    keys = pd.MultiIndex.from_arrays([be_rows["isin"].astype(str), be_rows["date"]])
+    got = pd.Series(d.reindex(keys).to_numpy(), index=be_rows.index).fillna(0.0)
+    if acts is not None and len(acts):
+        busy = set(zip(acts["isin"].astype(str), _as_date(acts["ex_date"])))
+        hit = [(i, t) in busy for i, t in zip(be_rows["isin"].astype(str), be_rows["date"])]
+        got[pd.Series(hit, index=be_rows.index) & got.gt(0)] = 0.0
+    return got
+
+
 def apply(panel: pd.DataFrame, actions: Optional[pd.DataFrame],
-          be: Optional[pd.DataFrame], all_factors: Optional[pd.DataFrame] = None
+          be: Optional[pd.DataFrame], all_factors: Optional[pd.DataFrame] = None,
+          dividends: Optional[pd.DataFrame] = None,
           ) -> Tuple[pd.DataFrame, Optional[pd.DataFrame], dict]:
-    """(panel, actions, report). `panel`, `actions` and `be` are already cut
-    at the period end; `all_factors` is the stored factor table (used for
-    `adj_factor` exactly as the stored panel uses it; defaults to `actions`)."""
+    """(panel, actions, report). `panel`, `actions`, `be` and `dividends` (the
+    feed: isin, ex_date, dividend_per_share) are already cut at the period
+    end; `all_factors` is the stored factor table (used for `adj_factor`
+    exactly as the stored panel uses it; defaults to `actions`)."""
     p = panel.reset_index(drop=True)
     p["date"] = _as_date(p["date"])
     acts = None if actions is None else actions.copy()
@@ -264,6 +313,9 @@ def apply(panel: pd.DataFrame, actions: Optional[pd.DataFrame],
         return df
     acts, allf = _d2(acts), _d2(allf)
     if len(be_rows):
+        be_rows["dividend"] = be_dividends(be_rows, dividends, acts)
+    rep["d2_be_dividends"] = int((be_rows["dividend"] > 0).sum()) if len(be_rows) else 0
+    if len(be_rows):
         p = pd.concat([p, be_rows], ignore_index=True)
     have = set(zip(acts["isin"].astype(str), acts["ex_date"])) if acts is not None else set()
     jumps = transition_jumps(p, have)
@@ -273,6 +325,14 @@ def apply(panel: pd.DataFrame, actions: Optional[pd.DataFrame],
         acts = add if acts is None else pd.concat([acts, add], ignore_index=True)
         allf = pd.concat([allf, add], ignore_index=True)
         touched |= set(jumps["isin"])
+        # A transition action on a BE row's date wins over its dividend too.
+        jk = set(zip(jumps["isin"].astype(str), jumps["ex_date"]))
+        clash = (p["series"].isin(NON_EQ).to_numpy() & (p["dividend"] > 0).to_numpy()
+                 & np.array([(i, t) in jk for i, t in zip(p["isin"].astype(str), p["date"])],
+                            dtype=bool)) if "series" in p.columns else None
+        if clash is not None and clash.any():
+            p.loc[clash, "dividend"] = 0.0
+            rep["d2_be_dividends"] -= int(clash.sum())
 
     # D1 -----------------------------------------------------------------
     events, rejected = handovers(p, acts)

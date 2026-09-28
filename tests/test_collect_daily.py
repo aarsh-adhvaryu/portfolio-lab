@@ -122,3 +122,35 @@ def test_bhavcopy_and_corporate_actions_are_the_critical_ones():
     assert collect_daily.CRITICAL == {"bhavcopy", "corporate_actions"}
     assert "bse" not in collect_daily.CRITICAL
     assert "gdelt" not in collect_daily.CRITICAL
+
+
+# -- corporate actions: merge, never overwrite (2026-09-28) --------------
+def test_daily_corporate_actions_keeps_every_existing_factor(root, monkeypatch):
+    """A daily run re-parses PURPOSE text only. It must keep every stored
+    PREVCLOSE factor and every stored PURPOSE row the fresh parse lacks."""
+    from datetime import date
+    import pandas as pd
+    from pflab.data import nse_corporate_actions as nca
+    na = float("nan")
+    stored = pd.DataFrame({
+        "isin": ["INE000A", "INE000B", "INE000C", "INE000D"],
+        "ex_date": [date(2020, 1, 2), date(2020, 2, 3), date(2021, 3, 4), date(2019, 5, 6)],
+        "factor": [0.5, 0.0805, 2.0, 0.25],
+        "bonus_factor": [0.5, na, na, 1.0],
+        "source": ["purpose", "prevclose", "prevclose", "purpose"],
+        "prior_close": [na, 304.2, 10.0, na],
+        "adj_prev_close": [na, 24.5, 20.0, na]})
+    nca.write(stored, root)
+    fresh = pd.DataFrame({"isin": ["INE000A", "INE000E"],
+                          "ex_date": [date(2020, 1, 2), date(2026, 9, 25)],
+                          "factor": [0.5, 0.2], "bonus_factor": [0.5, 1.0]})
+    monkeypatch.setattr(nca, "collect", lambda *a, **k: None)
+    monkeypatch.setattr(nca, "factors", lambda r=None, **k: fresh)
+    collect_daily._corporate_actions(date(2026, 9, 25), date(2026, 9, 27), root)
+    out = nca.load(root)
+    got = set(zip(out["isin"], pd.to_datetime(out["ex_date"]).dt.date, out["source"]))
+    want = set(zip(stored["isin"], stored["ex_date"], stored["source"])) | {
+        ("INE000E", date(2026, 9, 25), "purpose")}
+    assert got == want and len(out) == 5
+    pc = out[out["source"] == "prevclose"].set_index("isin")
+    assert pc.loc["INE000B", "adj_prev_close"] == 24.5

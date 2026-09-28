@@ -308,6 +308,33 @@ def write(f: pd.DataFrame, root: Optional[Path] = None) -> Path:
     return p
 
 
+def merge_purpose(fresh: pd.DataFrame, root: Optional[Path] = None) -> pd.DataFrame:
+    """The stored combined table with `fresh` PURPOSE factors merged in: a
+    fresh row replaces a stored PURPOSE row on the same (isin, ex_date), and
+    every other stored row -- all PREVCLOSE factors, and PURPOSE rows the
+    fresh parse lacks -- is kept. The daily collector writes this, never
+    `factors()` alone, which holds PURPOSE rows only (2026-09-28).
+
+    New PREVCLOSE factors are not derived here; that needs the panel."""
+    root = root or data_dir()
+    p = root / "corporate_actions" / "factors.parquet"
+    new = fresh.copy()
+    new["source"] = "purpose"
+    for c in ("prior_close", "adj_prev_close"):
+        new[c] = pd.NA
+    if not p.exists():
+        return new.sort_values(["isin", "ex_date"]).reset_index(drop=True)
+    old = load(root)
+    key = lambda df: list(zip(df["isin"].astype(str), pd.to_datetime(df["ex_date"]).dt.date,
+                              df["source"].fillna("purpose").astype(str)))
+    replaced = set(key(new))
+    old = old[[k not in replaced for k in key(old)]]
+    cols = list(dict.fromkeys(list(old.columns) + list(new.columns)))
+    out = pd.concat([old.reindex(columns=cols), new.reindex(columns=cols)],
+                    ignore_index=True)
+    return out.sort_values(["isin", "ex_date"]).reset_index(drop=True)
+
+
 def load(root: Optional[Path] = None) -> pd.DataFrame:
     """The combined factor table. A table written before 2026-09-27 has no
     `bonus_factor`; it is re-derived from the raw PURPOSE files (a parse, no

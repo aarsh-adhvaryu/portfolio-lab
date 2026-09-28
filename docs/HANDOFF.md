@@ -3,6 +3,36 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-09-28, session 4, part B done — STOP for the regression)
+
+**Recorded** (change logs dated 2026-09-28): E1 §15 declared choices
+confirmed. Unnamed standard-ratio factors: 13 dev / 15 val. No base row
+holds one. Treating them as bonuses moves CAGR ≤ 0.0001 pp. IIFL
+2019-05-30 is a real demerger read as a split (declared). E5-A §14: D1, 3–7
+and 9 as recommended. **A4 parked.** D2 waits for C. The A2 precondition is
+settled. GATE and ROADMAP now put **E5-A next**. CLAUDE.md 7 adds lightgbm.
+
+**Fixed** (E1 §15 2026-09-28): `collect_daily` now merges factors; BE-stint
+dividends are credited; set-built dicts are sorted; the run id hashes the
+repair inputs. Two D2 data errors are fixed: a stale prev close on return
+to EQ, and a garbage prev close on entry that the open contradicts
+(2008-06-13; ROHITFERRO 1:5, SHREEASHTA 1:3). All 4 saved CASH_CREDITs were
+the first error. Transition actions ≤ 2016: 131 → 57. Payment dates:
+declared, not built. `pytest -q`: 655 passed.
+
+**ADV skips 39 → 83** (E1 dev), by cause:
+- 21 are on D1 successor ISINs, which can now be bought;
+- ~19 are bigger buys (median buy +35% in 2013), because written-down names
+  now compound;
+- only 4 have BE rows in the ADV window, and 1 of those would pass on
+  EQ-only ADV.
+
+By year: 2012 +2, 2013 +22, 2014 +2, 2015 +14, 2016 +5.
+
+**Next:** Aarsh runs RUNNING.md job 6 (4 lanes, full sweeps). Then part C:
+re-classify all six. If E1d still ADOPTs, move the stack to E1 + E1d in
+GATE, ROADMAP, STATE and HANDOFF, and refresh every STATE figure.
+
 ## Start here (2026-09-27, session 4 of 4)
 
 **E5-A readiness only, no code, no runs.** E5-A now has its own charter,

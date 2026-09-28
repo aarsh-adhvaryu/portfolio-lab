@@ -150,3 +150,57 @@ def test_engine_never_buys_on_a_be_row():
     bd = pd.to_datetime(buys["date"]).dt.date
     assert len(buys) > 0
     assert not ((bd >= date(2015, 3, 1)) & (bd <= date(2015, 3, 31))).any()
+
+
+def test_d2_dividend_inside_be_stint_is_credited():
+    """2026-09-28: a dividend going ex on a BE row reaches the panel, so the
+    engine credits it to a holder; one on a date with an action does not."""
+    eq = pd.concat([rows("A", "AAA", D[:10], [100.0] * 10),
+                    rows("A", "AAA", D[20:30], [100.0] * 10)])
+    be = rows("A", "AAA", D[10:20], [100.0] * 10, series="BE")
+    divs = pd.DataFrame({"isin": ["A", "A", "Z"], "ex_date": [D[14], D[16], D[14]],
+                         "dividend_per_share": [2.5, 1.0, 9.0]})
+    a = acts(("A", D[16], 0.5, "purpose", np.nan, np.nan))
+    p, _, rep = repairs.apply(eq, a, be, None, divs)
+    s = p[p["isin"] == "A"].set_index("date")["dividend"]
+    assert s[D[14]] == 2.5 and s[D[16]] == 0.0 and rep["d2_be_dividends"] == 1
+    assert s.drop([D[14]]).eq(0).all()
+
+
+def test_d2_be_dividend_reaches_the_engine_dividend_map():
+    from pflab.backtest.engine import _dividend_map
+    eq = rows("A", "AAA", D[:10], [100.0] * 10)
+    be = rows("A", "AAA", D[10:20], [100.0] * 10, series="BE")
+    divs = pd.DataFrame({"isin": ["A"], "ex_date": [D[12]], "dividend_per_share": [3.0]})
+    p, _, _ = repairs.apply(eq, acts(), be, None, divs)
+    assert _dividend_map(p)[D[12]] == [("A", 3.0)]
+
+
+def test_d2_stale_prev_close_on_return_to_eq_is_not_an_action():
+    """GOLDTECH 2008-06-13 (2026-09-28): back in EQ, NSE's prev close is the
+    last EQ close before the stint, not the last BE close. Not an action."""
+    eq = pd.concat([rows("A", "AAA", D[:10], [224.8] * 10),
+                    rows("A", "AAA", D[20:30], [239.3] * 10, prev=[224.8] + [239.3] * 9)])
+    bc = list(np.linspace(218.0, 246.55, 10))
+    be = rows("A", "AAA", D[10:20], bc, series="BE", prev=[224.8] + bc[:-1])
+    _, a2, rep = repairs.apply(eq, acts(), be)
+    assert rep["d2_transition_actions"] == 0 and len(a2) == 0
+    # the same return with NSE's prev close at the BE close is not stale
+    eq2 = pd.concat([eq.iloc[:10], rows("A", "AAA", D[20:30], [120.0] * 10,
+                                        prev=[123.3] + [120.0] * 9)])
+    _, a3, rep3 = repairs.apply(eq2, acts(), be)
+    assert rep3["d2_transition_actions"] == 1
+
+
+def test_d2_garbage_prev_close_on_entry_is_not_an_action():
+    """ROHITFERRO 2008-06-13 (2026-09-28): entered BE with prev close 30.00
+    against a 150.30 close and opened at 154.90. Not a 1:5 split."""
+    eq = rows("A", "AAA", D[:10], [150.3] * 10)
+    be = rows("A", "AAA", D[10:20], [154.9] * 10, series="BE", prev=[30.0] + [154.9] * 9)
+    _, a2, rep = repairs.apply(eq, acts(), be)
+    assert rep["d2_transition_actions"] == 0 and len(a2) == 0
+    # an adjusted prev close the open agrees with is still an action
+    be2 = rows("A", "AAA", D[10:20], [52.0] * 10, series="BE", prev=[50.1] + [52.0] * 9)
+    _, a3, rep3 = repairs.apply(eq, acts(), be2)
+    assert rep3["d2_transition_actions"] == 1
+    assert a3.iloc[0]["factor"] == pytest.approx(50.1 / 150.3)

@@ -5,10 +5,12 @@ charter. Each experiment gets its own charter in `docs/strategies/` before it
 runs; this file only says what the experiments are, in what order, what each
 must prove, and what the finished system looks like.
 
-**Forward order (2026-09-25): E2-A, E3-R, E2-B, E1-S, E2-C, E2-D, E2-E,
-E3, E6-V, E5-A.** Done: E1 (INCONCLUSIVE), E1b (INCONCLUSIVE), E1-P
-(REJECT), E1c (REJECT), E1d (INCONCLUSIVE, 2026-09-25). Off the list: E4,
-and any stop-loss (E1-P's N1 failed validation). Nothing skips the gate.
+**Forward order (2026-09-28): E5-A, E3-R, E2-B, E1-S, E2-D1, E2-D2
+(parked until E2-D1), E2-E, E3, E6-V.** Done: E1 (INCONCLUSIVE), E1b
+(INCONCLUSIVE), E1-P (INCONCLUSIVE, re-run 2026-09-27), E1c (REJECT), E1d
+(ADOPT, re-run 2026-09-27), E2-A (REJECT); all provisional until the
+2026-09-28 regression is classified. Closed, not run: E2-C. Off the list:
+E4, and any stop-loss (E1-P's N1 failed validation). Nothing skips the gate.
 The gate's arithmetic lives in `docs/strategies/GATE.md`; each experiment
 has its own charter in `docs/strategies/`.
 
@@ -18,6 +20,15 @@ decide **ADVANCE** — the sealed reveal, the live paper year, real money —
 in place of E1 §13's C1–C4. Recorded verdicts are unchanged.
 
 ---
+
+## Order change, 2026-09-28 — E5-A next
+
+On Aarsh's instruction (E5-A readiness §4 D1, following the audit). E5-A
+tests information families one at a time against a price/volume control
+(A0), so it answers the question every later event experiment asks, once,
+under one procedure. A4 (company news) is **parked, not dropped**: GDELT GKG
+starts 2015, after the development window opens. Everything else keeps its
+relative order.
 
 ## Order change, 2026-09-25 — E2-A before E3-R, on what E1d showed
 

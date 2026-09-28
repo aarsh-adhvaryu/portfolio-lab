@@ -20,6 +20,15 @@ _(none)_ — verified 2026-09-27 with `tools\status.ps1`.
 
 ## Queued
 
+**6. QUEUED 2026-09-28 — final regression, all six experiments, both periods,
+full sweeps** (E1 §15 2026-09-28 fixes). Four PowerShell windows from
+`D:\portfolio_lab`, one lane each, all at once (~3 GB each):
+`$env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; .venv\Scripts\python.exe -u tools\regress_bases.py --full --lane A`
+(then `B`, `C`, `D`). Lanes A/B: E1, E1b, E1-P full + E1 on E2-A's window
+(base only); C/D: E1c, E1d, E2-A full. ~45–70 min a lane. Done when all 14
+markers in `experiments\_regress\` carry the new commit and `"full"`, and each
+window printed `DONE ->` for every job. Then `tools\regress_bases.py --report`.
+
 **5. DONE 2026-09-27 at `1a6ce55`** (E1-P dev/val, E1d dev/val; E1d ADOPT, E1-P INCONCLUSIVE). Full re-runs after the D1/D2 base-row flips (E1b's procedure; Aarsh's decision).**
 Four windows at once, ~15-20 min each, at HEAD (not `run_locked`: the fix is the
 code change). Each prints its output dir when done:

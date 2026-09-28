@@ -5,6 +5,11 @@ accounting corrections (E1 §15; audit Deliverable 1). Aarsh runs this.
     python tools/regress_bases.py --lane A          # one lane, jobs in order
     python tools/regress_bases.py E1-dev E1-val     # named jobs
     python tools/regress_bases.py --report          # old vs new, base rows
+    python tools/regress_bases.py --full --lane A   # every row, for classify
+
+`--full` (2026-09-28) runs each experiment's whole sweep into
+experiments/<ID>/sweeps/, so classify has every row (G3, C4); the two
+E1-on-E2-A-window jobs stay base-only, since they are only E2-A's STACK.
 
 Four lanes, one per window, run side by side = four sweeps at once (CLAUDE.md).
 Each job lands in experiments/<ID>/regression/<period>-<run_id> and drops a
@@ -53,7 +58,8 @@ LANES = {
     "C": ["E1c-dev", "E1d-dev", "E2A-dev"],
     "D": ["E1c-val", "E1d-val", "E2A-val"],
 }
-REASON = "E1 §15 2026-09-27 accounting corrections; audit Deliverable 1"
+REASON = ("E1 §15 2026-09-27 accounting corrections (audit Deliverable 1); "
+          "2026-09-28 measurement fixes")
 
 
 def _experiments() -> Path:
@@ -79,9 +85,10 @@ def _guard() -> dict:
     return {"pflab": str(src), "commit": head}
 
 
-def run(job: str) -> None:
+def run(job: str, full: bool = False) -> None:
     from pflab.backtest import runner
     cfg, period, _ = JOBS[job]
+    full = full and not job.startswith("E1-e2a")
     exp = _experiments()
     ident = _guard()
     marker = exp / "_regress" / f"{job}.json"
@@ -90,11 +97,12 @@ def run(job: str) -> None:
           flush=True)
     t0 = time.time()
     os.chdir(REPO)
-    out = runner.main(cfg, period, sweep=True, rows=["base"], kind="regression",
+    out = runner.main(cfg, period, sweep=True, rows=None if full else ["base"],
+                      kind="sweeps" if full else "regression",
                       extra_manifest={"regression_of": job, "reason": REASON,
-                                      "commit": ident["commit"]})
+                                      "full": full, "commit": ident["commit"]})
     marker.write_text(json.dumps({"job": job, "config": cfg, "period": period,
-                                  "out": out, **ident,
+                                  "out": out, "full": full, **ident,
                                   "minutes": round((time.time() - t0) / 60, 1),
                                   "finished": time.strftime("%Y-%m-%d %H:%M:%S")},
                                  indent=1))
@@ -134,6 +142,7 @@ def main() -> None:
     ap.add_argument("--lane", choices=sorted(LANES))
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--report", action="store_true")
+    ap.add_argument("--full", action="store_true")
     a = ap.parse_args()
     if a.list:
         for lane, jobs in LANES.items():
@@ -148,7 +157,7 @@ def main() -> None:
     if unknown or not jobs:
         sys.exit(f"unknown or no jobs: {unknown}; see --list")
     for j in jobs:
-        run(j)
+        run(j, full=a.full)
 
 
 if __name__ == "__main__":

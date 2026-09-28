@@ -583,7 +583,7 @@ def run(config, period, panel, indices, cost_model, tax_policy,
         for d in decisions:
             d[_pos_key] = {
                 i: {k: (str(x) if isinstance(x, date) else x) for k, x in v.items()}
-                for i, v in (_ps_record.get(d["month_end"]) or {}).items()}
+                for i, v in sorted((_ps_record.get(d["month_end"]) or {}).items())}
 
     equity = pd.DataFrame(rows)
     equity, tax_rows = _finalise(equity, book, last_close, cost_model,
@@ -661,7 +661,7 @@ def _decide(m, mom_w, uni_pre, close_w, n_hold, band, positions,
          "exits": exits, "deferred": deferred, "entries": entries,
          "held": held, "ranks": {i: float(ranks[i]) for i in ranks.index[:200]},
          "reference_close": {i: float(close_w.at[m, i])
-                             for i in set(held) | set(entries)
+                             for i in sorted(set(held) | set(entries))
                              if i in close_w.columns and not pd.isna(close_w.at[m, i])},
          "trend_filter": trend_filter}
     if tw:
@@ -758,7 +758,7 @@ def _decide_rebalance(m, mom_w, uni_pre, close_w, positions, risk_off,
              "target_weights": dict(carried or {}),
              "rebalance": False,
              "reference_close": {i: float(close_w.at[m, i])
-                                 for i in set(held) | set(carried or {})
+                                 for i in sorted(set(held) | set(carried or {}))
                                  if i in close_w.columns
                                  and not pd.isna(close_w.at[m, i])},
              "trend_filter": trend_filter}
@@ -804,7 +804,7 @@ def _decide_rebalance(m, mom_w, uni_pre, close_w, positions, risk_off,
          "target_weights": tw, "rebalance": True,
          "score_date": sd,
          "reference_close": {i: float(close_w.at[m, i])
-                             for i in set(held) | set(selected)
+                             for i in sorted(set(held) | set(selected))
                              if i in close_w.columns
                              and not pd.isna(close_w.at[m, i])},
          "trend_filter": trend_filter}

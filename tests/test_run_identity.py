@@ -90,3 +90,25 @@ def test_data_fingerprint_moves_with_any_input():
     a = artifacts.data_fingerprint(panel, extra={"inputs": {"costs_file": "a"}})
     b = artifacts.data_fingerprint(panel, extra={"inputs": {"costs_file": "b"}})
     assert a != b
+
+
+def test_repair_inputs_enter_the_identity_cut_at_the_end(tmp_path):
+    """2026-09-28: BE rows, the factor table and the dividend feed reach the
+    engine only through the repaired panel; each is hashed, cut at the end."""
+    root = _root(tmp_path)
+    div = pd.DataFrame({"isin": ["X"], "ex_date": [date(2012, 5, 2)],
+                        "dividend_per_share": [2.0]})
+    be = pd.DataFrame({"date": [date(2012, 5, 2)], "isin": ["X"], "close": [10.0]})
+    fac = pd.DataFrame({"isin": ["X"], "ex_date": [date(2011, 1, 3)], "factor": [0.5]})
+    ri = {"dividends": div, "be_rows": be, "factor_table": fac}
+    fp = lambda r: runner.input_fingerprints(_cfg(), P, {}, None, None, root=root,
+                                             repair_inputs=r)
+    base = fp(ri)
+    later = {"dividends": pd.concat([div, div.assign(ex_date=[date(2018, 1, 1)])]),
+             "be_rows": pd.concat([be, be.assign(date=[date(2019, 1, 1)])]),
+             "factor_table": pd.concat([fac, fac.assign(ex_date=[date(2020, 1, 1)])])}
+    assert fp(later) == base                                   # seal identity
+    for key, col, val in (("dividends", "dividend_per_share", 2.5),
+                          ("be_rows", "close", 11.0), ("factor_table", "factor", 0.25)):
+        edited = {**ri, key: ri[key].assign(**{col: [val]})}
+        assert fp(edited)[f"repair:{key}"] != base[f"repair:{key}"], key

@@ -62,6 +62,13 @@ Compute is small: roughly 100k rows per fit, 3 fits × 15 refits per row.
 
 ## 4. Decisions for Aarsh
 
+**Decided 2026-09-28** (E5-A §14): 1, 3, 4, 5, 6, 7, 9 as recommended;
+**8: A4 PARKED** (GKG starts 2015; revisit with a 2011-onward source or in
+the live year); **2 waits** for the post-regression re-classification. A2's
+precondition is settled: both measures (promoter-share change, promoter-%
+change) and an unexplained total-share-change flag, as features, nothing
+thresholded.
+
 1. **Order.** GATE's order puts E5-A last; the audit recommends it next.
    Needs a dated line in GATE and ROADMAP. *Recommended: next, once the stack is settled.*
 2. **Stack.** Is A0 measured against E1 base or E1 + E1d? *Confirm E1d first,

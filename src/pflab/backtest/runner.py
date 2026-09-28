@@ -27,13 +27,17 @@ def _repo_root() -> Path:
 
 
 def prepare(config: dict, period_name: Optional[str] = None,
-            unseal_reason: Optional[str] = None):
+            unseal_reason: Optional[str] = None, inputs: Optional[dict] = None):
     """(period, panel, indices, actions, cost_factory, tax_policy, membership).
 
     Nothing here reads a row dated after the period end. That includes the
     index-membership table: `truncate_membership` drops names included after
     the end AND reopens windows that closed after it, so a run cannot know in
     2010 that a name leaves the index in 2024.
+
+    `inputs`, if given, receives the repair inputs that reach the engine only
+    through the repaired panel -- BE/BZ rows, the stored factor table and the
+    dividend feed -- each cut at the period end, for the run identity.
     """
     from pflab.data import panel as panel_mod, indices as idx_mod
     from pflab.data import nse_corporate_actions as nca
@@ -74,7 +78,18 @@ def prepare(config: dict, period_name: Optional[str] = None,
         all_factors = nca.load()
     except Exception:
         all_factors = None
-    panel, actions, _rep = repairs.apply(panel, actions, be, all_factors)
+    # Dividends going ex inside a BE stint are credited (2026-09-28); the
+    # feed is cut at the period end like everything else.
+    from pflab.data import dividends as dv
+    try:
+        divs = _upto(dv.load(), "ex_date", period.end)
+    except Exception:
+        divs = None
+    if inputs is not None:
+        inputs.update({"be_rows": be, "dividends": divs,
+                       "factor_table": None if all_factors is None
+                       else _upto(all_factors, "ex_date", period.end)})
+    panel, actions, _rep = repairs.apply(panel, actions, be, all_factors, divs)
 
     # E3-R §11 (c) / E3 §3: the declared ETF split and ISIN switch of
     # 2019-12-19/20, applied after truncation and only for a config that holds
@@ -126,7 +141,8 @@ def _valid_upto(df, end):
 
 
 def input_fingerprints(cfg: dict, period, indices, actions, membership,
-                       overlap=None, root: Optional[Path] = None) -> dict:
+                       overlap=None, root: Optional[Path] = None,
+                       repair_inputs: Optional[dict] = None) -> dict:
     """{input: sha} for everything the run consumes besides the panel, each
     cut at the period end, and the CONTENTS of the policy files (audit
     Deliverable 1 g). Appending data after the end changes nothing here, so
@@ -148,6 +164,13 @@ def input_fingerprints(cfg: dict, period, indices, actions, membership,
     }
     for key in sorted(indices):
         fp[f"index:{key}"] = sha(indices[key])
+    # D1/D2 inputs (2026-09-28): cut at the end again here, so a caller that
+    # passes an uncut frame still cannot move the hash by appending.
+    for key, col in (("be_rows", "date"), ("factor_table", "ex_date"),
+                     ("dividends", "ex_date")):
+        if repair_inputs and key in repair_inputs:
+            df = repair_inputs[key]
+            fp[f"repair:{key}"] = sha(None if df is None else _upto(df, col, end))
     # Tables the engine or its hooks load for themselves, when enabled.
     rf = (cfg.get("red_flags") or {}).get("enabled") or \
         (cfg.get("hooks") or {}).get("intra_month_exit") == "red_flag"
@@ -183,8 +206,9 @@ def main(config_path, period_name=None, unseal_reason=None, sweep=False,
     from pflab.eval import sweep as sweep_mod
 
     cfg = load_config(config_path)
+    repair_inputs: dict = {}
     period, panel, indices, actions, cost_factory, tax, membership = prepare(
-        cfg, period_name, unseal_reason)
+        cfg, period_name, unseal_reason, inputs=repair_inputs)
     # PFLAB_EXPERIMENTS_DIR (2026-09-26). A locked run executes from a
     # detached worktree, so `_repo_root()` is that worktree, not the repo --
     # results would land inside it and be lost to the next `git worktree
@@ -208,7 +232,8 @@ def main(config_path, period_name=None, unseal_reason=None, sweep=False,
     cfg_text = json.dumps(cfg, sort_keys=True, default=str)
     # Audit Deliverable 1 g (2026-09-27): the data identity covers every
     # consumed input cut at the period end, not the panel alone.
-    inputs = input_fingerprints(cfg, period, indices, actions, membership, overlap)
+    inputs = input_fingerprints(cfg, period, indices, actions, membership, overlap,
+                                repair_inputs=repair_inputs)
     fp = artifacts.data_fingerprint(panel, extra={"inputs": inputs})
     commit = artifacts.code_commit()
     # A dirty tree is not pinned by its commit hash, so the code identity
