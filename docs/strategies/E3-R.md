@@ -1,6 +1,6 @@
 # E3-R — Risk gears (dynamic equity exposure)
 
-Status: DRAFT. Locks at its first development run. Judged by `GATE.md`
+Status: **LOCKED 2026-09-29** (`lock/E3-R`, §3–§7), against E1 + E1d. Judged by `GATE.md`
 against the current stack, and reported against MANDATE §3 and §5.
 Slotted after E2-A.
 
@@ -163,3 +163,32 @@ they never give certainty, and false alarms are counted, not hidden.
   unchanged for stocks). *Reason:* the readiness note (§8) found the guard
   would skip the 2009-04 high month outright (1% of ADV was ₹6.8 lakh); a
   skipped high gear tests nothing.
+- 2026-09-29 (Aarsh, session 6) — **the stack is E1 + E1d** (final
+  regression, `docs/reviews/regression-2026-09-28-verdicts.md`). E3-R is
+  judged against it, and "the stack's score" in §3 (V's basket) and in
+  (b)'s tie-break is **E1d's volatility-scaled 6+12 score, standardised
+  within the eligible universe at M**; a held name outside it has no score
+  and ranks weakest on ties. Everything else in `configs/e3r.toml` is
+  `configs/e1d.toml`. No rule of §3–§7 changes.
+- 2026-09-29 (Aarsh, session 6) — **LOCKED**, with the readings of
+  `docs/notes/E3R-readiness.md` §8 accepted as built: (2) V's percentile
+  over the 36 previous month-end values, all required; V's basket
+  rebalanced daily, sample std of 126 daily returns; B over each name's own
+  200 rows; sell-down amount = fraction × (equity after the month's band
+  exits − target × portfolio), priced at M's close; lots long- or
+  short-term as of M; tax per rupee = 20% × short-term gain + 12.5% ×
+  long-term gain over the position, before set-off and exemption; tranches
+  sell this month-end and the next two *normal* ones; the high month runs
+  the band exits, buys no stock and puts all cash into NIFTYBEES; S7's high
+  month buys the stack's names with no six-name cap; the gear machine
+  starts each period in normal gear. (3) NIFTYBEES is charged the stock
+  STT, overstating a round trip by about 0.2%; (4) it has no dividend rows,
+  understating the high gear by up to ~1 pp a year of holding in
+  2008–2013 — both declared in `classify_e3r`. (5) S8's VIX percentile
+  exists from 2011-03, not 2009; before that S8's cautious gear is T and B.
+  (6) **Data fix logged:** NIFTYBEES split 1:10 on 2019-12-19 (close
+  1,292.54 on 2019-12-18, 130.20 on 2019-12-19, ratio 0.1007) and moved
+  from ISIN INF732E01011 to INF204KB14I2 on 2019-12-20;
+  `pflab/data/etf_events.py` re-keys and adjusts ETF rows only, when a
+  config sets `data.etf_events`. Span §3–§7: see `tools/check_lock.py`
+  `E3-R` and readiness §9.

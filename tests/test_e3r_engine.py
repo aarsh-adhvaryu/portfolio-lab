@@ -187,11 +187,14 @@ def test_row_table_moves_one_term_each_and_config_holds_every_gear_key():
         cfg = tomllib.load(f)
     assert set(GEAR_KEYS) <= set(cfg["gears"])
     assert cfg["strategy"]["trend_filter"] == "gears" and cfg["data"]["etf_events"]
-    with open("configs/e1.toml", "rb") as f:
-        e1 = tomllib.load(f)
-    for k, v in e1["strategy"].items():
+    # 2026-09-29: the stack is E1 + E1d; only the trend rule differs from it
+    with open("configs/e1d.toml", "rb") as f:
+        e1d = tomllib.load(f)
+    assert cfg["stack"]["config"] == "configs/e1d.toml"
+    for k, v in e1d["strategy"].items():
         if k not in ("trend_filter", "id", "charter"):
             assert cfg["strategy"][k] == v, k
+    assert set(cfg["strategy"]) - set(e1d["strategy"]) == set()
 
 
 def test_classify_e3r_carries_the_prediction(tmp_path):
@@ -207,4 +210,24 @@ def test_classify_e3r_carries_the_prediction(tmp_path):
         dirs.append(tmp_path / n)
     out = classify.classify_e3r(*dirs)
     assert "2017-2021" in out["prediction_2026_09_25"]
-    assert "charter_c1_c4" not in out and out["gate"]["stack"] == "E1 base"
+    assert "charter_c1_c4" not in out and out["gate"]["stack"] == "E1 + E1d"
+
+
+def test_gears_on_the_e1d_stack_use_its_score_for_the_basket_and_ties():
+    """2026-09-29: on E1 + E1d, V's basket is the top N by E1d's score,
+    standardised within U(M), not by 12-1 momentum."""
+    stack = {"signal": "vol_scaled_6_12", "skip_sessions": 21,
+             "score_order": "average_then_z", "score_windows": [126, 252]}
+    a = _run(_cfg(trigger="V", b_level=0.4))
+    cfg = _cfg(trigger="V", b_level=0.4)
+    cfg["strategy"].update(stack)
+    b = _run(cfg)
+    va = {m: s["V_raw"] for m, s in a.regime["months"].items()}
+    vb = {m: s["V_raw"] for m, s in b.regime["months"].items()}
+    assert va.keys() == vb.keys() and va != vb
+    assert any(d.get("selldown") for d in b.decisions) or         any(d["gear"] != "normal" for d in b.decisions)
+    with pytest.raises(ValueError, match=r"E1 \+ E1d"):
+        bad = _cfg()
+        bad["strategy"]["signal"] = "mom_12_1_z"
+        _run(bad)
+

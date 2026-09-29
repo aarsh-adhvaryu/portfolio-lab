@@ -20,7 +20,19 @@ _(none)_ — verified 2026-09-27 with `tools\status.ps1`.
 
 ## Queued
 
-**7. E5-A A0's STACK on `e5a_development` (2026-09-29).** E1 + E1d base row and
+**8–10. E5-A A0, locked 2026-09-29 (`lock/E5-A` → `530a3d8`).** Three windows
+from the places shown, all at once (~3 GB each; nothing else running). Stores
+already rebuilt at the tag.
+
+| # | job | command | output | expect |
+|---|---|---|---|---|
+| 8 | A0 development | `cd D:\portfolio_lab; .\tools\run_locked.ps1 -Experiment E5-A -Period e5a_development -Config configs\e5a_a0.toml` | `experiments\E5-A\sweeps\e5a_development-<id>`; prints `SWEEP DIR:` | ~30 min |
+| 9 | A0 exploratory (never counted) | same, `-Period e5a_exploratory` | `experiments\E5-A\sweeps\e5a_exploratory-<id>` | ~20 min |
+| 10 | validation STACK at the tag (E5-A §8) | `cd D:\pl_runs\E5-A; $env:PYTHONPATH='D:\pl_runs\E5-A\src'; $env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; D:\portfolio_lab\.venv\Scripts\python.exe -u tools\regress_bases.py E1d-e5a-val` | `experiments\E1d\regression\validation-<id>`; marker `experiments\_regress\E1d-e5a-val.json` | ~10 min |
+
+A0's validation sweep waits for its development verdict.
+
+**7. DONE 2026-09-29 20:26 at `19ac284` (4.4 min) → `experiments\E1d\regression\e5a_development-977f12d2dd395573`.** E5-A A0's STACK on `e5a_development` (2026-09-29).** E1 + E1d base row and
 B1–B5 on 2011–2016, base only; A0's development verdict compares against it
 (E5-A §8). One PowerShell window from `D:\portfolio_lab`, ~10 min, ~3 GB; can
 run alongside anything (it is one sweep):

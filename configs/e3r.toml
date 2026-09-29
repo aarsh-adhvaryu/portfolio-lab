@@ -2,11 +2,15 @@
 id = "E3-R"
 charter = "docs/strategies/E3-R.md"
 
-# --- everything here is E1 as LOCKED ------------------------------------
+# --- everything here is the stack, E1 + E1d (from 2026-09-29) -----------
 # E3-R replaces E1 §6's on/off trend rule and nothing else. Every other
-# value here is byte-for-byte configs/e1.toml.
-lookback_sessions = 252
+# value here is byte-for-byte configs/e1d.toml: E1d's ranking signal, which
+# also picks V's basket (§3) and breaks sell-down ties (§11 (b)).
+signal = "vol_scaled_6_12"
 skip_sessions = 21
+score_order = "average_then_z"
+score_windows = [126, 252]
+lookback_sessions = 252
 n_hold = 25
 band_exit_rank = 50
 max_buys_per_month = 6
@@ -46,6 +50,10 @@ b_window = 200
 b_level = 0.4
 # §11 (d): long-term lots of the instrument leave in thirds in normal gear
 disposal_tranches = 3
+
+[stack]
+# E3-R §7: judged against the stack in force at its lock, E1 + E1d
+config = "configs/e1d.toml"
 
 [data]
 # the declared 2019-12-19 ETF unit split and ISIN switch (E3 readiness §2)

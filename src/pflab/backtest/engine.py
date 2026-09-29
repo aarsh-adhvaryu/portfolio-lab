@@ -460,7 +460,7 @@ def run(config, period, panel, indices, cost_model, tax_policy,
     gears = None
     if trend_filter == "gears":
         gears = _gear_setup(config, period, panel, sessions, indices, uni_pre,
-                            mom_w, adj_w, signal, rebalance)
+                            mom_w, adj_w, signal, rebalance, score_fn)
 
     book = LotBook(tax_policy)
     cash = float(strat.get("initial_cash", 0.0))
@@ -622,7 +622,7 @@ def run(config, period, panel, indices, cost_model, tax_policy,
                     pending["score_source"] = source_at[t]
                 if gears is not None:
                     _annotate_gear(pending, t, gears, book, state, close_w,
-                                   mom_w, tax_policy)
+                                   mom_w, tax_policy, score_fn)
             else:
                 raise ValueError(f"unknown strategy.rebalance={rebalance!r}")
         prev_session = t
@@ -975,8 +975,18 @@ GEAR_KEYS = ("instrument_isin", "cautious_target", "selldown_fraction", "trigger
              "min_cautious_run", "disposal_tranches")
 
 
+def _stack_scores(m, elig, mom_w, score_fn) -> pd.Series:
+    """The stack's score at M over `elig`: E1's 12-1 momentum, or (E1 + E1d
+    from 2026-09-29) E1d's volatility-scaled score standardised within the
+    eligible universe -- so a name outside it has no score."""
+    if score_fn is not None:
+        return score_fn(m, elig)
+    sc = mom_w.loc[m].dropna() if m in mom_w.index else pd.Series(dtype=float)
+    return sc[sc.index.isin(elig)]
+
+
 def _gear_setup(config, period, panel, sessions, indices, uni_pre, mom_w, adj_w,
-                signal, rebalance) -> dict:
+                signal, rebalance, score_fn=None) -> dict:
     """E3-R §3: T, V and B at every month-end in the truncated panel, and the
     gear at every month-end in the window.
 
@@ -991,9 +1001,9 @@ def _gear_setup(config, period, panel, sessions, indices, uni_pre, mom_w, adj_w,
     if missing:
         raise ValueError(f"gears.{missing} must come from the charter's config "
                          f"(E3-R §3-§4, §11)")
-    if signal != "mom_12_1" or rebalance != "monthly_band":
-        raise ValueError("E3-R's gears run on E1's stack: signal mom_12_1, "
-                         "monthly band")
+    if signal not in ("mom_12_1", "vol_scaled_6_12") or rebalance != "monthly_band":
+        raise ValueError("E3-R's gears run on the stack: E1 (mom_12_1) or "
+                         "E1 + E1d (vol_scaled_6_12), monthly band")
     min_s = int(_cfg(config, "universe.min_sessions", 250))
     top_n = int(_cfg(config, "universe.top_n_by_turnover", 500))
     min_px = float(_cfg(config, "universe.min_price", 10.0))
@@ -1017,8 +1027,7 @@ def _gear_setup(config, period, panel, sessions, indices, uni_pre, mom_w, adj_w,
             prior = vix.loc[:m]
             vraw[m] = float(prior.iloc[-1]) if len(prior) else None
             continue
-        sc = mom_w.loc[m].dropna() if m in mom_w.index else pd.Series(dtype=float)
-        sc = sc[sc.index.isin(elig)]
+        sc = _stack_scores(m, elig, mom_w, score_fn)
         top = list(rank_desc(sc).sort_values().index[:int(g["basket_n"])])
         vraw[m] = (rg.basket_vol(adj_w, m, top, int(g["v_window"]))
                    if len(top) >= int(g["basket_n"]) else None)
@@ -1041,10 +1050,12 @@ def _gear_setup(config, period, panel, sessions, indices, uni_pre, mom_w, adj_w,
                             "V": v.get(m), "B": b.get(m), "V_raw": vraw.get(m),
                             "B_raw": braw.get(m)} for m in win},
     }
-    return {"cfg": g, "gear": gear_by_m, "record": record, "tranches": {}}
+    return {"cfg": g, "gear": gear_by_m, "record": record, "tranches": {},
+            "elig": elig_by_m}
 
 
-def _annotate_gear(d, m, G, book, state, close_w, mom_w, tax_policy) -> None:
+def _annotate_gear(d, m, G, book, state, close_w, mom_w, tax_policy,
+                   score_fn=None) -> None:
     """Attach the gear and its planned sales to E1's own decision at M."""
     from pflab.portfolio import selldown
     from pflab.signals.regime import CAUTIOUS, NORMAL
@@ -1071,7 +1082,10 @@ def _annotate_gear(d, m, G, book, state, close_w, mom_w, tax_policy) -> None:
         target = float(g["cautious_target"]) * total
         excess = max(0.0, after - target)
         amount = float(g["selldown_fraction"]) * excess
-        scores = (mom_w.loc[m].dropna().to_dict() if m in mom_w.index else {})
+        if score_fn is None:        # E1: every name's 12-1, as before
+            scores = (mom_w.loc[m].dropna().to_dict() if m in mom_w.index else {})
+        else:                       # E1d: within U(M); a held name outside has none
+            scores = _stack_scores(m, G["elig"][m], mom_w, score_fn).to_dict()
         lots = {i: book.lots(i) for i in hv if i not in exiting}
         ranked = selldown.rank(lots, px_m, scores, m, tax_policy)
         plan = selldown.plan(ranked, amount)

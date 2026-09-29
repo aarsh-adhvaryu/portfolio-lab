@@ -521,15 +521,16 @@ def classify_e2d1(dev_sweep_dir, val_sweep_dir, stack_dev_dir, stack_val_dir) ->
 
 
 def classify_e3r(dev_sweep_dir, val_sweep_dir, stack_dev_dir, stack_val_dir) -> dict:
-    """E3-R §7: GATE vs the stack (E1 base, read from experiments/E1/regression/)
-    and the mandate block. C1-C4 are not reported: E3-R replaces one rule of
+    """E3-R §7: GATE vs the stack (E1 + E1d from 2026-09-29, §11; E1d's base
+    rows) and the mandate block. C1-C4 are not reported: E3-R replaces one rule of
     the stack and is not a candidate base.
 
     **Change-log entries that apply** (CLAUDE.md non-negotiable 1): §11,
     2026-09-25 (the prediction below, recorded before any run) and
     2026-09-27 (Aarsh's four decisions: undefined = not firing; the
     sell-down ranks names by FIFO tax cost; the high gear holds NIFTYBEES;
-    its disposal and what interrupts it).
+    its disposal and what interrupts it), 2026-09-27 (e) (the high-gear buy
+    split across sessions) and 2026-09-29 (the stack is E1 + E1d; the lock).
     """
     load = lambda d: json.loads((Path(d) / "criteria.json").read_text(encoding="utf-8"))
     cand_dev, cand_val = load(dev_sweep_dir), load(val_sweep_dir)
@@ -539,7 +540,7 @@ def classify_e3r(dev_sweep_dir, val_sweep_dir, stack_dev_dir, stack_val_dir) -> 
         "verdict": gate_verdict(g_dev, g_val),
         "gate": {"development": g_dev, "validation": g_val,
                  "verdict": gate_verdict(g_dev, g_val),
-                 "thresholds": GATE_THRESHOLDS, "stack": "E1 base"},
+                 "thresholds": GATE_THRESHOLDS, "stack": "E1 + E1d"},
         "mandate": _mandate_block(cand_dev, cand_val),
         "prediction_2026_09_25": (
             "Recorded before any E3-R run: E3-R passes only if the high gear's "

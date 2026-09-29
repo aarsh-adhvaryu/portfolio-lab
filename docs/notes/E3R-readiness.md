@@ -12,7 +12,10 @@ settle is §8. §1–§6 below are the original note, kept as written.
 **Change-log entries that apply** (CLAUDE.md non-negotiable 1): the
 2026-09-19 draft, and the **2026-09-25 prediction** recorded before any
 run — *E3-R passes only if the high gear's recovery return exceeds the
-cautious gear's cost in 2017–2021.*
+cautious gear's cost in 2017–2021.* **From 2026-09-29 (§9): LOCKED against E1 + E1d**;
+every §11 entry applies — 2026-09-19, 2026-09-25, 2026-09-27 (a)–(d),
+2026-09-27 (e), 2026-09-29 stack, 2026-09-29 lock — plus E1 §15 and E1d §10
+for the stack.
 
 ## 1. The evidence in §2 still holds under the measurement correction
 
@@ -236,3 +239,35 @@ move 14.6%, the 2009-05-18 election rally).
 6. **The ETF fix is a data fix**, logged in §11 at the lock with its
    evidence (`data/etf_events.DECLARED`).
 7. `tools/check_lock.py` needs an `E3-R` entry (§3–§7) at the lock.
+
+## 9. Stack move and lock (2026-09-29, session 6)
+
+**Change-log entries that apply:** E3-R §11 — 2026-09-19 draft,
+2026-09-25 prediction, 2026-09-27 (a)–(d), 2026-09-27 (e) split high-gear
+buy, **2026-09-29 stack E1 + E1d**, **2026-09-29 lock** (§8 readings 2–6
+accepted as built). Stack: E1 §15 (through 2026-09-28) and E1d §10.
+
+- **Stack**: `configs/e3r.toml` is `configs/e1d.toml` plus `trend_filter =
+  "gears"` and the `[gears]`/`[data]` blocks; `[stack]` names `e1d.toml`.
+  The engine's gear path reads the stack's score through `score_fn` (V's
+  basket; the sell-down tie-break); E1's path is unchanged
+  (`test_engine_golden.py`). New test: the basket moves with the signal.
+- **Signals on today's panel** (no returns):
+
+  | | development 2007–2016 | validation 2017–2021 |
+  |---|---|---|
+  | V undefined | 11: 2007-01 → 2007-11 | 0 |
+  | T / V / B fire (E1 + E1d) | 40 / 32 / 34 | 11 / 7 / 12 |
+  | cautious / normal / high | **38 / 77 / 5** | 9 / 48 / 3 |
+  | high months | 2009-04, 2011-03, 2012-02, 2013-10, 2016-05 | 2019-03, 2019-09, 2020-07 |
+
+  E1's score on today's panel gives the same gears (V fires 34); §7's
+  35 / 78 / 7 predates the 2026-09-27 D1/D2 panel repairs.
+- **Span**: §3–§7, 2,757 chars, SHA-256 `e1cf6470…c9599df`
+  (`check_lock` `E3-R`). Tag `lock/E3-R`; worktree `D:\pl_runs\E3-R`.
+- **STACK for `classify_e3r`**: E1d's full sweeps at `c6ef67e`
+  (`experiments\E1d\sweeps\development-924cec1bb3dd9ff9`,
+  `validation-a0e0f5aa78dc160f`). The engine has changed since, behind
+  flags only (E5-A's `precomputed` signal; the gear path's `score_fn`).
+  **Decision for Aarsh:** use those, or re-run E1d base at `lock/E3-R` as
+  E5-A §8 does.
