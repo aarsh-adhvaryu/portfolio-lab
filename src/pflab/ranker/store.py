@@ -90,7 +90,9 @@ def builder_sha() -> str:
     h = hashlib.sha256()
     for rel in BUILDER_SOURCES:
         h.update(rel.encode("utf-8"))
-        h.update((pkg / rel).read_bytes())
+        # line endings normalised: git's autocrlf checks a locked worktree
+        # out with CRLF, and the same code must hash the same there
+        h.update((pkg / rel).read_bytes().replace(b"\r\n", b"\n"))
     return h.hexdigest()
 
 
