@@ -7,9 +7,9 @@ must prove, and what the finished system looks like.
 
 **Forward order (2026-09-28): E5-A, E3-R, E2-B, E1-S, E2-D1, E2-D2
 (parked until E2-D1), E2-E, E3, E6-V.** Done: E1 (INCONCLUSIVE), E1b
-(INCONCLUSIVE), E1-P (INCONCLUSIVE, re-run 2026-09-27), E1c (REJECT), E1d
-(ADOPT, re-run 2026-09-27), E2-A (REJECT); all provisional until the
-2026-09-28 regression is classified. Closed, not run: E2-C. Off the list:
+(INCONCLUSIVE), E1-P (INCONCLUSIVE), E1c (REJECT), E1d (ADOPT), E2-A
+(REJECT); final, re-classified 2026-09-29 after the full regression.
+**Adopted stack: E1 + E1d (2026-09-29).** Closed, not run: E2-C. Off the list:
 E4, and any stop-loss (E1-P's N1 failed validation). Nothing skips the gate.
 The gate's arithmetic lives in `docs/strategies/GATE.md`; each experiment
 has its own charter in `docs/strategies/`.

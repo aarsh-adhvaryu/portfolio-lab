@@ -3,6 +3,20 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-09-29, session 4 complete)
+
+**Final regression done** (full sweeps at `c6ef67e`, 14/14) and all six
+re-classified: `docs/reviews/regression-2026-09-28-verdicts.md`. No verdict
+changed: E1, E1b, E1-P INCONCLUSIVE; E1c, E2-A REJECT; **E1d ADOPT**
+(11/12, 10/11). **Stack is now E1 + E1d**, recorded in GATE, ROADMAP, STATE,
+E5-A §14 (D2). STATE figures all refreshed. Mandate not met (E1d − B5:
+−5.67 pp dev, +3.77 pp val).
+
+**Next:** E5-A build (readiness §3), A0 against E1 + E1d. Before any later
+experiment locks, its config and readiness note move from E1 base to E1 +
+E1d, and `runner.input_fingerprints`'s `stack_config` (hashes `e1.toml`)
+should cover `e1d.toml` — not changed yet, as it moves every run id.
+
 ## Start here (2026-09-28, session 4, part B done — STOP for the regression)
 
 **Recorded** (change logs dated 2026-09-28): E1 §15 declared choices

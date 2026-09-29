@@ -1,25 +1,18 @@
 # STATE — verdicts and where things stand
 
-One page. Updated 2026-09-27 (session 2). The narrative is in `docs/HANDOFF.md`; the
+One page. Updated 2026-09-29 (session 4). The narrative is in `docs/HANDOFF.md`; the
 order and reasons in `docs/ROADMAP.md`; the rules for judging in
 `docs/strategies/GATE.md` (adoption) and `docs/MANDATE.md` (ADVANCE).
 
-> **Every verdict and every figure below is PROVISIONAL UNTIL RE-RUN**
-> (E1 §15, 2026-09-27: accounting corrections a–d; audit Deliverable 1).
-> The 2026-09-27 regression (`accounting-correction-2.md`) moved every base
-> row down (E1 dev 2.87%), mostly through the unfixed ISIN-handover and BE
-> defects (D1/D2), so no figure below is replaced yet. None was computed on
-> fully corrected code. Per-defect effects:
-> `docs/reviews/accounting-correction-2.md`. Re-runs: `tools/regress_bases.py`.
-> **D1/D2 implemented and regressed (2026-09-27, `0926a5b`)**: E1 base dev
-> 6.43% / 59.02%, val 21.65% / 48.76%. Base-row arithmetic: **E1-P REJECT →
-> INCONCLUSIVE** (knife-edge), **E1d candidate ADOPT** (needs G3 from full
-> sweeps); E2-A's a–d flip did not survive. Not applied until the full
-> re-runs (E1b's procedure): `docs/reviews/E1-gap-attribution.md` §3.
+**Figures below are final under every correction to date** (regression at
+`c6ef67e`, full sweeps, classified 2026-09-29:
+`docs/reviews/regression-2026-09-28-verdicts.md`). Change-log entries that
+apply: E1 §15 2026-09-21, 2026-09-27 (determinism; corrections a–d; D1/D2),
+2026-09-28 (declared choices confirmed; measurement fixes). No verdict changed.
 
-**Adopted stack: E1 base — E1d ADOPTED by GATE on 2026-09-27 re-run; the stack becomes E1 + E1d once Aarsh confirms** (E1d §7 caveat). Read from `experiments/E1/regression/` since the
-2026-09-21 measurement correction. Sealed period (2022–2025) never opened;
-`research/journal.jsonl` absent.
+**Adopted stack: E1 + E1d** (from 2026-09-29; E1d ADOPT by GATE, confirmed by
+the final regression; E1d §7 caveat travels). Sealed period (2022–2025) never
+opened; `research/journal.jsonl` absent.
 
 ## How many experiments have been tested
 
@@ -33,7 +26,7 @@ on the second would be.
 | | |
 |---|---|
 | **experiments with a computed verdict** | **6** |
-| ADOPTED | **1** (E1d, 2026-09-27 re-run; awaiting Aarsh's confirmation) |
+| ADOPTED | **1** (E1d; stack E1 + E1d from 2026-09-29) |
 | REJECT | 2 (E1c, E2-A) |
 | INCONCLUSIVE | 3 (E1, E1b, E1-P) |
 | sealed-period reveals used | **0 of 1** |
@@ -41,7 +34,7 @@ on the second would be.
 
 Locked and awaiting a run: none. **Built and ready to lock** (2026-09-27):
 E2-D1, E3-R, E2-D2 — each note's last section says what the lock must settle.
-Readiness notes: E2-B, E3, E5-A (2026-09-27, not ready: 9 decisions). Drafts: E1-S, E2-E.
+Readiness notes: E2-B, E3, E5-A (decisions taken 2026-09-28 bar D2, now settled: A0 against E1 + E1d; build next). Drafts: E1-S, E2-E.
 
 **Closed or parked, not counted as tested** (2026-09-27, Aarsh): **E2-C
 closed, NOT RUN** — its trigger fired only in months already RISK_OFF, so it
@@ -57,64 +50,42 @@ the table above grows by two, not one.
 
 ## Verdicts
 
-Every verdict was computed by `classify`, never typed. Figures are the base
-row's after-tax, liquidation-adjusted CAGR / max drawdown **under the
-2026-09-21 measurement correction** (E1 §15: buys sized net of costs; expense
-drag compounded by calendar days).
+Computed by `classify`, never typed. Base row after-tax, liquidation-adjusted
+CAGR / max drawdown, full sweeps at `c6ef67e`.
 
-| experiment | charter | verdict | under the correction | development 2007–16 | validation 2017–21 | verdict note |
-|---|---|---|---|---|---|---|
-| **E1** | LOCKED 2026-09-17 | **INCONCLUSIVE** (E1 §13) — *provisional until re-run* | **holds** | 8.97% / 55.40% | 27.36% / 39.82% | `docs/notes/E1-diagnostic.md` |
-| **E1b** | LOCKED 2026-09-18 | **INCONCLUSIVE** (GATE vs E1) — *provisional until re-run* | **changed** from REJECT; re-run from scratch 2026-09-22 | 9.74% / 54.96% | 15.51% / 43.34% | `docs/reviews/E1b-verdict-rerun.md` (supersedes `docs/notes/E1b-diagnostic.md`) |
-| **E1-P** | LOCKED 2026-09-19 | **INCONCLUSIVE** (GATE vs E1) — re-run 2026-09-27 | **changed** from REJECT (D1/D2) | 6.92% / 59.75% | 22.18% / 47.99% | `docs/reviews/E1-P-verdict-rerun.md` |
-| **E1c** | LOCKED 2026-09-19, amended after lock (blind) 2026-09-21 | **REJECT** (GATE vs E1) — *provisional until re-run* | **holds** | 6.73% / 70.19% | 20.10% / 36.33% | `docs/reviews/E1c-verdict.md` |
-| **E1d** | LOCKED 2026-09-24 | **ADOPT** (GATE vs E1) — re-run 2026-09-27 | **changed** from INCONCLUSIVE (D1/D2) | 8.14% / 54.45% | 26.19% / 42.96% | `docs/reviews/E1d-verdict-rerun.md` |
-| **E2-A** | LOCKED 2026-09-25 | **REJECT** (GATE **and** §8a) — *provisional until re-run* | n/a — run under it | 11.85% / 33.18% *(2017–19)* | 41.84% / 8.41% *(2020–21)* | `docs/reviews/E2A-verdict.md` |
+| experiment | charter | verdict | development 2007–16 | validation 2017–21 | verdict note |
+|---|---|---|---|---|---|
+| **E1** | LOCKED 2026-09-17 | **INCONCLUSIVE** (E1 §13: C1 −1.53 pp dev, +6.89 pp val) | 6.53% / 59.29% | 21.66% / 48.76% | `docs/reviews/regression-2026-09-28-verdicts.md` |
+| **E1b** | LOCKED 2026-09-18 | **INCONCLUSIVE** (GATE vs E1) | 8.40% / 54.96% | 15.90% / 46.14% | same |
+| **E1-P** | LOCKED 2026-09-19 | **INCONCLUSIVE** (GATE vs E1) | 6.93% / 60.10% | 22.19% / 47.99% | same |
+| **E1c** | LOCKED 2026-09-19, amended blind 2026-09-21 | **REJECT** (GATE vs E1) | 5.90% / 71.20% | 18.55% / 35.86% | same |
+| **E1d** | LOCKED 2026-09-24 | **ADOPT** (GATE vs E1; 11/12, 10/11 rows) | 8.06% / 54.74% | 26.21% / 42.96% | same |
+| **E2-A** | LOCKED 2026-09-25 | **REJECT** (GATE **and** §8a) | 8.28% / 38.32% *(2017–19)* | 44.89% / 8.47% *(2020–21)* | same |
 
-E2-A's windows are its own (§6: 2017–2019 / 2020–2021), set by when its
-inputs exist, so its figures are not comparable with the rows above. E1
-base on **those** windows is 14.60% / 31.37% and 50.04% / 7.19%.
+E2-A's windows are its own (§6), so its figures are not comparable with the
+rows above. E1 base on **those** windows is 8.13% / 39.54% and 48.74% / 7.36%.
 
-**Why the three that hold needed no re-run under the 2026-09-21 correction** (the 2026-09-27 corrections need one for every row). Each is decided by base-row and
-benchmark arithmetic alone, which the 2026-09-21 regression re-ran; the other
-sweep rows cannot change them.
-
-- **E1:** C1 is +0.90 pp in development (below 2, so not ADVANCE) and
-  +12.57 pp in validation (so not REJECT).
-- **E1-P:** G1 fails in both periods (+0.17 pp and −1.52 pp against E1
-  base). Its development gap moved from +0.006 pp to +0.17 pp, still below
-  the +0.5 pp bar, so it does not flip the way E1b did.
-- **E1c:** G2 is violated in both periods (−2.23 pp with 14.79 pp deeper
-  drawdown; −7.26 pp). Its reported C1–C4 stays INCONCLUSIVE.
-
-E1b changed because its development gap moved from +0.13 pp to +0.77 pp,
-past G1's bar.
-
-## Benchmarks, same engine, SIP and tax (2026-09-21 correction; provisional until re-run)
+## Benchmarks, same engine, SIP and tax (final regression)
 
 | | development 2007–16 | validation 2017–21 |
 |---|---|---|
-| B1 Nifty 50 TRI | 7.83% / 59.31% | 14.92% / 38.06% |
-| B2 Nifty 500 TRI (the market; MANDATE §3) | 8.07% / 63.49% | 14.79% / 37.93% |
-| B3 Nifty 200 Momentum 30 TRI, 0.30% drag | 13.23% / 67.53% | 20.18% / 33.92% |
-| **B5 Nifty 500 Momentum 50 TRI, 0.30% drag** (MANDATE §5) | **13.74% / 70.15%** | **22.48% / 38.12%** |
+| B1 Nifty 50 TRI | 7.84% / 59.22% | 14.88% / 38.06% |
+| B2 Nifty 500 TRI (the market; MANDATE §3) | 8.06% / 63.53% | 14.77% / 37.94% |
+| B3 Nifty 200 Momentum 30 TRI, 0.30% drag | 13.22% / 67.53% | 20.16% / 33.92% |
+| **B5 Nifty 500 Momentum 50 TRI, 0.30% drag** (MANDATE §5) | **13.73% / 70.15%** | **22.44% / 38.14%** |
 
 B4 (equal-weight universe) depends on each experiment's universe and is in
-each sweep's summary. B5's history before launch is back-computed by NSE,
-the caveat B3 carries.
-
-The earlier caveat that development B5 was overstated by a skipped first
-buy no longer applies: the correction fixed it, and these are the corrected
-figures (development B5 read 15.37% before).
+each sweep's summary. B5's history before launch is back-computed by NSE.
 
 ### Each base row against B5 (CAGR gap, after tax)
 
 | | development | validation |
 |---|---|---|
-| E1 base − B5 | −4.78 pp | +4.88 pp |
-| E1b base − B5 | −4.00 pp | −6.97 pp |
-| E1-P base − B5 | −4.60 pp | +3.36 pp |
-| E1c base − B5 | −7.01 pp | −2.38 pp |
+| E1 base − B5 | −7.20 pp | −0.78 pp |
+| E1b base − B5 | −5.33 pp | −6.54 pp |
+| E1-P base − B5 | −6.80 pp | −0.25 pp |
+| E1c base − B5 | −7.83 pp | −3.89 pp |
+| **E1d base − B5 (the stack)** | **−5.67 pp** | **+3.77 pp** |
 
 MANDATE §5 asks the adopted stack for **+2 pp over B5 in both periods**. No
 result meets it in development.
@@ -131,6 +102,8 @@ result meets it in development.
 
 ## Next
 
-**E1d** (readiness: `docs/notes/E1d-readiness.md`), then E3-R, then E2-A
-when its BSE backfill completes, then E2-B, E1-S, E2-C, E2-D, E2-E, E3,
-E6-V, E5-A. No stack meets the mandate yet.
+**E5-A** (charter `docs/strategies/E5-A.md`, readiness
+`docs/notes/E5A-readiness.md`): build, then lock, with A0 against E1 + E1d.
+Then E3-R, E2-B, E1-S, E2-D1, E2-D2 (parked), E2-E, E3, E6-V. Configs and
+readiness notes of later experiments still build on E1 base and must move
+to E1 + E1d before they lock. No stack meets the mandate yet.

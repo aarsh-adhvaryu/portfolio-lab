@@ -20,7 +20,7 @@ _(none)_ — verified 2026-09-27 with `tools\status.ps1`.
 
 ## Queued
 
-**6. QUEUED 2026-09-28 — final regression, all six experiments, both periods,
+**6. DONE 2026-09-29 at `c6ef67e`, 14/14 (verdicts: `docs/reviews/regression-2026-09-28-verdicts.md`) — final regression, all six experiments, both periods,
 full sweeps** (E1 §15 2026-09-28 fixes). Four PowerShell windows from
 `D:\portfolio_lab`, one lane each, all at once (~3 GB each):
 `$env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; .venv\Scripts\python.exe -u tools\regress_bases.py --full --lane A`

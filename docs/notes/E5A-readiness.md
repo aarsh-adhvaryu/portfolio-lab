@@ -64,7 +64,7 @@ Compute is small: roughly 100k rows per fit, 3 fits × 15 refits per row.
 
 **Decided 2026-09-28** (E5-A §14): 1, 3, 4, 5, 6, 7, 9 as recommended;
 **8: A4 PARKED** (GKG starts 2015; revisit with a 2011-onward source or in
-the live year); **2 waits** for the post-regression re-classification. A2's
+the live year); **2: E1 + E1d** (settled 2026-09-29). A2's
 precondition is settled: both measures (promoter-share change, promoter-%
 change) and an unexplained total-share-change flag, as features, nothing
 thresholded.

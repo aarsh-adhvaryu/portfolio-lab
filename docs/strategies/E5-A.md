@@ -234,3 +234,5 @@ seeing results. E5-A says nothing about E5-B/C/D.
   **percent** — plus a flag for a change in total shares with no recorded
   corporate action. **Nothing is thresholded**; the model weighs them. This
   replaces "E2-D1 readiness §3 settled first" as the precondition.
+- 2026-09-29 — **D2 settled:** the stack is E1 + E1d (final regression,
+  `docs/reviews/regression-2026-09-28-verdicts.md`); A0 is measured against it.

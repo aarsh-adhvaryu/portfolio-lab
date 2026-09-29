@@ -83,6 +83,10 @@ that a stale copy is recognisable as stale:
   NOT RUN 2026-09-27) and replaces E2-D with E2-D1 / E2-D2 (split 2026-09-27).
   E5-A's A0 is locked against whichever stack the 2026-09-28 re-classification
   leaves in force (D2).
+- **2026-09-29** — **stack is E1 + E1d.** The final regression (full sweeps at
+  `c6ef67e`, `docs/reviews/regression-2026-09-28-verdicts.md`) re-classified
+  all six; E1d still ADOPTs (11/12 dev, 10/11 val). Every experiment from
+  E5-A on is one change on top of E1 + E1d; E1d §7's caveat travels.
 
 ## E1's bar is now fixed
 
