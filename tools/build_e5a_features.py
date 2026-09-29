@@ -1,0 +1,93 @@
+"""Build E5-A's feature store and labels for one period (E5-A §4, §6).
+
+    python tools\\build_e5a_features.py --config configs\\e5a_a0.toml --period e5a_exploratory
+
+Reads the panel through `runner.prepare` -- `truncate_end` at the period's
+end, then the D1/D2 repairs, exactly as a sweep does -- and writes
+PFLAB_DATA_DIR/e5a/<period>/{features_a0.parquet, labels.parquet, meta.json}.
+A data build, not a sweep. The sweep refuses a store whose panel fingerprint,
+universe or stack score differ from its own.
+
+Rebuilding over an existing store prints whether the new files are identical.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from pflab.backtest import runner  # noqa: E402
+from pflab.eval import artifacts  # noqa: E402
+from pflab.ranker import features as ft, labels as lb, store  # noqa: E402
+
+CONVENTIONS = [
+    "momentum counts market sessions, 21 to a month, as the stack's 12-1 does",
+    "volatility, traded value and the 252-session high count the name's own "
+    "rows (E1 §2's convention); a window must be full to give a value",
+    "a name with no row at M publishes nothing at M: all features unavailable, unscored",
+    "labels follow E1 §9 as amended by E1 §15 (2026-09-17, 2026-09-27 b): "
+    "exit at the first open after M_h the name trades; written down to zero on "
+    "the 250th consecutive missing session",
+    "a target is observable when every label in U(M) is (target_observable_at)",
+]
+
+
+def _say(msg):
+    print(msg, file=sys.stderr, flush=True)
+
+
+def build(config_path: str, period_name: str, root=None) -> dict:
+    t0 = time.time()
+    cfg = runner.load_config(config_path)
+    period, panel, _i, _a, _c, _t, membership = runner.prepare(cfg, period_name)
+    _say(f"prepared {len(panel):,} rows to {panel['date'].max()} "
+         f"({time.time() - t0:.0f}s)")
+    panel = ft.dated(panel)
+    uni = ft.universe_by_month(panel, cfg, membership)
+    _say(f"U(M) at {len(uni)} month-ends ({time.time() - t0:.0f}s)")
+    feats = ft.a0_features(panel, cfg, uni)
+    _say(f"features: {len(feats):,} rows ({time.time() - t0:.0f}s)")
+    horizons = tuple((cfg.get("e5a") or {}).get("horizons", lb.HORIZONS))
+    labels = lb.build_labels(panel, cfg, uni, horizons)
+    _say(f"labels: {len(labels):,} rows ({time.time() - t0:.0f}s)")
+    fp = artifacts.data_fingerprint(panel)
+    meta = {"period": period.name, "period_start": str(period.start),
+            "period_end": str(period.end), "config": config_path,
+            "panel_fingerprint": fp, "identity": store.identity(cfg),
+            "builder_sha": store.builder_sha(),
+            "code": artifacts.code_commit(),
+            "built_at": datetime.now(timezone.utc).isoformat(),
+            "month_ends": {"first": str(min(uni)), "last": str(max(uni)),
+                           "n": len(uni)},
+            "availability": ft.availability(feats),
+            "labels": lb.summary(labels), "conventions": CONVENTIONS}
+    d = store.store_dir(period.name, root)
+    before = store.file_shas(d)
+    shas = store.write(d, feats, labels, meta)
+    meta["files"] = shas
+    meta["seconds"] = round(time.time() - t0, 1)
+    same = before == shas if before else None
+    _say(f"wrote {d} ({meta['seconds']}s)"
+         + ("" if same is None else f"; identical to the previous build: {same}"))
+    return meta
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--config", default="configs/e5a_a0.toml")
+    ap.add_argument("--period", required=True)
+    a = ap.parse_args(argv)
+    meta = build(a.config, a.period)
+    print(json.dumps({k: meta[k] for k in ("period", "month_ends", "availability",
+                                           "labels", "files", "seconds")},
+                     indent=2, default=str))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

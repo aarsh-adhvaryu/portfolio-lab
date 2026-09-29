@@ -19,7 +19,9 @@ P = Period("development", date(2007, 1, 1), END)
 def _root(tmp_path, cost="brokerage = 0.0\n"):
     (tmp_path / "configs").mkdir(exist_ok=True)
     for name, text in [("periods.toml", "x = 1\n"), ("costs.toml", cost),
-                       ("tax.toml", "stcg = 0.2\n"), ("e1.toml", "y = 2\n")]:
+                       ("tax.toml", "stcg = 0.2\n"), ("e1.toml", "y = 2\n"),
+                       # the stack is E1 + E1d from 2026-09-29
+                       ("e1d.toml", "z = 3\n")]:
         (tmp_path / "configs" / name).write_text(text)
     return tmp_path
 

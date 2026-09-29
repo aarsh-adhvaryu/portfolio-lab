@@ -21,6 +21,9 @@ dependencies = [
   # pypdf returns out of reading order, and is used for nothing else.
   "pypdf>=5",
   "pdfplumber>=0.11",
+  # CLAUDE.md 7, installed 2026-09-29 for E5-A §5. Pinned exactly: a model's
+  # bytes depend on the LightGBM that fitted it. Brings scipy and narwhals.
+  "lightgbm==4.7.0",
 ]
 
 [project.optional-dependencies]

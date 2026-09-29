@@ -158,6 +158,10 @@ def input_fingerprints(cfg: dict, period, indices, actions, membership,
         "costs_file": artifacts.file_sha(root / cfg["costs"]["path"]),
         "tax_file": artifacts.file_sha(root / cfg["tax"]["path"]),
         "stack_config": artifacts.file_sha(root / "configs" / "e1.toml"),
+        # 2026-09-29 (Aarsh, session 5): the stack is E1 + E1d, so the run
+        # identity covers e1d.toml too. Every run id from here on changes;
+        # saved runs keep theirs.
+        "stack_config_e1d": artifacts.file_sha(root / "configs" / "e1d.toml"),
         "actions": sha(actions),
         "membership": sha(membership),
         "overlap_membership": sha(overlap),
@@ -192,6 +196,15 @@ def input_fingerprints(cfg: dict, period, indices, actions, membership,
     if (cfg.get("gears") or {}).get("v_source") == "india_vix":
         fp["india_vix"] = sha(_upto(
             pd.read_parquet(droot / "indices" / "INDIA_VIX.parquet"), "date", end))
+    if cfg.get("e5a"):
+        # E5-A §5/§6: the feature and label files the models are fitted on,
+        # and the LightGBM that fits them, are inputs like any other. The
+        # store is built per period from the truncated panel, so appending
+        # data after the end cannot reach these hashes either.
+        from pflab.ranker import model as e5m, store as e5s
+        for f, h in sorted(e5s.file_shas(e5s.store_dir(period.name, droot)).items()):
+            fp[f"e5a:{f}"] = h
+        fp["lightgbm"] = e5m.lightgbm_version()
     return fp
 
 
@@ -229,6 +242,20 @@ def main(config_path, period_name=None, unseal_reason=None, sweep=False,
         except Exception:
             overlap = None      # reported as unavailable, never invented
 
+    # E5-A: the feature store must describe THIS panel and universe, or the
+    # models would be fitted on one dataset and traded on another.
+    provider, e5a_manifest = None, None
+    if cfg.get("e5a"):
+        from pflab.ranker import store as e5s, walk as e5w
+        sdir = e5s.store_dir(period.name)
+        feats, labels, smeta = e5s.load(sdir)
+        e5s.check(smeta, cfg, period, artifacts.data_fingerprint(panel))
+        provider = e5w.SweepScores(feats, labels, period)
+        e5a_manifest = {"store": str(sdir), "store_files": smeta["files"],
+                        "store_code": smeta.get("code"),
+                        "store_panel_fingerprint": smeta.get("panel_fingerprint")}
+        del feats
+
     cfg_text = json.dumps(cfg, sort_keys=True, default=str)
     # Audit Deliverable 1 g (2026-09-27): the data identity covers every
     # consumed input cut at the period end, not the panel alone.
@@ -265,6 +292,8 @@ def main(config_path, period_name=None, unseal_reason=None, sweep=False,
             table = sweep_mod.e3r_rows()
         elif experiment == "E2-D2":
             table = sweep_mod.e2d2_rows()
+        elif experiment == "E5-A":
+            table = sweep_mod.e5a_rows()
         else:
             table = sweep_mod.ROWS
         rows = list(table) if rows is None else [r for r in table if r in rows]
@@ -288,10 +317,14 @@ def main(config_path, period_name=None, unseal_reason=None, sweep=False,
             from pflab.data import etf_events
             manifest["etf_events"] = [{k: str(v) for k, v in e.items()}
                                       for e in etf_events.DECLARED]
-        # STACK = the adopted stack, currently E1 base (E1b and E1-P were
-        # REJECTED). Used for the short-window companion runs; change this
-        # line, with a dated note, when a change is adopted.
-        stack_config = load_config(_repo_root() / "configs" / "e1.toml")
+        if e5a_manifest is not None:
+            manifest["e5a"] = e5a_manifest
+        # STACK = the adopted stack, used for the short-window companion runs.
+        # E1 base by default, which is what every experiment before E5-A was
+        # judged against. From 2026-09-29 the stack is E1 + E1d, and a config
+        # judged against it says so in its [stack] block (configs/e5a_a0.toml).
+        stack_path = (cfg.get("stack") or {}).get("config", "configs/e1.toml")
+        stack_config = load_config(_repo_root() / stack_path)
         sweep_mod.run_sweep(cfg, period, panel, indices, cost_factory, tax,
                             actions=actions, out_dir=out, rows=rows,
                             membership=membership, experiment=experiment,
@@ -299,12 +332,14 @@ def main(config_path, period_name=None, unseal_reason=None, sweep=False,
                             overlap_index=mcfg.get("overlap_index",
                                                    "NIFTY200_MOMENTUM30"),
                             manifest=manifest, table=table,
-                            stack_config=stack_config)
+                            stack_config=stack_config,
+                            score_provider=provider)
         return str(out)
 
     res = engine.run(cfg, period, panel, indices.get("NIFTY50_PRICE"),
                      cost_factory(float(cfg.get("costs", {}).get("multiplier", 1.0))),
-                     tax, actions=actions, membership=membership)
+                     tax, actions=actions, membership=membership,
+                     scores=(provider(cfg, "base") if provider else None))
     bench = sweep_mod.run_benchmarks(cfg, period, indices, cost_factory, tax)
     out = out_root / "runs" / f"{period.name}-{rid}"
     artifacts.write_run(out, res, {

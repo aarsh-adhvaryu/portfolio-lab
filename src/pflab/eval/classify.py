@@ -580,3 +580,125 @@ def classify_e2d2(dev_sweep_dir, val_sweep_dir, stack_dev_dir, stack_val_dir) ->
                    "declared": ("market cap uses TOTAL shares outstanding; free "
                                 "float exists in no dataset here")},
     }
+
+
+# -- E5-A §10 ------------------------------------------------------------
+E5A_PERIODS = {"development": "e5a_development", "validation": "validation"}
+
+
+def gate_rowwise(cand: dict, control: dict) -> dict:
+    """GATE G1-G4 with each candidate row k compared with the CONTROL's row
+    k, not with its base row (E5-A §9: "a family's row k is compared with
+    A0's row k -- the perturbation applies to both sides"). G1, G2 and G4
+    compare the two base rows, exactly as `gate_for_period` does."""
+    out = gate_for_period(cand, control)
+    if not out.get("usable"):
+        return out
+    crow = control.get("rows") or {}
+    per_row, held = {}, 0
+    rows = _countable(cand.get("rows") or {})
+    for name, r in rows.items():
+        s_ = crow.get(name) or {}
+        if r.get("error") or "cagr" not in r:
+            per_row[name] = {"holds": False, "reason": r.get("error") or "no metrics"}
+            continue
+        if s_.get("error") or "cagr" not in s_:
+            per_row[name] = {"holds": False, "reason": f"control row {name} missing or halted"}
+            continue
+        rc = _pp(r["cagr"]) - _pp(s_["cagr"])
+        rd = abs(_pp(r["max_drawdown"])) - abs(_pp(s_["max_drawdown"]))
+        ok = ((rc >= GATE_THRESHOLDS["G1_cagr_pp"]) or (rd <= -GATE_THRESHOLDS["G1_dd_pp"])) \
+            and (rc >= -GATE_THRESHOLDS["G2_cagr_pp"]) and (rd <= GATE_THRESHOLDS["G2_dd_pp"])
+        per_row[name] = {"holds": bool(ok), "cagr_gap_pp": rc, "maxdd_gap_pp": rd}
+        held += bool(ok)
+    out["G3"] = bool(rows) and (held / len(rows)) >= GATE_THRESHOLDS["G3_fraction"]
+    out["rows_holding"], out["rows_total"], out["rows"] = held, len(rows), per_row
+    out["comparison"] = "row k vs control row k"
+    return out
+
+
+def _e5a_period_guard(sweep_dir, role: str) -> None:
+    """§8: the exploratory years are never in a GATE or mandate count. A
+    sweep whose manifest names another period is refused, not read."""
+    mf = Path(sweep_dir) / "manifest.json"
+    if not mf.exists():
+        return
+    got = json.loads(mf.read_text(encoding="utf-8")).get("period")
+    if got != E5A_PERIODS[role]:
+        raise ValueError(f"E5-A §8: the {role} verdict reads period "
+                         f"{E5A_PERIODS[role]!r}; {sweep_dir} is {got!r}"
+                         + (" -- exploratory results are never counted"
+                            if got == "e5a_exploratory" else ""))
+
+
+def _holdings_overlap(cand_dir, stack_dir) -> Optional[dict]:
+    """§11: share of the candidate's month-end holdings the stack also held."""
+    a, b = (Path(d) / "rows" / "base" / "decisions.json" for d in (cand_dir, stack_dir))
+    if not (a.exists() and b.exists()):
+        return None
+    ca = {d["month_end"]: set(d.get("held") or ()) for d in json.loads(a.read_text(encoding="utf-8"))}
+    sb = {d["month_end"]: set(d.get("held") or ()) for d in json.loads(b.read_text(encoding="utf-8"))}
+    both = [m for m in ca if m in sb and ca[m]]
+    if not both:
+        return None
+    shared = sum(len(ca[m] & sb[m]) for m in both)
+    return {"month_ends": len(both),
+            "overlap_pct": 100.0 * shared / sum(len(ca[m]) for m in both)}
+
+
+def classify_e5a(dev_sweep_dir, val_sweep_dir, stack_dev_dir, stack_val_dir,
+                 a0_dev_dir=None, a0_val_dir=None, candidate: str = "A0") -> dict:
+    """E5-A §10.
+
+    A0: GATE G1-G4 against STACK (E1 + E1d, re-run on `e5a_development` and
+    on validation), plus the mandate block.
+
+    A family (A1-A3): two GATE computations. *Incremental*, with STACK := A0
+    and each row k compared with A0's row k; *adoption*, against the stack in
+    force. It joins the stack only if BOTH are ADOPT (§14 D9). The
+    incremental verdict is the recorded evidence on the information family
+    whatever the adoption verdict is.
+
+    C1-C4 are not reported: E5-A replaces the stack's ranking signal and is
+    not a candidate base.
+
+    **Change-log entries that apply** (CLAUDE.md non-negotiable 1): E5-A §14
+    -- 2026-09-27 (rewrite), 2026-09-28 (D1, D3-D9; A4 parked; A2's
+    precondition), 2026-09-29 (D2: the stack is E1 + E1d) -- and, for the
+    stack, E1 §15 and E1d §10.
+    """
+    _e5a_period_guard(dev_sweep_dir, "development")
+    _e5a_period_guard(val_sweep_dir, "validation")
+    load = lambda d: json.loads((Path(d) / "criteria.json").read_text(encoding="utf-8"))
+    cand_dev, cand_val = load(dev_sweep_dir), load(val_sweep_dir)
+    st_dev, st_val = load(stack_dev_dir), load(stack_val_dir)
+    g_dev, g_val = gate_for_period(cand_dev, st_dev), gate_for_period(cand_val, st_val)
+    adoption = {"development": g_dev, "validation": g_val,
+                "verdict": gate_verdict(g_dev, g_val),
+                "thresholds": GATE_THRESHOLDS, "stack": "E1 + E1d"}
+    extras = {"holdings_overlap_with_stack": {
+        "development": _holdings_overlap(dev_sweep_dir, stack_dev_dir),
+        "validation": _holdings_overlap(val_sweep_dir, stack_val_dir)}}
+    if candidate == "A0":
+        return {"candidate": "A0", "verdict": adoption["verdict"],
+                "gate": adoption, "mandate": _mandate_block(cand_dev, cand_val),
+                "extras": extras,
+                "window": {"development": "2011-01-01..2016-12-31",
+                           "validation": "2017-01-01..2021-12-31",
+                           "exploratory": ("2007-01-01..2010-12-31: tuning "
+                                           "only, never counted (§8)")}}
+    if a0_dev_dir is None or a0_val_dir is None:
+        raise ValueError(f"{candidate}: the incremental verdict needs A0's sweeps")
+    a_dev, a_val = load(a0_dev_dir), load(a0_val_dir)
+    i_dev, i_val = gate_rowwise(cand_dev, a_dev), gate_rowwise(cand_val, a_val)
+    incremental = {"development": i_dev, "validation": i_val,
+                   "verdict": gate_verdict(i_dev, i_val),
+                   "thresholds": GATE_THRESHOLDS, "control": "A0"}
+    joins = incremental["verdict"] == "ADOPT" and adoption["verdict"] == "ADOPT"
+    # §10 defines no combined verdict: the family's evidence is the
+    # incremental verdict, and it joins the stack only if both are ADOPT.
+    return {"candidate": candidate,
+            "family_evidence": incremental["verdict"],
+            "joins_stack": joins,
+            "incremental": incremental, "adoption": adoption,
+            "mandate": _mandate_block(cand_dev, cand_val), "extras": extras}

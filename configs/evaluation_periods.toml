@@ -48,3 +48,17 @@ sealed = false
 start = "2010-01-01"
 end = "2016-12-31"
 sealed = false
+
+# Charter E5-A §8 (2026-09-29). Tuning (§5) runs on data cut at 2010-12-31,
+# so the exploratory years are never also an evaluation window: exploratory
+# results are reported and labelled, and never enter a GATE or mandate count.
+# Development starts in 2011; validation is E1's own `validation` period.
+[periods.e5a_exploratory]
+start = "2007-01-01"
+end = "2010-12-31"
+sealed = false
+
+[periods.e5a_development]
+start = "2011-01-01"
+end = "2016-12-31"
+sealed = false

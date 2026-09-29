@@ -230,9 +230,12 @@ def eligible_at(pre: dict, m, min_sessions: int, top_n: int, min_price: float,
 
 
 def run(config, period, panel, indices, cost_model, tax_policy,
-        actions=None, hooks=None, membership=None) -> RunResult:
+        actions=None, hooks=None, membership=None, scores=None) -> RunResult:
     """One backtest. `panel` must already be truncated at `period.end` by
-    pflab.eval.periods.truncate_end -- the engine never loads data itself."""
+    pflab.eval.periods.truncate_end -- the engine never loads data itself.
+
+    `scores` is E5-A's (§5, §7): {"scores": {M: Series}, "fallback": {M: bool}}
+    for `strategy.signal = "precomputed"`, and must be None otherwise."""
     hooks = hooks or hk.from_config(config)
     strat = config.get("strategy", {})
     lookback = int(strat.get("lookback_sessions", 252))
@@ -257,6 +260,26 @@ def run(config, period, panel, indices, cost_model, tax_policy,
     # exactly the code it reached before.
     signal = strat.get("signal", "mom_12_1")
     rebalance = strat.get("rebalance", "monthly_band")
+    # E5-A §5/§7: a ranking computed outside the engine (the learned ranker),
+    # with a per-decision fallback to the STACK's own signal, named by
+    # `fallback_signal`, until §5's minimum training set exists. Everything
+    # below then builds that stack signal, exactly as the stack's own config
+    # would, and the precomputed scores are wrapped around it.
+    precomputed = signal == "precomputed"
+    if precomputed:
+        if scores is None:
+            raise ValueError("strategy.signal='precomputed' needs scores= "
+                             "(E5-A §7): {'scores': {M: Series}, 'fallback': {M: bool}}")
+        if rebalance != "monthly_band":
+            raise ValueError("a precomputed signal replaces E1 §4's ranking only; "
+                             "rebalance must be monthly_band")
+        signal = strat.get("fallback_signal")
+        if signal is None:
+            raise ValueError("strategy.fallback_signal must name the stack's "
+                             "signal (E5-A §5: the stack's own rank is the fallback)")
+    elif scores is not None:
+        raise ValueError(f"scores= given, but strategy.signal={signal!r} is "
+                         f"not 'precomputed'")
     weighting = strat.get("weighting", "equal")
     selection_n = int(strat.get("selection_n", n_hold))
     weight_cap = float(strat.get("weight_cap", 0.05))
@@ -340,6 +363,30 @@ def run(config, period, panel, indices, cost_model, tax_policy,
             return standardise(rows, order=_order, clip=3.0)
     else:
         raise ValueError(f"unknown strategy.signal={signal!r}")
+    source_at: Dict[date, str] = {}
+    if precomputed:
+        stack_fn = score_fn
+        if stack_fn is None:
+            def stack_fn(d, elig, _w=mom_w):
+                s = _w.loc[d].dropna() if d in _w.index else pd.Series(dtype=float)
+                return s[s.index.isin(elig)]
+        pre_scores, pre_fb = scores.get("scores") or {}, scores.get("fallback") or {}
+
+        def score_fn(d, elig, _stack=stack_fn):
+            if d not in pre_fb:
+                raise ValueError(f"{d}: no precomputed decision (model or "
+                                 f"fallback) for this month-end")
+            if pre_fb[d]:
+                source_at[d] = "fallback"
+                return _stack(d, elig)
+            s = pre_scores[d]
+            stray = s.index.difference(pd.Index(elig))
+            if len(stray):
+                raise ValueError(f"{d}: {len(stray)} precomputed names are not in "
+                                 f"the engine's universe (e.g. {stray[0]}); the "
+                                 f"feature store was built from different data")
+            source_at[d] = "model"
+            return s
     # E2-A §3: names carrying a flag usable in the trailing window are
     # ineligible at month-end M. `usable_from` carries the point-in-time
     # rule, so nothing here reads a timestamp. Absent config leaves this
@@ -570,6 +617,9 @@ def run(config, period, panel, indices, cost_model, tax_policy,
                                   weighting=weighting, weight_cap=weight_cap,
                                   on_negative=on_negative, score_fn=score_fn,
                                   exclude_fn=exclude_fn)
+                if precomputed:
+                    # E5-A §11: which decisions the fallback made
+                    pending["score_source"] = source_at[t]
                 if gears is not None:
                     _annotate_gear(pending, t, gears, book, state, close_w,
                                    mom_w, tax_policy)

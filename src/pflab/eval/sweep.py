@@ -251,6 +251,27 @@ def e2d2_rows() -> dict:
     return dict(E2D2_ROWS)
 
 
+# Charter E5-A §9, the same seven rows for every candidate. A0's rows are
+# compared with STACK's base row; a family's row k with A0's row k.
+E5A_ROWS = {
+    "base": {},
+    "S1": {"e5a.horizons": [1]},
+    "S2": {"e5a.horizons": [3]},
+    "S3": {"e5a.horizons": [12]},
+    # §9 S4: untuned -- the check on §5's tuning
+    "S4": {"e5a.params.num_leaves": 15, "e5a.params.min_data_in_leaf": 500,
+           "e5a.params.learning_rate": 0.03},
+    "S5": {"e5a.seed": 20270927},
+    "S6": {"e5a.refit": "monthly"},
+    "S7": {"costs.multiplier": 2.0},
+}
+
+
+def e5a_rows() -> dict:
+    """E5-A's sweep (§9): the base row and S1-S7."""
+    return dict(E5A_ROWS)
+
+
 def e1b_rows() -> dict:
     """E1b's sweep: the base row, E1's nine, then S10 and S11."""
     return {**ROWS, **E1B_EXTRA_ROWS}
@@ -472,11 +493,15 @@ def run_sweep(config, period, panel, indices, cost_model_factory, tax_policy,
               actions=None, out_dir=None, rows=None, membership=None,
               experiment="E1", overlap_membership=None,
               overlap_index="NIFTY200_MOMENTUM30", manifest=None,
-              table=None, stack_config=None) -> dict:
+              table=None, stack_config=None, score_provider=None) -> dict:
     """Run every row. Returns {row: {"result":..., "metrics":..., "error":...}}.
 
     A row that halts (charter §7 ADV guard) is recorded as halted rather than
     quietly dropped, because a halted row is information about the strategy.
+
+    `score_provider` (E5-A): called as provider(row_config, row) for the
+    engine's `scores=`; its models are written under `models/` and hashed
+    into the manifest, and its §11 extras join each row's.
     """
     from pflab.backtest import engine
     from pflab.eval import artifacts
@@ -521,11 +546,16 @@ def run_sweep(config, period, panel, indices, cost_model_factory, tax_policy,
         # run from a hung one.
         _say(f"  [{n}/{len(rows)}] {row}")
         try:
+            kw = {}
+            if score_provider is not None:
+                kw["scores"] = score_provider(cfg, row)
             res = engine.run(cfg, row_period, panel, trend_index, cm, tax_policy,
-                             actions=actions, membership=membership)
+                             actions=actions, membership=membership, **kw)
             extras = artifacts.extras_report(
                 res, membership=overlap_membership,
                 overlap_index=overlap_index)
+            if score_provider is not None:                     # E5-A §11
+                extras["e5a"] = score_provider.row_extras(row, res)
             # E1-P §7. Inert for a run that never deferred and never fired a
             # control, so every charter can carry them -- but the close pivot
             # is only built if one of them actually has something to measure.
@@ -606,9 +636,16 @@ def run_sweep(config, period, panel, indices, cost_model_factory, tax_policy,
     _say("  benchmarks and artifacts")
     out["_benchmarks"] = {k: artifacts.metrics_of(v) for k, v in bench.items()}
     out["_benchmark_results"] = bench
+    attachments = None
+    if score_provider is not None:
+        # E5-A §5: every fitted model file, by SHA-256, in the manifest
+        attachments = score_provider.attachments()
+        if manifest is not None:
+            manifest["e5a"] = {**(manifest.get("e5a") or {}),
+                               **score_provider.manifest()}
     if out_dir:
         write_summary(out, Path(out_dir), period, experiment=experiment,
-                      manifest=manifest, table=table)
+                      manifest=manifest, table=table, attachments=attachments)
     return out
 
 
@@ -631,10 +668,19 @@ def run_benchmarks(config, period, indices_by_name, cost_model_factory, tax_poli
 
 def write_summary(results: dict, out_dir: Path, period, experiment="E1",
                   manifest: Optional[dict] = None,
-                  table: Optional[dict] = None) -> Path:
+                  table: Optional[dict] = None,
+                  attachments: Optional[dict] = None) -> Path:
     out_dir = Path(out_dir)
     _check_manifest(out_dir, manifest)
     out_dir.mkdir(parents=True, exist_ok=True)
+    # Written only after the manifest check, so a conflicting directory is
+    # refused before anything in it is touched.
+    for rel, text in sorted((attachments or {}).items()):
+        f = out_dir / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        # bytes, not write_text: Windows text mode would turn \n into \r\n and
+        # the file would no longer hash to the SHA-256 in the manifest
+        f.write_bytes(text.encode("utf-8"))
     bench = results.get("_benchmarks", {})
     lines = [f"# {experiment} sweep — {getattr(period, 'name', '?')} "
              f"({getattr(period, 'start', '?')} .. {getattr(period, 'end', '?')})\n",
@@ -734,7 +780,8 @@ def write_summary(results: dict, out_dir: Path, period, experiment="E1",
 
     for label, fn in (("ADV skips", _skip_section),
                       ("extras", _extras_section),
-                      ("patience", _patience_section)):
+                      ("patience", _patience_section),
+                      ("E5-A", _e5a_section)):
         try:
             lines += (fn(results) if fn is _skip_section
                       else fn(results, table))
@@ -938,6 +985,34 @@ def _pct(x, nd=2):
     measurable name -- and a bare f-string format would raise on it and take
     the whole summary down with it."""
     return "—" if x is None else f"{x:.{nd}f}"
+
+
+def _e5a_section(results: dict, table: Optional[dict] = None) -> list:
+    """E5-A §11: the fallback's share and the rank IC. Silent elsewhere."""
+    rows = [(r, ((results.get(r) or {}).get("extras") or {}).get("e5a"))
+            for r in rows_present(results, table)]
+    rows = [(r, x) for r, x in rows if x]
+    if not rows:
+        return []
+    out = ["", "## E5-A §11 — fallback and rank IC", "",
+           "Decisions made by the stack's own rank because §5's minimum",
+           "training set did not yet exist, and mean monthly Spearman IC of",
+           "each horizon's predictions against their own labels (months whose",
+           "labels are all observable inside this period only).", "",
+           "| row | fallback decisions | fallback share of buy value | "
+           "IC h1 | IC h3 | IC h12 |", "|---|---|---|---|---|---|"]
+    for r, x in rows:
+        def ic(h):
+            ys = (x.get("rank_ic") or {}).get(f"h{h}") or {}
+            n = sum(v["months"] for v in ys.values())
+            if not n:
+                return "—"
+            return f"{sum(v['mean_ic'] * v['months'] for v in ys.values()) / n:.3f}"
+        fbv = x.get("fallback_share_buy_value")
+        out.append(f"| {r} | {x.get('fallback_decisions')} of {x.get('decisions')} | "
+                   f"{'—' if fbv is None else f'{100 * fbv:.1f}%'} | "
+                   f"{ic(1)} | {ic(3)} | {ic(12)} |")
+    return out
 
 
 def _patience_section(results: dict, table: Optional[dict] = None) -> list:
