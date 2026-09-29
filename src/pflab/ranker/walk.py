@@ -27,6 +27,15 @@ from pflab.ranker.features import A0_FEATURES, to_wide
 GRID_KEYS = ("num_leaves", "min_data_in_leaf", "learning_rate")
 
 
+def observed(labels: pd.DataFrame) -> pd.Series:
+    """Label returns observable in this store, indexed (M, h, ISIN): the rows
+    an IC is scored on. A store cut at T holds as `pending` every label not
+    observable by T, so this is "observable by T"."""
+    from pflab.ranker.labels import DEFINED
+    L = labels[labels["kind"].isin(DEFINED) & labels["ret"].notna()]
+    return L.set_index(["month_end", "h", "isin"])["ret"].astype(float)
+
+
 @dataclass(frozen=True)
 class Spec:
     features: Tuple[str, ...]
@@ -133,10 +142,9 @@ class Walk:
 
 def ic_by_year(predictions: dict, labels: pd.DataFrame,
                horizons: Sequence[int]) -> dict:
-    """§11: mean monthly Spearman IC per horizon per year, on cross-sections
-    whose targets are all observable in this panel."""
-    L = labels[labels["xs_complete"].astype(bool) & labels["target"].notna()]
-    L = L.set_index(["month_end", "h", "isin"])["target"]
+    """§11: mean monthly Spearman IC per horizon per year, against the labels
+    observable in this panel (a rank IC: the percentile would not change it)."""
+    L = observed(labels)
     out: Dict[str, dict] = {}
     for (m, h), p in sorted(predictions.items(), key=lambda kv: (kv[0][1], kv[0][0])):
         try:

@@ -7,8 +7,8 @@ On the store built from the panel truncated at 2010-12-31 (period
 2008-2010 month-ends -- annual refits at December 2007, 2008 and 2009, each
 trained only on labels observable by its refit date -- are scored by mean
 monthly Spearman rank IC against their own labels, averaged across the three
-horizons, using only labels observable by 2010-12-31 (a cross-section counts
-only when every label in it is). Highest IC wins; within 0.005, fewer leaves,
+horizons, using only labels observable by 2010-12-31 (each month on the
+labels observable in it; E5-A §14, 2026-09-29). Highest IC wins; within 0.005, fewer leaves,
 then larger `min_data_in_leaf`.
 
 Writes experiments/E5-A/tuning/<period>-<id>/tuning.json and tuning.md. The
@@ -59,8 +59,7 @@ def choose(results: list) -> dict:
 
 def evaluate(w: walk.Walk, spec: walk.Spec, months, labels) -> dict:
     res = w.score(spec, months)
-    L = labels[labels["xs_complete"].astype(bool) & labels["target"].notna()]
-    L = L.set_index(["month_end", "h", "isin"])["target"]
+    L = walk.observed(labels)
     per_h = {}
     for h in spec.horizons:
         ics, by_year = [], {}

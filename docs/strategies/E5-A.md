@@ -1,6 +1,6 @@
 # E5-A — Learned cross-sectional ranker, one information family at a time
 
-Status: **DRAFT** (rewritten 2026-09-27 from `E5.md` §2, per the external
+Status: **A0 LOCKED 2026-09-29** (`lock/E5-A`, §2–§13; A1–A3 not locked). Rewritten 2026-09-27 from `E5.md` §2, per the external
 audit's Deliverable 3). Judged by `GATE.md`. Readiness:
 `docs/notes/E5A-readiness.md`. Items marked **[D n]** are open decisions
 for Aarsh, listed in that note; the text states the recommended reading.
@@ -46,17 +46,35 @@ month-end after M.
 
 - **Label.** The return a holding bought at the open of the session after
   M would earn if sold at the open of the session after M_h, under the
-  engine's own E1 §9 rules (adjusted prices, dividends as cash on ex-date,
-  a name whose rows stop exits at its last close on the session after its
-  last row). Minus the median of the same quantity over U(M), the stack's
-  E1 §2 universe at M. The model is fit on each cross-section's percentile
-  of that excess return, centred at 0.
+  engine's own E1 §9 rules as amended by E1 §15 (2026-09-17; 2026-09-27
+  (b)): adjusted prices; dividends as cash on the ex-date, for ex-dates
+  after the buy session up to and including the exit session; a name with
+  no row at the exit session stays held and is sold at the first open it
+  trades again; a held name is written down to zero on its 250th
+  consecutive missing session, and the label ends there, worth zero plus
+  the dividends received (a recovery after that is ignored). Minus the
+  median of the same quantity over U(M).
+- **U(M).** The stack's E1 §2 universe at M, restricted to names with a
+  panel row at M. The stack's universe forward-fills turnover and so
+  carries names whose rows have stopped; a name with no row at M is not in
+  U(M), for training or scoring. The restriction follows the turnover
+  ranking, so it never promotes a thinner name.
+- **No open after M.** A name in U(M) with no EQ open at the session after
+  M: if it opens again before its 250th consecutive missing session (a
+  BE/BZ session, a short gap), the engine could not have bought it and the
+  row has no label; if it never does, it gets the engine's label, −100%,
+  with `label_end` and `observable_at` on the 250th missing session.
+  Excluding it would train on survivors only.
+- **Target.** The model is fit on each cross-section's centred percentile,
+  (rank − 0.5)/n − 0.5 with average ranks, computed **at each fit date R
+  over the labels of U(M) observable at R**. A label not yet observable at
+  R (a pending write-down) is absent from that fit and joins later fits
+  once it resolves; it never holds back the rest of its month.
 - **Rows.** One per (ISIN, M) with the ISIN in U(M). No name outside U(M)
   enters training.
 - **Every label row stores** `label_start` (session after M), `label_end`
-  (the session whose open closes the label, or the delisting exit
-  session), and `observable_at` (the open of `label_end`; for the
-  cross-section median, the latest `observable_at` in U(M)).
+  (the session whose open closes the label, or the write-down session),
+  and `observable_at` (the open of `label_end`).
 - **Purge.** A model fitted at date R trains only on rows with
   `observable_at` ≤ the close of R. Because an h-month label from M closes
   at the open *after* M_h, it is usable at R only when M_h < R — an
@@ -70,30 +88,37 @@ month-end after M.
 
 ## 5. Model, training and tuning
 
-- LightGBM regression, one model per horizon, `deterministic=true`, fixed
-  thread count and seeds (seed 20260927); the manifest records the
-  LightGBM version, every hyperparameter and the SHA-256 of each fitted
-  model file. Requires adding `lightgbm` to CLAUDE.md 7 **[D 3]**.
+- LightGBM 4.7.0 regression (L2 objective) on §4's target, one model per
+  horizon, `deterministic=true`, `force_row_wise=true`, `num_threads` 1,
+  `seed` 20260927 (LightGBM derives its bagging and feature-fraction seeds
+  from it); training rows in (M, ISIN) order; features as NaN where
+  unavailable (LightGBM's own missing-value handling). The manifest records
+  the LightGBM version, every hyperparameter and the SHA-256 of each fitted
+  model file (`model_to_string`). `lightgbm` is in CLAUDE.md 7 **[D 3]**.
 - **Refit once a year** at the December month-end R; that model scores
   the twelve month-ends that follow **[D 5]**. Training is expanding:
-  every row observable by R (§4).
+  every row observable by R (§4). S6's monthly refit fits at every
+  month-end and that model scores the next one.
 - A model is fitted only if its training set holds ≥ 12 month-end
   cross-sections for every horizon; before that, the stack's own rank is
   used. This affects 2007 only, which is exploratory (§8).
 - **Tuning, once, before A0 locks** **[D 4]**: on the panel truncated at
   2010-12-31, walk-forward predictions for 2008–2010 are scored by mean
   monthly Spearman rank IC against their own labels, averaged across the
-  three horizons, using only labels observable by 2010-12-31. Grid, eight
+  three horizons, using only labels observable by 2010-12-31 (each month
+  scored on the labels observable in it). Grid, eight
   points: `num_leaves` {7, 31} × `min_data_in_leaf` {200, 1000} ×
   `learning_rate` {0.02, 0.05}; fixed: 300 trees, `bagging_fraction` 0.8
   every iteration, `feature_fraction` 0.8. Highest IC wins; within 0.005,
-  fewer leaves, then larger `min_data_in_leaf`. **The chosen point is
-  written into §5 of this charter before the lock**, so the lock hashes it.
-- **Chosen point (tuned 2026-09-29, LightGBM 4.7.0, `experiments/E5-A/tuning/e5a_exploratory-8c2da63b97684804`):
-  `num_leaves` 7, `min_data_in_leaf` 200, `learning_rate` 0.05** (IC
-  −0.02658; best −0.02411 at 31 / 200 / 0.02; four points inside the 0.005
-  band, the two with 7 leaves tied on `min_data_in_leaf`, the higher IC
-  taken).
+  fewer leaves, then larger `min_data_in_leaf`, then the higher IC. **The
+  chosen point is written into §5 of this charter before the lock**, so
+  the lock hashes it.
+- **Chosen point (tuned 2026-09-29 under §4 as locked, LightGBM 4.7.0,
+  `experiments/E5-A/tuning/e5a_exploratory-3d2c02ba01062121`):
+  `num_leaves` 7, `min_data_in_leaf` 200, `learning_rate` 0.02** (IC
+  +0.00520, the best; 7 / 200 / 0.05 at +0.00256 is inside the band and
+  ties on leaves and `min_data_in_leaf`, so the higher IC is taken; scored
+  months h1 34, h3 32, h12 23 of 36).
 - No feature selection at any stage. Families are never re-tuned.
 
 ## 6. Features, availability and the price-only fallback
@@ -125,6 +150,24 @@ close from its 252-session high; the stack's own score at M. Sector
 dummies are **not** included: the point-in-time sector map changes
 taxonomy twice and covers 52.8% of held names in development.
 
+Windows, exactly (all on adjusted close, all at M's close):
+- **Momentum 1, 3, 6 months**: close at M over close 21, 63, 126 *market*
+  sessions earlier, minus 1, no skip (21 sessions to a month, as the
+  stack's signal counts). **12-1**: E1 §3's score exactly (252-session
+  lookback, 21-session skip).
+- **Volatility**: standard deviation of the name's daily returns over its
+  own last 21, 63, 252 rows, × √252.
+- **Traded value**: mean turnover over the name's own last 21 rows ÷ its
+  last 126; last 126 ÷ last 252.
+- **Distance from high**: close ÷ the maximum close over the name's own
+  last 252 rows, minus 1.
+- **Stack score**: E1d §3's volatility-scaled 6+12 score, standardised
+  within U(M) by E1d's rule (average then z, clipped at 3).
+- Own-row windows count the name's rows, as E1 §2's 250 sessions do. A
+  window must be full to give a value; otherwise the feature is `NaN`,
+  `available = false`. A name in U(M) with no feature available is not
+  scored.
+
 ### (b) Issuer events (A1) — BSE announcements, 2010-01-01 onward
 Per event subtype of E2-A's classifier: count over the trailing 1, 3 and
 12 months, and months since the last one. Covered = scrip resolves to the
@@ -155,7 +198,7 @@ country-level; BSE filings are A1. Not runnable **[D 8]**.
 ## 7. Use
 
 Composite score at M = the mean of the three horizon models' percentile
-predictions over U(M). Its descending rank **replaces the stack's ranking
+predictions over the scored names of U(M) (§6a). Its descending rank **replaces the stack's ranking
 signal** in E1 §4 (entry ≤ 25, exit > 50). Everything else — universe,
 band, six-buy limit, trend filter, ADV guard, costs, tax — is the stack's,
 unchanged. The stack is the one in force at A0's lock **[D 2]**.
@@ -170,6 +213,12 @@ unchanged. The stack is the one in force at A0's lock **[D 2]**.
 | sealed | 2022–2025 | never |
 
 No period is both tuning and evaluation. Benchmarks B1–B5 on each window.
+
+**STACK** is E1 + E1d's base row on the same window, run through the same
+engine: on `e5a_development`, `tools/regress_bases.py E1d-e5a-dev`; on
+`validation`, **re-run at the lock tag** (`E1d-e5a-val`, from the lock
+worktree), not taken from an earlier sweep, so both sides of the
+validation comparison run on the same code.
 
 ## 9. Sweep (every candidate)
 
@@ -246,3 +295,28 @@ seeing results. E5-A says nothing about E5-B/C/D.
   Every grid point's mean IC is negative (h1 ≈ +0.02; h3 and h12 negative
   over 2008–2010); recorded, nothing changed because of it. Build readings
   the lock must confirm are in `docs/notes/E5A-readiness.md` §5.
+- 2026-09-29 (Aarsh, session 6) — **lock decisions** on readiness §5's
+  build readings, written into §4–§6 and §8 before the lock:
+  1. *Delistings*: labels follow E1 §9 as amended by E1 §15 (sold at the
+     first open the name trades again; written to zero on the 250th missing
+     session). §4's wording corrected to match.
+  2. *Target timing*: the percentile at fit date R is over the labels
+     observable at R; a pending write-down joins later fits once it
+     resolves and never holds back the rest of its month (replaces the
+     build's whole-cross-section `target_observable_at`).
+  3. *Universe rows*: a name with no row at M is not in U(M), for training
+     or scoring; a name with a row at M and no later open gets −100%,
+     observable on the 250th missing session. A name with a row at M that
+     opens again, but not at the session after M (a BE/BZ session), keeps
+     no label — the engine cannot buy it (`no_buy`); 774 such rows at h1 in
+     the exploratory store, 1 `no_open`.
+  4. *Unstated choices* written into §5 (objective, determinism, S6's
+     monthly schedule, the last tie-break) and §6a (every window).
+  5. *Validation STACK* is re-run at the lock tag (§8).
+  Decisions 2 and 3 change the target, so **§5 was re-tuned** on the
+  rebuilt 2010-12-31 store: **7 / 200 / 0.02** (IC +0.00520; was 7 / 200 /
+  0.05 under the superseded target, now void). The grid rule is unchanged.
+- 2026-09-29 (session 6) — **A0 LOCKED**: §2–§13, 13,096 chars, SHA-256
+  `9455930e65a2edce0d40d1cdebf65b0a1a434a0662d366c57652c2640cb2ec5f`, tag
+  `lock/E5-A`, run worktree `D:\pl_runs\E5-A`. Feature stores rebuilt at
+  the tag. A family (A1–A3) locks separately, with its own entry here.

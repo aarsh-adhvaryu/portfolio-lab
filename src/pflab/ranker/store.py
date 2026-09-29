@@ -24,7 +24,7 @@ FEATURES = "features_a0.parquet"
 LABELS = "labels.parquet"
 META = "meta.json"
 DATE_COLS = ("month_end", "usable_from", "label_start", "label_end",
-             "observable_at", "target_observable_at")
+             "observable_at")
 
 
 class StaleStore(RuntimeError):

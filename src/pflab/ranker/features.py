@@ -22,8 +22,10 @@ Conventions (reported in the store's meta, for the lock to confirm):
   * volatility, traded value and the 252-session high count the NAME's own
     rows, as E1 §2's "250 sessions of history" and its 126-session traded
     value do; a window must be full to give a value;
-  * a name with no row at M publishes nothing at M: every feature is
-    unavailable and the name is unscored (the stack cannot rank it either).
+  * U(M) is the stack's eligible set at M restricted to names with a panel
+    row at M (E5-A §4, §14 2026-09-29): the stack's universe forward-fills
+    turnover and so carries names whose rows have stopped; those are not in
+    U(M), for training or scoring.
 """
 from __future__ import annotations
 
@@ -65,15 +67,20 @@ def month_ends(panel: pd.DataFrame) -> List[date]:
 def universe_by_month(panel: pd.DataFrame, config: dict,
                       membership=None) -> Dict[date, pd.Index]:
     """U(M) at every month-end: `engine.eligible_at` on the same precompute
-    the engine uses, so the store's universe is the decision's universe."""
+    the engine uses, restricted to names with a panel row at M. The
+    restriction is applied after the turnover ranking, so it never promotes
+    a thinner name into the top N."""
     pre = engine.precompute_universe(panel, config, membership)
     u = config.get("universe", {})
+    rows = panel.groupby("date", sort=False)["isin"].agg(frozenset)
     out = {}
     for m in month_ends(panel):
         e = engine.eligible_at(pre, m,
                                min_sessions=int(u.get("min_sessions", 250)),
                                top_n=int(u.get("top_n_by_turnover", 500)),
                                min_price=float(u.get("min_price", 10.0)))
+        on = rows.get(m, frozenset())
+        e = e[e.isin(list(on))]
         if len(e):
             out[m] = e
     return out

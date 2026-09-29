@@ -138,3 +138,27 @@ byte-identical.
 - STACK for development: `regress_bases.py E1d-e5a-dev` (new, base only).
   STACK for validation: E1d's job-6 sweep, or a re-run at the lock tag.
 - Rebuild the three stores at the lock tag (the store refuses other code).
+
+## 6. Lock (2026-09-29, session 6) — A0 LOCKED
+
+**Change-log entries that apply** (read with the locked text): E5-A §14 —
+2026-09-16, 2026-09-27 rewrite, 2026-09-28 readiness decisions, 2026-09-29
+D2 (stack E1 + E1d), 2026-09-29 session 5 (first tuning, now void),
+2026-09-29 session 6 lock decisions 1–5 and the lock. For the stack: E1 §15
+(2026-09-17 ADV guard; 2026-09-21 net-of-cost buys; 2026-09-27 determinism,
+corrections a–d, D1/D2 repairs; 2026-09-28 measurement fixes) and E1d §10.
+
+- **Span**: E5-A §2–§13, 13,096 chars, SHA-256 `9455930e…cb2ec5f`
+  (`tools/check_lock.py` REGISTRY `E5-A`). Tag `lock/E5-A`; worktree
+  `D:\pl_runs\E5-A`.
+- **Readings 1–7 of §5** are settled by §14's session-6 entry: 1 → §4;
+  2 → per-fit percentile (§4 Target); 3 and 5 → §4 U(M) and "No open after
+  M"; 4 and 7 → §5/§6a text; 6 → §5 tie-break.
+- **Re-tuned** under the locked §4: 7 / 200 / 0.02, IC +0.00520 (all eight
+  points: h1 and h3 positive, h12 negative, −0.045 to −0.061). The old point
+  (7 / 200 / 0.05) was fit to the superseded target.
+- **STACK**: development = `E1d-e5a-dev` (job 7, `19ac284`; backtest,
+  signals, eval, data and the E1/E1d configs are byte-identical at the tag);
+  validation = `E1d-e5a-val`, re-run from the lock worktree.
+- **Stores** rebuilt at the tag for `e5a_exploratory`, `e5a_development`,
+  `validation`.

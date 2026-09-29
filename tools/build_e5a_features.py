@@ -29,11 +29,12 @@ CONVENTIONS = [
     "momentum counts market sessions, 21 to a month, as the stack's 12-1 does",
     "volatility, traded value and the 252-session high count the name's own "
     "rows (E1 §2's convention); a window must be full to give a value",
-    "a name with no row at M publishes nothing at M: all features unavailable, unscored",
+    "U(M) is the stack's eligible set restricted to names with a panel row at M",
     "labels follow E1 §9 as amended by E1 §15 (2026-09-17, 2026-09-27 b): "
     "exit at the first open after M_h the name trades; written down to zero on "
     "the 250th consecutive missing session",
-    "a target is observable when every label in U(M) is (target_observable_at)",
+    "a name with a row at M that never opens again: -100% at its 250th missing session",
+    "targets are computed per fit over the labels observable at R (labels.targets_at)",
 ]
 
 

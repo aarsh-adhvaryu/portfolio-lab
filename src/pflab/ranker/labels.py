@@ -12,21 +12,28 @@ the open of the session after M_h, under the engine's own valuation:
     held; its exit fills at the open of the first session it trades again;
     on its 250th consecutive missing session it is written down to zero.
     The label then ends at the write-down, worth zero plus the dividends
-    received. (§4's parenthesis paraphrases the pre-amendment E1 §9 --
-    "exits at its last close on the session after its last row" -- which the
-    engine no longer does; see the readiness note.)
+    received. (E5-A §14, 2026-09-29: §4 states this rule.)
 
 Each row stores `label_start`, `label_end` and `observable_at` (the open of
-`label_end`). The model is fit on each cross-section's centred percentile of
-the excess return over U(M)'s median, so a row's TARGET needs every label in
-U(M): `target_observable_at` is the latest `observable_at` in U(M), and is
-missing while any label in U(M) is not yet known.
+`label_end`). The model's TARGET is not stored: it is each cross-section's
+centred percentile over the labels observable at the fit date R
+(`targets_at`), so a label still pending at R -- a write-down not yet
+confirmed -- is simply absent from that fit and joins later ones once it
+resolves; it never holds back the rest of its month (§14, 2026-09-29).
+
+U(M) holds only names with a panel row at M (`features.universe_by_month`).
+A name with a row at M that never opens again gets the engine's label: -100%,
+observable on its 250th consecutive missing session (`no_open`). Dropping it
+would train on survivors only.
 
 `kind`:
   open        sold at the open of the session after M_h
   resumed     no row then; sold at the first open it traded again
   write_down  250 consecutive missing sessions while held: worth zero
-  no_entry    no EQ open at the session after M: the engine could not buy it
+  no_open     no open at the session after M and none before its 250th
+              missing session: -100%
+  no_entry    no EQ open at the session after M but it opens later (a BE/BZ
+              session, a short gap): the engine could not buy it; no label
   pending     not yet knowable from this panel (never selected for training)
 """
 from __future__ import annotations
@@ -42,9 +49,8 @@ from pflab.ranker.features import dated, month_ends
 
 HORIZONS = (1, 3, 12)
 LABEL_COLUMNS = ["isin", "month_end", "h", "kind", "label_start", "label_end",
-                 "observable_at", "ret", "excess", "target", "xs_complete",
-                 "target_observable_at"]
-DEFINED = ("open", "resumed", "write_down")
+                 "observable_at", "ret"]
+DEFINED = ("open", "resumed", "write_down", "no_open")
 
 
 def _arrays(panel: pd.DataFrame, names, sessions, series) -> dict:
@@ -70,6 +76,23 @@ def _arrays(panel: pd.DataFrame, names, sessions, series) -> dict:
     return out
 
 
+def _no_entry(a: dict, s0: int, i0: int, n_sessions: int, confirm: int):
+    """No EQ open at s0, the session after M (where U(M) guarantees a row).
+    If the name opens again before its 250th missing session the engine
+    simply could not buy it: `no_entry`, no label, known at that open. If it
+    never does, the engine's label: -100% on the 250th missing session."""
+    pos, prev, j = a["pos"], s0 - 1, i0
+    while True:
+        if j >= len(pos) or pos[j] - prev - 1 >= confirm:
+            w = prev + confirm
+            if w < n_sessions:
+                return "no_open", s0, w, -1.0
+            return "pending", s0, None, np.nan
+        if a["open_ok"][j]:
+            return "no_entry", s0, int(pos[j]), np.nan
+        prev, j = int(pos[j]), j + 1
+
+
 def _one(a: dict, s0: int, exit_at: int, n_sessions: int, confirm: int):
     """(kind, start_pos, end_pos, ret) for one holding: bought at s0's open,
     to be sold at exit_at's open. exit_at None = M_h is beyond the panel."""
@@ -78,7 +101,7 @@ def _one(a: dict, s0: int, exit_at: int, n_sessions: int, confirm: int):
     pos = a["pos"]
     i0 = int(np.searchsorted(pos, s0))
     if i0 >= len(pos) or pos[i0] != s0 or not a["open_ok"][i0] or not a["eq"][i0]:
-        return "no_entry", s0, None, np.nan
+        return _no_entry(a, s0, i0, n_sessions, confirm)
     if exit_at is None:
         return "pending", s0, None, np.nan
     buy = a["adj_open"][i0]
@@ -147,44 +170,37 @@ def build_labels(panel: pd.DataFrame, config: dict,
     df["label_start"] = sess[df["_s"].fillna(n).astype(int)]
     df["label_end"] = sess[df["_e"].fillna(n).astype(int)]
     # the open of label_end; for a name the engine could not buy, the open
-    # at which that was known
-    df["observable_at"] = np.where(df["kind"] == "no_entry", df["label_start"],
-                                   df["label_end"])
+    # at which it traded again (when "could not buy" became "no_entry")
+    df["observable_at"] = df["label_end"]
+    df.loc[df["kind"] == "no_entry", "label_end"] = None
     df = df.drop(columns=["_s", "_e"])
-    return _cross_sections(df)
-
-
-def _cross_sections(df: pd.DataFrame) -> pd.DataFrame:
-    """Excess over U(M)'s median, the centred percentile, and when the whole
-    cross-section's target is observable."""
-    df = df.copy()
-    df["excess"] = np.nan
-    df["target"] = np.nan
-    df["xs_complete"] = False
-    df["target_observable_at"] = None
-    for (m, h), g in df.groupby(["month_end", "h"], sort=False):
-        if (g["kind"] == "pending").any():
-            continue
-        ok = g["kind"].isin(DEFINED) & np.isfinite(g["ret"].astype(float))
-        idx = g.index[ok]
-        df.loc[g.index, "xs_complete"] = True
-        df.loc[g.index, "target_observable_at"] = max(g["observable_at"])
-        if len(idx) == 0:
-            continue
-        r = df.loc[idx, "ret"].astype(float)
-        df.loc[idx, "excess"] = r - float(np.median(r))
-        df.loc[idx, "target"] = (r.rank(method="average") - 0.5) / len(r) - 0.5
     df = df.sort_values(["month_end", "h", "isin"], kind="mergesort").reset_index(drop=True)
     return df[LABEL_COLUMNS]
 
 
+def targets_at(labels: pd.DataFrame, R) -> pd.DataFrame:
+    """The labels observable by the close of R, each with its cross-section's
+    `excess` (over the median of the observable labels of that (M, h)) and
+    `target`, the centred percentile (rank - 0.5)/n - 0.5 among them. What a
+    fit at R trains on; a label observable after R is not read at all."""
+    L = labels[labels["kind"].isin(DEFINED)]
+    ok = np.array([o is not None and o <= R for o in L["observable_at"]], dtype=bool)
+    L = L[ok & np.isfinite(L["ret"].to_numpy(dtype=float))].copy()
+    g = L.groupby(["month_end", "h"], sort=False)["ret"]
+    L["excess"] = L["ret"] - g.transform("median")
+    L["target"] = (g.rank(method="average") - 0.5) / g.transform("size") - 0.5
+    return L
+
+
 def summary(labels: pd.DataFrame) -> dict:
-    """Counts reported in the store's meta: kinds, and complete cross-sections."""
+    """Counts reported in the store's meta: kinds, and cross-sections with a label."""
     if labels.empty:
         return {}
     out = {"kinds": {f"h{h}": {k: int(v) for k, v in g["kind"].value_counts().items()}
                      for h, g in labels.groupby("h")}}
-    xs = labels.groupby(["h", "month_end"])["xs_complete"].first()
-    out["cross_sections"] = {f"h{h}": {"total": int(len(s)), "complete": int(s.sum())}
-                             for h, s in xs.groupby(level=0)}
+    d = labels[labels["kind"].isin(DEFINED)]
+    out["cross_sections"] = {f"h{h}": {"total": int(labels.loc[labels["h"] == h,
+                                                             "month_end"].nunique()),
+                                       "with_a_label": int(g["month_end"].nunique())}
+                             for h, g in d.groupby("h")}
     return out

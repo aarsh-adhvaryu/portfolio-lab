@@ -79,12 +79,12 @@ def test_a_label_observable_after_R_cannot_change_the_model_fitted_at_R(world, h
     L = world["labels"]
     a = _fit(world, L, R, h)
     assert a.fitted, a.reason
-    late = np.array([not (t is not None and t <= R) for t in L["target_observable_at"]])
+    late = np.array([not (t is not None and t <= R) for t in L["observable_at"]])
     assert late.sum() > 0
     L2 = L.copy()
     rng = np.random.default_rng(0)
-    L2.loc[late, "target"] = rng.uniform(-0.5, 0.5, int(late.sum()))
     L2.loc[late, "ret"] = rng.normal(0, 1, int(late.sum()))
+    L2.loc[late & (L2["kind"] == "pending").to_numpy(), "kind"] = "open"
     b = _fit(world, L2, R, h)
     assert b.text == a.text and b.sha256 == a.sha256
 
@@ -94,10 +94,10 @@ def test_the_purge_is_not_vacuous(world):
     R = _dec_end(world, 2016)
     L = world["labels"]
     a = _fit(world, L, R)
-    early = np.array([t is not None and t <= R for t in L["target_observable_at"]])
-    early &= (L["h"] == 1).to_numpy() & L["target"].notna().to_numpy()
+    early = np.array([t is not None and t <= R for t in L["observable_at"]])
+    early &= (L["h"] == 1).to_numpy() & L["ret"].notna().to_numpy()
     L2 = L.copy()
-    L2.loc[early, "target"] = -L2.loc[early, "target"]
+    L2.loc[early, "ret"] = -L2.loc[early, "ret"]
     assert _fit(world, L2, R).text != a.text
 
 
@@ -134,11 +134,10 @@ def test_labels_on_a_truncated_panel_agree_where_observable(world):
     tp = truncate_end(panel, Period("t", date(2012, 1, 1), T))
     Lt = lb.build_labels(tp, cfg, ft.universe_by_month(tp, cfg))
     Lf = world["labels"]
-    cols = ["isin", "month_end", "h", "kind", "label_end", "observable_at", "ret",
-            "target", "target_observable_at"]
+    cols = ["isin", "month_end", "h", "kind", "label_end", "observable_at", "ret"]
 
     def sel(L):
-        ok = [t is not None and t <= T for t in L["target_observable_at"]]
+        ok = [t is not None and t <= T for t in L["observable_at"]]
         return L.loc[ok, cols].reset_index(drop=True)
     a, b = sel(Lt), sel(Lf)
     assert len(a) > 1000
@@ -179,44 +178,103 @@ def test_label_mechanics_dividends_write_down_resume_and_no_entry():
     # no row at the exit session: sold at the first open it trades again
     assert r.at[C, "kind"] == "resumed" and r.at[C, "label_end"] == sessions[E + 3]
     assert r.at[C, "ret"] == pytest.approx(px[C][E + 3] / px[C][s0] - 1.0)
-    # no open at the session after M: the engine could not have bought it
+    # no open at the session after M, one the session after: the engine could
+    # not have bought it; known when it opens again
     assert r.at[D, "kind"] == "no_entry" and np.isnan(r.at[D, "ret"])
-    assert r.at[D, "observable_at"] == sessions[s0]
+    assert r.at[D, "observable_at"] == sessions[s0 + 1] and r.at[D, "label_end"] is None
     # percentile over the three defined labels, centred at 0; B is last
-    assert r.at[B, "target"] == pytest.approx(1 / 6 - 0.5)
-    assert r[["target"]].dropna().shape[0] == 3
-    assert set(r["target_observable_at"]) == {sessions[E + 3]}
+    t = lb.targets_at(L, sessions[-1])
+    t = t[t["month_end"] == M].set_index("isin")
+    assert t.at[B, "target"] == pytest.approx(1 / 6 - 0.5)
+    assert set(t.index) == {A, B, C}
     for c in ("label_start",):
         assert r.at[A, c] == sessions[s0]
 
 
-def test_a_cross_section_with_a_pending_label_has_no_target(world):
+def test_a_pending_label_holds_back_only_itself(world):
+    """§14 2026-09-29: the percentile at R is over the labels observable at R;
+    one pending label leaves the rest of its month in the fit."""
     L = world["labels"]
     last = max(world["uni"])
-    tail = L[(L["month_end"] == last)]
-    assert (tail["kind"] == "pending").all()
-    assert tail["target"].isna().all() and not tail["xs_complete"].any()
+    assert (L.loc[L["month_end"] == last, "kind"] == "pending").all()
+    R = _dec_end(world, 2016)
+    t = lb.targets_at(L[L["h"] == 1], R)
+    M = t["month_end"].max()
+    g = L[(L["h"] == 1) & (L["month_end"] == M) & L["kind"].isin(lb.DEFINED)]
+    victim = g["isin"].iloc[0]
+    L2 = L.copy()
+    hit = (L2["h"] == 1) & (L2["month_end"] == M) & (L2["isin"] == victim)
+    L2.loc[hit, "kind"] = "pending"
+    L2.loc[hit, "ret"] = np.nan
+    L2.loc[hit, "observable_at"] = None
+    t2 = lb.targets_at(L2[L2["h"] == 1], R)
+    got = t2[t2["month_end"] == M]
+    assert len(got) == len(g) - 1 and victim not in set(got["isin"])
+    n = len(got)
+    assert sorted(got["target"]) == pytest.approx([(k + 0.5) / n - 0.5 for k in range(n)])
 
 
-def test_the_selector_takes_only_targets_observable_by_R(world):
+def test_the_selector_takes_only_labels_observable_by_R(world):
     R = _dec_end(world, 2015)
     rows = mdl.training_rows(world["labels"], 3, R)
-    assert len(rows) and all(t <= R for t in rows["target_observable_at"])
-    assert all(o <= R for o in rows["observable_at"])
+    assert len(rows) and all(o <= R for o in rows["observable_at"])
     assert rows["month_end"].max() < R
+    assert rows["target"].between(-0.5, 0.5).all()
+
+
+def test_no_row_at_M_is_not_in_U_and_a_name_that_never_opens_again_is_minus_100():
+    """§14 2026-09-29, decision 3."""
+    sessions = list(pd.bdate_range("2015-01-01", "2016-12-31").date)
+    k = len(sessions)
+    names = ["INE000A01010", "INE000B01010", "INE000C01010"]
+    px = {n: 100.0 * (1.0 + 0.001 * (j + 1)) ** np.arange(k) for j, n in enumerate(names)}
+    mes = sorted(engine._month_ends(sessions))
+    M = max(m for m in mes if m <= date(2015, 6, 30))
+    iM = sessions.index(M)
+    A, B, C = names
+    panel = make_panel(sessions, names, px)
+    # B: last row at M; C: no row at M (a two-session gap ending at it)
+    drop = ((panel["isin"] == B) & (panel["date"] > M)) | \
+           ((panel["isin"] == C) & panel["date"].isin(sessions[iM - 1:iM + 1]))
+    panel = panel[~drop].reset_index(drop=True)
+    cfg = {"strategy": {"delist_confirm_sessions": 5},
+           "universe": {"series": ["EQ"], "min_sessions": 20, "top_n_by_turnover": 500,
+                        "turnover_window": 126, "min_price": 10.0}}
+    uni = ft.universe_by_month(panel, cfg)
+    assert set(uni[M]) == {A, B}
+    f = ft.a0_features(panel, cfg, uni)
+    assert C not in set(f.loc[f["month_end"] == M, "isin"])
+    L = lb.build_labels(panel, cfg, uni, horizons=(1,))
+    r = L[L["month_end"] == M].set_index("isin")
+    assert r.at[B, "kind"] == "no_open" and r.at[B, "ret"] == -1.0
+    assert r.at[B, "label_end"] == r.at[B, "observable_at"] == sessions[iM + 5]
+    assert r.at[B, "label_start"] == sessions[iM + 1]
+    t = lb.targets_at(L, sessions[-1])
+    t = t[t["month_end"] == M].set_index("isin")
+    assert t.at[B, "target"] == pytest.approx(0.25 - 0.5)          # 2nd of 2
+    only = lb.targets_at(L, r.at[B, "observable_at"])
+    assert len(only[only["month_end"] == M]) == 1                    # A pending then
 
 
 # -- features (§6) --------------------------------------------------------
-def test_missing_is_not_zero_and_a_name_without_a_row_publishes_nothing(world):
+def test_missing_is_not_zero_and_a_name_without_a_row_is_not_in_U(world):
     panel, cfg = world["panel"], world["cfg"]
     M = max(m for m in world["uni"] if m <= date(2015, 3, 31))
     victim = world["uni"][M][0]
     p2 = panel[~((panel["isin"] == victim) & (panel["date"] == M))]
-    f = ft.a0_features(p2, cfg, ft.universe_by_month(p2, cfg))
-    got = f[(f["month_end"] == M) & (f["isin"] == victim)]
-    assert len(got) == len(ft.A0_FEATURES)
-    assert got["value"].isna().all() and not got["available"].any()
-    assert got["source_record_id"].isna().all()
+    u2 = ft.universe_by_month(p2, cfg)
+    assert victim not in set(u2[M]) and set(u2[M]) == set(world["uni"][M]) - {victim}
+    f = ft.a0_features(p2, cfg, u2)
+    assert f[(f["month_end"] == M) & (f["isin"] == victim)].empty
+    # zero traded value makes the traded-value ratios undefined: NaN, not 0
+    p3 = panel.copy()
+    p3.loc[(p3["isin"] == victim) & (p3["date"] <= M), "turnover"] = 0.0
+    f3 = ft.a0_features(p3, cfg, ft.universe_by_month(p3, cfg))
+    got = f3[(f3["month_end"] == M) & (f3["isin"] == victim)].set_index("feature")
+    for c in ("tv_21_126", "tv_126_252"):
+        assert np.isnan(got.at[c, "value"]) and not got.at[c, "available"]
+        assert pd.isna(got.at[c, "source_record_id"])
+    assert got.at["mom_1m", "available"]
 
 
 def test_store_columns_and_publication_time(world):

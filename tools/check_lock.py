@@ -37,6 +37,9 @@ REGISTRY = {
              "5ba0b73d830f7118b00124574a93b1eb8337287c15b2d308dfbb08c13666274e"),
     "E2-A": ("docs/strategies/E2-A.md", 3, 9, 5819,
              "f2972309a9793cd53c07551e19408112fef56543baf90b43aa4708e1541bf0b9"),
+    # A0 only (2026-09-29); a family A1-A3 gets its own entry at its lock
+    "E5-A": ("docs/strategies/E5-A.md", 2, 14, 13096,
+             "9455930e65a2edce0d40d1cdebf65b0a1a434a0662d366c57652c2640cb2ec5f"),
 }
 
 

@@ -1,10 +1,10 @@
 """E5-A §5: the model, and the purged training set it is fitted on.
 
-A model fitted at refit date R trains only on label rows whose target is
-observable by the close of R (§4): `target_observable_at <= R`, which implies
-the row's own `observable_at <= R`. That is the whole purge -- derived from
-each label's stored interval, never from a fixed session count -- and it is
-the only way a label reaches a fit.
+A model fitted at refit date R trains only on label rows observable by the
+close of R (§4): `observable_at <= R`, with each cross-section's percentile
+target computed over those rows alone (`labels.targets_at`). That is the whole
+purge -- derived from each label's stored interval, never from a fixed session
+count -- and it is the only way a label reaches a fit.
 
 Fits are deterministic: LightGBM's `deterministic=true`, row-wise histograms,
 a fixed thread count and fixed seeds, on rows in a fixed (M, ISIN) order. The
@@ -67,13 +67,9 @@ def params(tuned: dict, seed: int = SEED, fixed: Optional[dict] = None,
 
 def training_rows(labels: pd.DataFrame, h: int, R: date) -> pd.DataFrame:
     """The purged training set for horizon h at refit date R (§4)."""
-    L = labels[labels["h"] == h]
-    tob = L["target_observable_at"]
-    ok = L["target"].notna() & tob.notna()
-    ok &= pd.Series([t is not None and t <= R for t in tob], index=L.index)
-    own = L["observable_at"]
-    ok &= pd.Series([o is not None and o <= R for o in own], index=L.index)
-    return L[ok].sort_values(["month_end", "isin"], kind="mergesort")
+    from pflab.ranker.labels import targets_at
+    L = targets_at(labels[labels["h"] == h], R)
+    return L.sort_values(["month_end", "isin"], kind="mergesort")
 
 
 def design(features_wide: pd.DataFrame, rows: pd.DataFrame,

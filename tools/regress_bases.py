@@ -53,9 +53,11 @@ JOBS = {
     # E5-A A0's STACK on its development window (E5-A §8, 2026-09-29): E1 + E1d,
     # base only. Validation's STACK is E1d's own validation sweep.
     "E1d-e5a-dev": ("configs/e1d.toml", "e5a_development", None),
+    # E5-A §8: the validation STACK is re-run at lock/E5-A, from its worktree
+    "E1d-e5a-val": ("configs/e1d.toml", "validation", None),
 }
 # STACK companions: base row only, even under --full.
-STACK_ONLY = ("E1-e2a-dev", "E1-e2a-val", "E1d-e5a-dev")
+STACK_ONLY = ("E1-e2a-dev", "E1-e2a-val", "E1d-e5a-dev", "E1d-e5a-val")
 # E1 first in every lane that holds it: every GATE comparison is against it.
 LANES = {
     "A": ["E1-dev", "E1b-dev", "E1P-dev", "E1-e2a-dev"],
