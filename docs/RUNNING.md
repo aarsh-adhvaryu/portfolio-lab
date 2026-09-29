@@ -20,6 +20,15 @@ _(none)_ — verified 2026-09-27 with `tools\status.ps1`.
 
 ## Queued
 
+**7. E5-A A0's STACK on `e5a_development` (2026-09-29).** E1 + E1d base row and
+B1–B5 on 2011–2016, base only; A0's development verdict compares against it
+(E5-A §8). One PowerShell window from `D:\portfolio_lab`, ~10 min, ~3 GB; can
+run alongside anything (it is one sweep):
+`$env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; .venv\Scripts\python.exe -u tools\regress_bases.py E1d-e5a-dev`
+Lands in `experiments\E1d\regression\e5a_development-<run_id>`. Done when
+`experiments\_regress\E1d-e5a-dev.json` exists and the window printed `DONE ->`.
+The A0 sweeps themselves wait for the lock (`tools\run_locked.ps1`).
+
 **6. DONE 2026-09-29 at `c6ef67e`, 14/14 (verdicts: `docs/reviews/regression-2026-09-28-verdicts.md`) — final regression, all six experiments, both periods,
 full sweeps** (E1 §15 2026-09-28 fixes). Four PowerShell windows from
 `D:\portfolio_lab`, one lane each, all at once (~3 GB each):

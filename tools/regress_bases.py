@@ -50,7 +50,12 @@ JOBS = {
     # E2-A's stack: E1 base on E2-A's own windows (STATE.md: 14.60% / 50.04%).
     "E1-e2a-dev": ("configs/e1.toml", "e2a_development", None),
     "E1-e2a-val": ("configs/e1.toml", "e2a_validation", None),
+    # E5-A A0's STACK on its development window (E5-A §8, 2026-09-29): E1 + E1d,
+    # base only. Validation's STACK is E1d's own validation sweep.
+    "E1d-e5a-dev": ("configs/e1d.toml", "e5a_development", None),
 }
+# STACK companions: base row only, even under --full.
+STACK_ONLY = ("E1-e2a-dev", "E1-e2a-val", "E1d-e5a-dev")
 # E1 first in every lane that holds it: every GATE comparison is against it.
 LANES = {
     "A": ["E1-dev", "E1b-dev", "E1P-dev", "E1-e2a-dev"],
@@ -88,7 +93,7 @@ def _guard() -> dict:
 def run(job: str, full: bool = False) -> None:
     from pflab.backtest import runner
     cfg, period, _ = JOBS[job]
-    full = full and not job.startswith("E1-e2a")
+    full = full and job not in STACK_ONLY
     exp = _experiments()
     ident = _guard()
     marker = exp / "_regress" / f"{job}.json"

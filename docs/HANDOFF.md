@@ -3,6 +3,23 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-09-29, session 5 — E5-A A0 built, ready to lock)
+
+**Built** (`docs/notes/E5A-readiness.md` §5): `pflab/ranker/` (§6a feature
+store, §4 labels with intervals, purged selector, deterministic LightGBM
+4.7.0, walk-forward + fallback), engine signal `precomputed`,
+`sweep.e5a_rows`, `classify_e5a`, `configs/e5a_a0.toml`, periods
+`e5a_exploratory` / `e5a_development`. Run fingerprint covers `e1d.toml`.
+Stores in `data/e5a/<period>/` (22–70 s each). `pytest -q`: 683 passed.
+**§5 tuned point 7 / 200 / 0.05**, in E5-A §5 and the config; every grid
+point's mean IC is negative (recorded only).
+
+**Next:** Aarsh reviews readiness §5's seven build readings and locks A0
+(append to E5-A §14, tag `lock/E5-A`). Aarsh runs RUNNING.md job 7 (STACK on
+`e5a_development`). After the lock: rebuild the three stores at the tag, then
+`tools\run_locked.ps1 -Experiment E5-A -Config configs\e5a_a0.toml` for
+`e5a_development` and `validation`; `classify_e5a`.
+
 ## Start here (2026-09-29, session 4 complete)
 
 **Final regression done** (full sweeps at `c6ef67e`, 14/14) and all six

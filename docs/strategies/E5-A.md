@@ -89,6 +89,11 @@ month-end after M.
   every iteration, `feature_fraction` 0.8. Highest IC wins; within 0.005,
   fewer leaves, then larger `min_data_in_leaf`. **The chosen point is
   written into §5 of this charter before the lock**, so the lock hashes it.
+- **Chosen point (tuned 2026-09-29, LightGBM 4.7.0, `experiments/E5-A/tuning/e5a_exploratory-8c2da63b97684804`):
+  `num_leaves` 7, `min_data_in_leaf` 200, `learning_rate` 0.05** (IC
+  −0.02658; best −0.02411 at 31 / 200 / 0.02; four points inside the 0.005
+  band, the two with 7 leaves tied on `min_data_in_leaf`, the higher IC
+  taken).
 - No feature selection at any stage. Families are never re-tuned.
 
 ## 6. Features, availability and the price-only fallback
@@ -236,3 +241,8 @@ seeing results. E5-A says nothing about E5-B/C/D.
   replaces "E2-D1 readiness §3 settled first" as the precondition.
 - 2026-09-29 — **D2 settled:** the stack is E1 + E1d (final regression,
   `docs/reviews/regression-2026-09-28-verdicts.md`); A0 is measured against it.
+- 2026-09-29 (session 5) — **§5 tuned point written** (7 / 200 / 0.05), from
+  `tools/tune_e5a.py` on the store cut at 2010-12-31 (commit `e5a2fab`).
+  Every grid point's mean IC is negative (h1 ≈ +0.02; h3 and h12 negative
+  over 2008–2010); recorded, nothing changed because of it. Build readings
+  the lock must confirm are in `docs/notes/E5A-readiness.md` §5.

@@ -94,3 +94,47 @@ thresholded.
 Preconditions that are not decisions: A1 needs a sampled precision check
 of E2-A's subtypes; A2 needs E2-D1 readiness §3 settled. The count: A0 +
 A1–A3 adds **four** experiments to STATE when all have verdicts.
+
+## 5. Build (2026-09-29, session 5) — A0 ready to lock
+
+Built at `64707cb`/`e5a2fab` (+ docs): `pflab/ranker/`, engine signal
+`precomputed`, `sweep.e5a_rows`, `classify_e5a`, `configs/e5a_a0.toml`,
+periods `e5a_exploratory` / `e5a_development`, `tools/build_e5a_features.py`,
+`tools/tune_e5a.py`. `lightgbm==4.7.0` pinned. `pytest -q`: 683 passed.
+Stores for all three periods (22–70 s) under `data/e5a/<period>/`. Tuning re-run: all 72 fits
+byte-identical.
+
+**§5 tuned point: 7 / 200 / 0.05.** Every point's mean IC is negative
+(h1 ≈ +0.02; h3 ≈ −0.03; h12 ≈ −0.08, 2008–2010). Recorded, not acted on.
+
+### Lines the build could not follow as written (the lock must confirm)
+
+1. **§4's delisting parenthesis** paraphrases pre-amendment E1 §9 ("exits
+   at its last close on the session after its last row"). The engine now
+   follows E1 §15 (2026-09-17, 2026-09-27 b), and so do the labels: sold at
+   the first open it trades again; written down to zero on the 250th missing
+   session (recovery after that is ignored). Reading the old text literally
+   would need hindsight (is a gap a stop?).
+2. **The percentile target needs the whole cross-section**, not just the
+   median: `target_observable_at` = latest `observable_at` in U(M). A
+   pending write-down holds its cross-section back up to 250 sessions. At
+   the 2010 cut, 3 of 73 h1, 7 of 73 h3 and 7 of 73 h12 cross-sections are
+   held back beyond the structural end-of-panel ones; tuning scored 31 / 25
+   / 16 of 36 months.
+3. **U(M) carries names whose rows have stopped** (the stack's universe
+   forward-fills turnover): 8% of U(M) rows have no open after M
+   (`no_entry`). They get no label and no score, as the stack cannot rank them.
+4. **§6a window conventions** (unspecified): momentum 1/3/6 months on market
+   sessions (21 a month), no skip; 12-1 exactly E1's; volatility, traded
+   value and the 252-session high on the name's own rows, full windows only.
+5. **Unscored names**: a name with no row at M publishes nothing at M.
+6. **Tie-break past §5's rule**: 7/200/0.02 and 7/200/0.05 tied on leaves
+   and `min_data_in_leaf`; the higher IC was taken.
+7. **Model details** §5 leaves open: L2 regression; target
+   (rank − 0.5)/n − 0.5; `num_threads` 1; S6 refits at every month-end and
+   scores the next.
+
+### The lock must also settle
+- STACK for development: `regress_bases.py E1d-e5a-dev` (new, base only).
+  STACK for validation: E1d's job-6 sweep, or a re-run at the lock tag.
+- Rebuild the three stores at the lock tag (the store refuses other code).
