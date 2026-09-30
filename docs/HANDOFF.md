@@ -3,6 +3,23 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-09-30, session 6 — E5-A A0 and E3-R LOCKED)
+
+**Done.** Job 7 finished (`E1d-e5a-dev`, 19ac284). **E5-A A0 locked** at
+`lock/E5-A` → `530a3d8` (§2–§13, `check_lock`): Aarsh's five decisions are in
+§4–§6 and §8; the target is now a per-fit percentile over the labels
+observable at R; U(M) needs a row at M; a name that never opens again is −100%.
+**Re-tuned: 7 / 200 / 0.02** (IC +0.0052); the old point is void. The stores
+were rebuilt at the tag. **E3-R moved onto E1 + E1d and locked** at
+`lock/E3-R` → `c06c6af` (§3–§7): the gear path reads E1d's score. On today's
+panel development runs 38 / 77 / 5 cautious/normal/high. **A1 reader plan:**
+`docs/notes/A1-reader-plan.md`. `pytest -q`: 685 passed.
+
+**Next (Aarsh):** RUNNING.md jobs 8–11 (A0 dev and exploratory, validation
+STACK at the tag, E3-R development). Then `classify_e5a` on development.
+**Decisions:** E3-R's STACK source (readiness §9); A1 plan §5, starting with
+who Jev is. Paper trading not started.
+
 ## Start here (2026-09-29, session 5 — E5-A A0 built, ready to lock)
 
 **Built** (`docs/notes/E5A-readiness.md` §5): `pflab/ranker/` (§6a feature

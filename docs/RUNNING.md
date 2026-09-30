@@ -32,6 +32,13 @@ already rebuilt at the tag.
 
 A0's validation sweep waits for its development verdict.
 
+**11. E3-R development, locked 2026-09-29 (`lock/E3-R` → `c06c6af`), against
+E1 + E1d.** With 8–10 running this is the fourth sweep: check `tools\status.ps1`
+shows ~14 GB free first. `cd D:\portfolio_lab; .\tools\run_locked.ps1
+-Experiment E3-R -Period development` → `experiments\E3-R\sweeps\development-<id>`,
+~30–40 min (base + S1–S10); prints `SWEEP DIR:`. Validation after the
+development review.
+
 **7. DONE 2026-09-29 20:26 at `19ac284` (4.4 min) → `experiments\E1d\regression\e5a_development-977f12d2dd395573`.** E5-A A0's STACK on `e5a_development` (2026-09-29).** E1 + E1d base row and
 B1–B5 on 2011–2016, base only; A0's development verdict compares against it
 (E5-A §8). One PowerShell window from `D:\portfolio_lab`, ~10 min, ~3 GB; can
