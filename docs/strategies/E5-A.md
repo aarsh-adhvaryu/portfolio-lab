@@ -320,3 +320,34 @@ seeing results. E5-A says nothing about E5-B/C/D.
   `9455930e65a2edce0d40d1cdebf65b0a1a434a0662d366c57652c2640cb2ec5f`, tag
   `lock/E5-A`, run worktree `D:\pl_runs\E5-A`. Feature stores rebuilt at
   the tag. A family (A1–A3) locks separately, with its own entry here.
+- 2026-09-30 (Aarsh, session 7) — **decision 3 confirmed** (entry of
+  2026-09-29): a name trading BE/BZ at the session after M keeps no label,
+  because it cannot be bought; the 1–2 rows that never open again keep
+  −100%. The tuned point **7 / 200 / 0.02** stands by §5's grid rule.
+- 2026-09-30 (Aarsh, session 7) — **A1 reader plan decisions**
+  (`docs/notes/A1-reader-plan.md` §5). **Jev** is TypeSafe's hosted
+  classification model (an API needing `TYPESAFE_API_KEY`), not a person;
+  there is no key, so J is dropped and the contest is **K against L**; J can
+  be added later. **L = `qwen3.5-9b-16k`**; `gemma4-12b-16k` is run and
+  reported but never chosen after its score is seen. The per-flag adoption
+  rule is as proposed. The 250-row unflagged recall sample is drawn (seed
+  20260930, `docs/data/flag_recall_sample.md`). The ~924-PDF rating
+  history fetch is queued for Aarsh (RUNNING.md job 13). Reference labels:
+  `docs/data/flag_audit_labels.md` at `a15c775`, reviewed by Aarsh, with a
+  SUBTYPE column (AT_COMPANY 182, AGAINST_COMPANY 5, RELATED_ENTITY 7,
+  NOT_EVENT 10, UNCLEAR 47).
+- 2026-09-30 (Aarsh, session 7) — **§6(b) amended before any A1 run** (no
+  A1 result exists; A1 is not locked). §6(b) reads with this entry:
+  1. Event features are counted **per flag and per subtype**
+     (AT_COMPANY, AGAINST_COMPANY, RELATED_ENTITY; the subtypes of
+     `flag_audit_labels.md`). **NOT_EVENT is excluded**: it is not an
+     event. The model therefore weighs a lender's loss to a borrower's
+     fraud, a subsidiary's insolvency and the company's own fraud
+     separately. How a reader's UNCLEAR enters is **open**, for Aarsh
+     before A1 locks.
+  2. The reader contest scores **subtype accuracy**, not TRUE/FALSE.
+  3. Readers also output a **confidence**. It is recorded and reported,
+     and is **not** an A1 feature.
+  *Reason:* the audit's TRUE/FALSE question counted a lender's loss or a
+  subsidiary's insolvency as FALSE, though each is a risk event for the
+  company, of a different kind.

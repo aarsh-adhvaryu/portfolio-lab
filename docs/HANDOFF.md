@@ -3,6 +3,26 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-09-30, session 7 — A1 reference labels, decisions recorded)
+
+**Status:** RUNNING.md jobs 8–11 **not started** (nothing on disk, nothing
+running). **Recorded** (change logs 2026-09-30): E5-A §14 decision 3
+confirmed, 7/200/0.02 stands; A1 plan decisions (Jev = TypeSafe API, dropped;
+K vs L; L = qwen3.5-9b-16k); **§6(b) amended pre-run** (features per flag ×
+subtype, NOT_EVENT excluded; subtype accuracy scored; confidence recorded,
+not a feature). E3-R §11: the c6ef67e E1d sweeps are the STACK only if
+reproduced exactly at the tag (RUNNING.md job 12, `e1_identity.py --config
+--ref`). **Labels** reviewed, SUBTYPE added (182/5/7/10/47), `a15c775`, SHA in
+the A1 plan. **Rating PDFs:** 21 fetched, 4 scanned, 1 missing →
+`docs/data/rating_pdf_labels.md`. **Recall sample** drawn →
+`docs/data/flag_recall_sample.md`. Finding: today's sampler no longer
+reproduces `flag_audit.md` (D1/D2 widened the universe); the 041ec33 set does.
+`pytest -q`: 685 passed.
+
+**Next (Aarsh):** jobs 8–12 (12 before E3-R classifies), 13 (PDF history).
+Mark `rating_pdf_labels.md`; label the recall sample; decide how a reader's
+UNCLEAR enters A1's counts. Then L's reader build (A1 plan §4).
+
 ## Start here (2026-09-30, session 6 — E5-A A0 and E3-R LOCKED)
 
 **Done.** Job 7 finished (`E1d-e5a-dev`, 19ac284). **E5-A A0 locked** at

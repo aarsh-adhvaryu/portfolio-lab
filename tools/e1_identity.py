@@ -2,6 +2,7 @@
 
     python tools/e1_identity.py development
     python tools/e1_identity.py validation
+    python tools/e1_identity.py development --config configs/e1d.toml         --ref <experiments>/E1d/sweeps/development-924cec1bb3dd9ff9/rows/base
 
 Re-runs E1 base (configs/e1.toml) on the named period with the CURRENT code
 and compares it with experiments/E1/regression/<period>-*/rows/base/: the
@@ -13,6 +14,10 @@ Why: E3-R (2026-09-27) added a target-equity mechanism and sell-down code to
 the engine. Both are reached only when `trend_filter = "gears"`, and
 tests/test_engine_golden.py holds E1's synthetic paths byte-for-byte, but
 the real-data check is the one that proves no E1 result can have moved.
+
+`--config` and `--ref` (2026-09-30, E3-R §11) point it at another stack's
+base row, e.g. E1d's full sweep at c6ef67e, run from a locked worktree. It
+prints where `pflab` was imported from, so a run on the live tree shows.
 
 Long job (panel load + one engine run): Aarsh's to run. The two periods can
 run side by side.
@@ -68,18 +73,23 @@ def explain_decisions(got: list, want: list, examples: int = 3) -> list:
     return lines
 
 
-def main(period_name: str) -> int:
+def main(period_name: str, config: str = "configs/e1.toml",
+         ref_dir: str | None = None) -> int:
+    import pflab
     from pflab.backtest import engine, runner
     from pflab.data import experiments_dir
 
-    cfg = runner.load_config("configs/e1.toml")
+    print(f"pflab imported from {Path(pflab.__file__).resolve()}; config {config}")
+    cfg = runner.load_config(config)
     period, panel, indices, actions, cost_factory, tax, membership = runner.prepare(
         cfg, period_name)
     res = engine.run(cfg, period, panel, indices.get("NIFTY50_PRICE"),
-                     cost_factory(1.0), tax, actions=actions, membership=membership)
+                     cost_factory(float(cfg.get("costs", {}).get("multiplier", 1.0))),
+                     tax, actions=actions, membership=membership)
 
-    ref = sorted(glob.glob(str(experiments_dir().resolve() / "E1" / "regression"
-                               / f"{period_name}-*" / "rows" / "base")))
+    ref = [ref_dir] if ref_dir else sorted(glob.glob(str(
+        experiments_dir().resolve() / "E1" / "regression"
+        / f"{period_name}-*" / "rows" / "base")))
     if len(ref) != 1:
         print(f"expected one stored regression base row for {period_name}, found {ref}")
         return 2
@@ -110,18 +120,25 @@ def main(period_name: str) -> int:
         problems.extend(explain_decisions(json.loads(got_d), json.loads(want_d)))
         out = experiments_dir().resolve() / "_identity"
         out.mkdir(parents=True, exist_ok=True)
-        (out / f"{period_name}_decisions_now.json").write_text(got_d, encoding="utf-8")
-        problems.append(f"today's decisions saved to {out / (period_name + '_decisions_now.json')}")
+        stem = period_name if config == "configs/e1.toml" else             f"{Path(config).stem}_{period_name}"
+        (out / f"{stem}_decisions_now.json").write_text(got_d, encoding="utf-8")
+        problems.append(f"today's decisions saved to {out / (stem + '_decisions_now.json')}")
     if problems:
-        print(f"E1 base {period_name}: DIFFERENT from {ref}")
+        print(f"{config} base {period_name}: DIFFERENT from {ref}")
         for p in problems:
             print("  " + p)
         return 1
-    print(f"E1 base {period_name}: IDENTICAL to {ref} "
+    print(f"{config} base {period_name}: IDENTICAL to {ref} "
           f"({len(res.equity)} sessions, {len(res.trades)} trades, "
           f"{len(res.decisions)} decisions)")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else "development"))
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("period", nargs="?", default="development")
+    ap.add_argument("--config", default="configs/e1.toml")
+    ap.add_argument("--ref", default=None, help="a stored rows/base directory")
+    a = ap.parse_args()
+    sys.exit(main(a.period, a.config, a.ref))

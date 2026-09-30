@@ -271,3 +271,6 @@ accepted as built). Stack: E1 §15 (through 2026-09-28) and E1d §10.
   flags only (E5-A's `precomputed` signal; the gear path's `score_fn`).
   **Decision for Aarsh:** use those, or re-run E1d base at `lock/E3-R` as
   E5-A §8 does.
+  **Decided 2026-09-30 (E3-R §11):** reuse them only if E1d base at
+  `lock/E3-R` reproduces both exactly (content, not key order; RUNNING.md
+  job 12); otherwise re-run the stack at the tag.

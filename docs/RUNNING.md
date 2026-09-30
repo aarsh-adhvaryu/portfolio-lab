@@ -32,6 +32,30 @@ already rebuilt at the tag.
 
 A0's validation sweep waits for its development verdict.
 
+_Status 2026-09-30: jobs 8–11 not started (no output on disk; nothing running)._
+
+**12. E3-R STACK check (E3-R §11, 2026-09-30) — before job 11 is classified.**
+E1d base at `lock/E3-R` against E1d's full sweeps at `c6ef67e`. Two windows,
+side by side, ~5–10 min each (~3 GB each). The live repo's tool is run on the
+worktree's code; its first line must say `pflab imported from
+D:\pl_runs\E3-R\src\...`, or the check is void.
+```
+cd D:\pl_runs\E3-R; $env:PYTHONPATH='D:\pl_runs\E3-R\src'; $env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; D:\portfolio_lab\.venv\Scripts\python.exe -u D:\portfolio_lab\tools\e1_identity.py development --config configs/e1d.toml --ref D:\portfolio_lab\experiments\E1d\sweeps\development-924cec1bb3dd9ff9\rows\base
+cd D:\pl_runs\E3-R; $env:PYTHONPATH='D:\pl_runs\E3-R\src'; $env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; D:\portfolio_lab\.venv\Scripts\python.exe -u D:\portfolio_lab\tools\e1_identity.py validation --config configs/e1d.toml --ref D:\portfolio_lab\experiments\E1d\sweeps\validation-a0e0f5aa78dc160f\rows\base
+```
+Pass: both print `IDENTICAL` and exit 0 (a key-order-only note is a pass) →
+the c6ef67e sweeps are E3-R's STACK. Either `DIFFERENT` → re-run E1d full at
+the tag (Claude writes that command).
+
+**13. Rating-revision PDF history (A1 plan §2; decided 2026-09-30).** Every
+RATING_DOWNGRADE event 2010–2026 worded as a revision (935 events, 913 attachments), fetched from BSE
+and cached in `data\bse_attachments\`. One window, ~35 min (2.2 s a file
+measured on the audit's 21), < 0.5 GB, network only (~0.3 GB RAM), can run
+alongside anything. Resumable: re-running skips cached files.
+`cd D:\portfolio_lab; .venv\Scripts\python.exe -u tools\rating_pdfs.py --history`
+Done when it prints `DONE ->` and `data\bse_attachments\_history.json` exists
+(counts of cached and not found).
+
 **11. E3-R development, locked 2026-09-29 (`lock/E3-R` → `c06c6af`), against
 E1 + E1d.** With 8–10 running this is the fourth sweep: check `tools\status.ps1`
 shows ~14 GB free first. `cd D:\portfolio_lab; .\tools\run_locked.ps1

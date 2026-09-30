@@ -192,3 +192,11 @@ they never give certainty, and false alarms are counted, not hidden.
   `pflab/data/etf_events.py` re-keys and adjusts ETF rows only, when a
   config sets `data.etf_events`. Span §3–§7: see `tools/check_lock.py`
   `E3-R` and readiness §9.
+- 2026-09-30 (Aarsh, session 7) — **STACK source** (readiness §9's open
+  decision). The existing E1d full sweeps at `c6ef67e`
+  (`development-924cec1bb3dd9ff9`, `validation-a0e0f5aa78dc160f`) are reused
+  **only if** E1d's base row, run at `lock/E3-R`, reproduces them exactly in
+  **both** periods: equity and trades identical, decisions identical in
+  content (dict key order is not a difference). Otherwise the stack is
+  re-run at the tag. Check: `tools/e1_identity.py --config configs/e1d.toml
+  --ref …` from `D:\pl_runs\E3-R` (RUNNING.md job 12). No rule changes.
