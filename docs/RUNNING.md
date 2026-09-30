@@ -32,7 +32,12 @@ already rebuilt at the tag.
 
 A0's validation sweep waits for its development verdict.
 
-_Status 2026-09-30: jobs 8–11 not started (no output on disk; nothing running)._
+_Status 2026-09-30 15:46: **8–11 and 13 DONE** (base CAGR / MaxDD, liquidation):
+8 `E5-A\sweeps\e5a_development-cedd1b289d7bb7aa` 12.59% / 14.46%;
+9 `e5a_exploratory-d5b68a41eeb004e4` 14.32% / 20.75% (never counted);
+10 `E1degressionalidation-a6256fbb0ba71a8f` 26.21% / 42.96%;
+11 `E3-R\sweeps\development-7abfb3d39c34e018` 6.82% / 54.16%;
+13 883 of 913 PDFs cached, 30 not at BSE. **12 ran; verdict console-only, not on disk.**_
 
 **12. E3-R STACK check (E3-R §11, 2026-09-30) — before job 11 is classified.**
 E1d base at `lock/E3-R` against E1d's full sweeps at `c6ef67e`. Two windows,
