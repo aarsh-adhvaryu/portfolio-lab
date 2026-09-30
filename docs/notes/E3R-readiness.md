@@ -274,3 +274,7 @@ accepted as built). Stack: E1 §15 (through 2026-09-28) and E1d §10.
   **Decided 2026-09-30 (E3-R §11):** reuse them only if E1d base at
   `lock/E3-R` reproduces both exactly (content, not key order; RUNNING.md
   job 12); otherwise re-run the stack at the tag.
+  **Checked 2026-09-30: both IDENTICAL** at `lock/E3-R` (pflab from
+  `D:\pl_runs\E3-R\src`; dev 3,232 sessions / 799 trades / 120 decisions,
+  val 4,471 / 495 / 60; logs `experiments\_identity\e1d_e3r_*.log`). **E3-R's
+  STACK is the c6ef67e sweeps above.**

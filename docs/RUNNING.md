@@ -37,7 +37,7 @@ _Status 2026-09-30 15:46: **8–11 and 13 DONE** (base CAGR / MaxDD, liquidation
 9 `e5a_exploratory-d5b68a41eeb004e4` 14.32% / 20.75% (never counted);
 10 `E1d\regression\validation-a6256fbb0ba71a8f` 26.21% / 42.96%;
 11 `E3-R\sweeps\development-7abfb3d39c34e018` 6.82% / 54.16%;
-13 883 of 913 PDFs cached, 30 not at BSE. **12 ran; verdict console-only, not on disk.**_
+13 883 of 913 PDFs cached, 30 not at BSE. **12 re-run 15:52 with logs: both IDENTICAL** (`experiments\_identity\e1d_e3r_*.log`); E3-R's STACK = the c6ef67e E1d sweeps._
 
 **12. E3-R STACK check (E3-R §11, 2026-09-30) — before job 11 is classified.**
 E1d base at `lock/E3-R` against E1d's full sweeps at `c6ef67e`. Two windows,
