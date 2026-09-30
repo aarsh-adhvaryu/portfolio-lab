@@ -3,6 +3,28 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-09-30, session 8 — development classified, drafts written)
+
+**Labels:** rating directions confirmed by Aarsh are in
+`rating_pdf_labels.md` → `flag_audit_labels.md`. Of the 16 readable
+"revision" letters, 7 were DOWN, 3 UP and 6 NO CHANGE; 171 is a subsidiary
+(RELATED_ENTITY). Subtypes now 188/5/8/19/31, and the new SHA-256 is in the
+A1 plan.
+**E5-A A0, development:** G1–G4 all hold against E1 + E1d (+1.90 pp CAGR,
+18.5 pp shallower drawdown, 6/8 rows); MANDATE §3 no (4/8 rows), §5 no
+(−5.26 pp). Placebo (`tools/e5a_placebo.py`, labels shuffled within each
+(M, h) at the tag): IC −0.02/−0.04/+0.01 against A0's +0.10/+0.13/+0.13;
+2.41% / 26.45% with 25% of NAV invested. A0's holdings overlap the stack's
+by 9%, and their trailing vol is 28% against the stack's 45%.
+**E3-R, development:** G1 no, G2 no, G3 1/11; MANDATE no.
+Drafts: `docs/reviews/E5-A0-development-draft.md`,
+`docs/reviews/E3-R-development-draft.md`: numbers only. `pytest -q`: 687
+passed.
+
+**Next (with Aarsh):** write the conclusions in both drafts; decide whether
+the placebo's shallower drawdown (with little invested) counts as "no better
+than the stack"; then A0's validation sweep (E5-A §8), which waits for that.
+
 ## Start here (2026-09-30, session 7 — A1 reference labels, decisions recorded)
 
 **Status:** RUNNING.md jobs 8–11 **not started** (nothing on disk, nothing
