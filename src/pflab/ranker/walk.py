@@ -14,7 +14,7 @@ descending rank replaces the stack's ranking signal; nothing else changes.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -47,6 +47,10 @@ class Spec:
     refit: str
     refit_month: int
     min_cross_sections: int
+    # §6 [D 6]: a family's own columns, and its activation threshold
+    # (cross-sections, coverage share). Empty for A0, whose path is unchanged.
+    family: Tuple[str, ...] = ()
+    activation: Tuple[int, float] = (36, 0.5)
 
     @property
     def params(self) -> dict:
@@ -73,7 +77,18 @@ def spec_from_config(cfg: dict) -> Spec:
                 seed=int(e.get("seed", mdl.SEED)),
                 num_threads=int(e.get("num_threads", 1)),
                 refit=refit, refit_month=int(e.get("refit_month", 12)),
-                min_cross_sections=int(e.get("min_cross_sections", 12)))
+                min_cross_sections=int(e.get("min_cross_sections", 12)),
+                family=tuple(f for f in e.get("features", A0_FEATURES)
+                             if f not in A0_FEATURES),
+                activation=(int((e.get("activation") or {}).get("min_cross_sections", 36)),
+                            float((e.get("activation") or {}).get("min_coverage", 0.5))))
+
+
+def a0_spec(spec: Spec) -> Spec:
+    """The predeclared price-only fallback of a family (§6): A0's columns,
+    everything else the family's own spec."""
+    return replace(spec, features=tuple(f for f in spec.features if f in A0_FEATURES),
+                   family=())
 
 
 def refit_date(m: date, month_ends: Sequence[date], spec: Spec) -> Optional[date]:
@@ -94,6 +109,37 @@ class Walk:
         self.universe = universe
         self.month_ends = sorted(month_ends)
         self.fits: Dict[tuple, mdl.Fit] = {}
+        self._coverage: Dict[tuple, pd.Series] = {}
+        self._active: Dict[tuple, dict] = {}
+
+    def coverage(self, family: Sequence[str]) -> pd.Series:
+        """Share of U(M) with any of the family's columns available, per M."""
+        key = tuple(family)
+        if key not in self._coverage:
+            has = self.fw[list(family)].notna().any(axis=1)
+            share = {}
+            for m, names in self.universe.items():
+                idx = pd.MultiIndex.from_arrays([[m] * len(names), list(names)])
+                share[m] = float(has.reindex(idx).fillna(False).mean()) if len(names) else 0.0
+            self._coverage[key] = pd.Series(share).sort_index()
+        return self._coverage[key]
+
+    def family_active(self, spec: Spec, R: date) -> dict:
+        """§6 [D 6]: active from refit R only if, for every horizon, R's
+        training set holds >= K month-end cross-sections in which the family
+        is available for >= the coverage share of U(M)."""
+        key = (spec.family, spec.activation, spec.horizons, R)
+        if key not in self._active:
+            k, share = spec.activation
+            cov = self.coverage(spec.family)
+            good = set(cov.index[cov >= share])
+            n = {}
+            for h in spec.horizons:
+                ms = mdl.training_rows(self.labels, h, R)["month_end"].unique()
+                n[h] = int(sum(1 for m in ms if m in good))
+            self._active[key] = {"active": all(v >= k for v in n.values()),
+                                 "covered_cross_sections": n}
+        return self._active[key]
 
     def fit(self, spec: Spec, h: int, R: date) -> mdl.Fit:
         key = (h, R, tuple(sorted(spec.params.items())), spec.features,
@@ -116,15 +162,23 @@ class Walk:
         scores, fallback, info, preds = {}, {}, {}, {}
         for m in months:
             R = refit_date(m, self.month_ends, spec)
-            fits = [self.fit(spec, h, R) for h in spec.horizons] if R else []
+            use, act = spec, None
+            if spec.family and R:
+                act = self.family_active(spec, R)
+                if not act["active"]:
+                    use = a0_spec(spec)
+            fits = [self.fit(use, h, R) for h in use.horizons] if R else []
             ok = bool(fits) and all(f.fitted for f in fits)
             info[m] = {"refit": R, "fits": [(f.h, f.sha256, f.n_rows,
                                              f.n_cross_sections, f.reason)
                                             for f in fits]}
+            if spec.family:
+                info[m]["family_active"] = bool(act and act["active"])
+                info[m]["covered_cross_sections"] = (act or {}).get("covered_cross_sections")
             if not ok:
                 fallback[m] = True
                 continue
-            X = self.scored_names(m, spec.features)
+            X = self.scored_names(m, use.features)
             if X.empty:
                 fallback[m] = True
                 info[m]["reason"] = "no scored names"
@@ -163,9 +217,10 @@ class SweepScores:
     `scores=` argument for that row, and keeps every model it fitted so the
     sweep can write and hash them."""
 
-    def __init__(self, features: pd.DataFrame, labels: pd.DataFrame, period):
+    def __init__(self, features: pd.DataFrame, labels: pd.DataFrame, period,
+                 columns: Sequence[str] = A0_FEATURES):
         self.period = period
-        self.fw = to_wide(features)
+        self.fw = to_wide(features, columns)
         self.universe = {m: pd.Index(sorted(g["isin"].unique()))
                          for m, g in features.groupby("month_end")}
         mes = sorted(self.universe)
@@ -225,7 +280,26 @@ class SweepScores:
                     any(f.sha256 == s for m in r["info"].values()
                         for (_, s, *_rest) in m["fits"]):
                 gain.setdefault(f"h{f.h}", {})[str(f.refit)] = f.gain
-        return {"fallback_decisions": len(fb), "decisions": len(decs),
+        fam = {}
+        if spec.family:
+            # §11: decisions made by the family model, and the share of buy
+            # value (on those months) in names without family coverage
+            act = {m for m, i in r["info"].items() if i.get("family_active")}
+            has = self.fw[list(spec.family)].notna().any(axis=1)
+            tot_a, miss = 0.0, 0.0
+            for t, isin, q, px in zip(buys.get("date", []), buys.get("isin", []),
+                                      buys.get("qty", []), buys.get("fill_price", [])):
+                prior = [e for e in ends if e < t]
+                if not prior or prior[-1] not in act:
+                    continue
+                val = float(q) * float(px)
+                tot_a += val
+                if not bool(has.get((prior[-1], isin), False)):
+                    miss += val
+            fam = {"family_active_decisions": sum(1 for d in decs if d["month_end"] in act),
+                   "family_active_months": sorted(str(m) for m in act),
+                   "buy_value_without_family_share": (miss / tot_a) if tot_a else None}
+        return {**fam, "fallback_decisions": len(fb), "decisions": len(decs),
                 "fallback_share_decisions": (len(fb) / len(decs)) if decs else None,
                 "fallback_share_buy_value": (fbv / tot) if tot else None,
                 "fallback_months": [str(m) for m in fb],

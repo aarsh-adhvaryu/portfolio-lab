@@ -1,6 +1,6 @@
 # STATE — verdicts and where things stand
 
-One page. Updated 2026-09-29 (session 4). The narrative is in `docs/HANDOFF.md`; the
+One page. Updated 2026-09-30 (session 10: E5-A A0 and E3-R verdicts). The narrative is in `docs/HANDOFF.md`; the
 order and reasons in `docs/ROADMAP.md`; the rules for judging in
 `docs/strategies/GATE.md` (adoption) and `docs/MANDATE.md` (ADVANCE).
 
@@ -25,15 +25,15 @@ on the second would be.
 
 | | |
 |---|---|
-| **experiments with a computed verdict** | **6** |
+| **experiments with a computed verdict** | **8** |
 | ADOPTED | **1** (E1d; stack E1 + E1d from 2026-09-29) |
-| REJECT | 2 (E1c, E2-A) |
-| INCONCLUSIVE | 3 (E1, E1b, E1-P) |
+| REJECT | 3 (E1c, E2-A, E3-R) |
+| INCONCLUSIVE | 4 (E1, E1b, E1-P, E5-A A0) |
 | sealed-period reveals used | **0 of 1** |
 | stacks meeting MANDATE §3 and §5 | **0** |
 
 Locked and awaiting a run: none. **Built and ready to lock** (2026-09-27):
-E2-D1, E3-R, E2-D2 — each note's last section says what the lock must settle.
+E2-D1, E2-D2 — each note's last section says what the lock must settle.
 Readiness notes: E2-B, E3, E5-A (decisions taken 2026-09-28 bar D2, now settled: A0 against E1 + E1d; build next). Drafts: E1-S, E2-E.
 
 **Closed or parked, not counted as tested** (2026-09-27, Aarsh): **E2-C
@@ -61,9 +61,15 @@ CAGR / max drawdown, full sweeps at `c6ef67e`.
 | **E1c** | LOCKED 2026-09-19, amended blind 2026-09-21 | **REJECT** (GATE vs E1) | 5.90% / 71.20% | 18.55% / 35.86% | same |
 | **E1d** | LOCKED 2026-09-24 | **ADOPT** (GATE vs E1; 11/12, 10/11 rows) | 8.06% / 54.74% | 26.21% / 42.96% | same |
 | **E2-A** | LOCKED 2026-09-25 | **REJECT** (GATE **and** §8a) | 8.28% / 38.32% *(2017–19)* | 44.89% / 8.47% *(2020–21)* | same |
+| **E3-R** | LOCKED 2026-09-29 | **REJECT** (GATE vs E1 + E1d: G1 and G2 fail in both periods) | 6.82% / 54.16% | 19.62% / 48.08% | `docs/reviews/E3-R-verdict.md` |
+| **E5-A A0** | LOCKED 2026-09-29 | **INCONCLUSIVE** (GATE vs E1 + E1d: dev G1–G4 hold; val G2 and G3 fail) | 12.59% / 14.46% *(2011–16)* | 7.51% / 26.69% | `docs/reviews/E5-A0-verdict.md` |
 
 E2-A's windows are its own (§6), so its figures are not comparable with the
 rows above. E1 base on **those** windows is 8.13% / 39.54% and 48.74% / 7.36%.
+E5-A's development window is 2011–2016 (E5-A §8); the stack on it is
+10.69% / 32.94%. E3-R and E5-A A0 are run at their lock tags (`lock/E3-R`,
+`lock/E5-A`), not at `c6ef67e`. Mandate for both: not met (E3-R −6.92 /
+−2.82 pp vs B5; A0 −5.26 / −14.93 pp).
 
 ## Benchmarks, same engine, SIP and tax (final regression)
 
@@ -102,8 +108,8 @@ result meets it in development.
 
 ## Next
 
-**E5-A** (charter `docs/strategies/E5-A.md`, readiness
-`docs/notes/E5A-readiness.md`): build, then lock, with A0 against E1 + E1d.
-Then E3-R, E2-B, E1-S, E2-D1, E2-D2 (parked), E2-E, E3, E6-V. Configs and
-readiness notes of later experiments still build on E1 base and must move
-to E1 + E1d before they lock. No stack meets the mandate yet.
+**E5-A families** (A0 INCONCLUSIVE; each family is judged incrementally
+against the frozen A0 and for adoption against E1 + E1d, E5-A §10): A1
+(issuer events) and A3 (world exposure) built to ready-to-lock, A2 readiness
+note (2026-09-30). Then E2-B, E1-S, E2-D1, E2-D2 (parked), E2-E, E3, E6-V.
+E3-R is off the forward list (REJECT). No stack meets the mandate yet.

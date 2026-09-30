@@ -204,6 +204,11 @@ def input_fingerprints(cfg: dict, period, indices, actions, membership,
         from pflab.ranker import model as e5m, store as e5s
         for f, h in sorted(e5s.file_shas(e5s.store_dir(period.name, droot)).items()):
             fp[f"e5a:{f}"] = h
+        from pflab.ranker import family as e5f
+        fam = e5f.family_of(cfg)
+        if fam != "A0":             # a family's own columns (§6b-d)
+            fp[f"e5a:{e5f.features_file(fam)}"] = e5f.file_sha(
+                e5s.store_dir(period.name, droot), fam)
         fp["lightgbm"] = e5m.lightgbm_version()
     return fp
 
@@ -246,14 +251,27 @@ def main(config_path, period_name=None, unseal_reason=None, sweep=False,
     # models would be fitted on one dataset and traded on another.
     provider, e5a_manifest = None, None
     if cfg.get("e5a"):
-        from pflab.ranker import store as e5s, walk as e5w
+        from pflab.ranker import family as e5f, store as e5s, walk as e5w
+        from pflab.ranker.features import A0_FEATURES
         sdir = e5s.store_dir(period.name)
         feats, labels, smeta = e5s.load(sdir)
-        e5s.check(smeta, cfg, period, artifacts.data_fingerprint(panel))
-        provider = e5w.SweepScores(feats, labels, period)
+        fam = e5f.family_of(cfg)
+        # a family checks A0's store against the A0 part of its config
+        e5s.check(smeta, cfg if fam == "A0" else e5f.base_config(cfg), period,
+                  artifacts.data_fingerprint(panel))
+        cols = A0_FEATURES
         e5a_manifest = {"store": str(sdir), "store_files": smeta["files"],
                         "store_code": smeta.get("code"),
                         "store_panel_fingerprint": smeta.get("panel_fingerprint")}
+        if fam != "A0":
+            ffeats, fmeta = e5f.load(sdir, fam)
+            e5f.check(fmeta, cfg, period, smeta)
+            feats = pd.concat([feats, ffeats], ignore_index=True)
+            cols = tuple(A0_FEATURES) + tuple(e5f.family_features(cfg))
+            e5a_manifest.update({"family": fam, "family_file": fmeta["file"],
+                                 "family_code": fmeta.get("code")})
+            del ffeats
+        provider = e5w.SweepScores(feats, labels, period, cols)
         del feats
 
     cfg_text = json.dumps(cfg, sort_keys=True, default=str)

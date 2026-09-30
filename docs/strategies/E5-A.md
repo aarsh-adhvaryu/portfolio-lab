@@ -358,3 +358,18 @@ seeing results. E5-A says nothing about E5-B/C/D.
   detect leakage. Its IC is about zero (−0.02 / −0.04 / +0.01) and its CAGR
   is 8.3 pp below the stack's. Its shallower drawdown comes from having 25%
   of NAV invested, not from selection.
+- 2026-09-30 (Aarsh, session 10) — **A0 verdict INCONCLUSIVE recorded**
+  (`docs/reviews/E5-A0-verdict.md`; STATE, ROADMAP). §3's condition is met,
+  so the families start against the frozen A0: A1 and A3 built to ready to
+  lock, A2 readiness only.
+- 2026-09-30 (Aarsh, session 10) — **A1 reader decisions**
+  (`docs/notes/A1-reader-plan.md` §5 items 7–10; no rule changed after the
+  scores). (a) The per-flag rule as written: **L reads DEFAULT,
+  FORENSIC_AUDIT, REGULATORY_ACTION**; K keeps AUDITOR_RESIGNATION, FRAUD,
+  INSOLVENCY, PROMOTER_ENCUMBRANCE, RATING_DOWNGRADE. RESULTS_DELAY: listed
+  for L in the instruction, but the rule gives K (L 88.0% < K 88.5%,
+  unrounded); K until Aarsh confirms. (b) §6(b)'s open item is closed: K's
+  events enter as subtype **UNCLEAR**, never AT_COMPANY; **UNCLEAR is its
+  own subtype**, counted separately; NOT_EVENT excluded. (c) Reading rating
+  letters (gemma 81%, L 50% with the letter) is a finding for a future
+  charter, declared as suggested by these scores; gemma is not chosen.

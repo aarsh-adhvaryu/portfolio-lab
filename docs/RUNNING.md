@@ -20,7 +20,20 @@ _(none)_ — verified 2026-09-27 with `tools\status.ps1`.
 
 ## Queued
 
-**14. A1 reader contest (A1 plan §3–§6; 2026-09-30).** L = `qwen3.5-9b-16k` on the 251
+**15. A1 event reads (E5-A families readiness §2; 2026-09-30).** L =
+`qwen3.5-9b-16k` over the 710 events of its flags (DEFAULT, FORENSIC_AUDIT,
+REGULATORY_ACTION), 2010 → 2021-12-31. One window; Ollama running; GPU only,
+~0.3 GB RAM, so it can share the machine with sweeps. **About 35–60 min**
+(3–5 s an event; 10 already cached). Resumable: stop and re-run the same line.
+```
+cd D:\portfolio_lab; .venv\Scripts\python.exe -u tools\a1_read_events.py --config configs\e5a_a1.toml
+```
+Done when it prints a JSON block with `"events": 710` and writes
+`data\a1_readers\events_qwen3.5-9b-16k.parquet`. Then Claude builds the A1
+stores (`tools\build_e5a_family.py --family A1`, seconds each).
+
+**14. DONE 2026-09-30** (scored: `docs/notes/A1-reader-scores.md`).
+**14. (done, kept for the record) A1 reader contest (A1 plan §3–§6; 2026-09-30).** L = `qwen3.5-9b-16k` on the 251
 audit rows and 16 rating letters, then `gemma4-12b-16k` on the same (reported only),
 then L on the 250-row recall sample. One window, sequential (one GPU). About 45 min
 (3.1 s a row measured on 5 rows each). Ollama must be running; the sweeps are

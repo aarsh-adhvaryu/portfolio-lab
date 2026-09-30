@@ -5,12 +5,14 @@ charter. Each experiment gets its own charter in `docs/strategies/` before it
 runs; this file only says what the experiments are, in what order, what each
 must prove, and what the finished system looks like.
 
-**Forward order (2026-09-28): E5-A, E3-R, E2-B, E1-S, E2-D1, E2-D2
-(parked until E2-D1), E2-E, E3, E6-V.** Done: E1 (INCONCLUSIVE), E1b
-(INCONCLUSIVE), E1-P (INCONCLUSIVE), E1c (REJECT), E1d (ADOPT), E2-A
-(REJECT); final, re-classified 2026-09-29 after the full regression.
+**Forward order (2026-09-30): E5-A families A1, A3, A2, then E2-B, E1-S,
+E2-D1, E2-D2 (parked until E2-D1), E2-E, E3, E6-V.** Done: E1
+(INCONCLUSIVE), E1b (INCONCLUSIVE), E1-P (INCONCLUSIVE), E1c (REJECT), E1d
+(ADOPT), E2-A (REJECT) — final, re-classified 2026-09-29 after the full
+regression; **E5-A A0 (INCONCLUSIVE) and E3-R (REJECT), 2026-09-30**
+(`docs/reviews/E5-A0-verdict.md`, `E3-R-verdict.md`).
 **Adopted stack: E1 + E1d (2026-09-29).** Closed, not run: E2-C. Off the list:
-E4, and any stop-loss (E1-P's N1 failed validation). Nothing skips the gate.
+E4, any stop-loss, and E3-R (REJECT 2026-09-30) (E1-P's N1 failed validation). Nothing skips the gate.
 The gate's arithmetic lives in `docs/strategies/GATE.md`; each experiment
 has its own charter in `docs/strategies/`.
 
@@ -18,6 +20,17 @@ has its own charter in `docs/strategies/`.
 change joins the stack. From **2026-09-21**, `docs/MANDATE.md` §3 and §5
 decide **ADVANCE** — the sealed reveal, the live paper year, real money —
 in place of E1 §13's C1–C4. Recorded verdicts are unchanged.
+
+---
+
+## Verdicts, 2026-09-30 — A0 INCONCLUSIVE, E3-R REJECT
+
+**E5-A A0: INCONCLUSIVE** against E1 + E1d. Development (2011–16) holds
+G1–G4 (+1.90 pp CAGR, 18.48 pp shallower); validation fails G2 (−18.70 pp
+CAGR for 16.27 pp shallower) and G3 (0 / 8). Mandate not met. **E3-R:
+REJECT** — G1 and G2 fail in both periods (−1.24 / −6.59 pp CAGR). E3-R
+leaves the forward list. The E5-A families proceed against the frozen A0
+(E5-A §3, §10): A1 and A3 to ready-to-lock, A2 readiness only.
 
 ---
 

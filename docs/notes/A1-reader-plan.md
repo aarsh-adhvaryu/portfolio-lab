@@ -122,8 +122,34 @@ would take about 4.5–9 h, an overnight job for Aarsh.
    beside it (E5-A §14 2026-09-30).
 4. **Recall sample:** drawn (§3).
 5. **History fetch:** queued, RUNNING.md job 13.
-6. **Open, for Aarsh before A1 locks:** how a reader's UNCLEAR enters the
-   per-subtype counts.
+6. ~~Open: how a reader's UNCLEAR enters~~ — decided 2026-09-30, item 8.
+
+### Decisions after the scores (Aarsh, 2026-09-30; no rule changed after the scores)
+
+7. **Per-flag rule (item 3) applied as written**, on the unrounded scores
+   (`A1-reader-scores.md` §1): **L reads DEFAULT** (100% = 100%; UNCLEAR 0%
+   ≤ 20%), **FORENSIC_AUDIT** (100% ≥ 90%; 21% ≤ 29%) and
+   **REGULATORY_ACTION** (100% ≥ 91%; 20% ≤ 27%). **K keeps**
+   AUDITOR_RESIGNATION (96.4% < 96.7%), FRAUD (67% < 72%), INSOLVENCY
+   (UNCLEAR 10% > 3%), PROMOTER_ENCUMBRANCE (7% > 0%), RATING_DOWNGRADE
+   (77% > 20%). **RESULTS_DELAY — for Aarsh to confirm:** the instruction
+   lists it for L, but unrounded L is 22/25 = 88.0% against K's 23/26 =
+   88.5% (both print as 88%), so the rule as written keeps K. The build and
+   `configs/e5a_a1.toml` follow the rule (K) until Aarsh says otherwise.
+8. **K cannot resolve a subtype**, so K's events enter A1 as subtype
+   **UNCLEAR**, never AT_COMPANY. **UNCLEAR is its own subtype** in A1's
+   features, counted separately from AT_COMPANY, AGAINST_COMPANY and
+   RELATED_ENTITY; NOT_EVENT stays excluded (§6(b) amendment).
+9. **Rating letters:** reading the attached letter lifted agreement on the
+   16 readable letters to 81% (gemma) and 50% (L), from 25% and 0% on the
+   headline. Recorded as a **finding for a future charter, declared as
+   suggested by these scores**. It is not used in A1, and **gemma is not
+   chosen** for A1 (item 2).
+10. **Recall labels** confirmed by Aarsh (`docs/data/recall_labels.md`):
+    R63, R224 RATING_DOWNGRADE / UNCLEAR; R189 INSOLVENCY / AT_COMPANY;
+    every other row NONE. K's announcement-level recall ≈ 12% (3%–29%, one
+    row decides it); L finds 2 of ≈10 events on the unflagged pool.
+    Information only; no rule changes.
 
 ## 6. Order
 

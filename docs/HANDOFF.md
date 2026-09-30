@@ -3,6 +3,21 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-09-30, session 10 — verdicts recorded; E5-A families built)
+
+**Recorded:** A0 INCONCLUSIVE and E3-R REJECT in STATE (8 verdicts: ADOPT 1,
+REJECT 3, INCONCLUSIVE 4) and ROADMAP (E3-R off the list). **Recall labels**
+confirmed (R63, R224 RATING_DOWNGRADE/UNCLEAR; R189 INSOLVENCY/AT_COMPANY):
+K recall ≈ 12% (3%–29%, one row decides it); L finds 2 of ≈10 on the
+unflagged pool. **Reader decisions** in A1 plan §5 items 7–10 and E5-A §14:
+L reads DEFAULT, FORENSIC_AUDIT, REGULATORY_ACTION; K's events are UNCLEAR.
+**RESULTS_DELAY open:** instruction said L, rule as written gives K (88.0% <
+88.5%); built as K. **Families** (`docs/notes/E5A-families-readiness.md`):
+A1 and A3 built and tested; A3 stores built (dev, val); A1 activates only
+from the 2014-12 refit. A2 readiness with three decisions. `pytest -q`: 704.
+**Next:** Aarsh runs RUNNING.md job 15 (~35–60 min); answers RESULTS_DELAY
+and readiness §5; Claude builds A1 stores; then the locks.
+
 ## Start here (2026-09-30, session 9 close — A1 contest scored)
 
 **Job 14 done; scored** (`docs/notes/A1-reader-scores.md`, numbers only).
