@@ -124,19 +124,26 @@ out = runner.main(r'$cfg', '$Period', None, sweep=True,
 print('SWEEP DIR: ' + str(out))
 "@
 
+# Windows PowerShell 5.1 wraps each stderr line of a native command in an
+# ErrorRecord under 2>&1, and with "Stop" the sweep's first progress line
+# (written to stderr) killed the run (2026-09-30, jobs 8, 9, 11). So "Continue"
+# around the call, stderr turned back into plain text, and $LASTEXITCODE is
+# the only verdict.
 Push-Location $RunRoot
+$eap = $ErrorActionPreference; $ErrorActionPreference = "Continue"
 try {
-  & $Py -u -c $runner 2>&1 | Tee-Object -FilePath $log
+  & $Py -u -c $runner 2>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath $log
   $rc = $LASTEXITCODE
-} finally { Pop-Location }
+} finally { $ErrorActionPreference = $eap; Pop-Location }
 
 if ($rc -ne 0) { Write-Host "`nsweep exited $rc -- read $log" -ForegroundColor Red; exit $rc }
 
 if ($EventStudy) {
   Say "`n== event study =="
   Push-Location $RunRoot
-  try { & $Py -u "$RunRoot\tools\run_event_study.py" $Period 2>&1 | Tee-Object -FilePath $log -Append }
-  finally { Pop-Location }
+  $eap = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+  try { & $Py -u "$RunRoot\tools\run_event_study.py" $Period 2>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath $log -Append }
+  finally { $ErrorActionPreference = $eap; Pop-Location }
 }
 
 Say "`nDONE. Results under $ExpDir\$Experiment. Log: $log"
