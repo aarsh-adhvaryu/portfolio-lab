@@ -351,3 +351,10 @@ seeing results. E5-A says nothing about E5-B/C/D.
   *Reason:* the audit's TRUE/FALSE question counted a lender's loss or a
   subsidiary's insolvency as FALSE, though each is a risk event for the
   company, of a different kind.
+- 2026-09-30 (Aarsh, session 8) — **A0 development placebo: PASS**
+  (`docs/reviews/E5-A0-development.md`, check (i); not gating). A0 was
+  refitted at `lock/E5-A` with labels shuffled within each (M, h),
+  seed 20260930 (`tools/e5a_placebo.py`). *Reason:* the placebo exists to
+  detect leakage. Its IC is about zero (−0.02 / −0.04 / +0.01) and its CAGR
+  is 8.3 pp below the stack's. Its shallower drawdown comes from having 25%
+  of NAV invested, not from selection.
