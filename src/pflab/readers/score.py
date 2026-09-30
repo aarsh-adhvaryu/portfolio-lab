@@ -65,6 +65,11 @@ def _precision(subs: Iterable[str]) -> Optional[float]:
     return t / (t + f) if (t + f) else None
 
 
+def _at_calls(pairs) -> Optional[float]:
+    calls = [a for a, b in pairs if b == "AT_COMPANY" and a != "UNCLEAR"]
+    return (sum(a == "AT_COMPANY" for a in calls) / len(calls)) if calls else None
+
+
 def block(pairs: List[tuple], conf: Optional[List[float]] = None) -> dict:
     """Scores for one set of (reference subtype, reader subtype) pairs."""
     n = len(pairs)
@@ -78,6 +83,10 @@ def block(pairs: List[tuple], conf: Optional[List[float]] = None) -> dict:
            "unclear_rate_reference": (sum(a == "UNCLEAR" for a, _ in pairs) / n) if n else None,
            "precision_reader": _precision(b for _, b in pairs),
            "precision_reference": _precision(a for a, _ in pairs),
+           # the reader's AT_COMPANY calls that the reference also calls
+           # AT_COMPANY, among those the reference resolved (not UNCLEAR):
+           # comparable with K's, which is precision_reference
+           "at_call_precision": _at_calls(pairs),
            "confusion": cm}
     if conf is not None:
         bands = {}

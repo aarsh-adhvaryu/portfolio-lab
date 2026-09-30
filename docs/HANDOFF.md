@@ -3,6 +3,22 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-09-30, session 9 close — A1 contest scored)
+
+**Job 14 done; scored** (`docs/notes/A1-reader-scores.md`, numbers only).
+Headline only, 251 rows, against the current reference:
+- **Subtype agreement:** K 75% (κ 0), L 66% (κ 0.29), gemma 48%.
+- **AT_COMPANY calls correct:** K 85% (the reference precision), L 94%,
+  gemma 98%.
+- **UNCLEAR rate:** L 17%, reference 12%.
+
+On the 16 letters, with the attachment: gemma 81%, L 50%. L re-read 20 rows
+with byte-identical output. Recall: L flags 3 of 250.
+`docs/data/recall_labels.md` holds 33 rows, blind, for Aarsh.
+**Next (Aarsh):** label `recall_labels.md`; apply plan §5.3 per flag;
+decide how UNCLEAR enters (§5.6); record the A0 and E3-R verdicts in STATE
+and ROADMAP.
+
 ## Start here (2026-09-30, session 9 — A0 and E3-R verdicts; A1 contest built)
 
 **Verdicts** (`classify_e5a` / `classify_e3r`, both periods):

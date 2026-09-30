@@ -53,3 +53,14 @@ def test_cache_key_changes_with_any_input():
     k = llm.Cache.key
     assert k("d", "s", "u") != k("d", "s", "u2") != k("d2", "s", "u")
     assert k("d", "s", "u") == k("d", "s", "u")
+
+
+def test_at_call_precision_ignores_reference_unclear():
+    pairs = [("AT_COMPANY", "AT_COMPANY"), ("NOT_EVENT", "AT_COMPANY"),
+             ("UNCLEAR", "AT_COMPANY"), ("AT_COMPANY", "NOT_EVENT")]
+    assert sc.block(pairs)["at_call_precision"] == pytest.approx(0.5)
+    ref = {i: {"flag": "F", "label": "", "subtype": s}
+           for i, s in enumerate(["AT_COMPANY", "AT_COMPANY", "NOT_EVENT", "UNCLEAR"])}
+    # K asserts AT_COMPANY everywhere: its AT calls correct = reference precision
+    o = sc.score(ref, sc.keyword_reader(ref))["overall"]
+    assert o["at_call_precision"] == pytest.approx(2 / 3) == o["precision_reference"]

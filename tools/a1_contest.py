@@ -181,7 +181,7 @@ def cmd_score() -> None:
 
     def overall_table(title, ref_, rows, note=""):
         out = [f"## {title}", "", note, "",
-               "| reader | n | agreement | κ | reader UNCLEAR | reference UNCLEAR | precision (reader) | precision (reference) | failed |",
+               "| reader | n | agreement | κ | reader UNCLEAR | reference UNCLEAR | AT_COMPANY calls correct | share of reader's resolved calls that are AT_COMPANY | failed |",
                "|---|---|---|---|---|---|---|---|---|"]
         res = {}
         for name, (_, reads) in readers.items():
@@ -190,20 +190,21 @@ def cmd_score() -> None:
             o = s["overall"]
             out.append(f"| {name} | {o['n']} | {_pct(o['agreement'])} | {_k(o['kappa'])} | "
                        f"{_pct(o['unclear_rate_reader'])} | {_pct(o['unclear_rate_reference'])} | "
-                       f"{_pct(o['precision_reader'])} | {_pct(o['precision_reference'])} | "
+                       f"{_pct(o['at_call_precision'])} | {_pct(o['precision_reader'])} | "
                        f"{s['failed_reads']} |")
         return out, res
 
     t, res = overall_table("1. Headline only, 251 rows, current reference", ref, None,
-                           "The primary score (plan §3): subtype accuracy.")
+                           "The primary score (plan §3): subtype accuracy. "
+                           "Adoption rule (plan §5.3) compares a reader's AT_COMPANY calls correct with K's (= the reference precision).")
     lines += t
-    lines += ["", "### Per flag (agreement / κ / reader UNCLEAR / reader precision; reference precision)", "",
+    lines += ["", "### Per flag (agreement / κ / reader UNCLEAR / AT_COMPANY calls correct). K's AT_COMPANY calls correct = the reference precision", "",
               "| flag | n | ref precision | " + " | ".join(readers) + " |",
               "|---|---|---|" + "---|" * len(readers)]
     for f in sorted(res["K (keywords)"]["flags"]):
         first = res["K (keywords)"]["flags"][f]
         cells = [f"{_pct(v['flags'][f]['agreement'])} / {_k(v['flags'][f]['kappa'])} / "
-                 f"{_pct(v['flags'][f]['unclear_rate_reader'])} / {_pct(v['flags'][f]['precision_reader'])}"
+                 f"{_pct(v['flags'][f]['unclear_rate_reader'])} / {_pct(v['flags'][f]['at_call_precision'])}"
                  for v in res.values()]
         lines.append(f"| {f} | {first['n']} | {_pct(first['precision_reference'])} | " + " | ".join(cells) + " |")
     for name, s in res.items():
