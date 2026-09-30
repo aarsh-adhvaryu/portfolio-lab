@@ -1,6 +1,6 @@
 # E5-A families — readiness (2026-09-30)
 
-**A1: READY TO LOCK once L's reads are in (job 15) and §4 is confirmed.
+**A1: READY TO LOCK once RESULTS_DELAY (§5.1) and the readings are confirmed.
 A3: READY TO LOCK once §4 is confirmed. A2: NOT READY — readiness only
 (§3).** No family run exists.
 
@@ -48,6 +48,14 @@ new code.
   events and RESULTS_DELAY one (their disclosure regimes start around
   2019); INSOLVENCY 47 event-months. Those columns are constant in
   development training.
+
+- **Job 15 done (2026-09-30):** 710 of 710 read. L's subtypes, events to
+  2021: DEFAULT 260 AT_COMPANY / 5 RELATED / 3 UNCLEAR / 3 NOT_EVENT;
+  FORENSIC_AUDIT 19 / 2 AGAINST / 5 RELATED / 9 UNCLEAR / 2 NOT_EVENT;
+  REGULATORY_ACTION 171 / 9 AGAINST / 36 RELATED / 81 UNCLEAR / **105
+  NOT_EVENT (26%)**. **A1 stores built:** `e5a_development` (11 s; events to
+  2016: REGULATORY_ACTION 62 AT_COMPANY, FORENSIC_AUDIT 2, DEFAULT 0) and
+  `validation` (17 s).
 
 ## 3. A2 — positioning (§6(c)): readiness only
 

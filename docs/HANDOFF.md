@@ -3,6 +3,14 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-09-30, session 10 close — job 15 done, A1 stores built)
+
+Job 15: L read 710 of 710; REGULATORY_ACTION 26% NOT_EVENT (dropped).
+A1 stores built for `e5a_development` and `validation` (RESULTS_DELAY as K).
+**Next (Aarsh):** RESULTS_DELAY K or L (L means +269 reads, a rebuild);
+confirm A1/A3 readings (readiness §2, §4); A0-identity check at each family
+tag, then lock A1 and A3. A2: readiness §3's three decisions.
+
 ## Start here (2026-09-30, session 10 — verdicts recorded; E5-A families built)
 
 **Recorded:** A0 INCONCLUSIVE and E3-R REJECT in STATE (8 verdicts: ADOPT 1,
