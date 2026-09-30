@@ -9,10 +9,18 @@ feature). E5-A §13: no LLM decides anything; an LLM output enters only as a
 timestamped record with its source and cutoff.
 
 **Reference:** `docs/data/flag_audit_labels.md`, reviewed and confirmed by
-Aarsh, committed at `a15c775`, **SHA-256
-`f1fc74d719d8e2e1f84d8723daa59afb2ac9caaadc3ff5eee9bb2a25f953471c`** (the
-committed blob; a CRLF checkout hashes differently). Subtypes: AT_COMPANY 182,
-AGAINST_COMPANY 5, RELATED_ENTITY 7, NOT_EVENT 10, UNCLEAR 47 (251).
+Aarsh; **current SHA-256
+`00493cb537d093f0286ddc161950fb894eeb12cadd20adca1dec8f809dc07633`** (the
+committed blob; a CRLF checkout hashes differently), after the 2026-09-30
+rating-direction update. Subtypes: AT_COMPANY 188, AGAINST_COMPANY 5,
+RELATED_ENTITY 8, NOT_EVENT 19, UNCLEAR 31 (251). Superseded: `a15c775`,
+`f1fc74d7…471c` (182/5/7/10/47).
+
+**Finding (2026-09-30):** of the 16 readable "revision" rating letters, 7 were
+downgrades, 3 upgrades and 6 no change (reaffirmed or outlook only); 1 of the
+7 downgrades was a subsidiary's rating (171 → RELATED_ENTITY). 4 are scanned
+and 1 is not at BSE; those 5 stay UNCLEAR. RATING_DOWNGRADE precision on the
+resolved rows is 13/24 (54%), was 7/8.
 
 ## 1. Rows and readers
 
@@ -119,7 +127,7 @@ would take about 4.5–9 h, an overnight job for Aarsh.
 
 ## 6. Order
 
-1. ~~Aarsh finalises the labels~~ — done, `a15c775`, SHA-256 above.
+1. ~~Aarsh finalises the labels~~ — done, `a15c775`; rating directions added 2026-09-30, SHA-256 above.
 2. ~~Fetch, extract and mask the 21 attachments~~ — done; **Aarsh marks
    `rating_pdf_labels.md`** and labels the recall sample.
 3. L reads, blind (both models; the 251, the 21 with attachment, the 250).

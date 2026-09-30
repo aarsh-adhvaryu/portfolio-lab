@@ -5,7 +5,11 @@ every A1 reader is scored against** (`docs/notes/A1-reader-plan.md`, which
 records its SHA-256). Drafted by Claude 2026-09-25; Aarsh kept every draft
 label and added the SUBTYPE scheme below (2026-09-30). The 21 rating
 revisions (UNCLEAR) are resolved from their attachments,
-`docs/data/rating_pdf_labels.md`.
+`docs/data/rating_pdf_labels.md` (directions confirmed by Aarsh 2026-09-30):
+DOWN → TRUE / AT_COMPANY, except 171 (a wholly owned subsidiary's rating,
+read from the unmasked letter) → FALSE / RELATED_ENTITY; UP and NO CHANGE →
+FALSE / NOT_EVENT; the 4 scanned (165–168) and 1 missing (172) stay UNCLEAR.
+Of the 16 readable letters: 7 downgrades, 3 upgrades, 6 no change.
 
 ## Subtype (added 2026-09-30, Aarsh)
 
@@ -16,11 +20,11 @@ different kind, so every row also carries a subtype:
 
 | subtype | means | rows |
 |---|---|---|
-| AT_COMPANY | done by, happened to, or alleged against the company or its people (every TRUE row) | 182 |
+| AT_COMPANY | done by, happened to, or alleged against the company or its people (every TRUE row) | 188 |
 | AGAINST_COMPANY | the company is the victim or the lender (88, 97, 100, 102, 104) | 5 |
-| RELATED_ENTITY | a subsidiary or other named entity (106, 116, 117, 118, 119, 127, 177) | 7 |
-| NOT_EVENT | the word in another sense, a denial, a favourable outcome, a blanket regulatory extension (3, 72, 95, 98, 109, 218, 219, 225, 228, 231) | 10 |
-| UNCLEAR | every UNSURE row | 47 |
+| RELATED_ENTITY | a subsidiary or other named entity (106, 116, 117, 118, 119, 127, 171, 177) | 8 |
+| NOT_EVENT | the word in another sense, a denial, a favourable outcome, a blanket regulatory extension (3, 72, 95, 98, 109, 218, 219, 225, 228, 231; rating letters 169, 170, 174, 185, 186, 190–193) | 19 |
+| UNCLEAR | every UNSURE row | 31 |
 | **all** | | **251** |
 
 | flag | AT_COMPANY | AGAINST_COMPANY | RELATED_ENTITY | NOT_EVENT | UNCLEAR |
@@ -31,7 +35,7 @@ different kind, so every row also carries a subtype:
 | FRAUD | 18 | 5 | 0 | 2 | 5 |
 | INSOLVENCY | 22 | 0 | 6 | 1 | 1 |
 | PROMOTER_ENCUMBRANCE | 30 | 0 | 0 | 0 | 0 |
-| RATING_DOWNGRADE | 7 | 0 | 1 | 0 | 22 |
+| RATING_DOWNGRADE | 13 | 0 | 2 | 9 | 6 |
 | REGULATORY_ACTION | 20 | 0 | 0 | 2 | 8 |
 | RESULTS_DELAY | 23 | 0 | 0 | 3 | 1 |
 
@@ -81,10 +85,10 @@ Per flag:
 | FRAUD | 30 | 18 | 7 | 5 | 72% | 60% |
 | INSOLVENCY | 30 | 22 | 7 | 1 | 76% | 73% |
 | PROMOTER_ENCUMBRANCE | 30 | 30 | 0 | 0 | 100% | 100% |
-| RATING_DOWNGRADE | 30 | 7 | 1 | 22 | 88% | 23% |
+| RATING_DOWNGRADE | 30 | 13 | 11 | 6 | 54% | 43% |
 | REGULATORY_ACTION | 30 | 20 | 2 | 8 | 91% | 67% |
 | RESULTS_DELAY | 27 | 23 | 3 | 1 | 88% | 85% |
-| **all** | 251 | 182 | 22 | 47 | 89% | 73% |
+| **all** | 251 | 188 | 32 | 31 | 85% | 75% |
 
 ## The labels
 
@@ -258,31 +262,31 @@ Per flag:
 | 166 | RATING_DOWNGRADE | UNSURE | UNCLEAR | 'revision' in rating; direction not stated |
 | 167 | RATING_DOWNGRADE | UNSURE | UNCLEAR | 'revision' in rating; direction not stated |
 | 168 | RATING_DOWNGRADE | UNSURE | UNCLEAR | 'revision' in rating; direction not stated |
-| 169 | RATING_DOWNGRADE | UNSURE | UNCLEAR | 'revision' in rating; direction not stated |
-| 170 | RATING_DOWNGRADE | UNSURE | UNCLEAR | outlook revision; direction not stated |
-| 171 | RATING_DOWNGRADE | UNSURE | UNCLEAR | 'revision' in rating; direction not stated |
+| 169 | RATING_DOWNGRADE | FALSE | NOT_EVENT | attachment: rating upgraded (rating_pdf_labels.md, 2026-09-30) |
+| 170 | RATING_DOWNGRADE | FALSE | NOT_EVENT | attachment: reaffirmed or outlook-only, no rating change (rating_pdf_labels.md, 2026-09-30) |
+| 171 | RATING_DOWNGRADE | FALSE | RELATED_ENTITY | attachment: a wholly owned subsidiary's rating downgraded (rating_pdf_labels.md, 2026-09-30) |
 | 172 | RATING_DOWNGRADE | UNSURE | UNCLEAR | 'revision' in rating; direction not stated |
 | 173 | RATING_DOWNGRADE | TRUE | AT_COMPANY | rating downgraded |
-| 174 | RATING_DOWNGRADE | UNSURE | UNCLEAR | 'revision' in rating; direction not stated |
-| 175 | RATING_DOWNGRADE | UNSURE | UNCLEAR | 'revision' in rating; direction not stated |
+| 174 | RATING_DOWNGRADE | FALSE | NOT_EVENT | attachment: reaffirmed or outlook-only, no rating change (rating_pdf_labels.md, 2026-09-30) |
+| 175 | RATING_DOWNGRADE | TRUE | AT_COMPANY | attachment: rating downgraded (rating_pdf_labels.md, 2026-09-30) |
 | 176 | RATING_DOWNGRADE | TRUE | AT_COMPANY | rating downgraded |
 | 177 | RATING_DOWNGRADE | FALSE | RELATED_ENTITY | a subsidiary's rating |
 | 178 | RATING_DOWNGRADE | TRUE | AT_COMPANY | news clarification about a downgrade of the company |
-| 179 | RATING_DOWNGRADE | UNSURE | UNCLEAR | 'revision' in rating; direction not stated |
+| 179 | RATING_DOWNGRADE | TRUE | AT_COMPANY | attachment: rating downgraded (rating_pdf_labels.md, 2026-09-30) |
 | 180 | RATING_DOWNGRADE | TRUE | AT_COMPANY | rating downgraded |
 | 181 | RATING_DOWNGRADE | TRUE | AT_COMPANY | news clarification about a downgrade of the company |
-| 182 | RATING_DOWNGRADE | UNSURE | UNCLEAR | 'revision' in rating; direction not stated |
-| 183 | RATING_DOWNGRADE | UNSURE | UNCLEAR | 'revision' in rating; direction not stated |
+| 182 | RATING_DOWNGRADE | TRUE | AT_COMPANY | attachment: rating downgraded (rating_pdf_labels.md, 2026-09-30) |
+| 183 | RATING_DOWNGRADE | TRUE | AT_COMPANY | attachment: rating downgraded (rating_pdf_labels.md, 2026-09-30) |
 | 184 | RATING_DOWNGRADE | UNSURE | UNCLEAR | placed under review for downgrade; not yet a downgrade |
-| 185 | RATING_DOWNGRADE | UNSURE | UNCLEAR | 'revision' in rating; direction not stated |
-| 186 | RATING_DOWNGRADE | UNSURE | UNCLEAR | 'revision' in rating; direction not stated |
-| 187 | RATING_DOWNGRADE | UNSURE | UNCLEAR | 'revision' in rating; direction not stated |
-| 188 | RATING_DOWNGRADE | UNSURE | UNCLEAR | 'revision' in rating; direction not stated |
+| 185 | RATING_DOWNGRADE | FALSE | NOT_EVENT | attachment: reaffirmed or outlook-only, no rating change (rating_pdf_labels.md, 2026-09-30) |
+| 186 | RATING_DOWNGRADE | FALSE | NOT_EVENT | attachment: rating upgraded (rating_pdf_labels.md, 2026-09-30) |
+| 187 | RATING_DOWNGRADE | TRUE | AT_COMPANY | attachment: rating downgraded (rating_pdf_labels.md, 2026-09-30) |
+| 188 | RATING_DOWNGRADE | TRUE | AT_COMPANY | attachment: rating downgraded (rating_pdf_labels.md, 2026-09-30) |
 | 189 | RATING_DOWNGRADE | TRUE | AT_COMPANY | news clarification about a downgrade of the company |
-| 190 | RATING_DOWNGRADE | UNSURE | UNCLEAR | 'revision' in rating; direction not stated |
-| 191 | RATING_DOWNGRADE | UNSURE | UNCLEAR | 'revision' in rating; direction not stated |
-| 192 | RATING_DOWNGRADE | UNSURE | UNCLEAR | 'revision' in rating; direction not stated |
-| 193 | RATING_DOWNGRADE | UNSURE | UNCLEAR | 'revision' in rating; direction not stated |
+| 190 | RATING_DOWNGRADE | FALSE | NOT_EVENT | attachment: reaffirmed or outlook-only, no rating change (rating_pdf_labels.md, 2026-09-30) |
+| 191 | RATING_DOWNGRADE | FALSE | NOT_EVENT | attachment: reaffirmed or outlook-only, no rating change (rating_pdf_labels.md, 2026-09-30) |
+| 192 | RATING_DOWNGRADE | FALSE | NOT_EVENT | attachment: reaffirmed or outlook-only, no rating change (rating_pdf_labels.md, 2026-09-30) |
+| 193 | RATING_DOWNGRADE | FALSE | NOT_EVENT | attachment: rating upgraded (rating_pdf_labels.md, 2026-09-30) |
 | 194 | RATING_DOWNGRADE | TRUE | AT_COMPANY | rating downgraded |
 | 195 | REGULATORY_ACTION | TRUE | AT_COMPANY | CBI booked the company's officials |
 | 196 | REGULATORY_ACTION | TRUE | AT_COMPANY | CBI booked the company's officials |
