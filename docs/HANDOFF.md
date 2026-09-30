@@ -3,6 +3,27 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-09-30, session 9 — A0 and E3-R verdicts; A1 contest built)
+
+**Verdicts** (`classify_e5a` / `classify_e3r`, both periods):
+- **E5-A A0: INCONCLUSIVE.** Validation 7.51% / 26.69% against the stack's
+  26.21% / 42.96% (−18.70 pp); G2 fails and 0 of 8 rows hold. That is
+  against the prediction recorded before the run.
+- **E3-R: REJECT.** G1 and G2 fail in both periods (validation −6.59 pp,
+  5.12 pp deeper).
+- Notes: `docs/reviews/E5-A0-verdict.md`, `E3-R-verdict.md`. Placebo PASS
+  is in E5-A §14. The development notes carry Aarsh's conclusions; the
+  drafts are kept.
+
+**A1 contest built:** `pflab/readers` (scorer, L's prompt and cache),
+`tools/a1_contest.py`, tests. Letters are masked further (garbled CIN,
+split entity names). L runs at 3.1 s a row, so the reads are **RUNNING.md
+job 14 (Aarsh, ~45 min)**. `pytest -q`: 693 passed.
+
+**Next:** after job 14, Claude runs `a1_contest.py score` and
+`recall-sheet` and reports the scores. Aarsh: record both verdicts in STATE
+and ROADMAP; say whether A1 proceeds with A0 INCONCLUSIVE.
+
 ## Start here (2026-09-30, session 8 — development classified, drafts written)
 
 **Labels:** rating directions confirmed by Aarsh are in

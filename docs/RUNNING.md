@@ -20,6 +20,21 @@ _(none)_ — verified 2026-09-27 with `tools\status.ps1`.
 
 ## Queued
 
+**14. A1 reader contest (A1 plan §3–§6; 2026-09-30).** L = `qwen3.5-9b-16k` on the 251
+audit rows and 16 rating letters, then `gemma4-12b-16k` on the same (reported only),
+then L on the 250-row recall sample. One window, sequential (one GPU). About 45 min
+(3.1 s a row measured on 5 rows each). Ollama must be running; the sweeps are
+unaffected (GPU, ~0.3 GB RAM). Resumable: reads are cached in `data\a1_readers\`.
+```
+cd D:\portfolio_lab; .venv\Scripts\python.exe -u tools\a1_contest.py read; .venv\Scripts\python.exe -u tools\a1_contest.py read --model gemma4-12b-16k; .venv\Scripts\python.exe -u tools\a1_contest.py recall
+```
+Done when the last line reads `qwen3.5-9b-16k recall: 250 rows, …`. Then Claude
+runs `score` and `recall-sheet` (seconds each).
+
+**Done 2026-09-30:** A0 validation `E5-A\sweeps\validation-c6564e07b9148590` 7.51% / 26.69%
+(INCONCLUSIVE); E3-R validation `E3-R\sweeps\validation-d1e612b69131648d` 19.62% / 48.08%
+(REJECT).
+
 **8–10. E5-A A0, locked 2026-09-29 (`lock/E5-A` → `530a3d8`).** Three windows
 from the places shown, all at once (~3 GB each; nothing else running). Stores
 already rebuilt at the tag.
