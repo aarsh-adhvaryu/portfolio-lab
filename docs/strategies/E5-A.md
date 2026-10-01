@@ -419,3 +419,17 @@ seeing results. E5-A says nothing about E5-B/C/D.
     cheapness is a trap. A0 + valuation columns, against A0 then the stack
     (§10). Its columns and sources are fixed in a §6(f) entry before it
     locks; data probe in the readiness note.
+- 2026-10-01 (session 11) — **A1 and A3 LOCKED.** Span §2–§13 unchanged
+  (13,096 chars, SHA-256 `9455930e…2cb2ec5f`, A0's); A1 and A3 read with
+  every entry above, in particular 2026-09-30 (§6(b) amended; reader
+  decisions) and 2026-10-01 (decisions a–c; hypotheses). Tags
+  `lock/E5-A-A1` and `lock/E5-A-A3` → `6a29dde`, run worktrees
+  `D:\pl_runs\E5-A-A1`, `D:\pl_runs\E5-A-A3`; configs `configs/e5a_a1.toml`,
+  `configs/e5a_a3.toml`. **A0-identity at the tag: IDENTICAL** in both
+  periods (development 3,232 sessions / 447 trades / 72 decisions,
+  validation 4,471 / 541 / 60; pflab from the worktree; logs
+  `experiments/_identity/a0_6a29dde_*.log`). A0's store is valid at the tag
+  because it rebuilds byte for byte there (`build_e5a_features.py --verify`;
+  `engine.py` moved after `lock/E5-A` only in E3-R's gears path). A1 and A3
+  stores rebuilt (features byte-identical to the readiness builds).
+  Development runs next; validation after each development review.

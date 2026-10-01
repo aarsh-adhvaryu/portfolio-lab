@@ -3,19 +3,20 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
-## Start here (2026-10-01, session 11 — families registered, A2 built, gap tool)
+## Start here (2026-10-01, session 11 — A1 and A3 LOCKED; A2 built; gap tool)
 
 **Done:** E5-A §14 decisions (RESULTS_DELAY K; A1/A3 readings; §6(c)
 amended) and hypotheses for A1–A3, **E5-A-ALL**, **A5** (STATE: 5
-registered). **A2 built** (`ranker/holdings.py`, 9 columns, active from the
-2014-12 refit). Identity tool scores E5-A; lock candidate **`eb5d25e`**,
-worktrees `D:\pl_runs\E5-A-A1`, `-A3`; stores rebuilt (features
-byte-identical). **A5 probe:** BSE results endpoint found, 90–100% coverage
-2007–21, 14/14 checkable filings match; dating rule needs a decision (one
-early date found) — `docs/data/bse_results_finding.md`. **Gap diagnosis**
-tool built (`tools/gap_diagnosis.py`, 3 tests); `pytest -q`: 711.
-**Next (Aarsh):** RUNNING jobs 16 (identity), 19–22 (gap); decide A5 dating
-(§3) and A2's readings (readiness §3); then Claude locks A1/A3 → jobs 17–18.
+registered). **A1, A3 LOCKED** at `6a29dde` after A0-identity IDENTICAL in
+both periods. Found and fixed on the way: A0's store refused every commit
+after E3-R's lock (engine.py in its builder hash); `--verify` proved it
+rebuilds byte for byte and records the new hash. **A2 built** (9 columns,
+active from 2014-12). **A5:** BSE results endpoint found, 90–100% coverage
+2007–21, 14/14 checkable filings match; dating rule open
+(`docs/data/bse_results_finding.md`). **Gap tool** built and smoked;
+`pytest -q`: 711.
+**Next (Aarsh):** RUNNING jobs 17–18 (A1, A3 development) and 19–22 (gap);
+A2 readings (readiness §3); E5-A-ALL activation; A5 dating rule, then job 23.
 
 ## Start here (2026-09-30, session 10 close — job 15 done, A1 stores built)
 

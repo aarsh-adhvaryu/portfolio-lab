@@ -1,7 +1,7 @@
 # E5-A families — readiness (2026-09-30; updated 2026-10-01)
 
-**2026-10-01: A1 and A3 READY TO LOCK** — readings confirmed, RESULTS_DELAY
-K; the lock waits only for the A0-identity check (§6). **A2 BUILT, READY TO
+**2026-10-01: A1 and A3 LOCKED** (`lock/E5-A-A1`, `lock/E5-A-A3` → `6a29dde`;
+A0-identity IDENTICAL, E5-A §14). **A2 BUILT, READY TO
 LOCK** once §3's build readings are confirmed. No family run exists.
 
 **Change-log entries that apply** (E5-A §14): 2026-09-27 (rewrite);
@@ -103,9 +103,7 @@ new code.
 
 ## 5. For Aarsh (2026-10-01)
 
-1. Run RUNNING job 16 (A0-identity at `eb5d25e`); on IDENTICAL Claude
-   writes the A1/A3 lock entries, tags both at `eb5d25e`, adds the
-   `check_lock` registry entries; then jobs 17–18.
+1. Run RUNNING jobs 17–18 (A1, A3 development; locked 2026-10-01).
 2. Confirm A2's build readings (§3) to make it ready to lock.
 3. E5-A-ALL: how activation reads with three families (§6).
 4. A5: the dating rule (`docs/data/bse_results_finding.md` §3), then the pull
@@ -124,3 +122,8 @@ new code.
 - **Open for E5-A-ALL's lock:** how activation reads with three families
   (each family's columns from its own activation refit, or one model from
   the refit where all three are active, 2014-12) — Aarsh's.
+- **A0 store and later code:** `engine.py` (in the A0 store's builder hash)
+  moved after `lock/E5-A` in E3-R's gears path only, so every later commit
+  refused the store. `build_e5a_features.py --verify` rebuilt both periods
+  byte for byte at `a01be98` and recorded the hash; `store.check` accepts
+  it. Then A0-identity IDENTICAL at `6a29dde` and A1, A3 locked there.

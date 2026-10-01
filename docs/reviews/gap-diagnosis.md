@@ -43,7 +43,24 @@ alone, and they interact (the E1 attribution found the same).
 
 ## 3. Results
 
-_Pending jobs 19–22._ Per run: `experiments\<E1d|E5-A>\diagnostics\gapdiag-<period>-<id>\summary.md`.
+_Full runs pending (jobs 19–22)._ **Smoke, validation only, base and
+selection rows** (2026-10-01; bases reproduce STATE exactly):
+
+| validation | terminal ₹cr | XIRR | CAGR | MaxDD | equity |
+|---|---:|---:|---:|---:|---:|
+| E1d base | 0.656 | 31.90% | 26.21% | 42.96% | 78.8% |
+| E1d selection | 0.646 | 31.23% | 27.40% | 42.51% | 100% |
+| A0 base | 0.387 | 10.14% | 7.51% | 26.69% | 64.5% |
+| **A0 selection** | **0.608** | **28.69%** | **26.22%** | 32.00% | 100% |
+| B5 | 0.591 | 27.51% | 22.44% | 38.14% | |
+| B5 frictionless | 0.641 | 30.91% | 24.65% | 37.79% | |
+
+A0's equity sleeve at the stack's daily equity weight instead of its own:
+CAGR 9.59% → 12.50% (+2.91 pp), XIRR +3.69 pp (blend, pre-tax).
+**Reading, provisional:** A0's own ranks, held by the band rule
+frictionlessly, beat B5 frictionless on CAGR (+1.56 pp); its −14.93 pp gap
+is not in which names it ranks highest. The cash, cost and tax rows will
+say where it goes. Per run: `experiments\<E1d|E5-A>\diagnostics\gapdiag-<period>-<id>\summary.md`.
 
 ## 4. Earlier work
 

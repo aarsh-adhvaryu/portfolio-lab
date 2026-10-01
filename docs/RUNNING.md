@@ -20,19 +20,9 @@ _(none)_ — verified 2026-09-27 with `tools\status.ps1`.
 
 ## Queued
 
-**16. A0-identity at the family lock candidate `eb5d25e` (E5-A families
-readiness §6; 2026-10-01).** A1, A2 and A3 share this commit, so one check
-per period covers both tags. Two windows, side by side (~3 GB each); about
-10–15 min each (panel load, A0's refits, one engine run).
-```
-cd D:\pl_runs\E5-A-A1; $env:PYTHONPATH='D:\pl_runs\E5-A-A1\src'; $env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; D:\portfolio_lab\.venv\Scripts\python.exe -u tools\e1_identity.py e5a_development --config configs/e5a_a0.toml --ref D:\portfolio_lab\experiments\E5-A\sweeps\e5a_development-cedd1b289d7bb7aa\rows\base | Tee-Object D:\portfolio_lab\experiments\_identity\a0_eb5d25e_dev.log
-cd D:\pl_runs\E5-A-A1; $env:PYTHONPATH='D:\pl_runs\E5-A-A1\src'; $env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; D:\portfolio_lab\.venv\Scripts\python.exe -u tools\e1_identity.py validation --config configs/e5a_a0.toml --ref D:\portfolio_lab\experiments\E5-A\sweeps\validation-c6564e07b9148590\rows\base | Tee-Object D:\portfolio_lab\experiments\_identity\a0_eb5d25e_val.log
-```
-Pass: the first line names `D:\pl_runs\E5-A-A1\src\pflab`, the last says
-`IDENTICAL` and exit 0 (a key-order-only note is a pass). Then Claude locks
-A1 and A3 (§14 entries, tags at `eb5d25e`, registry) and jobs 17–18 open.
+**16. DONE 2026-10-01 (Claude, 1.6 and 2.4 min): A0 IDENTICAL at `6a29dde` in both periods; A1 and A3 LOCKED (`lock/E5-A-A1`, `lock/E5-A-A3`). Logs `experiments\_identity\a0_6a29dde_*.log`.**
 
-**17–18. A1 and A3 development (after the lock; side by side, ~30–40 min each).**
+**17–18. A1 and A3 development (LOCKED 2026-10-01; side by side, ~30 min each; `-WhatIf` passes).**
 ```
 cd D:\portfolio_lab; .\tools\run_locked.ps1 -Experiment E5-A-A1 -Period e5a_development -Config configs\e5a_a1.toml
 cd D:\portfolio_lab; .\tools\run_locked.ps1 -Experiment E5-A-A3 -Period e5a_development -Config configs\e5a_a3.toml
@@ -41,8 +31,8 @@ Each prints `SWEEP DIR:`; output `experiments\E5-A\A1|A3\sweeps\e5a_development-
 Validation waits for the development reviews.
 
 **19–22. Gap diagnosis (DIAGNOSTIC, NOT PROMOTABLE; `docs/reviews/gap-diagnosis.md`).**
-From the repo with a clean tree; ~3 GB each. E1d ~15–20 min, A0 ~30–40 min
-(A0 also runs the stack). Any two can share the machine with job 16.
+From the repo with a clean tree; ~3 GB each. E1d ~10 min, A0 ~12–15 min
+(A0 also runs the stack). Two alongside jobs 17–18 (four at most), then the other two.
 ```
 cd D:\portfolio_lab; $env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; .venv\Scripts\python.exe -u tools\gap_diagnosis.py --strategy E1d --period development
 cd D:\portfolio_lab; $env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; .venv\Scripts\python.exe -u tools\gap_diagnosis.py --strategy E1d --period validation
