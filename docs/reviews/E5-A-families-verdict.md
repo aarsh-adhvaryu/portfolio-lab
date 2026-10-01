@@ -54,8 +54,8 @@ A3.
 - No family closes A0's validation gap to the stack: the best (A2, 13.35%)
   is 12.86 pp short.
 
-STATE count: 12 experiments with a computed verdict (A1, A2 REJECT; A3, ALL
-INCONCLUSIVE). A5: development only.
+STATE count: 13 experiments with a computed verdict (A1, A2 REJECT; A3, ALL,
+A5 INCONCLUSIVE; A5 below).
 
 ## A5 valuation (added 2026-10-01, job 33)
 
