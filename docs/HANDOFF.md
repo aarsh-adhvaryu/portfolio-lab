@@ -3,6 +3,20 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-10-01, session 12, phase 1 — A1, A3 development read; gap read)
+
+Jobs 17–22 checked (finished, logs clean, outputs complete, A1/A3 at
+`6a29dde`). **A1** (`docs/reviews/E5-A-A1-development.md`): incremental G2
+and G3 fail, adoption holds; evidence Feb 2015–Dec 2016 (23 month-ends).
+**A3** (`E5-A-A3-development.md`): incremental G1 fails, adoption holds.
+Neither can join the stack now (D9); validation decides REJECT or
+INCONCLUSIVE. **Gap** (`gap-diagnosis.md` §3): the three shortfalls match
+**selection** by the pre-registered rule; costs or tax nowhere; E1d
+validation has no shortfall. New tool `tools/e5a_family_period.py`.
+Jobs 24–25 and 23 (resumed) running from 17:10.
+**Next:** Aarsh writes the A1/A3 conclusions; when 24–25 finish, Claude
+reads them (phase 2), then validation commands from job 26.
+
 ## Start here (2026-10-01, session 11 — A2 and ALL LOCKED)
 
 A2 dating amended (E5-A §14): announcement date floored at quarter end + 21

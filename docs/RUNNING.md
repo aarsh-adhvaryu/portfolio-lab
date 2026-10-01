@@ -16,9 +16,12 @@ measured peak, ~3.5 GB budgeted, 31.4 GB total. Check the free-RAM line in
 
 ## Running
 
-Job 23 (BSE results pull), started 2026-10-01 by Aarsh alongside jobs
-17–20. Jobs 17–20 reported done by Aarsh (outputs not yet read). Jobs
-21–22: recorded when Aarsh confirms them.
+From 2026-10-01 17:10 (Aarsh): **24** A2 and **25** ALL development; **23** BSE results
+pull resumed (713 of 1,184 scrips on disk at 17:13).
+
+**17–22 DONE 2026-10-01, read session 12:** 17 `E5-A\A1\sweeps\e5a_development-56d82ba9a55f41e0`
+13.74% / 17.52%; 18 `E5-A\A3\sweeps\e5a_development-09cc4b45c5116476` 12.78% / 14.68% (both at
+`6a29dde`, clean, logs clean); 19–22 `gapdiag-*` under `E1d\diagnostics` and `E5-A\diagnostics`.
 
 ## Queued
 
