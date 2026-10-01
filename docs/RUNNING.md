@@ -16,8 +16,9 @@ measured peak, ~3.5 GB budgeted, 31.4 GB total. Check the free-RAM line in
 
 ## Running
 
-Jobs 17–20 (A1, A3 development; gap diagnosis E1d development and
-validation), started 2026-10-01 on Aarsh's machine.
+Job 23 (BSE results pull), started 2026-10-01 by Aarsh alongside jobs
+17–20. Jobs 17–20 reported done by Aarsh (outputs not yet read). Jobs
+21–22: recorded when Aarsh confirms them.
 
 ## Queued
 
@@ -41,6 +42,16 @@ cd D:\portfolio_lab; $env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; 
 cd D:\portfolio_lab; $env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; .venv\Scripts\python.exe -u tools\gap_diagnosis.py --strategy A0 --period validation
 ```
 Done when each prints `DONE -> ...\diagnostics\gapdiag-<period>-<id>`.
+
+**24–25. A2 and E5-A-ALL development (LOCKED 2026-10-01 at `31a4b7c`;
+`-WhatIf` passes for both). Side by side, ~3 GB each; about 30 min each
+(ALL has 108 columns, so allow up to 45).**
+```
+cd D:\portfolio_lab; .\tools\run_locked.ps1 -Experiment E5-A-A2 -Period e5a_development -Config configs\e5a_a2.toml
+cd D:\portfolio_lab; .\tools\run_locked.ps1 -Experiment E5-A-ALL -Period e5a_development -Config configs\e5a_all.toml
+```
+Each prints `SWEEP DIR:`; output `experiments\E5-A\A2|ALL\sweeps\e5a_development-<id>`.
+Validation waits for the development reviews.
 
 **23. BSE results pull for A5 — RUN AFTER JOBS 17–22 FINISH.** Dating rule
 decided 2026-10-01 (E5-A §14; `docs/data/bse_results_finding.md` §3).

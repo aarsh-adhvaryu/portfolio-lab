@@ -3,6 +3,17 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-10-01, session 11 — A2 and ALL LOCKED)
+
+A2 dating amended (E5-A §14): announcement date floored at quarter end + 21
+days (Clause 35 verified), undated quarters by E2-D1's rule; 1.38% of dated
+2014–16 quarters were filed after their second month-end (< 5%). ALL built
+(`ranker/combined.py`, `walk.Spec.groups`). A0-identity IDENTICAL at
+`31a4b7c`; **A2 and ALL LOCKED** there. Job 23 running (Aarsh); 17–20 done,
+unread. `pytest -q`: 714.
+**Next:** Aarsh confirms 21–22, runs 24–25; Claude reads 17–22 and writes
+the development reviews and the gap results.
+
 ## Start here (2026-10-01, session 11 continued — decisions recorded; A2, ALL held)
 
 Jobs 17–20 running on Aarsh's machine (outputs not read). Gap review's

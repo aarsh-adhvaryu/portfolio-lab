@@ -477,3 +477,31 @@ seeing results. E5-A says nothing about E5-B/C/D.
   rebuilt both periods byte for byte at `a01be98` and recorded that builder
   hash beside the original (`store.verified_shas`); the files and the
   original stamp are unchanged, so `lock/E5-A` runs are unaffected.
+- 2026-10-01 (Aarsh, session 11, continued) — **A2 dating, pre-run
+  amendment** (no A2 run exists), replacing condition (i) of the entry
+  above. A quarter with a BSE "Shareholding Pattern" announcement (the feed
+  carries them from 2014) is usable from the **later** of that announcement
+  (after 15:30: next day) and **quarter end + 21 days** — the filing deadline
+  of Listing Agreement Clause 35 before Dec 2015 (verified: "within 21 days
+  of the end of each quarter") and LODR Reg 31 after. **Undated quarters
+  use E2-D1's rule** (usable from the first day of the second month after
+  quarter end). Build reading: a quarter with no announcement but an API
+  filing date (`Fld_AuthoriseDate`) is dated like an announced one from that
+  date. Matched: 99.8% of 2014 quarters, 95.9% of 2015, 100% of 2016.
+  **Check before the lock:** of 23,068 dated 2014–2016 quarters, **319
+  (1.38%) were filed after their second month-end** — the undated rule's
+  usable point — under the 5% stop threshold. Pledge condition (ii) as above.
+- 2026-10-01 (session 11, continued) — **A2 and E5-A-ALL LOCKED.** Span
+  §2–§13 unchanged (13,096 chars, `9455930e…2cb2ec5f`); read with every entry
+  above, in particular 2026-09-28 and 2026-10-01 (§6(c) amended; A2 dating;
+  ALL registration and activation). Tags `lock/E5-A-A2` and `lock/E5-A-ALL`
+  → `31a4b7c`; worktrees `D:\pl_runs\E5-A-A2`, `D:\pl_runs\E5-A-ALL`;
+  configs `configs/e5a_a2.toml`, `configs/e5a_all.toml`. **A0-identity at
+  the tag: IDENTICAL** in both periods (development 3,232 sessions / 447
+  trades / 72 decisions, validation 4,471 / 541 / 60; logs
+  `experiments/_identity/a0_31a4b7c_*.log`). A2 stores rebuilt at the tag
+  (identical to the pre-commit build). ALL reads the A1, A2 and A3 stores,
+  each checked against its member's own config (`ranker/combined.py`); each
+  member switches on at its own activation refit with its columns NaN
+  before (`walk.Spec.groups`). `family.py` unchanged, so the A1 and A3
+  locks' stores stay valid. Development runs next.

@@ -1,6 +1,7 @@
 # E5-A families — readiness (2026-09-30; updated 2026-10-01)
 
-**2026-10-01: A1 and A3 LOCKED** (`lock/E5-A-A1`, `lock/E5-A-A3` → `6a29dde`;
+**2026-10-01: A1, A3, A2 and E5-A-ALL LOCKED** (A2 and ALL at `31a4b7c`).
+**A1 and A3 LOCKED** (`lock/E5-A-A1`, `lock/E5-A-A3` → `6a29dde`;
 A0-identity IDENTICAL, E5-A §14). **A2 BUILT, READY TO
 LOCK** once §3's build readings are confirmed. No family run exists.
 
@@ -101,15 +102,9 @@ new code.
      calendar day; VIX and the Nifty 500 TRI on their own date.
   4. Stock returns month-end to month-end on adjusted close, no fill.
 
-## 5. For Aarsh (2026-10-01, continued)
+## 5. For Aarsh (2026-10-01, final)
 
-1. A2 condition (i), "each quarter usable from its BSE filing date": no
-   quarter before Sep 2015 has one; read strictly, A2 is A0 throughout
-   development. Keep it, or name a rule for undated quarters (E2-D1's
-   second-month-end rule; or the announcement date from 2014 and that rule
-   before). A2 and E5-A-ALL lock after this, each with an A0-identity check.
-2. Condition (ii) applied; A3, A1 locked; A5 dating and ALL activation
-   recorded (E5-A §14).
+Run jobs 24–25 (A2, ALL development). Nothing else is open here.
 
 ## 6. Session 11 (2026-10-01)
 
