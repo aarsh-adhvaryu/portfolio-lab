@@ -93,11 +93,22 @@ def build(fam: str, config_path: str, period_name: str) -> dict:
         spath = data_dir() / "bse_shareholding" / "summary.parquet"
         summary = pd.read_parquet(spath)
         resolver = pos.ScripResolver(bse_scrip_isin.load())
-        pr = ho_mod.pairs(ho_mod.quarters(summary), actions, resolver.all_isins())
+        import duckdb
+        src = (data_dir() / "bse_announcements").as_posix() + "/*/*.parquet"
+        ann = duckdb.connect().sql(f"""
+            select scrip_code, coalesce(dissem_dt, news_dt) as t, headline
+            from read_parquet('{src}', union_by_name=true)
+            where (subcategory = 'Shareholding' or headline ilike '%shareholding pattern%')
+              and coalesce(dissem_dt, news_dt) <= TIMESTAMP '{period.end} 23:59:59'""").df()
+        announced = ho_mod.announcement_dates(ann)
+        pq = ho_mod.quarters(summary, announced)
+        pr = ho_mod.pairs(pq, actions, resolver.all_isins())
         feats = ho_mod.a2_features(pr, universe, resolver)
         extra = {"summary_file": artifacts.file_sha(spath),
                  "actions": _sha_df(actions.reset_index(drop=True)) if actions is not None else None,
-                 "pledge_invocations": "dropped, declared (no source; E5-A §14 2026-10-01)"}
+                 "pledge_invocations": "dropped, declared (no source; E5-A §14 2026-10-01)",
+                 "announcements": _sha_df(announced.astype(str)),
+                 "date_source": pq["date_source"].value_counts().to_dict()}
     else:
         _p, panel, *_rest = runner.prepare(family.base_config(cfg), period_name)
         panel = ft.dated(panel)

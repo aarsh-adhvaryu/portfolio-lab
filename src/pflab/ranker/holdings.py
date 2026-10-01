@@ -15,7 +15,17 @@
     2026-09-28 calls it a flag; it is carried as the value, because a flag
     needs a threshold and §14 says nothing is thresholded (build reading).
 
-E2-D1 readiness §4 items 1-6 carry over unchanged (2026-10-01): the engine's
+Dating (E5-A §14 2026-10-01, pre-run amendment; replaces E2-D1 §4 items 5-6
+for A2 only): a quarter with a BSE "Shareholding Pattern" announcement (the
+feed carries them from 2014) is usable from the LATER of that announcement
+(after 15:30: next day) and quarter end + 21 days, the filing deadline of
+Listing Agreement Clause 35 and, from Dec 2015, LODR Reg 31. A quarter with
+no announcement but a filing date in the API (`Fld_AuthoriseDate`) is dated
+the same way from that date (build reading). An undated quarter keeps E2-D1's
+rule: usable from the first calendar day of the second month after its
+quarter end. Pledge: 0 only when reported nil, else NaN (the parser).
+
+E2-D1 readiness §4 items 1-4 carry over unchanged (2026-10-01): the engine's
 split/bonus rule; denominator the later quarter's shares outstanding,
 reported from Dec 2015, derived before; the latest quarter usable at M
 against the quarter k before it, both usable at M, else no measure (an older
@@ -28,7 +38,8 @@ column is NaN, `available = false`, when its own pair does not exist.
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+import re
+from datetime import date, datetime, timedelta
 from typing import Dict, List, Mapping, Optional, Sequence
 
 import numpy as np
@@ -38,6 +49,42 @@ from pflab.data import positioning as pos
 from pflab.ranker.features import CLOSE_IST, STORE_COLUMNS, TZ
 
 QUARTERS = (1, 2)
+DEADLINE_DAYS = 21
+_AS_ON = re.compile(r"(?:as\s+(?:on|at)|period\s+ended|quarter\s+ended)\s+"
+                    r"([A-Za-z]+)\s*(\d{1,2}),?\s*(\d{4})", re.I)
+
+
+def announced_quarter(headline: str) -> Optional[date]:
+    """The quarter a Shareholding Pattern headline names ("... as on March
+    31, 2014", "... for the Period Ended December 31, 2016")."""
+    m = _AS_ON.search(headline or "")
+    if not m:
+        return None
+    try:
+        return datetime.strptime(f"{m.group(1)[:3]} {m.group(2)} {m.group(3)}",
+                                 "%b %d %Y").date()
+    except ValueError:
+        return None
+
+
+def announcement_dates(ann: pd.DataFrame) -> pd.DataFrame:
+    """(scrip_code, quarter_end) -> the first announcement time naming it.
+    `ann`: scrip_code, t (dissemination, else news time), headline."""
+    a = ann.assign(scrip_code=ann["scrip_code"].astype(str).str.strip(),
+                   quarter_end=ann["headline"].map(announced_quarter))
+    a = a.dropna(subset=["quarter_end", "t"])
+    return (a.sort_values("t", kind="mergesort")
+             .groupby(["scrip_code", "quarter_end"], sort=True)["t"].first()
+             .rename("announced").reset_index())
+
+
+def usable_from(q_end: date, announced, filed) -> tuple:
+    """(usable date, dated, source) under the 2026-10-01 rule."""
+    floor = q_end + timedelta(days=DEADLINE_DAYS)
+    for t, src in ((announced, "announcement"), (filed, "Fld_AuthoriseDate")):
+        if t is not None and not pd.isna(t):
+            return max(pos.filed_usable_from(pd.Timestamp(t)), floor), True, src
+    return pos.undated_usable_from(q_end), False, "second_month_rule"
 EXTRA = ["promoter_pct", "pledged_pct_of_promoter"]
 
 
@@ -51,10 +98,27 @@ def feature_names() -> List[str]:
     return out
 
 
-def quarters(summary: pd.DataFrame) -> pd.DataFrame:
-    """`positioning.promoter_quarters` (the E2-D1 rows, usable dates and
-    denominator) with promoter percent and the pledge share joined on."""
+def quarters(summary: pd.DataFrame, announced: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+    """`positioning.promoter_quarters` (the E2-D1 rows and denominator) with
+    promoter percent and the pledge share joined on, re-dated by
+    `usable_from` (`announced` from `announcement_dates`)."""
     pq = pos.promoter_quarters(summary)
+    fd = summary[summary["status"] == "ok"].assign(
+        scrip_code=lambda d: d["scrip_code"].astype(str).str.strip(),
+        quarter_end=lambda d: d["quarter_end"].map(pos._quarter_end))
+    fd = fd[["scrip_code", "quarter_end", "filing_date"]].drop_duplicates(
+        ["scrip_code", "quarter_end"], keep="last")
+    pq = pq.merge(fd, on=["scrip_code", "quarter_end"], how="left")
+    if announced is not None and len(announced):
+        pq = pq.merge(announced, on=["scrip_code", "quarter_end"], how="left")
+    else:
+        pq["announced"] = pd.NaT
+    u = [usable_from(q, a, f) for q, a, f in
+         zip(pq["quarter_end"], pq["announced"], pq["filing_date"])]
+    pq["usable_from"] = [x[0] for x in u]
+    pq["dated"] = [x[1] for x in u]
+    pq["date_source"] = [x[2] for x in u]
+    pq = pq.drop(columns=["filing_date", "announced"])
     s = summary[summary["status"] == "ok"].copy()
     s["scrip_code"] = s["scrip_code"].astype(str).str.strip()
     s["quarter_end"] = s["quarter_end"].map(pos._quarter_end)

@@ -297,3 +297,75 @@ def test_a2_config_columns_are_the_builders():
     assert family.family_of(c) == "A2"
     assert family.family_features(c) == ho.feature_names()
     assert c["e5a"]["a2"]["quarters"] == list(ho.QUARTERS)
+
+
+def test_a2_dating_later_of_announcement_and_21_days_else_second_month():
+    q = date(2014, 3, 31)
+    u, dated, src = ho.usable_from(q, pd.Timestamp("2014-04-10 11:00"), pd.NaT)
+    assert (u, dated, src) == (date(2014, 4, 21), True, "announcement")      # floor wins
+    u, _, _ = ho.usable_from(q, pd.Timestamp("2014-05-02 16:00"), pd.NaT)
+    assert u == date(2014, 5, 3)                                             # after 15:30
+    u, dated, src = ho.usable_from(q, pd.NaT, pd.NaT)
+    assert (u, dated, src) == (date(2014, 5, 1), False, "second_month_rule")
+    assert ho.announced_quarter("X Ltd has informed BSE about the Shareholding Pattern "
+                                "as on March 31, 2014.") == q
+    assert ho.announced_quarter("X has submitted to BSE the Shareholding Pattern for the "
+                                "Period Ended December 31, 2016. For more") == date(2016, 12, 31)
+
+
+# -- E5-A-ALL (§14 2026-10-01) -------------------------------------------------
+def test_all_members_switch_on_at_their_own_refit_nan_before(world):
+    # fam_x available from 2014, fam_y (a second member) from 2015
+    rng = np.random.default_rng(2)
+    y = world["feats"][world["feats"]["feature"] == "fam_x"].copy()
+    y["feature"] = "fam_y"
+    y["value"] = rng.normal(size=len(y))
+    y["available"] = [m >= date(2015, 1, 1) for m in y["month_end"]]
+    y.loc[~y["available"], "value"] = np.nan
+    feats = pd.concat([world["feats"], y], ignore_index=True)
+    cols = tuple(ft.A0_FEATURES) + ("fam_x", "fam_y")
+    fw = ft.to_wide(feats, cols)
+    mes = sorted(world["uni"])
+    months = [m for m in mes if m.year >= 2014]
+    act = {"min_cross_sections": 12, "min_coverage": 0.5}
+    c_all = copy.deepcopy(world["cfg"])
+    c_all["e5a"].update(features=list(cols), activation=act,
+                        groups={"X": ["fam_x"], "Y": ["fam_y"]})
+    c_x = copy.deepcopy(world["cfg"])
+    c_x["e5a"].update(features=list(ft.A0_FEATURES) + ["fam_x"], activation=act)
+    s_all, s_x = walk.spec_from_config(c_all), walk.spec_from_config(c_x)
+    w = walk.Walk(fw, world["labels"], world["uni"], mes)
+    ra, rx = w.score(s_all, months), w.score(s_x, months)
+    a0 = w.score(walk.spec_from_config(world["cfg"]), months)
+    groups = {m: tuple(ra["info"][m].get("active_groups") or ()) for m in months}
+    # X switches on exactly where it does alone; Y later
+    for m in months:
+        assert ("X" in groups[m]) == bool(rx["info"][m].get("family_active"))
+    assert any(g == ("X",) for g in groups.values()) and any(g == ("X", "Y") for g in groups.values())
+    for m in months:
+        if not groups[m] and m in a0["scores"]:          # none active: A0 exactly
+            pd.testing.assert_series_equal(a0["scores"][m], ra["scores"][m])
+        if groups[m] == ("X",):                          # Y masked to NaN, not dropped
+            R = ra["info"][m]["refit"]
+            assert any(k[1] == R and k[3] == cols and k[-1] == ("masked", "fam_y")
+                       for k in w.fits)
+    with pytest.raises(ValueError, match="partition"):
+        walk.spec_from_config({**c_all, "e5a": {**c_all["e5a"], "groups": {"X": ["fam_x"]}}})
+
+
+def test_all_config_is_its_members_exactly():
+    from pflab.ranker import combined
+    c = _toml.load("configs/e5a_all.toml")
+    a0 = _toml.load("configs/e5a_a0.toml")
+    assert family.family_of(c) == "ALL"
+    for f in combined.MEMBERS:
+        m = _toml.load(f"configs/e5a_{f.lower()}.toml")
+        assert family.identity(combined.member_config(c, f)) == family.identity(m)
+        assert c["e5a"]["groups"][f] == family.family_features(m)
+    assert store.identity(family.base_config(c)) == store.identity(a0)
+    strip = lambda d: {k: v for k, v in d.items() if k not in ("report", "e5a")}
+    assert strip(c) == strip(a0)
+    assert {k: v for k, v in c["e5a"].items() if k in ("params", "fixed", "seed", "refit",
+            "refit_month", "horizons", "min_cross_sections", "num_threads")} == \
+        {k: v for k, v in a0["e5a"].items() if k in ("params", "fixed", "seed", "refit",
+         "refit_month", "horizons", "min_cross_sections", "num_threads")}

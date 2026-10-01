@@ -51,6 +51,10 @@ class Spec:
     # (cross-sections, coverage share). Empty for A0, whose path is unchanged.
     family: Tuple[str, ...] = ()
     activation: Tuple[int, float] = (36, 0.5)
+    # E5-A-ALL (§14 2026-10-01): (family, its columns) per member. Each
+    # member's columns switch on at that member's own activation refit, as
+    # when run alone, and are NaN before it. Empty for A0 and single families.
+    groups: Tuple[Tuple[str, Tuple[str, ...]], ...] = ()
 
     @property
     def params(self) -> dict:
@@ -81,7 +85,19 @@ def spec_from_config(cfg: dict) -> Spec:
                 family=tuple(f for f in e.get("features", A0_FEATURES)
                              if f not in A0_FEATURES),
                 activation=(int((e.get("activation") or {}).get("min_cross_sections", 36)),
-                            float((e.get("activation") or {}).get("min_coverage", 0.5))))
+                            float((e.get("activation") or {}).get("min_coverage", 0.5))),
+                groups=_groups(e))
+
+
+def _groups(e: dict) -> tuple:
+    g = e.get("groups") or {}
+    if not g:
+        return ()
+    fam = [f for f in e.get("features", []) if f not in A0_FEATURES]
+    cols = [c for k in sorted(g) for c in g[k]]
+    if sorted(cols) != sorted(fam) or len(set(cols)) != len(cols):
+        raise ValueError("e5a.groups must partition the non-A0 feature columns")
+    return tuple((k, tuple(g[k])) for k in sorted(g))
 
 
 def a0_spec(spec: Spec) -> Spec:
@@ -141,13 +157,22 @@ class Walk:
                                  "covered_cross_sections": n}
         return self._active[key]
 
-    def fit(self, spec: Spec, h: int, R: date) -> mdl.Fit:
+    def fit(self, spec: Spec, h: int, R: date, masked: Tuple[str, ...] = ()) -> mdl.Fit:
         key = (h, R, tuple(sorted(spec.params.items())), spec.features,
-               spec.min_cross_sections)
+               spec.min_cross_sections) + ((("masked",) + masked,) if masked else ())
         if key not in self.fits:
-            self.fits[key] = mdl.fit(self.fw, self.labels, h, R, spec.params,
+            fw = self.fw
+            if masked:                      # E5-A-ALL: inactive members are NaN
+                fw = fw.copy()
+                fw[list(masked)] = np.nan
+            self.fits[key] = mdl.fit(fw, self.labels, h, R, spec.params,
                                      spec.features, spec.min_cross_sections)
         return self.fits[key]
+
+    def active_groups(self, spec: Spec, R: date) -> list:
+        """E5-A-ALL: the members active at refit R, each by §6 [D 6] alone."""
+        return [k for k, cols in spec.groups
+                if self.family_active(replace(spec, family=cols, groups=()), R)["active"]]
 
     def scored_names(self, m: date, features: Sequence[str]) -> pd.DataFrame:
         """U(M)'s names with at least one feature available at M."""
@@ -162,12 +187,19 @@ class Walk:
         scores, fallback, info, preds = {}, {}, {}, {}
         for m in months:
             R = refit_date(m, self.month_ends, spec)
-            use, act = spec, None
-            if spec.family and R:
+            use, act, masked = spec, None, ()
+            if spec.groups and R:
+                on = self.active_groups(spec, R)
+                act = {"active": bool(on), "active_groups": on}
+                if not on:
+                    use = a0_spec(spec)
+                else:
+                    masked = tuple(c for k, cols in spec.groups if k not in on for c in cols)
+            elif spec.family and R:
                 act = self.family_active(spec, R)
                 if not act["active"]:
                     use = a0_spec(spec)
-            fits = [self.fit(use, h, R) for h in use.horizons] if R else []
+            fits = [self.fit(use, h, R, masked) for h in use.horizons] if R else []
             ok = bool(fits) and all(f.fitted for f in fits)
             info[m] = {"refit": R, "fits": [(f.h, f.sha256, f.n_rows,
                                              f.n_cross_sections, f.reason)
@@ -175,10 +207,15 @@ class Walk:
             if spec.family:
                 info[m]["family_active"] = bool(act and act["active"])
                 info[m]["covered_cross_sections"] = (act or {}).get("covered_cross_sections")
+                if spec.groups:
+                    info[m]["active_groups"] = (act or {}).get("active_groups", [])
             if not ok:
                 fallback[m] = True
                 continue
             X = self.scored_names(m, use.features)
+            if masked and not X.empty:
+                X = X.copy()
+                X[list(masked)] = np.nan
             if X.empty:
                 fallback[m] = True
                 info[m]["reason"] = "no scored names"

@@ -206,9 +206,11 @@ def input_fingerprints(cfg: dict, period, indices, actions, membership,
             fp[f"e5a:{f}"] = h
         from pflab.ranker import family as e5f
         fam = e5f.family_of(cfg)
-        if fam != "A0":             # a family's own columns (§6b-d)
-            fp[f"e5a:{e5f.features_file(fam)}"] = e5f.file_sha(
-                e5s.store_dir(period.name, droot), fam)
+        members = (("A1", "A2", "A3") if fam == "ALL"      # E5-A-ALL reads all three
+                   else () if fam == "A0" else (fam,))
+        for m in members:           # a family's own columns (§6b-d)
+            fp[f"e5a:{e5f.features_file(m)}"] = e5f.file_sha(
+                e5s.store_dir(period.name, droot), m)
         fp["lightgbm"] = e5m.lightgbm_version()
     return fp
 
@@ -233,7 +235,14 @@ def e5a_scores(cfg: dict, period, panel):
     e5a_manifest = {"store": str(sdir), "store_files": smeta["files"],
                     "store_code": smeta.get("code"),
                     "store_panel_fingerprint": smeta.get("panel_fingerprint")}
-    if fam != "A0":
+    if fam == "ALL":                # E5-A-ALL: every member's store, each checked
+        from pflab.ranker import combined
+        ffeats, metas = combined.load(sdir, cfg, period, smeta)
+        feats = pd.concat([feats, ffeats], ignore_index=True)
+        cols = tuple(combined.columns(cfg))
+        e5a_manifest.update({"family": fam, "members": metas})
+        del ffeats
+    elif fam != "A0":
         ffeats, fmeta = e5f.load(sdir, fam)
         e5f.check(fmeta, cfg, period, smeta)
         feats = pd.concat([feats, ffeats], ignore_index=True)
