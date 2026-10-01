@@ -1,6 +1,6 @@
 # STATE — verdicts and where things stand
 
-One page. Updated 2026-10-01 (session 12: A1, A3 development read; gap diagnosis). The narrative is in `docs/HANDOFF.md`; the
+One page. Updated 2026-10-01 (session 12: A1, A2, A3, ALL development read; gap diagnosis). The narrative is in `docs/HANDOFF.md`; the
 order and reasons in `docs/ROADMAP.md`; the rules for judging in
 `docs/strategies/GATE.md` (adoption) and `docs/MANDATE.md` (ADVANCE).
 
@@ -33,7 +33,7 @@ on the second would be.
 | sealed-period reveals used | **0 of 1** |
 | stacks meeting MANDATE §3 and §5 | **0** |
 
-Locked: **E5-A A1, A3** (`lock/E5-A-A1`, `-A3`) and **A2, E5-A-ALL** (`lock/E5-A-A2`, `-ALL`), all 2026-10-01. **Development read 2026-10-01 (session 12)** (`docs/reviews/E5-A-A1-development.md`, `E5-A-A3-development.md`): **A1** incremental G2 (+3.06 pp DD) and G3 (5/8) fail, adoption G1–G4 hold, evidence Feb 2015–Dec 2016 only; **A3** incremental G1 fails (+0.19 pp), adoption G1–G4 hold. Neither incremental verdict can now be ADOPT, so **neither can join the stack**; validation decides REJECT or INCONCLUSIVE. **Gap diagnosis** (jobs 19–22, `docs/reviews/gap-diagnosis.md` §3): by the pre-registered rule the three shortfalls (E1d dev, A0 dev, A0 val) match **selection**; E1d validation has no shortfall; costs or tax nowhere. **Running** (Aarsh, from 17:10): jobs 24–25 (A2, ALL development) and job 23 resumed (713 of 1,184 scrips). **Built and ready to lock** (2026-09-27):
+Locked: **E5-A A1, A3** (`lock/E5-A-A1`, `-A3`) and **A2, E5-A-ALL** (`lock/E5-A-A2`, `-ALL`), all 2026-10-01. **Development read 2026-10-01 (session 12)** (`docs/reviews/E5-A-A1-development.md`, `E5-A-A3-development.md`): **A1** incremental G2 (+3.06 pp DD) and G3 (5/8) fail, adoption G1–G4 hold, evidence Feb 2015–Dec 2016 only; **A3** incremental G1 fails (+0.19 pp), adoption G1–G4 hold. Neither incremental verdict can now be ADOPT, so **neither can join the stack**; validation decides REJECT or INCONCLUSIVE. **Gap diagnosis** (jobs 19–22, `docs/reviews/gap-diagnosis.md` §3): by the pre-registered rule the three shortfalls (E1d dev, A0 dev, A0 val) match **selection**; E1d validation has no shortfall; costs or tax nowhere. **A2** (`E5-A-A2-development.md`): incremental G1, G2, G3 (0/8) fail; adoption G3 fails (3/8). **E5-A-ALL** (`E5-A-ALL-development.md`): incremental G1 fails (+0.05 pp); adoption G1–G4 hold; A1 and A2 columns have 2015–2016 only, 2011–14 is A3 alone. **No family can join the stack**; validation decides REJECT or INCONCLUSIVE for each. MANDATE development: A1 §3 yes, §5 no; A2, A3, ALL neither. Job 23 done (BSE results, 1,184 scrips). **Queued:** validation jobs 26–29 and STACK identity 30–31 (RUNNING). **Built and ready to lock** (2026-09-27):
 E2-D1, E2-D2 — each note's last section says what the lock must settle.
 Readiness notes: E2-B, E3, E5-A (decisions taken 2026-09-28 bar D2, now settled: A0 against E1 + E1d; build next). Drafts: E1-S, E2-E.
 

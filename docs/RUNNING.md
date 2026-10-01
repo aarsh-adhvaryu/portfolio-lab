@@ -16,18 +16,41 @@ measured peak, ~3.5 GB budgeted, 31.4 GB total. Check the free-RAM line in
 
 ## Running
 
-From 2026-10-01 17:10 (Aarsh): **24** A2 and **25** ALL development; **23** BSE results
-pull resumed (713 of 1,184 scrips on disk at 17:13).
-
-**17–22 DONE 2026-10-01, read session 12:** 17 `E5-A\A1\sweeps\e5a_development-56d82ba9a55f41e0`
-13.74% / 17.52%; 18 `E5-A\A3\sweeps\e5a_development-09cc4b45c5116476` 12.78% / 14.68% (both at
-`6a29dde`, clean, logs clean); 19–22 `gapdiag-*` under `E1d\diagnostics` and `E5-A\diagnostics`.
+Nothing. **23–25 DONE 2026-10-01** (read session 12): 23 `data\bse_results\` 1,184 of
+1,184 scrips, 59,360 scrip-quarters, 0 error quarters (one scrip lists no
+results); 24 `E5-A\A2\sweeps\e5a_development-5355d1e6aa97ba7f` 11.19% / 20.79%;
+25 `E5-A\ALL\sweeps\e5a_development-de36b811a670c8c1` 12.64% / 15.64% (both at
+`31a4b7c`, clean, logs clean). **17–22 DONE**, read: 17 A1 `…56d82ba9a55f41e0`
+13.74% / 17.52%; 18 A3 `…09cc4b45c5116476` 12.78% / 14.68%; 19–22 `gapdiag-*`.
 
 ## Queued
 
+**26–29. E5-A family validation (development reviews committed 2026-10-01;
+`-WhatIf` passes for all four).** ~3 GB and ~30 min each; four at once only
+with ~14 GB free (`tools\status.ps1`). Each prints `SWEEP DIR:`; output
+`experiments\E5-A\<A1|A3|A2|ALL>\sweeps\validation-<id>`.
+```
+cd D:\portfolio_lab; .\tools\run_locked.ps1 -Experiment E5-A-A1 -Period validation -Config configs\e5a_a1.toml
+cd D:\portfolio_lab; .\tools\run_locked.ps1 -Experiment E5-A-A3 -Period validation -Config configs\e5a_a3.toml
+cd D:\portfolio_lab; .\tools\run_locked.ps1 -Experiment E5-A-A2 -Period validation -Config configs\e5a_a2.toml
+cd D:\portfolio_lab; .\tools\run_locked.ps1 -Experiment E5-A-ALL -Period validation -Config configs\e5a_all.toml
+```
+
+**30–31. Validation STACK at the family tags (E5-A §8: the validation STACK
+runs at the lock tag).** The STACK on record (`E1d\regression\validation-a6256fbb0ba71a8f`)
+ran at `lock/E5-A` (530a3d8). E1d base re-run at `6a29dde` (A1, A3) and
+`31a4b7c` (A2, ALL) and compared byte for byte; ~5–10 min each, ~3 GB.
+```
+cd D:\pl_runs\E5-A-A1; $env:PYTHONPATH='D:\pl_runs\E5-A-A1\src'; $env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; D:\portfolio_lab\.venv\Scripts\python.exe -u D:\portfolio_lab\tools\e1_identity.py validation --config configs/e1d.toml --ref D:\portfolio_lab\experiments\E1d\regression\validation-a6256fbb0ba71a8f\rows\base *>&1 | Tee-Object D:\portfolio_lab\experiments\_identity\e1d_6a29dde_val.log
+cd D:\pl_runs\E5-A-A2; $env:PYTHONPATH='D:\pl_runs\E5-A-A2\src'; $env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; D:\portfolio_lab\.venv\Scripts\python.exe -u D:\portfolio_lab\tools\e1_identity.py validation --config configs/e1d.toml --ref D:\portfolio_lab\experiments\E1d\regression\validation-a6256fbb0ba71a8f\rows\base *>&1 | Tee-Object D:\portfolio_lab\experiments\_identity\e1d_31a4b7c_val.log
+```
+Pass: first line names `pflab` under the worktree; last says `IDENTICAL`
+(a key-order-only note is a pass). Then `a6256fbb…` is every family's STACK.
+`DIFFERENT` → Claude writes a STACK re-run at that tag.
+
 **16. DONE 2026-10-01 (Claude, 1.6 and 2.4 min): A0 IDENTICAL at `6a29dde` in both periods; A1 and A3 LOCKED (`lock/E5-A-A1`, `lock/E5-A-A3`). Logs `experiments\_identity\a0_6a29dde_*.log`.**
 
-**17–18. A1 and A3 development (LOCKED 2026-10-01; side by side, ~30 min each; `-WhatIf` passes).**
+**17–18. DONE 2026-10-01. A1 and A3 development (LOCKED 2026-10-01; side by side, ~30 min each; `-WhatIf` passes).**
 ```
 cd D:\portfolio_lab; .\tools\run_locked.ps1 -Experiment E5-A-A1 -Period e5a_development -Config configs\e5a_a1.toml
 cd D:\portfolio_lab; .\tools\run_locked.ps1 -Experiment E5-A-A3 -Period e5a_development -Config configs\e5a_a3.toml
@@ -35,7 +58,7 @@ cd D:\portfolio_lab; .\tools\run_locked.ps1 -Experiment E5-A-A3 -Period e5a_deve
 Each prints `SWEEP DIR:`; output `experiments\E5-A\A1|A3\sweeps\e5a_development-<id>`.
 Validation waits for the development reviews.
 
-**19–22. Gap diagnosis (DIAGNOSTIC, NOT PROMOTABLE; `docs/reviews/gap-diagnosis.md`).**
+**19–22. DONE 2026-10-01. Gap diagnosis (DIAGNOSTIC, NOT PROMOTABLE; `docs/reviews/gap-diagnosis.md`).**
 From the repo with a clean tree; ~3 GB each. E1d ~10 min, A0 ~12–15 min
 (A0 also runs the stack). Two alongside jobs 17–18 (four at most), then the other two.
 ```
@@ -46,7 +69,7 @@ cd D:\portfolio_lab; $env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; 
 ```
 Done when each prints `DONE -> ...\diagnostics\gapdiag-<period>-<id>`.
 
-**24–25. A2 and E5-A-ALL development (LOCKED 2026-10-01 at `31a4b7c`;
+**24–25. DONE 2026-10-01. A2 and E5-A-ALL development (LOCKED 2026-10-01 at `31a4b7c`;
 `-WhatIf` passes for both). Side by side, ~3 GB each; about 30 min each
 (ALL has 108 columns, so allow up to 45).**
 ```
@@ -56,7 +79,7 @@ cd D:\portfolio_lab; .\tools\run_locked.ps1 -Experiment E5-A-ALL -Period e5a_dev
 Each prints `SWEEP DIR:`; output `experiments\E5-A\A2|ALL\sweeps\e5a_development-<id>`.
 Validation waits for the development reviews.
 
-**23. BSE results pull for A5 — RUN AFTER JOBS 17–22 FINISH.** Dating rule
+**23. DONE 2026-10-01. BSE results pull for A5.** Dating rule
 decided 2026-10-01 (E5-A §14; `docs/data/bse_results_finding.md` §3).
 Network only, ~0.3 GB; 5–7 h; resumable (re-run the same line). Nothing
 after Dec 2021 is fetched.

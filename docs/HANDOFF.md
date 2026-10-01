@@ -3,6 +3,17 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-10-01, session 12, phase 2 — all four families' development read)
+
+Jobs 23–25 checked: 23 complete (1,184 scrips, 0 error quarters); A2 and
+ALL at `31a4b7c`, clean. **A2:** incremental G1, G2, G3 fail; adoption G3
+fails. **ALL:** incremental G1 fails; adoption holds; A1/A2 columns act only
+2015–16. With A1 and A3 (phase 1), **no family can join the stack**;
+validation decides REJECT or INCONCLUSIVE. Finding: §6 [D 6] activates
+per row's horizons, so A2's S1/S2 are active from 2014-01 and S6 from
+2014-06 (base 2015-01). ALL's runs do not record per-refit member activity.
+**Next:** Aarsh runs RUNNING jobs 26–31 (or the overnight queue, phase 3).
+
 ## Start here (2026-10-01, session 12, phase 1 — A1, A3 development read; gap read)
 
 Jobs 17–22 checked (finished, logs clean, outputs complete, A1/A3 at
