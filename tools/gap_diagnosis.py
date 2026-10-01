@@ -149,6 +149,9 @@ def sleeve_returns(res) -> tuple:
     else:
         net = pd.Series(dtype=float)
     e = eq.set_index("date")
+    # the frame carries the warm-up before the first contribution (all zero);
+    # the sleeve starts with the money, as row_metrics' weight does
+    e = e[e.index >= e.index[(e["flow"] != 0).to_numpy()].min()]
     net = net.reindex(e.index).fillna(0.0)
     prev = e["equity_value"].shift(1)
     r = (e["equity_value"] - net + e["dividends"].fillna(0.0)) / prev - 1.0
