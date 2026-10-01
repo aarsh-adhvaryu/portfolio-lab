@@ -101,15 +101,15 @@ new code.
      calendar day; VIX and the Nifty 500 TRI on their own date.
   4. Stock returns month-end to month-end on adjusted close, no fill.
 
-## 5. For Aarsh
+## 5. For Aarsh (2026-10-01)
 
-1. RESULTS_DELAY: K (rule as written, 88.0% < 88.5%) or L (instruction)?
-   L would add 269 events (~15 min) to job 15.
-2. Run job 15; then Claude builds the A1 stores and reports.
-3. Confirm A3 §4 and A1's readings (censored months-since; coverage from
-   2010 window) and lock A1 and A3 (append to E5-A §14, tags
-   `lock/E5-A-A1`, `lock/E5-A-A3`); the A0-identity check first.
-4. A2: §3's three decisions.
+1. Run RUNNING job 16 (A0-identity at `eb5d25e`); on IDENTICAL Claude
+   writes the A1/A3 lock entries, tags both at `eb5d25e`, adds the
+   `check_lock` registry entries; then jobs 17–18.
+2. Confirm A2's build readings (§3) to make it ready to lock.
+3. E5-A-ALL: how activation reads with three families (§6).
+4. A5: the dating rule (`docs/data/bse_results_finding.md` §3), then the pull
+   (job 23) and a §6(f) entry fixing A5's columns.
 
 ## 6. Session 11 (2026-10-01)
 

@@ -20,6 +20,45 @@ _(none)_ — verified 2026-09-27 with `tools\status.ps1`.
 
 ## Queued
 
+**16. A0-identity at the family lock candidate `eb5d25e` (E5-A families
+readiness §6; 2026-10-01).** A1, A2 and A3 share this commit, so one check
+per period covers both tags. Two windows, side by side (~3 GB each); about
+10–15 min each (panel load, A0's refits, one engine run).
+```
+cd D:\pl_runs\E5-A-A1; $env:PYTHONPATH='D:\pl_runs\E5-A-A1\src'; $env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; D:\portfolio_lab\.venv\Scripts\python.exe -u tools\e1_identity.py e5a_development --config configs/e5a_a0.toml --ref D:\portfolio_lab\experiments\E5-A\sweeps\e5a_development-cedd1b289d7bb7aa\rows\base | Tee-Object D:\portfolio_lab\experiments\_identity\a0_eb5d25e_dev.log
+cd D:\pl_runs\E5-A-A1; $env:PYTHONPATH='D:\pl_runs\E5-A-A1\src'; $env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; D:\portfolio_lab\.venv\Scripts\python.exe -u tools\e1_identity.py validation --config configs/e5a_a0.toml --ref D:\portfolio_lab\experiments\E5-A\sweeps\validation-c6564e07b9148590\rows\base | Tee-Object D:\portfolio_lab\experiments\_identity\a0_eb5d25e_val.log
+```
+Pass: the first line names `D:\pl_runs\E5-A-A1\src\pflab`, the last says
+`IDENTICAL` and exit 0 (a key-order-only note is a pass). Then Claude locks
+A1 and A3 (§14 entries, tags at `eb5d25e`, registry) and jobs 17–18 open.
+
+**17–18. A1 and A3 development (after the lock; side by side, ~30–40 min each).**
+```
+cd D:\portfolio_lab; .\tools\run_locked.ps1 -Experiment E5-A-A1 -Period e5a_development -Config configs\e5a_a1.toml
+cd D:\portfolio_lab; .\tools\run_locked.ps1 -Experiment E5-A-A3 -Period e5a_development -Config configs\e5a_a3.toml
+```
+Each prints `SWEEP DIR:`; output `experiments\E5-A\A1|A3\sweeps\e5a_development-<id>`.
+Validation waits for the development reviews.
+
+**19–22. Gap diagnosis (DIAGNOSTIC, NOT PROMOTABLE; `docs/reviews/gap-diagnosis.md`).**
+From the repo with a clean tree; ~3 GB each. E1d ~15–20 min, A0 ~30–40 min
+(A0 also runs the stack). Any two can share the machine with job 16.
+```
+cd D:\portfolio_lab; $env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; .venv\Scripts\python.exe -u tools\gap_diagnosis.py --strategy E1d --period development
+cd D:\portfolio_lab; $env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; .venv\Scripts\python.exe -u tools\gap_diagnosis.py --strategy E1d --period validation
+cd D:\portfolio_lab; $env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; .venv\Scripts\python.exe -u tools\gap_diagnosis.py --strategy A0 --period e5a_development
+cd D:\portfolio_lab; $env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; .venv\Scripts\python.exe -u tools\gap_diagnosis.py --strategy A0 --period validation
+```
+Done when each prints `DONE -> ...\diagnostics\gapdiag-<period>-<id>`.
+
+**23. BSE results pull for A5 (after Aarsh decides the dating rule,
+`docs/data/bse_results_finding.md` §3).** Network only, ~0.3 GB; 5–7 h;
+resumable (re-run the same line). Nothing after Dec 2021 is fetched.
+```
+cd D:\portfolio_lab; .venv\Scripts\python.exe -u tools\probe_bse_results.py pull
+```
+Done at `DONE: 1184 scrips in ...\data\bse_results`.
+
 **15. A1 event reads (E5-A families readiness §2; 2026-09-30).** L =
 `qwen3.5-9b-16k` over the 710 events of its flags (DEFAULT, FORENSIC_AUDIT,
 REGULATORY_ACTION), 2010 → 2021-12-31. One window; Ollama running; GPU only,

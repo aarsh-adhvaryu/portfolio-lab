@@ -3,6 +3,20 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-10-01, session 11 — families registered, A2 built, gap tool)
+
+**Done:** E5-A §14 decisions (RESULTS_DELAY K; A1/A3 readings; §6(c)
+amended) and hypotheses for A1–A3, **E5-A-ALL**, **A5** (STATE: 5
+registered). **A2 built** (`ranker/holdings.py`, 9 columns, active from the
+2014-12 refit). Identity tool scores E5-A; lock candidate **`eb5d25e`**,
+worktrees `D:\pl_runs\E5-A-A1`, `-A3`; stores rebuilt (features
+byte-identical). **A5 probe:** BSE results endpoint found, 90–100% coverage
+2007–21, 14/14 checkable filings match; dating rule needs a decision (one
+early date found) — `docs/data/bse_results_finding.md`. **Gap diagnosis**
+tool built (`tools/gap_diagnosis.py`, 3 tests); `pytest -q`: 711.
+**Next (Aarsh):** RUNNING jobs 16 (identity), 19–22 (gap); decide A5 dating
+(§3) and A2's readings (readiness §3); then Claude locks A1/A3 → jobs 17–18.
+
 ## Start here (2026-09-30, session 10 close — job 15 done, A1 stores built)
 
 Job 15: L read 710 of 710; REGULATORY_ACTION 26% NOT_EVENT (dropped).
