@@ -5,7 +5,7 @@ charter. Each experiment gets its own charter in `docs/strategies/` before it
 runs; this file only says what the experiments are, in what order, what each
 must prove, and what the finished system looks like.
 
-**Forward order (2026-10-01, session 13): research phase ended by the gap
+**SHELVED 2026-10-01.** **Forward order (2026-10-01, session 13): research phase ended by the gap
 ladder's registered rule (brake + cap −26% of E1d's development gap, below
 60%; `docs/reviews/gap-ladder.md` §3). Next: the fallback build
 (`docs/plans/fallback.md`). E2-D1, E2-D2 and E6-V are not run.** Done: E1
@@ -22,6 +22,15 @@ has its own charter in `docs/strategies/`.
 change joins the stack. From **2026-09-21**, `docs/MANDATE.md` §3 and §5
 decide **ADVANCE** — the sealed reveal, the live paper year, real money —
 in place of E1 §13's C1–C4. Recorded verdicts are unchanged.
+
+---
+
+## Shelved, 2026-10-01 (Aarsh)
+
+The project is shelved. No experiment is registered or queued; the sealed
+period (2022–2025) is unopened; the fallback (`docs/plans/fallback.md`) is a
+spec, not built. Open ideas, none registered, are in `docs/HANDOFF.md`.
+Resume from HANDOFF "Start here".
 
 ---
 

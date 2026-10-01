@@ -1,6 +1,6 @@
 # STATE — verdicts and where things stand
 
-One page. Updated 2026-10-01 (session 13: E5-A closed; four cut; gap ladder read: research ends). The narrative is in `docs/HANDOFF.md`; the
+One page. Updated 2026-10-01 (session 13: E5-A closed; four cut; gap ladder read; **project SHELVED**). The narrative is in `docs/HANDOFF.md`; the
 order and reasons in `docs/ROADMAP.md`; the rules for judging in
 `docs/strategies/GATE.md` (adoption) and `docs/MANDATE.md` (ADVANCE).
 
@@ -13,6 +13,18 @@ apply: E1 §15 2026-09-21, 2026-09-27 (determinism; corrections a–d; D1/D2),
 **Adopted stack: E1 + E1d** (from 2026-09-29; E1d ADOPT by GATE, confirmed by
 the final regression; E1d §7 caveat travels). Sealed period (2022–2025) never
 opened; `research/journal.jsonl` absent.
+
+## SHELVED 2026-10-01 (Aarsh)
+
+**The project is shelved.** No runs are queued or running; nothing is
+registered. **Sealed period 2022–2025 unopened** (`research/journal.jsonl`
+absent; 0 of 1 reveals used). **Job 23 data state: complete** — BSE quarterly
+results for 1,184 scrips, 0 error quarters, fetched through Dec 2021 only;
+BSE's endpoint itself lacks 921 interior quarters (1.6% of the span, 380
+scrips; `docs/data/bse_results_finding.md`, E5-A §14). The gap ladder was read
+before shelving (brake + cap −26% < 60%: research phase ended;
+`docs/reviews/gap-ladder.md`); the fallback is a spec only
+(`docs/plans/fallback.md`), not built. Cold restart: `docs/HANDOFF.md`.
 
 ## How many experiments have been tested
 

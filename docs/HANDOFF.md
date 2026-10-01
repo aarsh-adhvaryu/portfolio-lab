@@ -3,6 +3,52 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here — SHELVED 2026-10-01 (cold restart)
+
+**Status.** Shelved by Aarsh, tag `shelved/2026-10-01`. Nothing running or
+queued; nothing registered. Sealed 2022–2025 **unopened**. Data under
+`D:\portfolio_lab\data` (gitignored), results under `experiments\`
+(gitignored, not on the remote). Rules: `CLAUDE.md`, `GATE.md`, `MANDATE.md`.
+
+**Verdicts (13; `docs/STATE.md`).** ADOPT: **E1d** (stack E1 + E1d).
+REJECT: E1c, E2-A, E3-R, E5-A A1, A2. INCONCLUSIVE: E1, E1b, E1-P, E5-A A0,
+A3, ALL, A5. Closed: E2-C (not run), E5-A (no further families, no A4).
+Cut: E2-B, E1-S, E2-E, E3, E4, stop-losses. Not run: E2-D1, E2-D2, E6-V.
+
+**Stack vs benchmarks** (after tax, liquidation-adjusted CAGR / MaxDD, base
+row; same engine, SIP and tax):
+
+| | development 2007–16 | validation 2017–21 |
+|---|---|---|
+| stack E1 + E1d | 8.06% / 54.74% | 26.21% / 42.96% |
+| B2 Nifty 500 TRI | 8.06% / 63.53% | 14.77% / 37.94% |
+| B5 Nifty 500 Momentum 50 TRI (0.30% drag) | 13.73% / 70.15% | 22.44% / 38.14% |
+
+**Mandate gap (not met).** §5 asks B5 + 2 pp in both periods: stack is
+−5.67 pp (dev, 7.67 pp short) and +3.77 pp (val, met). §3 asks B2 + 3 pp and
+worst fall ≤ B2's + 5 pp: dev +0.00 pp (return fails; fall 8.8 pp shallower);
+val +11.44 pp, fall 5.02 pp deeper than B2 (0.02 pp past the limit). (Base
+row, computed from STATE's figures; `classify`'s mandate block, which also
+needs two thirds of rows, is the authority.) Gap ladder: brake + cap explain
+−26% of the development gap, so the research phase ended
+(`docs/reviews/gap-ladder.md`). Fallback spec: `docs/plans/fallback.md`.
+
+**Open ideas — none registered, none has a charter:**
+(a) **T1**: compact temporal transformer vs LightGBM, 12-month horizon, same
+inputs and portfolio rules as E5-A;
+(b) a long-horizon compounder sleeve;
+(c) a factor-fund allocator;
+(d) Jev as a news-alert classifier for monitoring (not selection).
+
+**First step on resume: the verification check** (before any charter):
+1. E5-A's label horizon as implemented vs E5-A §4 and its change log.
+2. Point-in-time business fields 2007–2021 (BSE results, shareholding):
+   dating rule, and coverage by year over U(month).
+3. Delisted names: present in panel, universe and labels, exits handled.
+4. Count of usable training decisions for 12- and 36-month labels after
+   purging, per period.
+Then `pytest -q` (728 passed at shelving) and `tools/check_lock.py --all`.
+
 ## Start here (2026-10-01, session 13 end — gap ladder read; research ends)
 
 Jobs 34–37 done at `5553d71`; base row reproduced in all four
