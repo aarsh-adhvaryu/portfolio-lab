@@ -9,6 +9,14 @@ A data build, not a sweep. The sweep refuses a store whose panel fingerprint,
 universe or stack score differ from its own.
 
 Rebuilding over an existing store prints whether the new files are identical.
+
+    python tools\build_e5a_features.py --period validation --verify <scratch dir>
+
+`--verify` (2026-10-01) rebuilds into <scratch dir> and compares every file
+with the live store. Only if all are byte-identical does it record this
+code's builder SHA in the live store's meta (`builder_sha_verified`); the
+files and the original stamp are left alone, so the store stays valid for
+the tag that built it. Different files: refuses, writes nothing.
 """
 from __future__ import annotations
 
@@ -78,11 +86,35 @@ def build(config_path: str, period_name: str, root=None) -> dict:
     return meta
 
 
+def verify(config_path: str, period_name: str, scratch: str) -> int:
+    live = store.store_dir(period_name)
+    meta_path = live / store.META
+    old = json.loads(meta_path.read_text(encoding="utf-8"))
+    new = build(config_path, period_name, root=scratch)
+    if new["files"] != old["files"] or new["panel_fingerprint"] != old["panel_fingerprint"]:
+        _say(f"REFUSED: the rebuild differs from {live}; nothing written")
+        return 1
+    sha = store.builder_sha()
+    if sha in store.verified_shas(old):
+        _say(f"{live}: builder {sha[:12]} already valid")
+        return 0
+    old.setdefault("builder_sha_verified", []).append(
+        {"builder_sha": sha, "code": artifacts.code_commit(),
+         "verified_at": datetime.now(timezone.utc).isoformat(),
+         "files": new["files"]})
+    meta_path.write_text(json.dumps(old, indent=2, default=str), encoding="utf-8")
+    _say(f"VERIFIED: {live} rebuilt byte-identical by builder {sha[:12]}; recorded")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--config", default="configs/e5a_a0.toml")
     ap.add_argument("--period", required=True)
+    ap.add_argument("--verify", metavar="SCRATCH_DIR")
     a = ap.parse_args(argv)
+    if a.verify:
+        return verify(a.config, a.period, a.verify)
     meta = build(a.config, a.period)
     print(json.dumps({k: meta[k] for k in ("period", "month_ends", "availability",
                                            "labels", "files", "seconds")},

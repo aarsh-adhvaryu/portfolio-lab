@@ -110,6 +110,16 @@ def identity(config: dict) -> dict:
             "horizons": list((config.get("e5a") or {}).get("horizons", [1, 3, 12]))}
 
 
+def verified_shas(meta: dict) -> set:
+    """The builder code a store is valid for: the code that built it, plus
+    any later code shown to rebuild it byte for byte (`build_e5a_features.py
+    --verify`, 2026-10-01). A later commit that changes builder code without
+    changing a byte of the store -- E3-R's gears in engine.py -- does not
+    stale it, and the store's original stamp is kept for its own tag."""
+    return {meta.get("builder_sha")} | {v.get("builder_sha") for v in
+                                         meta.get("builder_sha_verified", [])}
+
+
 def check(meta: dict, config: dict, period, panel_fingerprint: str) -> None:
     """Refuse a store that does not describe this run's data and config."""
     why = []
@@ -118,7 +128,7 @@ def check(meta: dict, config: dict, period, panel_fingerprint: str) -> None:
                    f"!= {period.name}/{period.end}")
     if meta.get("panel_fingerprint") != panel_fingerprint:
         why.append("the panel's content fingerprint differs")
-    if meta.get("builder_sha") != builder_sha():
+    if builder_sha() not in verified_shas(meta):
         why.append("the feature, label or universe code has changed since the build")
     if json.loads(json.dumps(meta.get("identity"), default=str)) != \
             json.loads(json.dumps(identity(config), default=str)):

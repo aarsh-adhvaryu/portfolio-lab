@@ -458,6 +458,15 @@ def test_store_round_trip_and_refusals(world, tmp_path):
         store.check(m, world["cfg"], per, "xyz")
     with pytest.raises(store.StaleStore, match="code has changed"):
         store.check({**m, "builder_sha": "0" * 64}, world["cfg"], per, "abc")
+    # 2026-10-01: later code that rebuilt the store byte for byte is valid too;
+    # an unverified one is not
+    store.check({**m, "builder_sha": "0" * 64,
+                 "builder_sha_verified": [{"builder_sha": store.builder_sha()}]},
+                world["cfg"], per, "abc")
+    with pytest.raises(store.StaleStore, match="code has changed"):
+        store.check({**m, "builder_sha": "0" * 64,
+                     "builder_sha_verified": [{"builder_sha": "1" * 64}]},
+                    world["cfg"], per, "abc")
     other = copy.deepcopy(world["cfg"])
     other["universe"]["top_n_by_turnover"] = 200
     with pytest.raises(store.StaleStore, match="universe"):
