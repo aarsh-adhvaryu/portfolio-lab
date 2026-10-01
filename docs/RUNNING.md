@@ -25,7 +25,24 @@ results); 24 `E5-A\A2\sweeps\e5a_development-5355d1e6aa97ba7f` 11.19% / 20.79%;
 
 ## Queued
 
-**26–29. E5-A family validation (development reviews committed 2026-10-01;
+**OVERNIGHT QUEUE (2026-10-01): `tools\overnight_queue.ps1` runs 23, 26–32, four
+at once, in that order; ~75–90 min in all.** Logs `logs\overnight\job<N>.log`,
+markers `job<N>.done` / `.failed` (reason inside); a failure never stops the
+others; a job already `.done` is skipped (23 is). Only **job 23 needs the
+internet** (and is complete: it lists 0 to fetch); **26–32 are offline**.
+Start (one window, leave it open; free RAM ≥ 14 GB):
+```
+cd D:\portfolio_lab; powershell -ExecutionPolicy Bypass -File .\tools\overnight_queue.ps1
+```
+Morning: `cd D:\portfolio_lab; .\tools\overnight_queue.ps1 -Status`.
+Rerun failures only: `.\tools\overnight_queue.ps1 -Only 28,31`.
+
+**32. A5 development (LOCKED 2026-10-01 at `655aae0`; `-WhatIf` passes).**
+Offline, ~3 GB, ~30 min.
+`cd D:\portfolio_lab; .\tools\run_locked.ps1 -Experiment E5-A-A5 -Period e5a_development -Config configs\e5a_a5.toml`
+→ `experiments\E5-A\A5\sweeps\e5a_development-<id>`. Validation after its review.
+
+**26–29 (offline). E5-A family validation (development reviews committed 2026-10-01;
 `-WhatIf` passes for all four).** ~3 GB and ~30 min each; four at once only
 with ~14 GB free (`tools\status.ps1`). Each prints `SWEEP DIR:`; output
 `experiments\E5-A\<A1|A3|A2|ALL>\sweeps\validation-<id>`.
@@ -36,7 +53,7 @@ cd D:\portfolio_lab; .\tools\run_locked.ps1 -Experiment E5-A-A2 -Period validati
 cd D:\portfolio_lab; .\tools\run_locked.ps1 -Experiment E5-A-ALL -Period validation -Config configs\e5a_all.toml
 ```
 
-**30–31. Validation STACK at the family tags (E5-A §8: the validation STACK
+**30–31 (offline). Validation STACK at the family tags (E5-A §8: the validation STACK
 runs at the lock tag).** The STACK on record (`E1d\regression\validation-a6256fbb0ba71a8f`)
 ran at `lock/E5-A` (530a3d8). E1d base re-run at `6a29dde` (A1, A3) and
 `31a4b7c` (A2, ALL) and compared byte for byte; ~5–10 min each, ~3 GB.

@@ -3,6 +3,26 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-10-01, session 12 close — overnight queue; A5 LOCKED)
+
+**Verdicts:** none new; all E5-A families have development reviews only
+(`docs/reviews/E5-A-{A1,A3,A2,ALL}-development.md`). Against A0, none can
+now be ADOPT (A1 G2/G3, A3 G1, A2 G1/G2/G3, ALL G1), so **none can join the
+stack**; validation decides REJECT or INCONCLUSIVE.
+**Gap:** the three shortfalls to B5 match **selection** under the
+pre-registered rule; costs or tax nowhere (`gap-diagnosis.md` §3).
+**Locks:** A1, A3 (`6a29dde`); A2, ALL (`31a4b7c`); **A5 (`655aae0`)**: §6(f)
+8 columns, DY NaN through 2007 and 2009-04..2011-03, non-payers 0;
+A0-identity IDENTICAL; stores point-in-time across truncations.
+**Pending:** overnight queue (RUNNING): 26–29 validation, 30–31 STACK
+identity, 32 A5 development; all offline.
+**Morning (Claude):** `overnight_queue.ps1 -Status`; rerun failures; compute
+the four validation verdicts (`classify_e5a`, STACK per 30–31); A5
+development review; STATE.
+**Open decisions (Aarsh):** A1–ALL review conclusions; gap reading
+(selection row bundles cash and frictions); cutting E2-B, E1-S, E2-E and E3
+from the forward list (proposal, not decided).
+
 ## Start here (2026-10-01, session 12, phase 2 — all four families' development read)
 
 Jobs 23–25 checked: 23 complete (1,184 scrips, 0 error quarters); A2 and

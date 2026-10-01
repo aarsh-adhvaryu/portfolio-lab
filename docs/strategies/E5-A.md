@@ -534,3 +534,14 @@ seeing results. E5-A says nothing about E5-B/C/D.
   reading each blanks a name's TTM for up to a year. **Point in time:** the
   stores truncated at 2016 and at 2021 agree on all 516,464 shared values,
   and a rebuild is byte-identical.
+- 2026-10-01 (session 12) — **A5 LOCKED.** Span §2–§13 unchanged (13,096
+  chars, `9455930e…2cb2ec5f`); A5 reads with every entry above, in particular
+  2026-10-01 (A5 hypothesis; A5 dating rule and dividend NaN window) and the
+  §6(f) entry (columns, sources, the pre-2007 dividend NaN, non-payers 0).
+  Tag `lock/E5-A-A5` → `655aae0`; worktree `D:\pl_runs\E5-A-A5`; config
+  `configs/e5a_a5.toml`. **A0-identity at the tag: IDENTICAL** in both
+  periods (development 3,232 sessions / 447 trades / 72 decisions,
+  validation 4,471 / 541 / 60; logs `experiments/_identity/a0_655aae0_*.log`).
+  A5 stores rebuilt at the tag, identical to the pre-commit build.
+  `family.py` gained A5, so at later code the A1–A3 stores read as stale;
+  their locks run their own tags' code and stores, which are unchanged.
