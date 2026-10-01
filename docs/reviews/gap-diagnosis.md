@@ -1,5 +1,18 @@
 # Gap diagnosis — E1d and E5-A A0 against B5 (DIAGNOSTIC, NOT PROMOTABLE)
 
+> **Pre-registered reading (Aarsh, 2026-10-01), written before any output
+> of jobs 19–22 was read.** For each strategy and period, whichever group of
+> controls explains most of the gap to B5 decides what follows:
+> - **selection** explains most: the information families are the lever;
+> - **cash or brake** (trend_off, cap_off; for A0, its equity share): the next
+>   experiment is the trend rule;
+> - **costs or tax**: no picking closes the gap, and the fallback becomes the
+>   plan.
+>
+> Already seen when this was written: the validation smoke in §3 (base and
+> selection rows only, E1d and A0, plus A0's equity-share blend). No cash,
+> cost or tax control and no development figure had been computed.
+
 Audit Deliverable 2, 2026-10-01. Nothing here is a charter row or a verdict
 input: `classify` cannot read it and no rule may be changed because of it
 (CLAUDE.md rule 3). It says where each shortfall to B5 comes from.
