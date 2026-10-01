@@ -3,6 +3,18 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-10-01, session 13 — E5-A closed; gap ladder registered)
+
+**Decisions recorded** (Aarsh): verdicts accepted and conclusion written
+(`E5-A-families-verdict.md`); E5-A closed, no A4 (E5-A §14); E2-B, E1-S, E2-E,
+E3 cut (ROADMAP); gap diagnosis "selection" row relabelled (its §5).
+**Gap ladder registered** before any run (`docs/reviews/gap-ladder.md`,
+`2e6839b`) with the 60% brake + cap rule; built (`tools/gap_ladder.py`,
+`tests/test_gap_ladder.py`). **Fallback spec** `docs/plans/fallback.md`.
+**Next:** Aarsh runs RUNNING jobs 34–37; Claude reads them into
+`gap-ladder.md` §3 (rung 4 must reproduce the base row), applies §2's rule
+on E1d development, and Aarsh decides: final stack experiment or fallback.
+
 ## Start here (2026-10-01, session 12 end — E5-A family verdicts)
 
 **Verdicts** (`classify_e5a`, `docs/reviews/E5-A-families-verdict.md`):

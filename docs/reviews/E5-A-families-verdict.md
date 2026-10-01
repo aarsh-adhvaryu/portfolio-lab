@@ -73,3 +73,10 @@ Validation `E5-A/A5/sweeps/validation-b1a6c3c8bc7daead` at `lock/E5-A-A5`
 Joins the stack: no. Mandate: not met (validation §3 0 of 8 rows; §5 −6.78
 pp vs B5). Evidence: development from the Dec 2012 refit (48 of 72
 decisions); validation throughout. STATE: 13 verdicts.
+
+## Conclusion (Aarsh, 2026-10-01, session 13)
+
+Verdicts accepted. "No family shows development evidence; validation gains
+over A0 cannot be separated from A0's 2020-21 regime miss. E5-A gives no
+evidence that this information improves selection." E5-A is closed: no new
+families, A4 not pursued (E5-A §14, 2026-10-01 session 13 entries).

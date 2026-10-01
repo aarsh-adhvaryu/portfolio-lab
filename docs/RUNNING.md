@@ -22,6 +22,19 @@ session 12): verdicts in `docs/reviews/E5-A-families-verdict.md`; 30–31 IDENTI
 
 ## Queued
 
+**34–37. Gap ladder (DIAGNOSTIC, NOT PROMOTABLE; registered `docs/reviews/gap-ladder.md`,
+commit `2e6839b`).** From the repo with a clean tree; ~3 GB each; five engine
+runs plus B5 each, so ~12–15 min (A0 ~15–20). All four at once if `status.ps1`
+shows ≥ 14 GB free; otherwise two, then two.
+```
+cd D:\portfolio_lab; $env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; .venv\Scripts\python.exe -u tools\gap_ladder.py --strategy E1d --period development
+cd D:\portfolio_lab; $env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; .venv\Scripts\python.exe -u tools\gap_ladder.py --strategy E1d --period validation
+cd D:\portfolio_lab; $env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; .venv\Scripts\python.exe -u tools\gap_ladder.py --strategy A0 --period e5a_development
+cd D:\portfolio_lab; $env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; .venv\Scripts\python.exe -u tools\gap_ladder.py --strategy A0 --period validation
+```
+Each prints `[1/5]`…`[5/5]`, `picks computed`, then `DONE -> ...\diagnostics\gapladder-<period>-<id>`
+(`experiments\E1d\…` or `experiments\E5-A\…`), holding `summary.md`, `results.json`, `manifest.json`.
+
 **33. DONE 2026-10-01 → `E5-A\A5\sweepsalidation-b1a6c3c8bc7daead` 15.66% / 21.60%; STACK IDENTICAL at `655aae0`. A5 validation (offline; development review committed 2026-10-01; ~3 GB, ~30 min).**
 `cd D:\portfolio_lab; .\tools\run_locked.ps1 -Experiment E5-A-A5 -Period validation -Config configs\e5a_a5.toml`
 → `experiments\E5-A\A5\sweeps\validation-<id>`; prints `SWEEP DIR:`. STACK as for the families (`a6256fbb…`), after an identity check at `655aae0` if Claude asks for one.

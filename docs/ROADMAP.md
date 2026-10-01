@@ -5,8 +5,10 @@ charter. Each experiment gets its own charter in `docs/strategies/` before it
 runs; this file only says what the experiments are, in what order, what each
 must prove, and what the finished system looks like.
 
-**Forward order (2026-09-30): E5-A families A1, A3, A2, then E2-B, E1-S,
-E2-D1, E2-D2 (parked until E2-D1), E2-E, E3, E6-V.** Done: E1
+**Forward order (2026-10-01, session 13): the gap ladder (diagnostic)
+decides between one final stack experiment and the fallback build
+(`docs/reviews/gap-ladder.md` §2). Still listed, none before the ladder is
+read: E2-D1, E2-D2 (parked until E2-D1), E6-V.** Done: E1
 (INCONCLUSIVE), E1b (INCONCLUSIVE), E1-P (INCONCLUSIVE), E1c (REJECT), E1d
 (ADOPT), E2-A (REJECT) — final, re-classified 2026-09-29 after the full
 regression; **E5-A A0 (INCONCLUSIVE) and E3-R (REJECT), 2026-09-30**
@@ -20,6 +22,19 @@ has its own charter in `docs/strategies/`.
 change joins the stack. From **2026-09-21**, `docs/MANDATE.md` §3 and §5
 decide **ADVANCE** — the sealed reveal, the live paper year, real money —
 in place of E1 §13's C1–C4. Recorded verdicts are unchanged.
+
+---
+
+## Decisions, 2026-10-01 (session 13) — E5-A closed; four cut
+
+**E5-A closed** (Aarsh): verdicts accepted, no new families, A4 not pursued
+(E5-A §14). **E2-B, E1-S, E2-E and E3 are removed from the forward list.**
+The gap diagnosis's "selection" row is relabelled "picks, frictionless and
+fully invested". Next is the **gap ladder** (diagnostic, not an experiment):
+if trend brake plus six-buy cap explain at least 60% of E1d's 5.67 pp
+development gap to B5, Aarsh may register one final stack experiment on that
+component; otherwise research ends and the fallback (`docs/plans/fallback.md`)
+is built.
 
 ---
 

@@ -545,3 +545,11 @@ seeing results. E5-A says nothing about E5-B/C/D.
   A5 stores rebuilt at the tag, identical to the pre-commit build.
   `family.py` gained A5, so at later code the A1–A3 stores read as stale;
   their locks run their own tags' code and stores, which are unchanged.
+- 2026-10-01 (session 13) — **Verdicts accepted (Aarsh).** A1, A2 REJECT;
+  A3, E5-A-ALL, A5 INCONCLUSIVE, as computed (`E5-A-families-verdict.md`).
+  Conclusion: "No family shows development evidence; validation gains over
+  A0 cannot be separated from A0's 2020-21 regime miss. E5-A gives no
+  evidence that this information improves selection."
+- 2026-10-01 (session 13) — **E5-A closed (Aarsh).** No new families are
+  registered and A4 is not pursued. Span §2–§13 unchanged; the locks and
+  verdicts stand as recorded.

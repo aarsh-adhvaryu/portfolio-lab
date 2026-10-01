@@ -1,6 +1,6 @@
 # STATE — verdicts and where things stand
 
-One page. Updated 2026-10-01 (session 12: E5-A family verdicts incl. A5; gap diagnosis). The narrative is in `docs/HANDOFF.md`; the
+One page. Updated 2026-10-01 (session 13: E5-A closed; four cut; gap ladder registered). The narrative is in `docs/HANDOFF.md`; the
 order and reasons in `docs/ROADMAP.md`; the rules for judging in
 `docs/strategies/GATE.md` (adoption) and `docs/MANDATE.md` (ADVANCE).
 
@@ -112,10 +112,21 @@ result meets it in development.
 - From E1c onward `classify` writes a **mandate** block beside the GATE and
   C1–C4 blocks.
 
+## Diagnostics (not experiments; not counted above)
+
+- **Gap diagnosis** (`docs/reviews/gap-diagnosis.md`): one change per row.
+  From 2026-10-01 its "selection" row reads "picks, frictionless and fully
+  invested", not selection.
+- **Gap ladder** (`docs/reviews/gap-ladder.md`, registered 2026-10-01 at
+  `2e6839b`, jobs 34–37): frictions added cumulatively (picks → mechanics →
+  brake → cap → costs → tax), E1d and A0, both periods. Diagnostic, not
+  promotable. Rule: brake + cap ≥ 60% of E1d's 5.67 pp development gap →
+  Aarsh may register one final stack experiment; otherwise the fallback
+  (`docs/plans/fallback.md`).
+
 ## Next
 
-**E5-A families** (A0 INCONCLUSIVE; each family is judged incrementally
-against the frozen A0 and for adoption against E1 + E1d, E5-A §10): A1
-(issuer events) and A3 (world exposure) built to ready-to-lock, A2 readiness
-note (2026-09-30). Then E2-B, E1-S, E2-D1, E2-D2 (parked), E2-E, E3, E6-V.
-E3-R is off the forward list (REJECT). No stack meets the mandate yet.
+**E5-A closed** (2026-10-01, verdicts accepted; no new families, no A4).
+**E2-B, E1-S, E2-E, E3 removed** from the forward list. Next: the gap ladder
+(jobs 34–37), then its rule. Still listed: E2-D1, E2-D2 (parked), E6-V. No
+stack meets the mandate.

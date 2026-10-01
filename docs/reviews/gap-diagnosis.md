@@ -155,3 +155,12 @@ Diagnostic only; not promotable; no verdict or rule depends on it.
 ## 4. Earlier work
 
 `docs/reviews/E1-gap-attribution.md` (E1, development, `tools/gap_attribution.py`).
+
+## 5. Change log
+
+- 2026-10-01 (session 13, Aarsh) — **The "selection" row is relabelled
+  "picks, frictionless and fully invested" and is not read as selection.**
+  It bundles 100% equity and zero costs and tax with the names (§3, fact 1),
+  so §3's "selection" case does not say the information families are the
+  lever. The §3 figures are unchanged. The cumulative decomposition is the
+  gap ladder (`gap-ladder.md`, registered 2026-10-01).
