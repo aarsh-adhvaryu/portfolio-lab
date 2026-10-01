@@ -16,14 +16,15 @@ measured peak, ~3.5 GB budgeted, 31.4 GB total. Check the free-RAM line in
 
 ## Running
 
-Nothing. **23–25 DONE 2026-10-01** (read session 12): 23 `data\bse_results\` 1,184 of
-1,184 scrips, 59,360 scrip-quarters, 0 error quarters (one scrip lists no
-results); 24 `E5-A\A2\sweeps\e5a_development-5355d1e6aa97ba7f` 11.19% / 20.79%;
-25 `E5-A\ALL\sweeps\e5a_development-de36b811a670c8c1` 12.64% / 15.64% (both at
-`31a4b7c`, clean, logs clean). **17–22 DONE**, read: 17 A1 `…56d82ba9a55f41e0`
-13.74% / 17.52%; 18 A3 `…09cc4b45c5116476` 12.78% / 14.68%; 19–22 `gapdiag-*`.
+Nothing. **Overnight queue 23, 26–32 DONE 2026-10-01 19:29** (all `.done`; read
+session 12): verdicts in `docs/reviews/E5-A-families-verdict.md`; 30–31 IDENTICAL;
+32 `E5-A\A5\sweeps\e5a_development-37cd18619cd4815a` 12.74% / 18.02%.
 
 ## Queued
+
+**33. A5 validation (offline; development review committed 2026-10-01; ~3 GB, ~30 min).**
+`cd D:\portfolio_lab; .\tools\run_locked.ps1 -Experiment E5-A-A5 -Period validation -Config configs\e5a_a5.toml`
+→ `experiments\E5-A\A5\sweeps\validation-<id>`; prints `SWEEP DIR:`. STACK as for the families (`a6256fbb…`), after an identity check at `655aae0` if Claude asks for one.
 
 **OVERNIGHT QUEUE (2026-10-01): `tools\overnight_queue.ps1` runs 23, 26–32, four
 at once, in that order; ~75–90 min in all.** Logs `logs\overnight\job<N>.log`,

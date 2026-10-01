@@ -3,6 +3,22 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-10-01, session 12 end — E5-A family verdicts)
+
+**Verdicts** (`classify_e5a`, `docs/reviews/E5-A-families-verdict.md`):
+**A1 REJECT, A2 REJECT** (G2 fails vs A0 in both periods); **A3 INCONCLUSIVE,
+E5-A-ALL INCONCLUSIVE** (G1 fails vs A0 in development only; in validation
++3.86 / +3.97 pp, 8 of 8 rows). Adoption INCONCLUSIVE for all four; **none
+joins the stack**; mandate not met. STATE: 12 verdicts.
+**A5** LOCKED (`655aae0`), development read: incremental G1, G2 fail,
+adoption holds, active from Dec 2012. Validation = RUNNING job 33 (Aarsh).
+**Gap:** shortfalls match selection under the pre-registered rule.
+**Open (Aarsh):** conclusions in the five development reviews and the
+verdict note; the gap reading; cutting E2-B, E1-S, E2-E and E3 (proposal);
+whether E5-A goes further, given every family is 9–15 pp short of B5 in
+validation.
+**Next:** job 33, then A5's verdict; then the forward list.
+
 ## Start here (2026-10-01, session 12 close — overnight queue; A5 LOCKED)
 
 **Verdicts:** none new; all E5-A families have development reviews only
