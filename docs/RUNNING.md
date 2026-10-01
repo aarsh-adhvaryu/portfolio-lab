@@ -16,7 +16,8 @@ measured peak, ~3.5 GB budgeted, 31.4 GB total. Check the free-RAM line in
 
 ## Running
 
-_(none)_ — verified 2026-09-27 with `tools\status.ps1`.
+Jobs 17–20 (A1, A3 development; gap diagnosis E1d development and
+validation), started 2026-10-01 on Aarsh's machine.
 
 ## Queued
 
@@ -41,9 +42,10 @@ cd D:\portfolio_lab; $env:PFLAB_EXPERIMENTS_DIR='D:\portfolio_lab\experiments'; 
 ```
 Done when each prints `DONE -> ...\diagnostics\gapdiag-<period>-<id>`.
 
-**23. BSE results pull for A5 (after Aarsh decides the dating rule,
-`docs/data/bse_results_finding.md` §3).** Network only, ~0.3 GB; 5–7 h;
-resumable (re-run the same line). Nothing after Dec 2021 is fetched.
+**23. BSE results pull for A5 — RUN AFTER JOBS 17–22 FINISH.** Dating rule
+decided 2026-10-01 (E5-A §14; `docs/data/bse_results_finding.md` §3).
+Network only, ~0.3 GB; 5–7 h; resumable (re-run the same line). Nothing
+after Dec 2021 is fetched.
 ```
 cd D:\portfolio_lab; .venv\Scripts\python.exe -u tools\probe_bse_results.py pull
 ```

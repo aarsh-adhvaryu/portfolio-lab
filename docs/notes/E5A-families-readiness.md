@@ -101,13 +101,15 @@ new code.
      calendar day; VIX and the Nifty 500 TRI on their own date.
   4. Stock returns month-end to month-end on adjusted close, no fill.
 
-## 5. For Aarsh (2026-10-01)
+## 5. For Aarsh (2026-10-01, continued)
 
-1. Run RUNNING jobs 17–18 (A1, A3 development; locked 2026-10-01).
-2. Confirm A2's build readings (§3) to make it ready to lock.
-3. E5-A-ALL: how activation reads with three families (§6).
-4. A5: the dating rule (`docs/data/bse_results_finding.md` §3), then the pull
-   (job 23) and a §6(f) entry fixing A5's columns.
+1. A2 condition (i), "each quarter usable from its BSE filing date": no
+   quarter before Sep 2015 has one; read strictly, A2 is A0 throughout
+   development. Keep it, or name a rule for undated quarters (E2-D1's
+   second-month-end rule; or the announcement date from 2014 and that rule
+   before). A2 and E5-A-ALL lock after this, each with an A0-identity check.
+2. Condition (ii) applied; A3, A1 locked; A5 dating and ALL activation
+   recorded (E5-A §14).
 
 ## 6. Session 11 (2026-10-01)
 

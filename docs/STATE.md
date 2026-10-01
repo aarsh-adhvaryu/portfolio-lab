@@ -33,7 +33,7 @@ on the second would be.
 | sealed-period reveals used | **0 of 1** |
 | stacks meeting MANDATE §3 and §5 | **0** |
 
-Locked and awaiting a run: **E5-A A1, A3** (2026-10-01, `lock/E5-A-A1`, `lock/E5-A-A3`). **Built and ready to lock** (2026-09-27):
+Locked: **E5-A A1, A3** (2026-10-01, `lock/E5-A-A1`, `lock/E5-A-A3`). **Running (started 2026-10-01): RUNNING jobs 17–20** — A1 and A3 development, gap diagnosis E1d development and validation; jobs 21–22 (gap, A0) follow. **Job 23** (A5 results pull) waits for decision 4, the A5 dating rule — decided 2026-10-01 (E5-A §14) — and runs after jobs 17–22. **Not locked:** A2 (filing-date condition, E5-A §14) and E5-A-ALL (waits for A2). **Built and ready to lock** (2026-09-27):
 E2-D1, E2-D2 — each note's last section says what the lock must settle.
 Readiness notes: E2-B, E3, E5-A (decisions taken 2026-09-28 bar D2, now settled: A0 against E1 + E1d; build next). Drafts: E1-S, E2-E.
 

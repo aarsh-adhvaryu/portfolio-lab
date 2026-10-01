@@ -3,6 +3,17 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-10-01, session 11 continued — decisions recorded; A2, ALL held)
+
+Jobs 17–20 running on Aarsh's machine (outputs not read). Gap review's
+pre-registered reading committed first (`6c2f87c`). E5-A §14: A2 approved
+with two conditions — pledge (ii) applied (parser; stores unchanged, 0/200
+nulls); **filing date (i) leaves 2010–2014 with no usable quarter, so A2 and
+ALL are NOT locked** pending Aarsh. A5 dating rule and dividend NaN window,
+ALL activation and evidence, A0 store acceptance logged. Job 23 after 17–22.
+**Next:** Aarsh on A2 (i); then build ALL, A0-identity, lock A2 and ALL;
+read jobs 17–22 once done.
+
 ## Start here (2026-10-01, session 11 — A1 and A3 LOCKED; A2 built; gap tool)
 
 **Done:** E5-A §14 decisions (RESULTS_DELAY K; A1/A3 readings; §6(c)

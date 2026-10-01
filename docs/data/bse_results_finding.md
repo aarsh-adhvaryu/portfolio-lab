@@ -37,22 +37,26 @@ not need beyond the trailing-four-quarter warm-up from 2010.
   values match the original filings, so they are not later restatements.
 - **Not point-in-time by itself:** the endpoint has no filing timestamp.
 
-## 3. Dating — a decision for Aarsh
+## 3. Dating — DECIDED 2026-10-01 (E5-A §14)
 
-The usable time is the results announcement: `dissem_dt`, or `news_dt`
-before 2015-08 (E2-A §3's key). Matched as the first announcement, 1 Oct –
-15 Jan, in BSE's category Result / Financial Results (from 2015-08), else a
-headline naming results and the quarter's month. **1 of 20 was dated by an
-analyst-call notice filed under Result / Financial Results** (Intellect,
-2016-10-25; results ~9 days later): that rule can date results **early**,
-which is lookahead. Options:
-1. first such announcement whose attachment is the results statement
-   (needs reading attachments; a data build);
-2. the later of that announcement and the board-meeting outcome;
-3. the statutory deadline (quarter end + 45 days, + 60 for March): never
-   early, up to ~2 weeks stale.
+The usable time of an announcement is `dissem_dt`, or `news_dt` before
+2015-08 (E2-A §3's key). The match is the first announcement, 1 Oct – 15 Jan
+for the September quarter (each quarter alike), in BSE's category Result /
+Financial Results (from 2015-08), else a headline naming results and the
+quarter's month. One of 20 matched announcements was an analyst-call notice
+9 days before the results, so the match alone can be early. **Rule:**
 
-## 4. The pull (Aarsh's, after §3)
+- usable from the **later** of the statutory deadline (quarter end + 45
+  days; + 60 for the March quarter) and the matched announcement;
+- **unmatched** (all of 2007–2009, which predate the feed): quarter end +
+  90 days.
+
+Pre-2015 rule: Listing Agreement Clause 41 — unaudited results within 45
+days of each quarter; for the last quarter, audited annual results within
+60 days in place of it. Any older, shorter limit only makes 45/60 the later
+date, so the rule is never earlier than the law allowed.
+
+## 4. The pull (Aarsh's; RUNNING job 23, after jobs 17–22)
 
 1,184 BSE scrips × 61 quarters (Dec-2006 → Dec-2021; nothing later), one
 parquet per scrip under `data/bse_results/`, resumable, ~5–7 h at 4
@@ -71,7 +75,8 @@ successions the engine's panel resolves, e.g. Asian Paints before 2013).
   in (M − 12 m, M], restated to M's share basis by the panel's split/bonus
   factor, over M's close. **The feed has a 2009–10 hole** (164 ex-dates in
   2009 against 694–931 either side), which understates 2009–2010 yields and
-  the 2010–early-2011 windows. A0's development decisions start 2011.
+  the 2010–early-2011 windows. **Decided:** yield is NaN at month-ends
+  2009-04-30 → 2011-03-31 (window overlaps ex-dates 2009-04-01 → 2010-04-30).
 - **Market cap**: latest usable BSE shareholding quarter's shares outstanding
   (reported from Dec 2015, derived before) × M's close, split/bonus restated.
   From 2010 (shareholding starts 2010-03).

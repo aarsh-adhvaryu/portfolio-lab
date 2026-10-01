@@ -433,3 +433,47 @@ seeing results. E5-A says nothing about E5-B/C/D.
   `engine.py` moved after `lock/E5-A` only in E3-R's gears path). A1 and A3
   stores rebuilt (features byte-identical to the readiness builds).
   Development runs next; validation after each development review.
+- 2026-10-01 (Aarsh, session 11, continued) — **A2 readings approved**
+  (readiness §3, items 1–4) with two conditions:
+  (i) **each quarter is usable from its BSE filing date**;
+  (ii) **pledge is 0 only when reported nil, otherwise NaN**.
+  (ii) is applied: the parser keeps a null, blank or absent pledge as
+  missing (`bse_shareholding._pledge`); in a 200-quarter sample of the API
+  (100 per era) no pledge field was null, blank or absent, so every stored 0
+  is a reported nil and the stores are unchanged.
+  (i) is **not yet applied; A2 is not locked**. No quarter before Sep 2015
+  carries a BSE filing date (43,436 old-era rows, `unresolved`), and the
+  announcements feed dates shareholding filings only from 2014. Read
+  strictly, A2 has no usable quarter in 2010–2014, never activates in
+  development (§6 [D 6] needs 36 covered cross-sections per horizon), and
+  its development decisions are A0's exactly. For Aarsh: keep (i) as read,
+  or name a rule for undated quarters.
+- 2026-10-01 (Aarsh, session 11, continued) — **A5 dating rule**, before any
+  A5 data is collected. A quarter's results are usable from the **later**
+  of (a) the statutory deadline — quarter end + 45 days, + 60 days for the
+  March quarter — and (b) the matched results announcement
+  (`docs/data/bse_results_finding.md` §3); **unmatched: quarter end + 90
+  days.** The pre-2015 rule is Listing Agreement Clause 41: unaudited
+  results within 45 days of each quarter; for the last quarter, audited
+  annual results within 60 days in place of it. Where an older version
+  allowed less time, 45/60 is the later date, so the rule is never earlier
+  than the law allowed. **Dividend yield is NaN until its 12-month window
+  clears the NSE feed hole** (ex-dates 2009-04-01 → 2010-04-30, 12–28 a month
+  against 76–308 in the same months of 2008 and 2010): NaN at month-ends
+  2009-04-30 → 2011-03-31, available from 2011-04-30. *Reason:* one sampled
+  match was an analyst-call notice dated 9 days before the results.
+- 2026-10-01 (Aarsh, session 11, continued) — **E5-A-ALL activation**: each
+  family's columns switch on at that family's own activation refit, as when
+  run alone (§6 [D 6]: A3 from 2010-12; A1 and A2 from 2014-12), and are
+  NaN before it; the model is A0's until the first family is active.
+  **Evidence:** A1 and A2 have only **2015–2016** development evidence (A2
+  none if condition (i) above stands as read); 2011–2014 development tests
+  A3 alone. **ALL is not locked**: it carries A2's columns, so it waits for
+  A2's dating, then the build and an A0-identity check.
+- 2026-10-01 (session 11) — **A0 store accepted at later code** (logged in
+  the lock entry above; stated here on its own). `engine.py`, in the A0
+  store's builder hash, changed after `lock/E5-A` (E3-R's gears, `c06c6af`),
+  so every later run refused the store. `build_e5a_features.py --verify`
+  rebuilt both periods byte for byte at `a01be98` and recorded that builder
+  hash beside the original (`store.verified_shas`); the files and the
+  original stamp are unchanged, so `lock/E5-A` runs are unaffected.

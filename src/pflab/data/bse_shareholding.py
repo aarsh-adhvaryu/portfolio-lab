@@ -128,6 +128,16 @@ def _f(row: dict, key: str, default=None):
     return default if v is None else v
 
 
+def _pledge(row: dict, key: str, cast):
+    """A pledge figure as filed: 0 only when the filing reports nil (a
+    numeric 0); null, blank or absent stays None, never 0 (E5-A §14
+    2026-10-01). A 200-quarter sample of the API found no null."""
+    v = row.get(key)
+    if v is None or str(v).strip() == "":
+        return None
+    return cast(v)
+
+
 # Fld_Code values in the SEBI-format Table1. The table mixes COMPONENTS with
 # SUBTOTALS and a GRAND TOTAL, so summing it double- and triple-counts:
 # for Reliance Dec-2015 the six rows sum to 6.58bn shares against a real
@@ -189,9 +199,9 @@ def fetch_new_era(scrip: str, qtrid: int, session: requests.Session,
         "public_pct": pct(CODE_PUBLIC), "public_shares": shares(CODE_PUBLIC),
         "nonpromoter_nonpublic_pct": npnp_pct,
         "nonpromoter_nonpublic_shares": shares(CODE_NPNP),
-        "pledged_shares": int(_f(prom, "Fld_PledgeEncumberedNoOfShares", 0) or 0),
-        "pledged_pct_of_promoter": float(_f(prom, "Fld_PledgeEncumberedPercentage", 0.0) or 0.0),
-        "pledged_pct_of_total": float(_f(prom, "Fld_PledgeEncumberedPercentOfTSC", 0.0) or 0.0),
+        "pledged_shares": _pledge(prom, "Fld_PledgeEncumberedNoOfShares", int),
+        "pledged_pct_of_promoter": _pledge(prom, "Fld_PledgeEncumberedPercentage", float),
+        "pledged_pct_of_total": _pledge(prom, "Fld_PledgeEncumberedPercentOfTSC", float),
         "n_shareholders_promoter": nsh(CODE_PROMOTER),
         "n_shareholders_public": nsh(CODE_PUBLIC),
         "n_shareholders_total": nsh(CODE_TOTAL),
@@ -205,8 +215,8 @@ def fetch_new_era(scrip: str, qtrid: int, session: requests.Session,
         "n_shareholders": int(_f(r, "Fld_NoOfShareHolders", 0) or 0),
         "shares": int(_f(r, "Fld_TotalNoOfShares", 0) or 0),
         "pct_of_total": float(_f(r, "Fld_TotalPercentageOf_A_B_C2", 0.0) or 0.0),
-        "pledged_shares": int(_f(r, "Fld_PledgeEncumberedNoOfShares", 0) or 0),
-        "pledged_pct": float(_f(r, "Fld_PledgeEncumberedPercentage", 0.0) or 0.0),
+        "pledged_shares": _pledge(r, "Fld_PledgeEncumberedNoOfShares", int),
+        "pledged_pct": _pledge(r, "Fld_PledgeEncumberedPercentage", float),
         "is_subtotal": r.get("Fld_Code") in SUBTOTAL_CODES,
     } for r in cats]
     return summary, rows
@@ -246,13 +256,15 @@ def fetch_old_era(scrip: str, qtrid: int, session: requests.Session,
     else:
         shares = sum(int(_f(r, "Fld_NoOfShares", 0) or 0) for r in entities)
         pct = sum(float(_f(r, "Fld_Percentage", 0.0) or 0.0) for r in entities)
-    pledged = sum(int(_f(r, "fld_pledgeencumberednoofshares", 0) or 0) for r in entities)
+    pl = [_pledge(r, "fld_pledgeencumberednoofshares", int) for r in entities]
+    pledged = None if any(v is None for v in pl) else sum(pl)
     summary = {
         "promoter_pct": pct, "promoter_shares": shares,
         "public_pct": None, "public_shares": None,
         "nonpromoter_nonpublic_pct": None, "nonpromoter_nonpublic_shares": None,
         "pledged_shares": pledged,
-        "pledged_pct_of_promoter": (100.0 * pledged / shares) if shares else None,
+        "pledged_pct_of_promoter": (100.0 * pledged / shares)
+                                   if shares and pledged is not None else None,
         "pledged_pct_of_total": None,
         "n_shareholders_promoter": None, "n_shareholders_public": None,
         "n_shareholders_total": None,
