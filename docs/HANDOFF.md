@@ -9,15 +9,16 @@ data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 **A1 REJECT, A2 REJECT** (G2 fails vs A0 in both periods); **A3 INCONCLUSIVE,
 E5-A-ALL INCONCLUSIVE** (G1 fails vs A0 in development only; in validation
 +3.86 / +3.97 pp, 8 of 8 rows). Adoption INCONCLUSIVE for all four; **none
-joins the stack**; mandate not met. STATE: 12 verdicts.
-**A5** LOCKED (`655aae0`), development read: incremental G1, G2 fail,
-adoption holds, active from Dec 2012. Validation = RUNNING job 33 (Aarsh).
+joins the stack**; mandate not met.
+**A5 INCONCLUSIVE** (vs A0: development G1, G2 fail; validation +8.15 pp,
+7 of 8 rows; vs stack −10.55 pp in validation). STATE: 13 verdicts.
 **Gap:** shortfalls match selection under the pre-registered rule.
 **Open (Aarsh):** conclusions in the five development reviews and the
 verdict note; the gap reading; cutting E2-B, E1-S, E2-E and E3 (proposal);
 whether E5-A goes further, given every family is 9–15 pp short of B5 in
 validation.
-**Next:** job 33, then A5's verdict; then the forward list.
+**Next:** Aarsh's conclusions and decisions above; then the forward list.
+Nothing is queued or running.
 
 ## Start here (2026-10-01, session 12 close — overnight queue; A5 LOCKED)
 

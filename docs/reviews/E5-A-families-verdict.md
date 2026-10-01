@@ -56,3 +56,20 @@ A3.
 
 STATE count: 12 experiments with a computed verdict (A1, A2 REJECT; A3, ALL
 INCONCLUSIVE). A5: development only.
+
+## A5 valuation (added 2026-10-01, job 33)
+
+Validation `E5-A/A5/sweeps/validation-b1a6c3c8bc7daead` at `lock/E5-A-A5`
+(`655aae0`, clean). STACK reproduced **IDENTICAL** at `655aae0`
+(`experiments/_identity/e1d_655aae0_val.log`). Full output
+`experiments/E5-A/A5/classify/verdict.json`.
+
+| | incremental (vs A0) | adoption (vs stack) |
+|---|---|---|
+| development | G1 no (+0.15 pp), G2 no (+3.56 pp DD), G3 6/8, G4 yes | G1–G4 hold |
+| validation | **G1–G4 hold**: 15.66% / 21.60% vs 7.51% / 26.69% (+8.15 pp, −5.09 pp DD), 7 of 8 rows | G2 no (−10.55 pp), G3 0/8 |
+| verdict | **INCONCLUSIVE** (the family's evidence) | **INCONCLUSIVE** |
+
+Joins the stack: no. Mandate: not met (validation §3 0 of 8 rows; §5 −6.78
+pp vs B5). Evidence: development from the Dec 2012 refit (48 of 72
+decisions); validation throughout. STATE: 13 verdicts.

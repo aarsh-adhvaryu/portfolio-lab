@@ -22,7 +22,7 @@ session 12): verdicts in `docs/reviews/E5-A-families-verdict.md`; 30–31 IDENTI
 
 ## Queued
 
-**33. A5 validation (offline; development review committed 2026-10-01; ~3 GB, ~30 min).**
+**33. DONE 2026-10-01 → `E5-A\A5\sweepsalidation-b1a6c3c8bc7daead` 15.66% / 21.60%; STACK IDENTICAL at `655aae0`. A5 validation (offline; development review committed 2026-10-01; ~3 GB, ~30 min).**
 `cd D:\portfolio_lab; .\tools\run_locked.ps1 -Experiment E5-A-A5 -Period validation -Config configs\e5a_a5.toml`
 → `experiments\E5-A\A5\sweeps\validation-<id>`; prints `SWEEP DIR:`. STACK as for the families (`a6256fbb…`), after an identity check at `655aae0` if Claude asks for one.
 

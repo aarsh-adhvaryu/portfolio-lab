@@ -1,6 +1,6 @@
 # STATE — verdicts and where things stand
 
-One page. Updated 2026-10-01 (session 12: E5-A family verdicts; A5 locked and developed; gap diagnosis). The narrative is in `docs/HANDOFF.md`; the
+One page. Updated 2026-10-01 (session 12: E5-A family verdicts incl. A5; gap diagnosis). The narrative is in `docs/HANDOFF.md`; the
 order and reasons in `docs/ROADMAP.md`; the rules for judging in
 `docs/strategies/GATE.md` (adoption) and `docs/MANDATE.md` (ADVANCE).
 
@@ -25,15 +25,15 @@ on the second would be.
 
 | | |
 |---|---|
-| **experiments with a computed verdict** | **12** |
+| **experiments with a computed verdict** | **13** |
 | ADOPTED | **1** (E1d; stack E1 + E1d from 2026-09-29) |
 | REJECT | 5 (E1c, E2-A, E3-R, E5-A A1, E5-A A2) |
-| INCONCLUSIVE | 6 (E1, E1b, E1-P, E5-A A0, E5-A A3, E5-A-ALL) |
-| **registered, no result yet** (2026-10-01, E5-A §14) | **1**: E5-A A5 (development read; validation next) |
+| INCONCLUSIVE | 7 (E1, E1b, E1-P, E5-A A0, E5-A A3, E5-A-ALL, E5-A A5) |
+| **registered, no result yet** | **0** of E5-A's (all five families have verdicts) |
 | sealed-period reveals used | **0 of 1** |
 | stacks meeting MANDATE §3 and §5 | **0** |
 
-Locked: **E5-A A1, A3, A2, ALL, A5** — **E5-A A1, A3** (`lock/E5-A-A1`, `-A3`) and **A2, E5-A-ALL** (`lock/E5-A-A2`, `-ALL`), all 2026-10-01. **Development read 2026-10-01 (session 12)** (`docs/reviews/E5-A-A1-development.md`, `E5-A-A3-development.md`): **A1** incremental G2 (+3.06 pp DD) and G3 (5/8) fail, adoption G1–G4 hold, evidence Feb 2015–Dec 2016 only; **A3** incremental G1 fails (+0.19 pp), adoption G1–G4 hold. Neither incremental verdict can now be ADOPT, so **neither can join the stack**; validation decides REJECT or INCONCLUSIVE. **Gap diagnosis** (jobs 19–22, `docs/reviews/gap-diagnosis.md` §3): by the pre-registered rule the three shortfalls (E1d dev, A0 dev, A0 val) match **selection**; E1d validation has no shortfall; costs or tax nowhere. **A2** (`E5-A-A2-development.md`): incremental G1, G2, G3 (0/8) fail; adoption G3 fails (3/8). **E5-A-ALL** (`E5-A-ALL-development.md`): incremental G1 fails (+0.05 pp); adoption G1–G4 hold; A1 and A2 columns have 2015–2016 only, 2011–14 is A3 alone. **No family can join the stack**; validation decides REJECT or INCONCLUSIVE for each. MANDATE development: A1 §3 yes, §5 no; A2, A3, ALL neither. Job 23 done (BSE results, 1,184 scrips). **A5 LOCKED** 2026-10-01 (`lock/E5-A-A5` → `655aae0`; §6(f) 8 columns; A0-identity IDENTICAL). **Overnight queue done** (jobs 26–32): family verdicts above, none joins the stack; STACK IDENTICAL at both family tags. **A5 development** (`E5-A-A5-development.md`): incremental G1, G2 fail; adoption holds; active from the Dec 2012 refit. Next: A5 validation (job 33). **Built and ready to lock** (2026-09-27):
+Locked: **E5-A A1, A3, A2, ALL, A5** — **E5-A A1, A3** (`lock/E5-A-A1`, `-A3`) and **A2, E5-A-ALL** (`lock/E5-A-A2`, `-ALL`), all 2026-10-01. **Development read 2026-10-01 (session 12)** (`docs/reviews/E5-A-A1-development.md`, `E5-A-A3-development.md`): **A1** incremental G2 (+3.06 pp DD) and G3 (5/8) fail, adoption G1–G4 hold, evidence Feb 2015–Dec 2016 only; **A3** incremental G1 fails (+0.19 pp), adoption G1–G4 hold. Neither incremental verdict can now be ADOPT, so **neither can join the stack**; validation decides REJECT or INCONCLUSIVE. **Gap diagnosis** (jobs 19–22, `docs/reviews/gap-diagnosis.md` §3): by the pre-registered rule the three shortfalls (E1d dev, A0 dev, A0 val) match **selection**; E1d validation has no shortfall; costs or tax nowhere. **A2** (`E5-A-A2-development.md`): incremental G1, G2, G3 (0/8) fail; adoption G3 fails (3/8). **E5-A-ALL** (`E5-A-ALL-development.md`): incremental G1 fails (+0.05 pp); adoption G1–G4 hold; A1 and A2 columns have 2015–2016 only, 2011–14 is A3 alone. **No family can join the stack**; validation decides REJECT or INCONCLUSIVE for each. MANDATE development: A1 §3 yes, §5 no; A2, A3, ALL neither. Job 23 done (BSE results, 1,184 scrips). **A5 LOCKED** 2026-10-01 (`lock/E5-A-A5` → `655aae0`; §6(f) 8 columns; A0-identity IDENTICAL). **Overnight queue done** (jobs 26–32): family verdicts above, none joins the stack; STACK IDENTICAL at both family tags. **A5 development** (`E5-A-A5-development.md`): incremental G1, G2 fail; adoption holds; active from the Dec 2012 refit. **A5 INCONCLUSIVE** (job 33; vs A0 validation +8.15 pp, 7/8 rows; development G1, G2 fail). **Built and ready to lock** (2026-09-27):
 E2-D1, E2-D2 — each note's last section says what the lock must settle.
 Readiness notes: E2-B, E3, E5-A (decisions taken 2026-09-28 bar D2, now settled: A0 against E1 + E1d; build next). Drafts: E1-S, E2-E.
 
@@ -68,6 +68,7 @@ CAGR / max drawdown, full sweeps at `c6ef67e`.
 | **E5-A A3** | LOCKED 2026-10-01 | **INCONCLUSIVE** (vs A0: G1 fails dev only); adoption INCONCLUSIVE | 12.78% / 14.68% | 11.37% / 19.61% | same |
 | **E5-A A2** | LOCKED 2026-10-01 | **REJECT** (vs A0: G2 fails both periods); adoption INCONCLUSIVE | 11.19% / 20.79% | 13.35% / 30.62% | same |
 | **E5-A-ALL** | LOCKED 2026-10-01 | **INCONCLUSIVE** (vs A0: G1 fails dev only); adoption INCONCLUSIVE | 12.64% / 15.64% | 11.48% / 23.17% | same |
+| **E5-A A5** | LOCKED 2026-10-01 | **INCONCLUSIVE** (vs A0: G1, G2 fail dev only); adoption INCONCLUSIVE | 12.74% / 18.02% | 15.66% / 21.60% | same |
 
 E2-A's windows are its own (§6), so its figures are not comparable with the
 rows above. E1 base on **those** windows is 8.13% / 39.54% and 48.74% / 7.36%.
