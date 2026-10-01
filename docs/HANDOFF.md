@@ -3,6 +3,16 @@
 `pytest -q`: **632 passed** (626 + 6); under the audit's pandas 2.2.3 with no
 data dir, 631 + 1 skip. Sealed period untouched. Nothing running.
 
+## Start here (2026-10-01, session 13 end — gap ladder read; research ends)
+
+Jobs 34–37 done at `5553d71`; base row reproduced in all four
+(`gap-ladder.md` §3). **Rule: brake + cap = −26% of E1d's 5.68 pp
+development gap, below 60% → research phase ends; fallback build begins.**
+Unweighed facts: the brake adds 6.19 pp in E1d development; picks →
+mechanics swings −5.40 / +11.80 pp, so rung 0 is not a clean floor.
+**Next:** Aarsh answers `docs/plans/fallback.md` §6 (fund, existing
+positions, holdings source); then the fallback build. Nothing running.
+
 ## Start here (2026-10-01, session 13 — E5-A closed; gap ladder registered)
 
 **Decisions recorded** (Aarsh): verdicts accepted and conclusion written

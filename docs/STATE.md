@@ -1,6 +1,6 @@
 # STATE — verdicts and where things stand
 
-One page. Updated 2026-10-01 (session 13: E5-A closed; four cut; gap ladder registered). The narrative is in `docs/HANDOFF.md`; the
+One page. Updated 2026-10-01 (session 13: E5-A closed; four cut; gap ladder read: research ends). The narrative is in `docs/HANDOFF.md`; the
 order and reasons in `docs/ROADMAP.md`; the rules for judging in
 `docs/strategies/GATE.md` (adoption) and `docs/MANDATE.md` (ADVANCE).
 
@@ -122,11 +122,14 @@ result meets it in development.
   brake → cap → costs → tax), E1d and A0, both periods. Diagnostic, not
   promotable. Rule: brake + cap ≥ 60% of E1d's 5.67 pp development gap →
   Aarsh may register one final stack experiment; otherwise the fallback
-  (`docs/plans/fallback.md`).
+  (`docs/plans/fallback.md`). **Read 2026-10-01 (jobs 34–37): −26%, below
+  60%; research phase ends.**
 
 ## Next
 
 **E5-A closed** (2026-10-01, verdicts accepted; no new families, no A4).
 **E2-B, E1-S, E2-E, E3 removed** from the forward list. Next: the gap ladder
-(jobs 34–37), then its rule. Still listed: E2-D1, E2-D2 (parked), E6-V. No
+read: brake + cap −26% of E1d's development gap,
+below 60%, so **the research phase ends**; next is the fallback build
+(`docs/plans/fallback.md`), after Aarsh's three decisions in its §6. No
 stack meets the mandate.

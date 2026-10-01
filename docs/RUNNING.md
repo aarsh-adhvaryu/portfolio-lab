@@ -22,7 +22,7 @@ session 12): verdicts in `docs/reviews/E5-A-families-verdict.md`; 30–31 IDENTI
 
 ## Queued
 
-**34–37. Gap ladder (DIAGNOSTIC, NOT PROMOTABLE; registered `docs/reviews/gap-ladder.md`,
+**34–37. DONE 2026-10-01 (all at `5553d71`; read in `gap-ladder.md` §3). Gap ladder (DIAGNOSTIC, NOT PROMOTABLE; registered `docs/reviews/gap-ladder.md`,
 commit `2e6839b`).** From the repo with a clean tree; ~3 GB each; five engine
 runs plus B5 each, so ~12–15 min (A0 ~15–20). All four at once if `status.ps1`
 shows ≥ 14 GB free; otherwise two, then two.

@@ -5,10 +5,10 @@ charter. Each experiment gets its own charter in `docs/strategies/` before it
 runs; this file only says what the experiments are, in what order, what each
 must prove, and what the finished system looks like.
 
-**Forward order (2026-10-01, session 13): the gap ladder (diagnostic)
-decides between one final stack experiment and the fallback build
-(`docs/reviews/gap-ladder.md` §2). Still listed, none before the ladder is
-read: E2-D1, E2-D2 (parked until E2-D1), E6-V.** Done: E1
+**Forward order (2026-10-01, session 13): research phase ended by the gap
+ladder's registered rule (brake + cap −26% of E1d's development gap, below
+60%; `docs/reviews/gap-ladder.md` §3). Next: the fallback build
+(`docs/plans/fallback.md`). E2-D1, E2-D2 and E6-V are not run.** Done: E1
 (INCONCLUSIVE), E1b (INCONCLUSIVE), E1-P (INCONCLUSIVE), E1c (REJECT), E1d
 (ADOPT), E2-A (REJECT) — final, re-classified 2026-09-29 after the full
 regression; **E5-A A0 (INCONCLUSIVE) and E3-R (REJECT), 2026-09-30**
