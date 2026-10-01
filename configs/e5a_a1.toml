@@ -147,8 +147,8 @@ min_coverage = 0.5
 [e5a.a1]
 # A1 plan §5 items 7-8 (2026-09-30): one reader per flag. K's events enter
 # as subtype UNCLEAR; L's with its own subtype (NOT_EVENT excluded).
-# RESULTS_DELAY: the rule as written gives K (L 88.0% < K 88.5%); pending
-# Aarsh's confirmation.
+# RESULTS_DELAY: K by the rule as written (L 88.0% < K 88.5%, unrounded);
+# confirmed by Aarsh 2026-10-01 (E5-A §14).
 l_model = "qwen3.5-9b-16k"
 l_digest = "c1b119d707b9"
 

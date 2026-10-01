@@ -18,6 +18,8 @@ the real-data check is the one that proves no E1 result can have moved.
 `--config` and `--ref` (2026-09-30, E3-R §11) point it at another stack's
 base row, e.g. E1d's full sweep at c6ef67e, run from a locked worktree. It
 prints where `pflab` was imported from, so a run on the live tree shows.
+An E5-A config (2026-10-01) is scored through `runner.e5a_scores`, as its
+sweep is: the A0-identity check at a family's lock tag.
 
 Long job (panel load + one engine run): Aarsh's to run. The two periods can
 run side by side.
@@ -83,9 +85,13 @@ def main(period_name: str, config: str = "configs/e1.toml",
     cfg = runner.load_config(config)
     period, panel, indices, actions, cost_factory, tax, membership = runner.prepare(
         cfg, period_name)
+    # E5-A (2026-10-01): the ranker's scores, built exactly as the sweep
+    # builds them; without them the engine would run the fallback signal.
+    provider, _ = runner.e5a_scores(cfg, period, panel)
     res = engine.run(cfg, period, panel, indices.get("NIFTY50_PRICE"),
                      cost_factory(float(cfg.get("costs", {}).get("multiplier", 1.0))),
-                     tax, actions=actions, membership=membership)
+                     tax, actions=actions, membership=membership,
+                     scores=(provider(cfg, "base") if provider else None))
 
     ref = [ref_dir] if ref_dir else sorted(glob.glob(str(
         experiments_dir().resolve() / "E1" / "regression"

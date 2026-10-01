@@ -1,8 +1,8 @@
-# E5-A families — readiness (2026-09-30)
+# E5-A families — readiness (2026-09-30; updated 2026-10-01)
 
-**A1: READY TO LOCK once RESULTS_DELAY (§5.1) and the readings are confirmed.
-A3: READY TO LOCK once §4 is confirmed. A2: NOT READY — readiness only
-(§3).** No family run exists.
+**2026-10-01: A1 and A3 READY TO LOCK** — readings confirmed, RESULTS_DELAY
+K; the lock waits only for the A0-identity check (§6). **A2 BUILT, READY TO
+LOCK** once §3's build readings are confirmed. No family run exists.
 
 **Change-log entries that apply** (E5-A §14): 2026-09-27 (rewrite);
 2026-09-28 (D1, D3–D9; A2's precondition replaced); 2026-09-29 (D2: stack
@@ -10,8 +10,10 @@ E1 + E1d); 2026-09-29 (A0 LOCKED, `lock/E5-A`); 2026-09-30 (A1 plan
 decisions; **§6(b) amended**: per flag × subtype, NOT_EVENT excluded);
 2026-09-30 session 10 (**A0 verdict recorded; A1 reader decisions** — L
 reads DEFAULT, FORENSIC_AUDIT, REGULATORY_ACTION; K's events are UNCLEAR;
-UNCLEAR its own subtype). A1 plan: `docs/notes/A1-reader-plan.md` §5 items
-7–10.
+UNCLEAR its own subtype); **2026-10-01 session 11** (RESULTS_DELAY K;
+A1 and A3 readings confirmed; **§6(c) amended**: pledge invocations dropped,
+pledge share added; hypotheses for A1–A3, **E5-A-ALL** and **A5** registered).
+A1 plan: `docs/notes/A1-reader-plan.md` §5 items 7–10.
 
 ## 1. What was built (shared)
 
@@ -57,25 +59,28 @@ new code.
   2016: REGULATORY_ACTION 62 AT_COMPANY, FORENSIC_AUDIT 2, DEFAULT 0) and
   `validation` (17 s).
 
-## 3. A2 — positioning (§6(c)): readiness only
+## 3. A2 — positioning (§6(c) as amended 2026-10-01): BUILT
 
-- **Data:** `bse_shareholding/summary.parquet`, 194,035 scrip-quarters
-  2010-03 → 2026-06; 135,098 `ok`, 58,937 `unavailable`; promoter shares,
-  percent, pledged shares and shares outstanding. The quarter pairing,
-  usable dates and split/bonus restatement exist (`data/positioning.py`,
-  E2-D1). §14 2026-09-28 fixes the columns: Δ promoter shares and Δ promoter
-  percent (1 and 2 quarters) and a flag for a change in total shares with no
-  recorded action; nothing thresholded.
-- **Decisions needed (Aarsh) before a build:**
-  1. **Pledge invocations** (§6(c)) have no source: only ~41 BSE headlines
-     2014–2026 mention one. Options: (a) drop the column, declared; (b) a
-     proxy — a quarter's fall in pledged shares together with a fall in
-     promoter shares; (c) read SAST Reg 31 attachments (a data build).
-  2. **The unexplained share-count fall** (E2-D1 readiness §3: 16% of
-     large moves): A2's "change in total shares with no recorded action"
-     column carries it as a feature, so no cleaning is needed — **confirm**.
-  3. Denominator and dating readings as E2-D1 readiness §4 1–6 — confirm
-     they carry over unchanged.
+- **Columns (9)** (`ranker/holdings.py`, `configs/e5a_a2.toml`): promoter
+  shares change 1q, 2q (restated, ÷ later shares outstanding, + = buying);
+  promoter percent change 1q, 2q (points); pledged % of promoter holding,
+  level and 1q, 2q change (points); unexplained shares-outstanding change
+  1q, 2q (later ÷ restated earlier − 1). Pledge invocations dropped.
+- **Stores built** (`e5a_development` 33 s): coverage of U(M) 86% (2011) →
+  97% (2016). **Activation at the 2014-12 refit** (h12: 31 covered
+  cross-sections at 2013-12, 43 at 2014-12), so 2011–2014 decisions are
+  A0's, as for A1. Tails as E2-D1 found: promoter-shares change down to
+  −4.7 (an unexplained share-count fall), unexplained change up to +19;
+  carried, not cleaned (decision 1d).
+- **Build readings for A2's lock to confirm** (none in the charter):
+  1. The unexplained share change is a **value**, not §14 2026-09-28's flag
+     (a flag needs a threshold).
+  2. Sign: promoter-shares change is E2-D1's `sold_frac` negated.
+  3. Each column needs its own pair; the level (pledge %) needs only the
+     latest usable quarter. Two scrips on one ISIN: the lower code is read.
+  4. Restatement uses the engine's split/bonus rule for shares outstanding
+     too (E2-D1 readiness §4 item 1).
+- Tests: 4 (lookahead and 15:30, restatement, no substitution, columns).
 
 ## 4. A3 — world exposure (§6(d))
 
@@ -105,3 +110,17 @@ new code.
    2010 window) and lock A1 and A3 (append to E5-A §14, tags
    `lock/E5-A-A1`, `lock/E5-A-A3`); the A0-identity check first.
 4. A2: §3's three decisions.
+
+## 6. Session 11 (2026-10-01)
+
+- Decisions 1a–d recorded in E5-A §14. Hypotheses registered (§14): A1,
+  A2, A3, **E5-A-ALL** (A0 + A1–A3 columns; amends §3's "never combined")
+  and **A5** valuation (a family, not in ALL). STATE count: 5 registered.
+- **A0-identity tool:** `tools/e1_identity.py` now scores an E5-A config
+  through `runner.e5a_scores` (extracted from `runner.main`, the sweep's
+  own path). A1, A2 and A3 share one candidate commit, so one check per
+  period covers every family tag. `family.py` changed (A2), so the A1 and
+  A3 stores were rebuilt at that commit.
+- **Open for E5-A-ALL's lock:** how activation reads with three families
+  (each family's columns from its own activation refit, or one model from
+  the refit where all three are active, 2014-12) — Aarsh's.

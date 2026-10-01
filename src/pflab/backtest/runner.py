@@ -213,6 +213,39 @@ def input_fingerprints(cfg: dict, period, indices, actions, membership,
     return fp
 
 
+def e5a_scores(cfg: dict, period, panel):
+    """E5-A's score provider and manifest block, or (None, None) for any
+    other config. The feature store must describe THIS panel and universe,
+    or the models would be fitted on one dataset and traded on another.
+    Shared by `main` and `tools/e1_identity.py`, so an identity check runs
+    exactly the sweep's scores."""
+    if not cfg.get("e5a"):
+        return None, None
+    from pflab.ranker import family as e5f, store as e5s, walk as e5w
+    from pflab.ranker.features import A0_FEATURES
+    sdir = e5s.store_dir(period.name)
+    feats, labels, smeta = e5s.load(sdir)
+    fam = e5f.family_of(cfg)
+    # a family checks A0's store against the A0 part of its config
+    e5s.check(smeta, cfg if fam == "A0" else e5f.base_config(cfg), period,
+              artifacts.data_fingerprint(panel))
+    cols = A0_FEATURES
+    e5a_manifest = {"store": str(sdir), "store_files": smeta["files"],
+                    "store_code": smeta.get("code"),
+                    "store_panel_fingerprint": smeta.get("panel_fingerprint")}
+    if fam != "A0":
+        ffeats, fmeta = e5f.load(sdir, fam)
+        e5f.check(fmeta, cfg, period, smeta)
+        feats = pd.concat([feats, ffeats], ignore_index=True)
+        cols = tuple(A0_FEATURES) + tuple(e5f.family_features(cfg))
+        e5a_manifest.update({"family": fam, "family_file": fmeta["file"],
+                             "family_code": fmeta.get("code")})
+        del ffeats
+    provider = e5w.SweepScores(feats, labels, period, cols)
+    del feats
+    return provider, e5a_manifest
+
+
 def main(config_path, period_name=None, unseal_reason=None, sweep=False,
          extra_manifest=None,
          rows=None, kind="sweeps") -> str:
@@ -247,32 +280,7 @@ def main(config_path, period_name=None, unseal_reason=None, sweep=False,
         except Exception:
             overlap = None      # reported as unavailable, never invented
 
-    # E5-A: the feature store must describe THIS panel and universe, or the
-    # models would be fitted on one dataset and traded on another.
-    provider, e5a_manifest = None, None
-    if cfg.get("e5a"):
-        from pflab.ranker import family as e5f, store as e5s, walk as e5w
-        from pflab.ranker.features import A0_FEATURES
-        sdir = e5s.store_dir(period.name)
-        feats, labels, smeta = e5s.load(sdir)
-        fam = e5f.family_of(cfg)
-        # a family checks A0's store against the A0 part of its config
-        e5s.check(smeta, cfg if fam == "A0" else e5f.base_config(cfg), period,
-                  artifacts.data_fingerprint(panel))
-        cols = A0_FEATURES
-        e5a_manifest = {"store": str(sdir), "store_files": smeta["files"],
-                        "store_code": smeta.get("code"),
-                        "store_panel_fingerprint": smeta.get("panel_fingerprint")}
-        if fam != "A0":
-            ffeats, fmeta = e5f.load(sdir, fam)
-            e5f.check(fmeta, cfg, period, smeta)
-            feats = pd.concat([feats, ffeats], ignore_index=True)
-            cols = tuple(A0_FEATURES) + tuple(e5f.family_features(cfg))
-            e5a_manifest.update({"family": fam, "family_file": fmeta["file"],
-                                 "family_code": fmeta.get("code")})
-            del ffeats
-        provider = e5w.SweepScores(feats, labels, period, cols)
-        del feats
+    provider, e5a_manifest = e5a_scores(cfg, period, panel)
 
     cfg_text = json.dumps(cfg, sort_keys=True, default=str)
     # Audit Deliverable 1 g (2026-09-27): the data identity covers every

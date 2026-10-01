@@ -162,7 +162,7 @@ def test_a3_config_columns_are_the_builders():
 # -- a family changes only the columns (§3) ---------------------------------
 def test_family_configs_differ_from_a0_only_in_columns_and_family_blocks():
     a0 = _toml.load("configs/e5a_a0.toml")
-    for p in ("configs/e5a_a1.toml", "configs/e5a_a3.toml"):
+    for p in ("configs/e5a_a1.toml", "configs/e5a_a2.toml", "configs/e5a_a3.toml"):
         c = _toml.load(p)
         base = family.base_config(c)
         assert store.identity(base) == store.identity(a0)
@@ -230,3 +230,70 @@ def test_an_inactive_family_decides_exactly_as_a0(world):
     # and never active when the threshold is out of reach
     never = walk.Spec(**{**fam.__dict__, "activation": (10_000, 0.5)})
     assert not any(i.get("family_active") for i in w.score(never, months)["info"].values())
+
+
+# -- A2 (§6c as amended 2026-10-01) ------------------------------------------
+from pflab.data import positioning as pos  # noqa: E402
+from pflab.ranker import holdings as ho  # noqa: E402
+
+
+def _summary(rows):
+    """rows: (scrip, quarter_end, filed or None, promoter_shares, promoter_pct,
+    pledged_pct_of_promoter, shares_outstanding_reported)"""
+    return pd.DataFrame([{"scrip_code": s, "quarter_end": q, "status": "ok",
+                          "filing_date": pd.Timestamp(f) if f else pd.NaT,
+                          "promoter_shares": ps, "promoter_pct": pp,
+                          "pledged_pct_of_promoter": pl,
+                          "shares_outstanding_reported": so,
+                          "shares_outstanding_derived": np.nan}
+                         for s, q, f, ps, pp, pl, so in rows])
+
+
+RES = pos.ScripResolver(SMAP.assign(valid_from=pd.to_datetime(["2000-01-01", "2000-01-01"])))
+Q = [("5000", "2015-12-31", "2016-01-20 10:00", 600.0, 60.0, 10.0, 1000.0),
+     ("5000", "2016-03-31", "2016-04-20 10:00", 550.0, 55.0, 20.0, 1000.0),
+     ("5000", "2016-06-30", "2016-07-20 16:00", 1000.0, 50.0, 25.0, 2000.0)]
+
+
+def _a2(rows, actions=None, mes=(date(2016, 5, 31), date(2016, 7, 29), date(2016, 8, 31))):
+    pr = ho.pairs(ho.quarters(_summary(rows)), actions, RES.all_isins())
+    st = ho.a2_features(pr, {m: ["INA", "INB"] for m in mes}, RES)
+    return ft.to_wide(st, ho.feature_names())
+
+
+def test_a2_quarter_usable_after_M_cannot_change_M_and_after_1530_is_next_day():
+    a = _a2(Q)
+    b = _a2(Q + [("5000", "2016-09-30", "2016-08-31 16:00", 1.0, 1.0, 99.0, 9.0)])
+    pd.testing.assert_frame_equal(a, b)          # filed 16:00 on M: usable after M
+    # the Jul quarter, filed 16:00 on 2016-07-20, is read at 07-29, not before
+    assert a.loc[(date(2016, 5, 31), "INA"), "pledge_pct"] == 20.0
+    assert a.loc[(date(2016, 7, 29), "INA"), "pledge_pct"] == 25.0
+
+
+def test_a2_values_split_restated_and_unexplained_share_change():
+    acts = pd.DataFrame({"isin": ["INA"], "ex_date": [date(2016, 5, 15)],
+                         "factor": [0.5], "source": ["purpose"]})   # 1:1 split
+    w = _a2(Q, acts)
+    r = w.loc[(date(2016, 8, 31), "INA")]
+    assert r["prom_shares_chg_1q"] == pytest.approx((1000 - 550 * 2) / 2000)
+    assert r["prom_pct_chg_1q"] == pytest.approx(-5.0)
+    assert r["pledge_pct_chg_2q"] == pytest.approx(15.0)
+    assert r["so_unexplained_chg_1q"] == pytest.approx(0.0)       # the split explains it
+    w0 = _a2(Q)                                                     # no action recorded
+    assert w0.loc[(date(2016, 8, 31), "INA"), "so_unexplained_chg_1q"] == pytest.approx(1.0)
+
+
+def test_a2_missing_pair_is_nan_never_substituted_and_uncovered_is_nan():
+    w = _a2([Q[0], Q[2]])                       # the March quarter is missing
+    r = w.loc[(date(2016, 8, 31), "INA")]
+    assert np.isnan(r["prom_shares_chg_1q"]) and np.isnan(r["pledge_pct_chg_1q"])
+    assert r["prom_pct_chg_2q"] == pytest.approx(-10.0)
+    assert r["pledge_pct"] == 25.0
+    assert w.loc[(date(2016, 8, 31), "INB")].isna().all()          # no quarter: not zero
+
+
+def test_a2_config_columns_are_the_builders():
+    c = _toml.load("configs/e5a_a2.toml")
+    assert family.family_of(c) == "A2"
+    assert family.family_features(c) == ho.feature_names()
+    assert c["e5a"]["a2"]["quarters"] == list(ho.QUARTERS)

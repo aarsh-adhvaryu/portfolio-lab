@@ -1,4 +1,4 @@
-"""Build an E5-A family's feature store for one period (E5-A §6(b), §6(d)).
+"""Build an E5-A family's feature store for one period (E5-A §6(b)-(d)).
 
     python tools\\build_e5a_family.py --family A1 --config configs\\e5a_a1.toml --period e5a_development
     python tools\\build_e5a_family.py --family A3 --config configs\\e5a_a3.toml --period validation
@@ -6,8 +6,9 @@
 Built over A0's store for the same period (U(M) and month-ends read from its
 verified files), so a family never adds a name and never reaches past the
 period's end. A1 needs L's readings (`tools/a1_read_events.py`) for every
-event of L's flags up to the period's end, and refuses without them. A3 reads
-the truncated panel through `runner.prepare`, as the A0 build does.
+event of L's flags up to the period's end, and refuses without them. A2 and
+A3 read the truncated panel (A2: its corporate actions, for the split/bonus
+restatement) through `runner.prepare`, as the A0 build does.
 Writes PFLAB_DATA_DIR/e5a/<period>/features_<fam>.parquet and meta_<fam>.json.
 A data build, not a sweep.
 """
@@ -30,6 +31,7 @@ import pandas as pd  # noqa: E402
 from pflab.backtest import runner  # noqa: E402
 from pflab.eval import artifacts, periods  # noqa: E402
 from pflab.ranker import events as ev_mod, exposure as ex_mod, family, store  # noqa: E402
+from pflab.ranker import holdings as ho_mod  # noqa: E402
 from pflab.ranker import features as ft  # noqa: E402
 
 
@@ -80,6 +82,22 @@ def build(fam: str, config_path: str, period_name: str) -> dict:
                  "events_counted": {f"{f}/{s}": int(n) for (f, s), n in
                                     evs.groupby(["flag", "subtype"]).size().items()},
                  "scrip_map": _sha_df(smap[["scrip_code", "isin", "valid_from", "valid_to"]])}
+    elif fam == "A2":
+        from pflab.data import bse_scrip_isin, data_dir, positioning as pos
+        _p, panel, _ix, actions, *_rest = runner.prepare(family.base_config(cfg), period_name)
+        if artifacts.data_fingerprint(ft.dated(panel)) != a0_meta["panel_fingerprint"]:
+            raise SystemExit("the panel differs from the one A0's store was built on")
+        del panel
+        if list((cfg["e5a"].get("a2") or {}).get("quarters", [])) != list(ho_mod.QUARTERS):
+            raise SystemExit(f"[e5a.a2] quarters disagree with holdings.py's {ho_mod.QUARTERS}")
+        spath = data_dir() / "bse_shareholding" / "summary.parquet"
+        summary = pd.read_parquet(spath)
+        resolver = pos.ScripResolver(bse_scrip_isin.load())
+        pr = ho_mod.pairs(ho_mod.quarters(summary), actions, resolver.all_isins())
+        feats = ho_mod.a2_features(pr, universe, resolver)
+        extra = {"summary_file": artifacts.file_sha(spath),
+                 "actions": _sha_df(actions.reset_index(drop=True)) if actions is not None else None,
+                 "pledge_invocations": "dropped, declared (no source; E5-A §14 2026-10-01)"}
     else:
         _p, panel, *_rest = runner.prepare(family.base_config(cfg), period_name)
         panel = ft.dated(panel)

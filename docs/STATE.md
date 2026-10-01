@@ -1,6 +1,6 @@
 # STATE — verdicts and where things stand
 
-One page. Updated 2026-09-30 (session 10: E5-A A0 and E3-R verdicts). The narrative is in `docs/HANDOFF.md`; the
+One page. Updated 2026-10-01 (session 11: E5-A families registered). The narrative is in `docs/HANDOFF.md`; the
 order and reasons in `docs/ROADMAP.md`; the rules for judging in
 `docs/strategies/GATE.md` (adoption) and `docs/MANDATE.md` (ADVANCE).
 
@@ -29,6 +29,7 @@ on the second would be.
 | ADOPTED | **1** (E1d; stack E1 + E1d from 2026-09-29) |
 | REJECT | 3 (E1c, E2-A, E3-R) |
 | INCONCLUSIVE | 4 (E1, E1b, E1-P, E5-A A0) |
+| **registered, no result yet** (2026-10-01, E5-A §14) | **5**: E5-A A1, A2, A3, **E5-A-ALL**, A5 |
 | sealed-period reveals used | **0 of 1** |
 | stacks meeting MANDATE §3 and §5 | **0** |
 

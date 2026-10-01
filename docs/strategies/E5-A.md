@@ -373,3 +373,49 @@ seeing results. E5-A says nothing about E5-B/C/D.
   own subtype**, counted separately; NOT_EVENT excluded. (c) Reading rating
   letters (gemma 81%, L 50% with the letter) is a finding for a future
   charter, declared as suggested by these scores; gemma is not chosen.
+- 2026-10-01 (Aarsh, session 11) — **family decisions** (no family run
+  exists; readiness `docs/notes/E5A-families-readiness.md`).
+  (a) **RESULTS_DELAY stays with K**: the pre-set per-flag rule on the
+  unrounded scores (L 88.0% < K 88.5%). This supersedes the 2026-09-30
+  instruction listing it for L, which misread rounded figures. No extra reads.
+  (b) **A1 readings confirmed**: months-since is censored at the month-ends
+  since the 2010 feed start (a lower bound, not "never"); coverage requires
+  the 12-month window to lie in the feed (from 2010-01-01).
+  (c) **A3 readings confirmed** as in readiness §4: transforms (Brent,
+  USDINR `pct`; US 10-year, VIX `diff`; FII monthly `sum` of daily net
+  equity; Nifty 500 TRI `pct`); the 3-month change uses the same transform as
+  the 1-month; FRED and NSDL series usable the next calendar day, VIX and the
+  TRI on their own date; month-end returns on adjusted close, no fill.
+  (d) **§6(c) amended before any A2 run** (none exists; A2 is not locked).
+  Pledge invocations are **dropped, declared**: there is no source (~41 BSE
+  headlines 2014–2026). In their place: **pledged shares as % of promoter
+  holding**, and its 1- and 2-quarter changes. The total-share change with
+  no recorded split or bonus is **carried as a feature** (the value, since a
+  flag would need a threshold and nothing is thresholded; a build reading for
+  A2's lock). E2-D1 readiness §4 items 1–6 carry over unchanged.
+  *Reason:* (a) the rule was set before the scores; (d) a column with no
+  source cannot be built, and pledging is measurable from the same filings.
+- 2026-10-01 (Aarsh, session 11) — **hypotheses registered before any
+  family result exists** (§3; each counts in STATE, GATE rule 3).
+  - **A1** issuer events: among stocks with similar momentum, verified
+    adverse events distinguish deteriorating businesses.
+  - **A2** positioning: genuine ownership changes add information after
+    separating dilution, reorganisations and pledging.
+  - **A3** world exposure: a global move affects companies differently
+    according to previously measured exposure, beyond what prices already
+    show.
+  - **E5-A-ALL** (new candidate): A0 plus A1's, A2's and A3's columns
+    together, with A0's frozen hyperparameters, activation and windows.
+    Judged incrementally against A0 and for adoption against the stack in
+    force, as §10. Locks once A2 is built. *This amends §3's "never combined
+    in E5-A; a combined model is a new charter written after the family
+    verdicts"*: the combination is registered now, before any family
+    verdict, rather than chosen after them, which removes the freedom that
+    rule guarded against. It is one experiment, fixed now, not a search over
+    combinations.
+  - **A5** valuation (new family, **not part of E5-A-ALL**): among stocks
+    with similar momentum, stocks cheap relative to earnings, sales,
+    dividends and their own history outperform, and the model learns when
+    cheapness is a trap. A0 + valuation columns, against A0 then the stack
+    (§10). Its columns and sources are fixed in a §6(f) entry before it
+    locks; data probe in the readiness note.
