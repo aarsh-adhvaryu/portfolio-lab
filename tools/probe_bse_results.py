@@ -289,10 +289,47 @@ def pull(dry_run: bool) -> None:
     print(f"DONE: {len(scrips)} scrips in {out}")
 
 
+PROBE_COVERAGE = {2007: 98, 2008: 98, 2009: 98, 2010: 98, 2011: 93, 2012: 96, 2013: 100,
+                  2014: 100, 2015: 100, 2016: 98, 2017: 100, 2018: 93, 2019: 93,
+                  2020: 90, 2021: 93}   # finding §2, revenue/NP/EPS, lower end of a range
+
+
+def coverage_pulled() -> pd.DataFrame:
+    """Finding §2's coverage on the full pull (no network): EVERY name of
+    U(M) at each September month-end with a BSE scrip, September quarter,
+    the same field rules (`pick`). Against the probe's lower figure."""
+    sample = universe_sample(10 ** 6)
+    sample["qtr"] = [qtr_id(date(y, 9, 30)) for y in sample["year"]]
+    out_dir = data_dir() / "bse_results"
+    res = []
+    for sc, g in sample.groupby("scrip_code"):
+        f = out_dir / f"{sc}.parquet"
+        raw = pd.read_parquet(f) if f.exists() else pd.DataFrame(columns=["qtr"])
+        for r in g.itertuples(index=False):
+            rows = raw[raw["qtr"].astype(float) == r.qtr].to_dict("records")
+            rows = None if any(x.get("fld_desc") == "__ERROR__" for x in rows) else rows
+            res.append({"year": r.year, "isin": r.isin, **parse(rows)})
+    out = pd.DataFrame(res)
+    g = out.groupby("year").agg(
+        n=("isin", "size"),
+        revenue=("revenue", lambda x: 100 * x.notna().mean()),
+        net_profit=("net_profit", lambda x: 100 * x.notna().mean()),
+        eps=("eps", lambda x: 100 * x.notna().mean()),
+        all3=("status", lambda x: 0.0))
+    both = out.assign(a=out[["revenue", "net_profit", "eps"]].notna().all(axis=1))
+    g["all3"] = 100 * both.groupby("year")["a"].mean()
+    g["probe"] = pd.Series(PROBE_COVERAGE)
+    g["gap_pp"] = g["all3"] - g["probe"]
+    g["over_5pp_below"] = g["gap_pp"] < -5
+    print(g.round(1).to_string())
+    return g
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("redate", help="re-date the saved sample (no network)")
+    sub.add_parser("coverage-pulled", help="finding §2 on the full pull (no network)")
     pl = sub.add_parser("pull")
     pl.add_argument("--dry-run", action="store_true")
     sp = sub.add_parser("spotcheck")
@@ -303,7 +340,9 @@ def main(argv=None) -> int:
     f.add_argument("--scrip", required=True)
     f.add_argument("--qtr", type=float, required=True)
     a = ap.parse_args(argv)
-    if a.cmd == "coverage":
+    if a.cmd == "coverage-pulled":
+        coverage_pulled()
+    elif a.cmd == "coverage":
         coverage(a.per_year)
     elif a.cmd == "pull":
         pull(a.dry_run)

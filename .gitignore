@@ -14,3 +14,4 @@ secrets*
 # External drops (audit input archives, 2026-09-27)
 /code.zip
 /portfolio_audit_reproductions.zip
+logs/

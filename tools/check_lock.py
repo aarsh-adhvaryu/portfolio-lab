@@ -51,6 +51,8 @@ REGISTRY = {
                 "9455930e65a2edce0d40d1cdebf65b0a1a434a0662d366c57652c2640cb2ec5f"),
     "E5-A-ALL": ("docs/strategies/E5-A.md", 2, 14, 13096,
                  "9455930e65a2edce0d40d1cdebf65b0a1a434a0662d366c57652c2640cb2ec5f"),
+    "E5-A-A5": ("docs/strategies/E5-A.md", 2, 14, 13096,
+                "9455930e65a2edce0d40d1cdebf65b0a1a434a0662d366c57652c2640cb2ec5f"),
 }
 
 

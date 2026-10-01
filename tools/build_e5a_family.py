@@ -7,7 +7,7 @@ Built over A0's store for the same period (U(M) and month-ends read from its
 verified files), so a family never adds a name and never reaches past the
 period's end. A1 needs L's readings (`tools/a1_read_events.py`) for every
 event of L's flags up to the period's end, and refuses without them. A2 and
-A3 read the truncated panel (A2: its corporate actions, for the split/bonus
+A3 (and A5) read the truncated panel (A2: its corporate actions, for the split/bonus
 restatement) through `runner.prepare`, as the A0 build does.
 Writes PFLAB_DATA_DIR/e5a/<period>/features_<fam>.parquet and meta_<fam>.json.
 A data build, not a sweep.
@@ -82,6 +82,54 @@ def build(fam: str, config_path: str, period_name: str) -> dict:
                  "events_counted": {f"{f}/{s}": int(n) for (f, s), n in
                                     evs.groupby(["flag", "subtype"]).size().items()},
                  "scrip_map": _sha_df(smap[["scrip_code", "isin", "valid_from", "valid_to"]])}
+    elif fam == "A5":
+        from pflab.data import bse_scrip_isin, data_dir, positioning as pos
+        from pflab.ranker import valuation as va
+        import duckdb
+        _p, panel, *_rest = runner.prepare(family.base_config(cfg), period_name)
+        panel = ft.dated(panel)
+        if artifacts.data_fingerprint(panel) != a0_meta["panel_fingerprint"]:
+            raise SystemExit("the panel differs from the one A0's store was built on")
+        blk = cfg["e5a"].get("a5") or {}
+        if list(blk.get("columns", [])) != va.COLUMNS or                 (blk.get("hist_months"), blk.get("hist_min")) != (va.HIST, va.HIST_MIN):
+            raise SystemExit(f"[e5a.a5] {blk} disagrees with valuation.py")
+        rdir = data_dir() / "bse_results"
+        raw = duckdb.connect().sql(f"""
+            select scrip_code, qtr, fld_desc, "Value"
+            from read_parquet('{rdir.as_posix()}/*.parquet', filename=true, file_row_number=true)
+            order by filename, file_row_number""").df()   # the API's order: `pick` reads it first to last
+        rq = va.results_quarters(raw)
+        rq = rq[rq["quarter_end"] <= period.end]
+        src = (data_dir() / "bse_announcements").as_posix() + "/*/*.parquet"
+        ann = duckdb.connect().sql(f"""
+            select scrip_code, coalesce(dissem_dt, news_dt) as t, category, subcategory, headline
+            from read_parquet('{src}', union_by_name=true)
+            where coalesce(dissem_dt, news_dt) <= TIMESTAMP '{period.end} 23:59:59'
+              and (headline ilike '%result%' or category = 'Result')""").df()
+        dq = va.dated_quarters(rq, va.matched_announcements(ann, rq))
+        spath = data_dir() / "bse_shareholding" / "summary.parquet"
+        sann = duckdb.connect().sql(f"""
+            select scrip_code, coalesce(dissem_dt, news_dt) as t, headline
+            from read_parquet('{src}', union_by_name=true)
+            where (subcategory = 'Shareholding' or headline ilike '%shareholding pattern%')
+              and coalesce(dissem_dt, news_dt) <= TIMESTAMP '{period.end} 23:59:59'""").df()
+        shares = ho_mod.quarters(pd.read_parquet(spath), ho_mod.announcement_dates(sann))
+        dpath = data_dir() / "dividends" / "dividends.parquet"
+        div = pd.read_parquet(dpath)
+        div = div[pd.to_datetime(div["ex_date"]).dt.date <= period.end]
+        resolver = pos.ScripResolver(bse_scrip_isin.load())
+        feats = va.a5_features(dq, div, shares, panel, universe, resolver)
+        del panel
+        extra = {"results_rows": _sha_df(raw.astype(str)),
+                 "summary_file": artifacts.file_sha(spath),
+                 "dividends_file": artifacts.file_sha(dpath),
+                 "quarters": int(len(dq)),
+                 "date_source": dq["date_source"].value_counts().to_dict(),
+                 "date_source_by_year": {str(y): g.value_counts().to_dict() for y, g in
+                                         dq.groupby([q.year for q in dq["quarter_end"]])["date_source"]},
+                 "build_readings": ("TTM from the latest usable quarter and the three before, "
+                                    "never substituted; EPS and dividends x k(then)/k(M), "
+                                    "shares x k(M)/k(then); yoy over |earlier TTM|; no dividend = 0")}
     elif fam == "A2":
         from pflab.data import bse_scrip_isin, data_dir, positioning as pos
         _p, panel, _ix, actions, *_rest = runner.prepare(family.base_config(cfg), period_name)

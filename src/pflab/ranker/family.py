@@ -10,6 +10,7 @@ family changes only the input columns").
   features_a1.parquet / meta_a1.json   §6(b) issuer events
   features_a2.parquet / meta_a2.json   §6(c) promoter positioning
   features_a3.parquet / meta_a3.json   §6(d) world exposure
+  features_a5.parquet / meta_a5.json   §6(f) valuation (not in E5-A-ALL)
 """
 from __future__ import annotations
 
@@ -25,10 +26,12 @@ from pflab.eval import artifacts
 from pflab.ranker import store
 from pflab.ranker.features import A0_FEATURES
 
-FAMILIES = ("A1", "A2", "A3")
+FAMILIES = ("A1", "A2", "A3", "A5")
 SOURCES = {"A1": ("ranker/events.py", "ranker/family.py"),
            "A2": ("ranker/holdings.py", "ranker/family.py", "data/positioning.py"),
-           "A3": ("ranker/exposure.py", "ranker/family.py", "signals/shock_betas.py")}
+           "A3": ("ranker/exposure.py", "ranker/family.py", "signals/shock_betas.py"),
+           "A5": ("ranker/valuation.py", "ranker/family.py", "ranker/holdings.py",
+                  "data/positioning.py")}
 
 
 def features_file(fam: str) -> str:
@@ -54,7 +57,7 @@ def base_config(cfg: dict) -> dict:
     e = c.setdefault("e5a", {})
     e["family"] = "A0"
     e["features"] = [f for f in e.get("features", A0_FEATURES) if f in A0_FEATURES]
-    for k in ("activation", "a1", "a2", "a3"):
+    for k in ("activation", "a1", "a2", "a3", "a5"):
         e.pop(k, None)
     return c
 

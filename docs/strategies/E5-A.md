@@ -505,3 +505,32 @@ seeing results. E5-A says nothing about E5-B/C/D.
   member switches on at its own activation refit with its columns NaN
   before (`walk.Spec.groups`). `family.py` unchanged, so the A1 and A3
   locks' stores stay valid. Development runs next.
+- 2026-10-01 (Aarsh, session 12) — **§6(f) A5 columns and sources**, before
+  any A5 store or run exists (the hypothesis entry above requires them before
+  the lock). Eight columns, nothing thresholded: **earnings yield** (TTM EPS
+  restated to M's share basis ÷ M's close), **sales yield** (TTM revenue ÷
+  market cap), **dividend yield** (TTM, NaN 2009-04-30 → 2011-03-31 as
+  decided); **each yield's percentile within the name's own trailing 36
+  month-ends** (NaN with fewer than 24 values); **TTM revenue and TTM net
+  profit year-on-year change** (÷ |the earlier TTM|), the "trap" context the
+  hypothesis names. Sources: BSE quarterly results (RUNNING job 23,
+  standalone, BSE's template), dated by the A5 rule above; NSE dividend feed;
+  shares outstanding from the latest usable BSE shareholding quarter, dated
+  as A2's quarters are; panel close and split/bonus factor. Build readings
+  (`ranker/valuation.py`): TTM from the latest usable quarter and the three
+  before it, each usable at M, never substituted; per-share figures restated
+  by k(then)/k(M), share counts by k(M)/k(then); a name with no dividend in
+  the window has yield 0. **Coverage check** on the full pull, every name of
+  U(September) 2007–2021: revenue, net profit and EPS all present for
+  89.4%–99.5% a year; no year more than 5 pp below the finding's probe (2019
+  the closest, −3.6 pp; `probe_bse_results.py coverage-pulled`).
+  **Two further decisions (Aarsh, same session, before the lock):** (1) the
+  NSE feed is thin before 2007 too (ex-dates 2004: 26, 2005: 398, 2006: 502,
+  against 694–1,160 from 2007), so **dividend yield is also NaN at every
+  month-end through 2007-12-31**; (2) a non-payer's yield **stays 0**, and §6
+  [D 6] activation is applied as written, although that makes dividend yield
+  alone cover every name. **Findings:** BSE's endpoint itself lacks 921
+  interior quarters (1.6% of the span, 380 scrips); under the no-substitution
+  reading each blanks a name's TTM for up to a year. **Point in time:** the
+  stores truncated at 2016 and at 2021 agree on all 516,464 shared values,
+  and a rebuild is byte-identical.
