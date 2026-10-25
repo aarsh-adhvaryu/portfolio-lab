@@ -1,0 +1,39 @@
+# Targets and bands for the Portfolio Manager (PLAN S17).
+#
+# NO VALUES ARE SET. The allocator refuses to propose anything until the investor fills this in:
+# these numbers are his decision, not a default and not a recommendation.
+#
+# To set them: fill [meta], then add one [bucket.<name>] table per bucket he holds or wants.
+# Buckets: equity (direct stocks), equity_fund (equity mutual funds and ETFs), debt, gold,
+# reit_invit, cash. Target weights must sum to 1.0 across the tables, and every bucket with a
+# holding needs a table (a holding in an untargeted bucket stops the plan).
+#
+#   target     share of the whole portfolio (invested + cash) the bucket should hold
+#   soft_band  absolute weight points: beyond target +/- soft_band the bucket is flagged as drifting
+#              and new money steers toward the underweights
+#   hard_band  beyond target + hard_band a SALE may be proposed (never inside it), with its tax and
+#              cost shown next to doing nothing
+#   buy        where new money for this bucket goes: ISIN and split weight (sum 1.0). Without it
+#              the bucket cannot receive new money and the plan says so.
+#
+# Example (commented out; the Momentum 50 index fund SIP in docs/archive-inputs/fallback.md is a
+# candidate for the equity_fund bucket, picked by the investor):
+#
+# [meta]
+# set_by = "The investor, 2026-11-01"
+# effective_from = 2026-11-01
+#
+# [bucket.equity_fund]
+# target = 0.70
+# soft_band = 0.05
+# hard_band = 0.10
+# buy = [ { isin = "INF...", weight = 1.0 } ]
+#
+# [bucket.cash]
+# target = 0.30
+# soft_band = 0.05
+# hard_band = 0.15
+
+[meta]
+set_by = ""
+effective_from = ""

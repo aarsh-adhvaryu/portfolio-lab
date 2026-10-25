@@ -1,0 +1,16 @@
+# Frozen market Hawkes fit (S40, docs/research/hawkes_results.md). Written by the S40 study tool (retired in S63; results in docs/research/hawkes_results.md)
+# --write-frozen only because the market series passed the registered rule. Do not edit the fit by hand.
+[market]
+threshold = -0.02
+mu = 0.012467624755824934
+alpha = 0.7548154214773379
+beta = 0.04943284461387634
+poisson_rate = 0.05084745762711865
+fit_from = 2005-01-01
+fit_to = 2019-12-31
+unit = "session"
+horizon = 10          # sessions
+# Market state (protocol amendment 1, the investor 2026-10-16; its study tool retired in S63): chance of another -2%
+# session within `horizon`. t1 = highest threshold with >= 90% recall of follow-on falls in 2005-2014 with the frozen fit (amendment 2, 2026-10-18); t2 = the investor.
+t1 = 0.37
+t2 = 0.80

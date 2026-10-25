@@ -1,0 +1,24 @@
+#!/bin/sh
+# Blocks any merge whose source is research-archive (CLAUDE.md, 2026-10-06).
+# Lifted only when the investor says so in writing; then remove this hook in the same commit.
+# Install: git config core.hooksPath .githooks   (done once per clone)
+# MERGE_HEAD does not exist yet when this hook runs, so the source is read from
+# GIT_REFLOG_ACTION ("merge <args>"), and also from MERGE_HEAD if present.
+block() {
+  echo "BLOCKED: merge source is research-archive. It is never merged into this branch until the investor says so in writing." >&2
+  exit 1
+}
+args="$GIT_REFLOG_ACTION"
+case "$args" in *research-archive*) block;; esac
+srcs="$args"
+mh=$(git rev-parse -q --verify MERGE_HEAD) && srcs="$srcs $mh"
+for w in $srcs; do
+  case "$w" in -*|merge|pull) continue;; esac
+  c=$(git rev-parse -q --verify "$w^{commit}") || continue
+  git merge-base --is-ancestor "$c" HEAD && continue      # already in this branch
+  for ref in refs/heads/research-archive refs/remotes/origin/research-archive; do
+    tip=$(git rev-parse -q --verify "$ref") || continue
+    git merge-base --is-ancestor "$c" "$tip" && block
+  done
+done
+exit 0

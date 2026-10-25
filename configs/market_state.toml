@@ -1,0 +1,17 @@
+# Market state (S51, amendment 3; docs/research/market_state_vol_results.md). Written by
+# the S51 study tool (retired in S63) --calibrate only because plain volatility won its registered test.
+# Chance of another -2% Nifty 500 TRI session within 10 sessions = 1 / (1 + exp(-(a + b ln EWMA))),
+# EWMA of r^2 with lambda 0.94 (22-session warm-up), fitted on 2005-2014 and frozen. Do not edit by hand.
+[volatility]
+method = "ewma_logit"
+lam = 0.94
+warm = 22
+a = 11.583823664187099
+b = 1.3760352655336503
+threshold = -0.02
+horizon = 10
+normal = 0.3797825211437777          # share of 2005-2014 sessions followed by a fall within 10 sessions
+t1 = 0.37
+t2 = 0.80
+fit_from = 2005-01-01
+fit_to = 2014-12-31

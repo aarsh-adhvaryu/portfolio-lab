@@ -1,0 +1,233 @@
+# Capital-gains rule rows, by TRANSFER date (S2, built 2026-10-06).
+# Coverage starts 2024-07-23, the day the Finance (No. 2) Act 2024 regime took
+# effect (PLAN §10 amendment A1, 2026-10-06). Earlier transfers raise RuleGap.
+#
+# Row fields: tax_class (pflab.pm.instruments labels), optional conditions
+# (stt_paid, listed, acquired_from, acquired_to), lt_months (long-term if held
+# MORE than this; absent = always short-term), stcg_rate / ltcg_rate (decimal
+# or "slab"; ltcg_rate absent = no long-term), effective_from/effective_to
+# (inclusive; absent effective_to = open), section_old (Income-tax Act 1961),
+# section_new (Income-tax Act 2025, in force 2026-04-01), source_url,
+# source_title, verification (primary | secondary | unverified), verified_on.
+# `secondary` = a secondary source seen in a search result, primary text not
+# opened; `unverified` = not checked this session. Both are listed as open in
+# docs/PLAN.md §6.
+
+[[rule]]
+id = "equity_stt_paid"
+tax_class = "EQUITY"
+stt_paid = true
+listed = true
+lt_months = 12
+stcg_rate = 0.20
+ltcg_rate = 0.125
+effective_from = 2024-07-23
+section_old = "111A / 112A"
+section_new = "196 / 198"
+source_url = "https://pib.gov.in/PressReleasePage.aspx?PRID=2036604"
+source_title = "CBDT FAQs on the new capital gains regime, Q3, Q6, Q7 (PIB, 24-Jul-2024)"
+verification = "primary"
+verified_on = 2026-10-06
+note = "Listed equity, equity-oriented MF and equity ETF with STT paid. Section numbers 196/198 confirmed by Finance Act 2026 (No. 4 of 2026) First Schedule Part I-B, which cites s.196 (STCG 20%) and s.198 (LTCG 12.5% over Rs 1,25,000)."
+
+[[rule]]
+id = "equity_no_stt"
+tax_class = "EQUITY"
+stt_paid = false
+listed = true
+lt_months = 12
+stcg_rate = "slab"
+ltcg_rate = 0.125
+effective_from = 2024-07-23
+section_old = "112"
+section_new = "197"
+source_url = "https://pib.gov.in/PressReleasePage.aspx?PRID=2036604"
+source_title = "CBDT FAQs on the new capital gains regime, Q3, Q8 (PIB, 24-Jul-2024)"
+verification = "primary"
+verified_on = 2026-10-06
+note = "Equity where STT was not paid: long-term at the general 12.5% without indexation; short-term at slab."
+
+[[rule]]
+id = "business_trust_stt_paid"
+tax_class = "BUSINESS_TRUST"
+stt_paid = true
+listed = true
+lt_months = 12
+stcg_rate = 0.20
+ltcg_rate = 0.125
+effective_from = 2024-07-23
+section_old = "111A / 112A"
+section_new = "196 / 198"
+source_url = "https://pib.gov.in/PressReleasePage.aspx?PRID=2036604"
+source_title = "CBDT FAQs on the new capital gains regime, Q4, Q6 (PIB, 24-Jul-2024)"
+verification = "primary"
+verified_on = 2026-10-06
+note = "Listed REIT/InvIT units with STT paid: FAQ Q6 names units of business trust under section 111A. Interest and return-of-capital parts of distributions are income, not capital gains (S13)."
+
+[[rule]]
+id = "listed_nonequity"
+tax_class = "LISTED_NONEQUITY"
+listed = true
+lt_months = 12
+stcg_rate = "slab"
+ltcg_rate = 0.125
+effective_from = 2024-07-23
+section_old = "112"
+section_new = "197"
+source_url = "https://pib.gov.in/PressReleasePage.aspx?PRID=2036604"
+source_title = "CBDT FAQs on the new capital gains regime, Q3, Q8 (PIB, 24-Jul-2024)"
+verification = "primary"
+verified_on = 2026-10-06
+note = "Listed bonds, gold and silver ETFs, foreign-equity ETFs: 12 months, 12.5% without indexation."
+
+[[rule]]
+id = "debt_mf_specified"
+tax_class = "DEBT_MF"
+acquired_from = 2023-04-01
+effective_from = 2024-07-23
+stcg_rate = "slab"
+section_old = "50AA"
+section_new = "76(1), (2)(a), (5)(b)"
+source_url = "https://egazette.gov.in/WriteReadData/2025/265620.pdf"
+source_title = "Income-tax Act, 2025, s.76 (Gazette p.123): units of a Specified Mutual Fund acquired on or after 1-Apr-2023 are short-term capital gains; (5)(b) Specified Mutual Fund invests more than 65% in debt and money market instruments, or 65% or more in units of such a fund"
+verification = "primary"
+verified_on = 2026-10-06
+note = "Specified MF (more than 65% debt and money market, definition from 1-Apr-2025) bought on or after 2023-04-01: gain is always short-term, at slab. Whether a given fund is specified rests on the AMFI category (instruments.tax_class_reason)."
+
+[[rule]]
+id = "debt_mf_pre_2023_listed"
+tax_class = "DEBT_MF"
+listed = true
+acquired_to = 2023-03-31
+lt_months = 12
+stcg_rate = "slab"
+ltcg_rate = 0.125
+effective_from = 2024-07-23
+section_old = "112"
+section_new = "197"
+source_url = "https://pib.gov.in/PressReleasePage.aspx?PRID=2036604"
+source_title = "CBDT FAQs on the new capital gains regime, Q3, Q8 (PIB, 24-Jul-2024)"
+verification = "primary"
+verified_on = 2026-10-06
+note = "Debt fund or ETF units bought before 2023-04-01, listed: 12 months, 12.5%."
+
+[[rule]]
+id = "debt_mf_pre_2023_unlisted"
+tax_class = "DEBT_MF"
+listed = false
+acquired_to = 2023-03-31
+lt_months = 24
+stcg_rate = "slab"
+ltcg_rate = 0.125
+effective_from = 2024-07-23
+section_old = "112"
+section_new = "197"
+source_url = "https://pib.gov.in/PressReleasePage.aspx?PRID=2036604"
+source_title = "CBDT FAQs on the new capital gains regime, Q3, Q8 (PIB, 24-Jul-2024)"
+verification = "primary"
+verified_on = 2026-10-06
+note = "Unlisted debt fund units bought before 2023-04-01: 24 months, 12.5%."
+
+[[rule]]
+id = "other_mf_listed"
+tax_class = "OTHER_MF"
+listed = true
+lt_months = 12
+stcg_rate = "slab"
+ltcg_rate = 0.125
+effective_from = 2024-07-23
+section_old = "112"
+section_new = "197"
+source_url = "https://pib.gov.in/PressReleasePage.aspx?PRID=2036604"
+source_title = "CBDT FAQs on the new capital gains regime, Q3, Q8 (PIB, 24-Jul-2024)"
+verification = "primary"
+verified_on = 2026-10-06
+note = "Non-equity, non-specified fund units, listed."
+
+[[rule]]
+id = "other_mf_unlisted"
+tax_class = "OTHER_MF"
+listed = false
+lt_months = 24
+stcg_rate = "slab"
+ltcg_rate = 0.125
+effective_from = 2024-07-23
+section_old = "112"
+section_new = "197"
+source_url = "https://pib.gov.in/PressReleasePage.aspx?PRID=2036604"
+source_title = "CBDT FAQs on the new capital gains regime, Q3, Q8 (PIB, 24-Jul-2024)"
+verification = "primary"
+verified_on = 2026-10-06
+note = "Gold FoF, commodity FoF, international FoF and similar: 24 months, 12.5%, no indexation."
+
+[[rule]]
+id = "sgb_listed"
+tax_class = "SGB"
+lt_months = 12
+stcg_rate = "slab"
+ltcg_rate = 0.125
+effective_from = 2024-07-23
+section_old = "112"
+section_new = "197"
+source_url = "https://pib.gov.in/PressReleasePage.aspx?PRID=2036604"
+source_title = "CBDT FAQs on the new capital gains regime, Q3, Q8 (PIB, 24-Jul-2024)"
+verification = "primary"
+verified_on = 2026-10-06
+note = "Sale of an SGB on the exchange (listed security): 12 months, 12.5%. Redemption at maturity is a separate rule in special_events.toml."
+
+[[rule]]
+id = "unlisted_debt"
+tax_class = "UNLISTED_DEBT"
+stcg_rate = "slab"
+effective_from = 2024-07-23
+section_old = "50AA"
+section_new = "76(1), (2)(b)"
+source_url = "https://egazette.gov.in/WriteReadData/2025/265620.pdf"
+source_title = "Income-tax Act, 2025, s.76 (Gazette p.123): an unlisted bond or debenture transferred, redeemed or matured on or after 23-Jul-2024 gives short-term capital gains"
+verification = "primary"
+verified_on = 2026-10-06
+note = "Always short-term, slab. s.76(4): no deduction for STT."
+
+[[rule]]
+id = "physical_gold"
+tax_class = "PHYSICAL_GOLD"
+lt_months = 24
+stcg_rate = "slab"
+ltcg_rate = 0.125
+effective_from = 2024-07-23
+section_old = "112"
+section_new = "197"
+source_url = "https://pib.gov.in/PressReleasePage.aspx?PRID=2036604"
+source_title = "CBDT FAQs on the new capital gains regime, Q4, Q8 (PIB, 24-Jul-2024)"
+verification = "primary"
+verified_on = 2026-10-06
+note = "Gold held in physical form: 24 months, 12.5% without indexation."
+
+# Annual exemption on 112A gains (equity with STT).
+[[exemption]]
+id = "ltcg_112a"
+applies_to = "equity_stt_paid"
+fy_from = 2025            # FY2024-25 (label = year the FY ends, as pflab.tax.india_lots.fy_of)
+amount = 125000.0
+section_old = "112A"
+section_new = "198"
+source_url = "https://pib.gov.in/PressReleasePage.aspx?PRID=2036604"
+source_title = "CBDT FAQs on the new capital gains regime, Q7 (PIB, 24-Jul-2024)"
+verification = "primary"
+verified_on = 2026-10-06
+note = "Rs 1,25,000 per FY for FY2024-25 and later, over all 112A gains of the year."
+
+# Grandfathering of pre-2018 equity.
+[[grandfather]]
+id = "equity_31jan2018"
+applies_to = "equity_stt_paid"
+acquired_before = 2018-02-01
+fmv_date = 2018-01-31
+rule = "cost = max(actual cost, min(FMV on 2018-01-31, sale value))"
+section_old = "55(2)(ac)"
+section_new = "90(7), (8)"
+source_url = "https://egazette.gov.in/WriteReadData/2025/265620.pdf"
+source_title = "Income-tax Act, 2025, s.90(7)-(8) (Gazette pp.135-136): cost of acquisition of a long-term equity share, equity-oriented fund unit or business trust unit under s.198 acquired before 1-Feb-2018 is the higher of the actual cost and the lower of fair market value and the sale consideration"
+verification = "primary"
+verified_on = 2026-10-06
+note = "FMV is the HIGHEST price quoted on the exchange on 31-Jan-2018 (or on the last earlier day it traded); for an unlisted-then fund unit, its NAV that day. The caller supplies it. Further limbs of s.90(8)(b) cover shares that were unlisted on 31-Jan-2018 and are not modelled."

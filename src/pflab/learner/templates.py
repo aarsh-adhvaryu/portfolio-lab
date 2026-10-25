@@ -1,0 +1,371 @@
+"""The learner's tests (S62, PLAN A22; protocol docs/research/learner_protocol.md): a claim from outside reading is
+tested only through one of these templates, with parameters from closed lists; the decision rule is fixed here, in
+code, before any claim is run. A claim that fits no template is recorded as untestable on this system's data.
+
+    cross_section   a stock signal from prices (momentum, reversal, low volatility, 52-week high, lottery, illiquidity):
+                    at each month end the point-in-time Nifty 500 members with a year of history are ranked; the claimed
+                    quintile's equal-weighted total return over the next h months against all members', after the
+                    round-trip charges on the names that changed
+    event_study     a kind of exchange filing (S46 template): the market-adjusted move over 1, 5 or 20 sessions after it
+    calendar        a calendar effect on the Nifty 500 TRI (turn of the month, Mondays, Fridays, January, first half of
+                    the month): returns on the effect's days against the other days
+    holder_event    S63 (amendment 3): who buys and sells: insider / SAST disclosures, bulk and block deals by side, a
+                    quarter's promoter holding up or down, pledges up; the market-adjusted move after each
+
+Periods (as every study here; 2022-2025 are spent, CLAUDE.md 2): development 2010-2017 and validation 2018-2021 (filings:
+2015-2018 and 2019-2021, BSE announcements start in 2015). The rule, the same for every claim: the claimed direction in
+both periods, t >= T_DEV in development and >= T_VAL in validation (the direction is fixed before the run: one-sided),
+each period with at least MIN_MONTHS months or MIN_EVENTS events, and the effect larger than its trading cost.
+"""
+from __future__ import annotations
+
+import math
+from pathlib import Path
+from typing import Dict, Optional, Sequence, Tuple
+
+import numpy as np
+import pandas as pd
+
+from pflab import _duck
+
+DEV, VAL = ("2010-01-01", "2017-12-31"), ("2018-01-01", "2021-12-31")
+EV_DEV, EV_VAL = ("2015-01-01", "2018-12-31"), ("2019-01-01", "2021-12-31")
+T_DEV, T_VAL = 2.0, 1.65
+MIN_MONTHS, MIN_EVENTS = 36, 20
+HISTORY = 252
+ETF_ROUND_TRIP_PCT = 0.10          # an index ETF bought and sold (brokerage nil, STT, exchange charges, spread): stated
+
+SIGNALS = {
+    "momentum_12_1": "total return from 12 months to 1 month before",
+    "momentum_6_1": "total return from 6 months to 1 month before",
+    "reversal_1m": "total return over the last month",
+    "volatility_12m": "standard deviation of daily returns over the last year",
+    "high_52w": "close as a share of the year's highest close",
+    "max_day_1m": "largest daily return in the last month",
+    "illiquidity": "average absolute daily return per crore traded over the last year (Amihud)",
+}
+EVENT_KINDS = ("RATING_DOWNGRADE", "DEFAULT", "AUDITOR_RESIGNATION", "INSOLVENCY", "FRAUD", "RESULTS_DELAY",
+               "PROMOTER_ENCUMBRANCE", "FORENSIC_AUDIT", "REGULATORY_ACTION", "Financial Results", "Credit Rating",
+               "Acquisition", "Award of Order / Receipt of Order", "Dividend", "Change in Management",
+               "Resignation of Director")
+EFFECTS = ("turn_of_month", "monday", "friday", "january", "first_half_month")
+# S63 (protocol amendment 3): who buys and sells. Thresholds fixed here, before any claim on them is run.
+HOLDER_KINDS = ("insider_sast", "bulk_buy", "bulk_sell", "block_buy", "block_sell", "promoter_up", "promoter_down",
+                "pledge_up")
+PROMOTER_STEP_PP, PLEDGE_STEP_PP, FILING_LAG_DAYS = 0.5, 1.0, 21
+
+SCHEMA = {
+    "cross_section": {"signal": list(SIGNALS), "direction": ["high", "low"], "months": [1, 3]},
+    "event_study": {"kind": list(EVENT_KINDS), "direction": ["up", "down"], "sessions": [1, 5, 20]},
+    "calendar": {"effect": list(EFFECTS), "direction": ["high", "low"]},
+    "holder_event": {"kind": list(HOLDER_KINDS), "direction": ["up", "down"], "sessions": [1, 5, 20]},
+}
+
+
+def check_params(template: str, params: dict) -> Optional[str]:
+    """None when the parameters are from the template's closed lists; else what is wrong."""
+    if template not in SCHEMA:
+        return f"unknown template {template!r}"
+    want = SCHEMA[template]
+    if set(params) != set(want):
+        return f"{template} takes exactly {sorted(want)}"
+    for k, allowed in want.items():
+        if params[k] not in allowed:
+            return f"{k} must be one of {allowed}"
+    return None
+
+
+def nw_t(x: Sequence[float], lags: int = 0) -> Tuple[float, float, int]:
+    """(mean, Newey-West t, n) of a series; t is nan under 3 observations."""
+    import statsmodels.api as sm
+    y = np.asarray([v for v in x if v is not None and math.isfinite(v)], dtype=float)
+    if len(y) < 3 or np.allclose(y, y[0]):
+        return (float(y.mean()) if len(y) else float("nan")), float("nan"), int(len(y))
+    fit = sm.OLS(y, np.ones(len(y))).fit(cov_type="HAC", cov_kwds={"maxlags": int(lags)})
+    return float(y.mean()), float(fit.tvalues[0]), int(len(y))
+
+
+def decide(dev: dict, val: dict, sign: int, minimum: int, cost: float, unit: str) -> Tuple[str, str]:
+    """The one rule for every template: ('pass' | 'fail', why). `cost` in the effect's own units."""
+    for name, d, t_min in (("development", dev, T_DEV), ("validation", val, T_VAL)):
+        if d["n"] < minimum:
+            return "fail", f"{name}: {d['n']} {unit}, fewer than {minimum} (small numbers: no conclusion)"
+        if not math.isfinite(d["t"]) or sign * d["mean"] <= 0:
+            return "fail", f"{name}: the effect went the other way (mean {d['mean']:+.4f})"
+        if sign * d["t"] < t_min:
+            return "fail", f"{name}: t {d['t']:+.2f}, under {t_min}"
+        if sign * d["mean"] <= cost:
+            return "fail", f"{name}: mean {d['mean']:+.4f} does not cover the cost {cost:.4f}"
+    return "pass", (f"both periods in the claimed direction: development mean {dev['mean']:+.4f} (t {dev['t']:+.2f}, "
+                    f"n {dev['n']}), validation {val['mean']:+.4f} (t {val['t']:+.2f}, n {val['n']})")
+
+
+# --- cross section -------------------------------------------------------------------------------------------------------
+
+def members(root: Path) -> pd.DataFrame:
+    m = _duck.sql(f"select isin, from_date, coalesce(to_date, DATE '2099-01-01') to_date "
+                  f"from '{root}/index_membership/NIFTY500.parquet'").df()
+    m["from_date"], m["to_date"] = pd.to_datetime(m["from_date"]), pd.to_datetime(m["to_date"])
+    return m
+
+
+def wide_panel(root: Path, isins: Sequence[str], start: str, end: str) -> Dict[str, pd.DataFrame]:
+    """Wide daily frames (sessions x isin): tr (total-return index), adj (adjusted close), r (daily total return),
+    turnover (rupees)."""
+    px = _duck.sql(f"""select date, isin, close, adj_close, dividend, turnover from '{root}/panel/prices.parquet'
+                        where isin in ({','.join(repr(i) for i in isins) or "''"})
+                          and date between DATE '{start}' and DATE '{end}'""").df()
+    px["date"] = pd.to_datetime(px["date"])
+    px = px.sort_values(["isin", "date"]).drop_duplicates(["isin", "date"])
+    r = px.groupby("isin")["adj_close"].pct_change()
+    px["r"] = (1 + r) * (1 + (px["dividend"].fillna(0.0) / px["close"]).where(px["close"] > 0, 0.0)) - 1
+    out = {k: px.pivot(index="date", columns="isin", values=v) for k, v in
+           (("adj", "adj_close"), ("r", "r"), ("turnover", "turnover"))}
+    out["tr"] = (1 + out["r"].fillna(0.0)).cumprod().where(out["adj"].notna())
+    return out
+
+
+def signal_at(w: Dict[str, pd.DataFrame], i: int, signal: str) -> pd.Series:
+    """The signal for every column at session index i, from sessions <= i only (point in time)."""
+    tr, adj, r = w["tr"], w["adj"], w["r"]
+    if signal == "momentum_12_1":
+        return tr.iloc[i - 21] / tr.iloc[i - HISTORY] - 1
+    if signal == "momentum_6_1":
+        return tr.iloc[i - 21] / tr.iloc[i - 126] - 1
+    if signal == "reversal_1m":
+        return tr.iloc[i] / tr.iloc[i - 21] - 1
+    if signal == "volatility_12m":
+        return r.iloc[i - HISTORY + 1:i + 1].std()
+    if signal == "high_52w":
+        return adj.iloc[i] / adj.iloc[i - HISTORY + 1:i + 1].max()
+    if signal == "max_day_1m":
+        return r.iloc[i - 20:i + 1].max()
+    if signal == "illiquidity":
+        to = w["turnover"].iloc[i - HISTORY + 1:i + 1] / 1e7
+        return (r.iloc[i - HISTORY + 1:i + 1].abs() / to.where(to > 0)).mean()
+    raise ValueError(signal)
+
+
+def month_ends(sessions: pd.DatetimeIndex, start: str, end: str) -> list:
+    s = pd.Series(range(len(sessions)), index=sessions)
+    s = s[(s.index >= pd.Timestamp(start)) & (s.index <= pd.Timestamp(end))]
+    return list(s.groupby([s.index.year, s.index.month]).max())
+
+
+def cross_section_series(w: Dict[str, pd.DataFrame], mem: pd.DataFrame, signal: str, direction: str, months: int,
+                         start: str, end: str, round_trip_pct: float) -> pd.Series:
+    """Excess total return of the claimed quintile over all members, per formation month, after charges."""
+    sessions = w["tr"].index
+    every = month_ends(sessions, str(sessions[0].date()), str(sessions[-1].date()))
+    tr_f = w["tr"].ffill()                                  # a name that stops trading keeps its last value
+    out, prev = {}, {}
+    for k, i in enumerate(every):
+        t = sessions[i]
+        if i < HISTORY or k + months >= len(every) or not pd.Timestamp(start) <= t <= pd.Timestamp(end):
+            continue
+        j = every[k + months]
+        live = set(mem[(mem["from_date"] <= t) & (mem["to_date"] > t)]["isin"]) & set(w["tr"].columns)
+        cols = sorted(live)
+        hist = w["adj"].iloc[i - HISTORY + 1:i + 1][cols].notna().sum()
+        cols = [c for c in cols if hist[c] >= 200 and pd.notna(w["tr"].iloc[i][c])]
+        if len(cols) < 50:
+            continue
+        sig = signal_at({k2: v[cols] for k2, v in w.items()}, i, signal).dropna()
+        if len(sig) < 50:
+            continue
+        fwd = (tr_f.iloc[j][sig.index] / w["tr"].iloc[i][sig.index] - 1).dropna()
+        sig = sig[fwd.index]
+        q = sig.rank(pct=True)
+        pick = set(q[q > 0.8].index) if direction == "high" else set(q[q <= 0.2].index)
+        if not pick:
+            continue
+        last = prev.get(k - months, set())
+        changed = len(pick - last) / len(pick) if last else 1.0
+        prev[k] = pick
+        out[t] = float(fwd[list(pick)].mean() - fwd.mean()) - changed * round_trip_pct / 100
+    return pd.Series(out, dtype=float)
+
+
+def cross_section(root: Path, signal: str, direction: str, months: int, round_trip_pct: float,
+                  periods=(DEV, VAL)) -> dict:
+    mem = members(root)
+    w = wide_panel(root, sorted(set(mem["isin"])), "2008-06-01", "2022-06-30")
+    res = {}
+    for name, (a, b) in zip(("development", "validation"), periods):
+        s = cross_section_series(w, mem, signal, direction, months, a, b, round_trip_pct)
+        m, t, n = nw_t(s.values, lags=max(1, months))
+        res[name] = {"mean": m, "t": t, "n": n, "per": f"{months}-month excess after charges"}
+    d, why = decide(res["development"], res["validation"], 1, MIN_MONTHS, 0.0, "months")
+    return {"decision": d, "why": why, **res}
+
+
+def today_quintiles(con, root: Path, signal: str, isins: Sequence[str], asof) -> Dict[str, dict]:
+    """A passed signal, live: each name's value from the store's closes up to `asof`, placed against the latest
+    month end's breakpoints in the panel (stated with both dates). Prices only; no total return in the store."""
+    from pflab.hq import keeper
+    mem = members(root)
+    last = _duck.sql(f"select max(date) from '{root}/panel/prices.parquet'").fetchone()[0]
+    live = sorted(set(mem[(mem["from_date"] <= pd.Timestamp(last)) & (mem["to_date"] > pd.Timestamp(last))]["isin"]))
+    w = wide_panel(root, live, str(pd.Timestamp(last) - pd.Timedelta(days=420))[:10], str(last))
+    i = len(w["tr"].index) - 1
+    if i < HISTORY:
+        return {}
+    br = signal_at(w, i, signal).dropna().quantile([0.2, 0.4, 0.6, 0.8]).to_list()
+    out = {}
+    for isin in isins:
+        s = keeper.closes(con, isin, asof, days=420)
+        if len(s) <= HISTORY:
+            continue
+        one = {"adj": s.to_frame(isin), "r": s.pct_change().to_frame(isin), "tr": (s / s.iloc[0]).to_frame(isin),
+               "turnover": pd.DataFrame(np.nan, index=s.index, columns=[isin])}
+        v = signal_at(one, len(s) - 1, signal).get(isin)
+        if v is None or not math.isfinite(v):
+            continue
+        out[isin] = {"value": float(v), "quintile": int(np.searchsorted(br, v) + 1), "breakpoints_at": str(last),
+                     "value_at": str(s.index[-1].date())}
+    return out
+
+
+# --- event study and calendar ----------------------------------------------------------------------------------------------
+
+def event_study(root: Path, kind: str, direction: str, sessions: int, round_trip_pct: float) -> dict:
+    from pflab.agents import quant as qn
+    from pflab.data import red_flags
+    from pflab.quant import event_study as es
+    if kind in qn.FLAG_WORDS:
+        args = {"headline_regex": "|".join(p.pattern for p in red_flags._C[kind][0])}
+    else:
+        args = {"subcategories": [kind]}
+    res, sign = {}, 1 if direction == "up" else -1
+    for name, (a, b) in (("development", EV_DEV), ("validation", EV_VAL)):
+        r = es.run(root, a, b, **args)
+        c = r["cars"]
+        x = c[f"car_{sessions}"].to_numpy() if len(c) else np.array([])
+        m, t, n = nw_t(x, 0)
+        res[name] = {"mean": m, "t": t, "n": n, "per": f"CAR[0,{sessions}] per filing"}
+    d, why = decide(res["development"], res["validation"], sign, MIN_EVENTS, round_trip_pct / 100, "events")
+    return {"decision": d, "why": why, **res}
+
+
+def holder_events(root: Path, kind: str, start: str, end: str) -> pd.DataFrame:
+    """isin, t (when the market could know it) for one holder kind, in [start, end]:
+        insider_sast   BSE announcements in 'Insider Trading / SAST', trading-window notices left out (dissemination)
+        bulk_/block_   NSE deals of that kind and side; published after the close, so the next session (t = 16:00)
+        promoter_up/down, pledge_up   a quarter's promoter holding up or down by PROMOTER_STEP_PP points, or the pledged
+                       share of it up by PLEDGE_STEP_PP; dated FILING_LAG_DAYS after the quarter end (SEBI's deadline)"""
+    import glob
+    cols = ["isin", "t", "headline"]
+    if kind == "insider_sast":
+        from pflab.data import bse_scrip_isin
+        from pflab.monitor.filings import resolve_isins
+        fs = glob.glob(str(root / "bse_announcements" / "**" / "*.parquet"), recursive=True)
+        if not fs:
+            return pd.DataFrame(columns=cols)
+        df = _duck.sql(f"""select scrip_code, headline, subcategory, coalesce(dissem_dt, news_dt) t
+                            from read_parquet({fs!r}, union_by_name=true)
+                            where category = 'Insider Trading / SAST' and coalesce(subcategory, '') not ilike '%trading window%'
+                              and coalesce(dissem_dt, news_dt) between TIMESTAMP '{start}' and TIMESTAMP '{end} 23:59:59'""").df()
+        if df.empty:
+            return pd.DataFrame(columns=cols)
+        df["isin"] = resolve_isins(df, bse_scrip_isin.load(root))
+        return df.dropna(subset=["isin"]).drop_duplicates(["isin", "t"])[cols]
+    if kind.startswith(("bulk_", "block_")):
+        from pflab.data import nse_deals
+        k, side = kind.split("_")
+        d = nse_deals.load(root)
+        d["date"] = pd.to_datetime(d["date"])
+        d = d[(d["kind"] == k) & (d["side"] == side.upper()) & (d["date"] >= pd.Timestamp(start))
+              & (d["date"] <= pd.Timestamp(end))]
+        if d.empty:
+            return pd.DataFrame(columns=cols)
+        px = _duck.sql(f"""select distinct date, symbol, isin from '{root}/panel/prices.parquet'
+                           where date between DATE '{start}' and DATE '{end}'""").df()
+        px["date"] = pd.to_datetime(px["date"])
+        d = d.merge(px, on=["date", "symbol"], how="inner")          # the symbol as it traded that day: point in time
+        d = d.drop_duplicates(["isin", "date"])
+        return pd.DataFrame({"isin": d["isin"], "t": d["date"] + pd.Timedelta(hours=16), "headline": d["client"]})
+    s = pd.read_parquet(root / "bse_shareholding" / "summary.parquet",
+                        columns=["scrip_code", "quarter_end", "status", "promoter_pct", "pledged_pct_of_promoter"])
+    s = s[s["status"] == "ok"].sort_values(["scrip_code", "quarter_end"])
+    col, step = ("pledged_pct_of_promoter", PLEDGE_STEP_PP) if kind == "pledge_up" else ("promoter_pct", PROMOTER_STEP_PP)
+    s["chg"] = s.groupby("scrip_code")[col].diff()
+    hit = s[s["chg"] <= -step] if kind == "promoter_down" else s[s["chg"] >= step]
+    hit = hit.assign(t=pd.to_datetime(hit["quarter_end"]) + pd.Timedelta(days=FILING_LAG_DAYS, hours=16))
+    hit = hit[(hit["t"] >= pd.Timestamp(start)) & (hit["t"] <= pd.Timestamp(end) + pd.Timedelta(hours=23))]
+    mp = _duck.sql(f"select scrip_code, isin from '{root}/bse_scrip_isin/map.parquet' where isin like 'INE%'").df()
+    mp["scrip_code"] = mp["scrip_code"].astype(str)
+    hit = hit.assign(scrip_code=hit["scrip_code"].astype(str)).merge(mp.drop_duplicates("scrip_code"), on="scrip_code")
+    return pd.DataFrame({"isin": hit["isin"], "t": hit["t"], "headline": kind})
+
+
+def holder_event(root: Path, kind: str, direction: str, sessions: int, round_trip_pct: float) -> dict:
+    from pflab.quant import event_study as es
+    res, sign = {}, 1 if direction == "up" else -1
+    mkt = es.market(root)
+    for name, (a, b) in (("development", EV_DEV), ("validation", EV_VAL)):
+        ev = holder_events(root, kind, a, b)
+        x = np.array([])
+        if len(ev):
+            rets = es.returns(root, sorted(set(ev["isin"])), a, b)
+            c = es.cars(ev, rets, mkt, (sessions,)) if len(rets) else pd.DataFrame()
+            x = c[f"car_{sessions}"].to_numpy() if len(c) else np.array([])
+        m, t, n = nw_t(x, 0)
+        res[name] = {"mean": m, "t": t, "n": n, "per": f"CAR[0,{sessions}] per event"}
+    d, why = decide(res["development"], res["validation"], sign, MIN_EVENTS, round_trip_pct / 100, "events")
+    return {"decision": d, "why": why, **res}
+
+
+def effect_days(dates: pd.DatetimeIndex, effect: str) -> np.ndarray:
+    s = pd.Series(range(len(dates)), index=dates)
+    if effect == "turn_of_month":
+        ym = dates.year * 100 + dates.month
+        first = pd.Series(ym).groupby(ym).cumcount().to_numpy()
+        last = pd.Series(ym[::-1]).groupby(ym[::-1]).cumcount().to_numpy()[::-1]
+        return (first < 3) | (last == 0)
+    if effect == "monday":
+        return dates.weekday == 0
+    if effect == "friday":
+        return dates.weekday == 4
+    if effect == "january":
+        return dates.month == 1
+    if effect == "first_half_month":
+        return dates.day <= 15
+    raise ValueError(effect)
+
+
+WINDOW_DAYS = {"turn_of_month": 4, "monday": 1, "friday": 1, "january": 21, "first_half_month": 10}
+
+
+def calendar(root: Path, effect: str, direction: str) -> dict:
+    from pflab.data import indices
+    df = indices.load("NIFTY500_TRI", root)
+    s = df.assign(date=pd.to_datetime(df["date"])).set_index("date")["close"].sort_index()
+    r = s.pct_change().dropna()
+    res, sign = {}, 1 if direction == "high" else -1
+    for name, (a, b) in (("development", DEV), ("validation", VAL)):
+        x = r[(r.index >= pd.Timestamp(a)) & (r.index <= pd.Timestamp(b))]
+        on = effect_days(x.index, effect)
+        e, o = x[on], x[~on]
+        diff = float(e.mean() - o.mean()) if len(e) and len(o) else float("nan")
+        se = math.sqrt(e.var(ddof=1) / len(e) + o.var(ddof=1) / len(o)) if len(e) > 1 and len(o) > 1 else float("nan")
+        months = len({(d.year, d.month) for d in x.index})
+        res[name] = {"mean": diff * WINDOW_DAYS[effect], "t": diff / se if se and se > 0 else float("nan"), "n": months,
+                     "per": f"excess over a {WINDOW_DAYS[effect]}-session window"}
+    d, why = decide(res["development"], res["validation"], sign, MIN_MONTHS, ETF_ROUND_TRIP_PCT / 100, "months")
+    return {"decision": d, "why": why, **res}
+
+
+def run(root: Path, template: str, params: dict) -> dict:
+    """Run a registered claim's template; the decision comes from `decide`, never from a model."""
+    from pflab.hq import stocks
+    bad = check_params(template, params)
+    if bad:
+        raise ValueError(bad)
+    rt = stocks.round_trip_pct(stocks.DEFAULT_ORDER)
+    if template == "cross_section":
+        return cross_section(root, params["signal"], params["direction"], int(params["months"]), rt)
+    if template == "event_study":
+        return event_study(root, params["kind"], params["direction"], int(params["sessions"]), rt)
+    if template == "holder_event":
+        return holder_event(root, params["kind"], params["direction"], int(params["sessions"]), rt)
+    return calendar(root, params["effect"], params["direction"])

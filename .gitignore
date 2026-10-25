@@ -1,0 +1,31 @@
+.venv/
+__pycache__/
+*.pyc
+# anchored to the repo root: an unanchored `data/` also matched the source
+# package src/pflab/data/ and docs/data/, which were never committed (fixed 2026-09-22)
+/data/
+/experiments/
+research/journal.jsonl
+configs/*.local.toml
+secrets*
+# the loader is code, not a secret: `secrets*` hid it from git until 2026-10-20 (a fresh clone could not start)
+!src/pflab/pm/secrets.py
+.env
+*.egg-info/
+
+# External drops (audit input archives, 2026-09-27)
+/code.zip
+/portfolio_audit_reproductions.zip
+logs/
+
+# Portfolio Manager store (PFLAB_PM_DIR default, 2026-10-06)
+/pm/
+
+# personal parts of the OKF knowledge bundle (S21)
+/knowledge/personal/
+
+# The investor's raw personal inputs (statements, CAS, Console exports); deleted after calibration
+/new/
+
+# S59 drive watcher: files the investor drops for the inbox (his, never in git)
+/drop/

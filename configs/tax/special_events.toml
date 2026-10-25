@@ -1,0 +1,55 @@
+# Event-specific rules: things that are not an ordinary sale (S2, 2026-10-06).
+
+# SGB redemption at maturity.
+[[sgb_redemption]]
+id = "sgb_redemption_pre_fa2026"
+effective_to = 2026-03-31
+exempt = true
+requires_original_subscriber = false
+section_old = "47(vii)"
+section_new = "70(1)(x) before substitution"
+source_url = "https://taxguru.in/income-tax/shift-sovereign-gold-bonds-analyzing-2026-tax-rules.html"
+source_title = "Taxguru: The Shift in Sovereign Gold Bonds, 2026 tax rules (search result; page not opened). Finance Act 2026 s.43 substitutes the clause."
+verification = "secondary"
+verified_on = 2026-10-06
+note = "Before 1-Apr-2026 redemption at maturity was exempt for any holder."
+
+[[sgb_redemption]]
+id = "sgb_redemption_fa2026"
+effective_from = 2026-04-01
+exempt = true
+requires_original_subscriber = true
+section_old = ""
+section_new = "70(1)(x)"
+source_url = "https://egazette.gov.in/WriteReadData/2026/271439.pdf"
+source_title = "The Finance Act, 2026 (No. 4 of 2026), assent 30-Mar-2026, s.43 (in force 1-Apr-2026 by s.1(2)(a))"
+verification = "primary"
+verified_on = 2026-10-06
+text = "(x) by way of redemption, of Sovereign Gold Bond issued by the Reserve Bank of India under the Sovereign Gold Bond Scheme, 2015 or any subsequent Sovereign Gold Bond Scheme, if held by an individual from the date of original issue till maturity;"
+note = "Exempt only if an individual held from original issue till maturity. Anyone else: the redemption is a transfer, taxed under rule sgb_listed (12 months, 12.5%). Open: premature redemption (RBI window after year 5) is not till maturity on the text, and commentary differs. Treated as NOT exempt until resolved."
+
+# Buy-back (company purchases its own shares), tax years from 2026-27.
+[[buyback]]
+id = "buyback_promoter_additional_tax"
+effective_from = 2026-04-01
+stcg_additional_domestic_company = 0.02
+stcg_additional_other = 0.10
+ltcg_additional_domestic_company = 0.095
+ltcg_additional_other = 0.175
+section_new = "69(2)"
+source_url = "https://egazette.gov.in/WriteReadData/2026/271439.pdf"
+source_title = "The Finance Act, 2026 (No. 4 of 2026), s.42 substituting s.69(2) and (3) of the Income-tax Act, 2025"
+verification = "primary"
+verified_on = 2026-10-06
+note = "A promoter of the buying-back company pays, on top of tax on the capital gain, an additional 2% or 10% (short-term) and 9.5% or 17.5% (long-term), by whether the promoter is a domestic company. Promoter is defined in s.69(3). Not relevant to a non-promoter."
+
+[[buyback]]
+id = "buyback_non_promoter"
+effective_from = 2026-04-01
+treatment = "capital gain at ordinary rates (the rule for the instrument's tax_class applies)"
+section_new = "69(1)"
+source_url = "https://egazette.gov.in/WriteReadData/2026/271439.pdf"
+source_title = "Finance Act 2026 s.42 reads s.69(2) as applying to capital gains referred to in sub-section (1); s.69(1) itself not opened"
+verification = "secondary"
+verified_on = 2026-10-06
+note = "Non-promoter holder: proceeds are capital gains in the holder's hands. Open: confirm s.69(1) wording and how cost is handled."

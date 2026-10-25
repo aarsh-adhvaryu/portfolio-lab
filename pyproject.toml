@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pflab"
+version = "0.0.1"
+description = "Tax-aware monthly-SIP portfolio research harness for NSE equities"
+requires-python = ">=3.10"
+dependencies = [
+  "pandas>=2.0",
+  "numpy>=1.24",
+  "pyarrow>=14",
+  "duckdb>=0.10",
+  "requests>=2.31",
+  "python-dateutil>=2.8",
+  "yfinance>=0.2",
+  "tomli>=2.0; python_version < '3.11'",
+  # CLAUDE.md 7, added 2026-09-17 for the NSE index constituent-change
+  # press releases (E1b §3). pdfplumber is the named fallback for releases
+  # pypdf returns out of reading order, and is used for nothing else.
+  "pypdf>=5",
+  "pdfplumber>=0.11",
+  # CLAUDE.md 7, installed 2026-09-29 for E5-A §5. Pinned exactly: a model's
+  # bytes depend on the LightGBM that fitted it. Brings scipy and narwhals.
+  "lightgbm==4.7.0",
+  # CLAUDE.md 5, added 2026-10-06 for S16: AMC monthly portfolio files are .xlsx.
+  "openpyxl==3.1.5",
+  # CLAUDE.md 5, added 2026-10-06 for S4: official Kite Connect SDK, used only by ingest/kite.py
+  # behind a read-only allowlist (no order, GTT or SIP method is reachable).
+  "kiteconnect==5.2.2",
+  # CLAUDE.md 5, added 2026-10-06 for S5: parses CAMS/KFintech/CDSL/NSDL CAS PDFs into typed models.
+  "casparser==1.4.1",
+  # CLAUDE.md 5, added 2026-10-06 for S21: OKF frontmatter, guarded LLM workflows over local Ollama models.
+  "PyYAML==6.0.3",
+  "langgraph==1.2.13",
+  "langchain-ollama==1.1.0",
+  # CLAUDE.md 5, added 2026-10-14 for S6: SBI exports password-encrypted .xlsx (msoffcrypto decrypts
+  # in memory; brings olefile, cryptography), HDFC exports legacy .xls (xlrd).
+  "msoffcrypto-tool==5.4.2",
+  "xlrd==2.0.1",
+  # CLAUDE.md 5, added 2026-10-15 for S38: main-text extraction of news articles for the knowledge graph.
+  "trafilatura==2.0.0",
+  # CLAUDE.md 5, added 2026-10-16 for S39: Engle-Granger and Johansen cointegration tests, Newey-West
+  # errors (pairs study). Brings patsy.
+  "statsmodels==0.14.6",
+  # CLAUDE.md 5, added 2026-10-17 for S44 (PLAN A7 research tier, agreed by the investor): the official Anthropic SDK,
+  # used only by agents/analyst.py behind the egress gate and the budget.
+  "anthropic==1.15.0",
+  # CLAUDE.md 5, added 2026-10-22 for S54: the dashboard (local web app on 127.0.0.1; brings starlette, anyio, h11).
+  "fastapi==0.159.1",
+  "uvicorn==0.54.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+pflab = "pflab.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,733 @@
+"""The brain's tools (S60, PLAN A18): one registry of plain functions, each with a strict JSON schema.
+
+    read     look at the system's facts (all built by code; nothing paid): the portfolio, every stock's drift / odds /
+             edge, tax plan, reviewed measures, simulations, forecasts, readings, the graph, notes, memory, its own
+             journal and record, ready plans, research flags, price history, quant templates
+    journal  the brain's own ledgers, always written: predictions (scored by the keeper), suggestions (the suggestion
+             ledger), its working state (memory, superseding the last)
+    action   what would change something outside the brain: ask or tell the investor, order research or a calculation, prepare a
+             plan, correct a memory row, fetch a cited page. Carried out (The investor 2026-10-25), at most DAILY a day each; the
+             rival's (and in shadow mode all) are recorded as decisions only
+Inputs are checked here against the schema even though the API's strict mode guarantees them (a test, a replay, a
+model without strict mode); results are compact JSON that names its source, redacted (`hq/redact.py`: ids, his name and
+address words, PAN, e-mail, phone, UPI, IFSC) and passed through the egress check (the bare word "address" is not read:
+public filings name their offices) before they go back to the model; every call is logged in `hq_tool_calls`. Later
+turns of a pass send only these checked results, so the API road does not check them a second time.
+"""
+from __future__ import annotations
+
+import json
+import math
+import time
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+RESULT_CHARS = 6_000
+KINDS = ("read", "journal", "action")
+
+
+@dataclass
+class Ctx:
+    rt: Any
+    pass_id: Optional[int]
+    model: str
+    shadow: bool
+    syms: Dict[str, str]                         # symbol -> isin the brain may predict and suggest on
+    gate: Any
+    now: datetime
+    client: Any = None
+    mode: str = "economy"
+    source: str = ""                             # everything the brain has read this pass (for the number check)
+    decisions: List[dict] = field(default_factory=list)
+    predictions: List[int] = field(default_factory=list)
+    suggestions: List[int] = field(default_factory=list)
+    results: Dict[str, str] = field(default_factory=dict)
+    problems: List[str] = field(default_factory=list)
+    state: Optional[str] = None
+    _book: Any = None
+
+    @property
+    def con(self):
+        return self.rt.cursor()
+
+    @property
+    def asof(self) -> date:
+        return self.now.date()
+
+    def book(self):
+        if self._book is None:
+            from pflab.app import research
+            from pflab.hq import stocks
+            self._book = stocks.book(self.con, self.asof, research.read_cache(self.rt, "watch"))
+        return self._book
+
+
+@dataclass(frozen=True)
+class Tool:
+    name: str
+    kind: str
+    about: str
+    params: Dict[str, dict]
+    required: Tuple[str, ...]
+    fn: Callable[[Ctx, dict], dict]
+
+    def schema(self) -> dict:
+        return {"type": "object", "additionalProperties": False, "properties": self.params,
+                "required": list(self.required)}
+
+    def definition(self) -> dict:
+        """For the API: bounds the strict grammar may not take are moved into the descriptions (checked here anyway)."""
+        props = {}
+        for k, v in self.params.items():
+            d = {x: y for x, y in v.items() if x not in ("minimum", "maximum", "maxLength", "maxItems")}
+            if "minimum" in v:
+                d["description"] = f"{v.get('description', '')} (from {v['minimum']:g} to {v['maximum']:g})".strip()
+            elif "maxLength" in v:
+                d["description"] = f"{v.get('description', '')} (at most {v['maxLength']} characters)".strip()
+            props[k] = d
+        d = {"name": self.name, "description": f"[{self.kind}] {self.about}",
+             "input_schema": {**self.schema(), "properties": props}}
+        if self.required:                  # the API takes at most 20 strict tools: those with required inputs
+            d["strict"] = True
+        return d
+
+
+def _s(about: str, max_len: int = 600, enum=None) -> dict:
+    d = {"type": "string", "description": about}
+    if enum:
+        d["enum"] = list(enum)
+    else:
+        d["maxLength"] = max_len
+    return d
+
+
+def _i(about: str, lo: int, hi: int) -> dict:
+    return {"type": "integer", "description": about, "minimum": lo, "maximum": hi}
+
+
+def _n(about: str, lo: float, hi: float) -> dict:
+    return {"type": "number", "description": about, "minimum": lo, "maximum": hi}
+
+
+_PY = {"string": str, "integer": int, "number": (int, float), "boolean": bool, "array": list}
+
+
+def validate(tool: Tool, args: Any) -> Optional[str]:
+    """None when `args` fits the tool's schema; else what is wrong."""
+    if not isinstance(args, dict):
+        return "the input must be an object"
+    extra = set(args) - set(tool.params)
+    if extra:
+        return f"unknown field(s): {', '.join(sorted(extra))}"
+    missing = [k for k in tool.required if k not in args]
+    if missing:
+        return f"missing field(s): {', '.join(missing)}"
+    for k, v in args.items():
+        sch = tool.params[k]
+        t = sch["type"]
+        if not isinstance(v, _PY[t]) or (t in ("integer", "number") and isinstance(v, bool)):
+            return f"{k}: must be {t}"
+        if "enum" in sch and v not in sch["enum"]:
+            return f"{k}: one of {sch['enum']}"
+        if t in ("integer", "number") and not sch.get("minimum", -1e18) <= v <= sch.get("maximum", 1e18):
+            return f"{k}: between {sch.get('minimum')} and {sch.get('maximum')}"
+        if t == "string" and len(v) > sch.get("maxLength", 10_000):
+            return f"{k}: at most {sch['maxLength']} characters"
+        if t == "array":
+            it = sch.get("items", {})
+            if len(v) > sch.get("maxItems", 50) or any(not isinstance(x, str) or ("enum" in it and x not in it["enum"])
+                                                       for x in v):
+                return f"{k}: a list of {it.get('enum') or 'strings'}"
+    return None
+
+
+# --- read tools ------------------------------------------------------------------------------------------------------
+
+def _rs(x) -> str:
+    from pflab.hq.brain import _rs as rs
+    return rs(float(x))
+
+
+def _isin(ctx: Ctx, symbol: str) -> str:
+    i = ctx.syms.get((symbol or "").strip().upper())
+    if i:
+        return i
+    r = ctx.con.execute("SELECT isin FROM instruments WHERE upper(symbol)=? LIMIT 1", [(symbol or "").strip().upper()]).fetchone()
+    if not r:
+        raise LookupError(f"no instrument with the symbol {symbol!r}")
+    return r[0]
+
+
+def portfolio(ctx: Ctx, a: dict) -> dict:
+    from pflab.pm import today
+    con = ctx.con
+    t = today.build(con, ctx.asof)
+    pos = t["positions"]
+    pos = pos[pos["value"].notna() & (pos["qty"] > 0)]
+    total = float(t["investable"]) or 1.0
+    eq = {i for (i,) in con.execute("SELECT isin FROM instruments WHERE asset_class='equity'").fetchall()}
+    by = pos.groupby(["symbol", "isin", "bucket"], as_index=False)[["value", "cost"]].sum().sort_values("value", ascending=False)
+    hold = [{"symbol": r.symbol, "bucket": r.bucket, "weight_pct": round(r.value / total * 100, 2), "value": _rs(r.value),
+             "gain_pct": round((r.value / r.cost - 1) * 100, 1) if r.cost else None} for r in by.head(40).itertuples()]
+    st = by[by["isin"].isin(eq)]
+    sv, sc = float(st["value"].sum()), float(st["cost"].sum())
+    priced = by[by["cost"] > 0]
+    av, ac = float(priced["value"].sum()), float(priced["cost"].sum())
+    targets = {}
+    try:
+        from pflab.plan import targets as tg
+        targets = {b.bucket: b for b in tg.load().buckets.values()}
+    except Exception:
+        pass
+    buckets = []
+    for k, v in sorted(t["buckets"].items(), key=lambda kv: -kv[1]):
+        if not v:
+            continue
+        b = targets.get(k)
+        buckets.append({"bucket": k, "weight_pct": round(v / total * 100, 1), "value": _rs(v),
+                        **({"target_pct": round(b.target * 100, 1), "soft_band_pct": round(b.soft_band * 100, 1),
+                            "hard_band_pct": round(b.hard_band * 100, 1)} if b else {})})
+    td = t["today"]
+    return {"asof": str(ctx.asof), "source": td["source"], "kite_snapshot_at": td.get("snapshot_at"),
+            "statements_to": str(td.get("documents_to")), "investable": _rs(total), "net_worth": _rs(t["net_worth"]),
+            "buckets": buckets, "holdings": hold,
+            "direct_stocks": {"names": int(len(st)), "value": _rs(sv), "cost": _rs(sc), "unrealised_gain": _rs(sv - sc),
+                              "gain_pct": round((sv / sc - 1) * 100, 2) if sc else None},
+            "all_priced_holdings": {"value": _rs(av), "cost": _rs(ac), "unrealised_gain": _rs(av - ac),
+                                    "gain_pct": round((av / ac - 1) * 100, 2) if ac else None},
+            "kite_vs_statements": [f"{d['symbol']}: Kite {d['kite']:g}, statements {d['ledger']:g}" for d in td.get("diffs", [])],
+            "fall_limit": "the portfolio is checked against a 35% fall (Monte Carlo)",
+            "source_note": "pm/today.py: the ledger with the broker account replaced by the newest Kite snapshot; gains "
+                           "are unrealised (cost basis of the lots held); realised gains are in tax_plan"}
+
+
+def stocks_overview(ctx: Ctx, a: dict) -> dict:
+    from pflab.hq import stocks
+    return stocks.overview(ctx.con, ctx.rt.data_root, ctx.book())
+
+
+def stock_facts(ctx: Ctx, a: dict) -> dict:
+    from pflab.hq import stocks
+    return stocks.facts(ctx.con, ctx.rt.data_root, ctx.book(), a["symbol"], tuple(a.get("parts") or ("drift", "odds", "edge")))
+
+
+def tax_plan(ctx: Ctx, a: dict) -> dict:
+    from pflab.tax import plan as tp
+    return {"lines": tp.render(tp.overview(ctx.con, ctx.asof))[:60],
+            "source": "tax/plan.py: the tax engine replays each sale (both regimes), FIFO lots, 112A exemption"}
+
+
+INDEX_KEYS = {"NIFTY 50": "NIFTY50_PRICE", "NIFTY50": "NIFTY50_PRICE", "NIFTY 500": "NIFTY500_TRI",
+              "NIFTY500": "NIFTY500_TRI"}
+
+
+def _series(ctx: Ctx, name: str):
+    import pandas as pd
+    key = INDEX_KEYS.get(name.strip().upper())
+    if key:
+        from pflab.data import indices
+        df = indices.load(key, ctx.rt.data_root)
+        return df[["date", "close"]], key
+    from pflab.hq import stocks
+    c = stocks.closes(ctx.con, ctx.rt.data_root, _isin(ctx, name), ctx.asof)
+    return pd.DataFrame({"date": c.index, "close": c.values}), name.upper()
+
+
+def measure(ctx: Ctx, a: dict) -> dict:
+    from pflab.calc import measures as ms
+    s, label = _series(ctx, a["series"])
+    second = None
+    if a.get("second"):
+        second, l2 = _series(ctx, a["second"])
+    vals = {k: a[k] for k in ("start", "end", "fall_pct", "sessions", "level") if k in a}
+    out = ms.run(a["measure"], s, vals, second)
+    return {"computed": ms.describe(a["measure"], label, vals, a.get("second")), **out,
+            "source": "calc/measures.py (reviewed measures)"}
+
+
+def simulation(ctx: Ctx, a: dict) -> dict:
+    from pflab.app import sims
+    years = int(a.get("years", 5))
+    out = sims.run(ctx.rt, paths=10_000, years=years)
+    mixes = {}
+    for name, mx in out["mixes"].items():
+        y = mx["fan"]["years"].get("1", {})
+        worst = sorted([e for e in mx["stress"]["episodes"] if e.get("covered")], key=lambda e: e["worst_fall"])[:3]
+        mixes[name] = {"chance_35pct_fall": mx["fall"].get("text"),
+                       "one_rupee_after_1y_p5_p50_p95": [round(y[k], 3) for k in ("p5", "p50", "p95")] if y else None,
+                       "worst_episodes": [f"{e['name']} {e['worst_fall'] * 100:.0f}%" for e in worst]}
+    return {"paths": 10_000, "years": years, "history": out["history"], "mixes": mixes,
+            "source": "app/sims.py (block bootstrap, risk/montecarlo.py)"}
+
+
+def forecasts(ctx: Ctx, a: dict) -> dict:
+    q = ("SELECT use, subject, as_of, target, q10, q50, q90, model FROM tfm_forecasts WHERE as_of = (SELECT max(as_of) "
+         "FROM tfm_forecasts)")
+    args: list = []
+    if a.get("symbol"):
+        sym = a["symbol"].strip().upper()
+        q += " AND (upper(subject) LIKE ? OR subject = ?)"
+        args = [f"%{sym}%", ctx.syms.get(sym, "")]
+    rows = ctx.con.execute(q + " ORDER BY use, subject LIMIT 20", args).fetchall()
+    return {"rows": [{"use": u, "subject": s, "as_of": str(a_), "target": str(t), "q10": q1, "q50": q5, "q90": q9,
+                      "model": m} for u, s, a_, t, q1, q5, q9, m in rows],
+            "source": "quant/tfm2_live.py (TimesFM where its scoreboard passes, else the baseline)"}
+
+
+def readings(ctx: Ctx, a: dict) -> dict:
+    from pflab.hq import readers
+    isin = _isin(ctx, a["symbol"])
+    since = ctx.now - timedelta(days=int(a.get("days", 30)))
+    rows = [r for r in readers.recent(ctx.con, since, material_only=False) if isin in r["isins"]][:10]
+    return {"readings": [{"kind": r["kind"], "published": str(r["published"])[:10], "material": r.get("material"),
+                          "summary": (r["summary"] or "")[:400], "figures": r["figures"][:4]} for r in rows],
+            "source": "hq/readers.py (Haiku readings; figures kept only when found in the document)"}
+
+
+def graph_timeline(ctx: Ctx, a: dict) -> dict:
+    from pflab.kg import graph as g
+    isin = _isin(ctx, a["symbol"])
+    df = g.timeline(ctx.con, f"company:{isin}", ctx.now - timedelta(days=int(a.get("days", 30))),
+                    kinds=("filing", "result", "article", "reading", "analyst_note", "dataset", "deal", "holding"), limit=20)
+    return {"items": [{"date": str(r.published_at)[:10], "kind": r.kind, "title": (r.title or "")[:160],
+                       "url": getattr(r, "url", None)} for r in df.itertuples()], "source": "knowledge graph (kg/graph.py)"}
+
+
+def notes(ctx: Ctx, a: dict) -> dict:
+    from pflab.agents import memory as mem
+    rows = mem.recall(ctx.con, subject=a["symbol"].strip().upper(), kinds=["note"], asof=ctx.asof, limit=2)
+    return {"notes": [m.line()[:2000] for m in rows] or ["no analyst note on record"],
+            "source": "memory (the analyst's newest cited note per company)"}
+
+
+def memory_recall(ctx: Ctx, a: dict) -> dict:
+    from pflab.agents import memory as mem
+    rows = mem.recall(ctx.con, subject=a.get("subject") or None, kinds=[a["kind"]] if a.get("kind") else None,
+                      words=a.get("words", ""), asof=ctx.asof, limit=15)
+    return {"rows": [m.line()[:400] for m in rows], "source": "memory (rows in force today; #id to correct one)"}
+
+
+def journal(ctx: Ctx, a: dict) -> dict:
+    from pflab.hq import brain, keeper, suggestions as sg
+    mine = [p for p in brain.journal(ctx.con, 30) if p["model"] == ctx.model and p["status"] == "done"][:6]
+    return {"passes": [{"id": p["id"], "at": str(p["at"])[:16], "trigger": p["trigger"], "note": (p["note"] or "")[:300],
+                        "actions": [f"{d['action']}: {d.get('subject', '')}"[:120] for d in p["decisions"]]} for p in mine],
+            "scorecard": keeper.scorecard_text(ctx.con, ctx.model), "suggestions": sg.lessons_text(ctx.con, ctx.model),
+            "source": "hq_passes, hq_predictions, hq_suggestions"}
+
+
+def ready_plans(ctx: Ctx, a: dict) -> dict:
+    from pflab.plan import ready
+    out = []
+    for p in ready.current(ctx.con, 4):
+        out.append({k: (v[:800] if isinstance(v, str) else v) for k, v in p.items()
+                    if isinstance(v, (str, int, float)) and k not in ("inputs_hash",)})
+    return {"plans": out, "source": "plan/ready.py (kept current; tickets are entered by the investor)"}
+
+
+def research_flags(ctx: Ctx, a: dict) -> dict:
+    since = ctx.now - timedelta(days=int(a.get("days", 14)))
+    q, args = "SELECT symbol, kind, happened_at, detail FROM research_flags WHERE detected_at >= ?", [since]
+    if a.get("symbol"):
+        q += " AND isin = ?"
+        args.append(_isin(ctx, a["symbol"]))
+    else:
+        mine = list(ctx.syms.values()) or [""]
+        q += f" AND isin IN ({','.join('?' * len(mine))})"
+        args += mine
+    rows = ctx.con.execute(q + " ORDER BY happened_at DESC LIMIT 20", args).fetchall()
+    return {"flags": [{"symbol": s, "kind": k, "at": str(h)[:16], "detail": (d or "")[:300]} for s, k, h, d in rows],
+            "source": "agents/researcher.py (flags found and measured by code)"}
+
+
+def price_history(ctx: Ctx, a: dict) -> dict:
+    from pflab.hq import stocks
+    c = stocks.closes(ctx.con, ctx.rt.data_root, _isin(ctx, a["symbol"]), ctx.asof)
+    c = c.iloc[-int(a.get("days", 250)):]
+    w = c.resample("W").last().dropna().iloc[-40:]
+    return {"trend": stocks.trend(c), "weekly_closes": [[str(d.date()), round(float(v), 2)] for d, v in w.items()],
+            "source": "prices (research panel's adjusted closes joined to the store's)"}
+
+
+def quant(ctx: Ctx, a: dict) -> dict:
+    from pflab.agents import quant as qn
+    return {"text": qn.run(a["idea"], ctx.rt.data_root)[:3000],
+            "source": "agents/quant.py (tested templates; a new claim needs a pre-registered study)"}
+
+
+def who_is_buying(ctx: Ctx, a: dict) -> dict:
+    """S63: insider / SAST disclosures, bulk and block deals, promoters and pledges, institutions by quarter."""
+    from pflab.hq import context
+    sym = a["symbol"].strip().upper()
+    return context.holders(ctx.con, ctx.rt.data_root, _isin(ctx, sym), sym, ctx.asof, int(a.get("days", 180)))
+
+
+def market_context(ctx: Ctx, a: dict) -> dict:
+    from pflab.hq import context
+    return context.market(ctx.rt.data_root, ctx.asof)
+
+
+def growth(ctx: Ctx, a: dict) -> dict:
+    from pflab.hq import context
+    return context.growth(ctx.con, ctx.asof, int(a.get("months", 12)))
+
+
+def findings(ctx: Ctx, a: dict) -> dict:
+    """S62: what the learner tested. Passed claims with, for a stock signal, where each held and listed name sits today;
+    failed ones listed so they are not relied on."""
+    import json as _json
+    from pflab.learner import templates as tp
+    con = ctx.con
+    rows = con.execute("SELECT c.claim_id, c.claim, c.template, c.params_json, c.decision, c.why, s.title FROM learn_claims c "
+                       "JOIN learn_sources s USING (src_id) WHERE c.status IN ('passed','failed') ORDER BY c.decided_at DESC "
+                       "LIMIT 30").fetchall()
+    passed, failed = [], []
+    for cid, claim, t, prm, d, why, title in rows:
+        item = {"claim": claim[:300], "test": f"{t} {prm}", "result": (why or "")[:300], "source": (title or "")[:120],
+                "claim_id": cid}
+        if d == "pass" and t == "cross_section":
+            p = _json.loads(prm)
+            q = tp.today_quintiles(con, ctx.rt.data_root, p["signal"], list(ctx.syms.values()), ctx.asof)
+            names = {v: k for k, v in ctx.syms.items()}
+            item["today"] = {names.get(i, i): f"quintile {v['quintile']} of 5 ({p['signal']} {v['value']:.3g}, "
+                                              f"breakpoints {v['breakpoints_at']})" for i, v in q.items()}
+            item["claimed_quintile"] = 5 if p["direction"] == "high" else 1
+        (passed if d == "pass" else failed).append(item)
+    return {"passed": passed, "failed": [{k: f[k] for k in ("claim", "result", "claim_id")} for f in failed[:15]],
+            "source": "learner (claims from reading, each registered before its test; learner/templates.py decides)"}
+
+
+# --- journal tools ---------------------------------------------------------------------------------------------------
+
+def record_prediction(ctx: Ctx, a: dict) -> dict:
+    from pflab.hq import brain, keeper
+    pr, problem = brain.check_prediction(a, ctx.syms, ctx.now)
+    if problem:
+        raise ValueError(problem)
+    pid = keeper.add_prediction(ctx.con, ctx.pass_id, ctx.model, pr, ctx.now)
+    if pid is None:
+        raise ValueError(f"no close on record for {pr['symbol']}: not kept")
+    ctx.predictions.append(pid)
+    return {"kept": pid, "scored": "on the close at its due date, against the stock's own base rate"}
+
+
+def record_suggestion(ctx: Ctx, a: dict) -> dict:
+    from pflab.agents import analyst as an
+    from pflab.hq import keeper, stocks, suggestions as sg
+    sym = (a.get("symbol") or "").strip().upper()
+    isin = facts = ref = qty = None
+    if sym:
+        if sym not in ctx.syms:
+            raise ValueError(f"{sym} is neither held nor on the stock list")
+        isin = ctx.syms[sym]
+        bk = ctx.book()
+        facts = stocks.facts(ctx.con, ctx.rt.data_root, bk, sym, ("drift",))
+        s = keeper.closes(ctx.con, isin, ctx.asof, days=15)
+        ref = (s.index[-1].date(), float(s.iloc[-1])) if len(s) else None
+        qty = float(bk.qtys.get(isin, 0.0))
+    text, d1 = an.only_sourced_numbers(a["text"], an.Request(ctx.source, "brain"))
+    why, d2 = an.only_sourced_numbers(a["reasoning"], an.Request(ctx.source, "brain"))
+    if d1 or d2:
+        ctx.problems.append(f"suggestion on {sym or 'the portfolio'}: {d1 + d2} sentence(s) dropped (numbers not read)")
+    data = {"rested_on": {n: ctx.results.get(n, "(not called this pass)")[:1500] for n in a.get("rested_on", [])},
+            "facts_at_the_time": facts}
+    sid = sg.record(ctx.con, pass_id=ctx.pass_id, model=ctx.model, kind=a["kind"], isin=isin, symbol=sym or None,
+                    text=text.split("\n\n(")[0], reasoning=why.split("\n\n(")[0], data=data,
+                    horizon_days=int(a["horizon_days"]), now=ctx.now, shadow=ctx.shadow, ref=ref, ref_qty=qty, facts=facts)
+    ctx.suggestions.append(sid)
+    q = ctx.con.execute("SELECT quality, quality_why FROM hq_suggestions WHERE sug_id=?", [sid]).fetchone()
+    return {"kept": sid, "quality_at_the_time": q[0], "why": q[1],
+            "scored": f"in {a['horizon_days']} days against the Nifty 500, taken or not"}
+
+
+def save_state(ctx: Ctx, a: dict) -> dict:
+    from pflab.agents import memory as mem
+    from pflab.hq import brain
+    subject = f"brain:{ctx.model}"
+    prev = ctx.con.execute("SELECT max(mem_id) FROM memory WHERE kind='state' AND subject=? AND valid_to IS NULL",
+                           [subject]).fetchone()[0]
+    state = brain.unnamed(a["state"], ctx.gate.names)
+    mid = mem.remember(ctx.con, "state", state, subject=subject, source=f"brain pass #{ctx.pass_id}", now=ctx.now,
+                       supersedes=prev)
+    ctx.state = state
+    return {"saved": mid, "supersedes": prev}
+
+
+# --- action tools ----------------------------------------------------------------------------------------------------
+
+def _checked(ctx: Ctx, text: str) -> str:
+    from pflab.agents import analyst as an
+    out, n = an.only_sourced_numbers(text, an.Request(ctx.source, "brain"))
+    if n:
+        ctx.problems.append(f"{n} sentence(s) dropped from an action (numbers not read)")
+    return out.split("\n\n(")[0] if n else out
+
+
+# Actions carried out a day at most (The investor 2026-10-25: minimum of him; a noisy day never floods him or the cap).
+# Beyond it the decision is kept in the journal ("held") and the brain is told. S62: the learner may propose a change,
+# applied only with the investor's yes (`learned` daily_cap); web_search is paid, so few.
+DAILY = {"tell_investor": 3, "ask_investor": 2, "order_research": 3, "order_calculation": 3, "fetch_cited": 5, "web_search": 3}
+
+
+def daily_cap(con, tool: str) -> Optional[int]:
+    from pflab.learner import live
+    v = live.values(con, "daily_cap").get(tool)
+    return int(v) if v is not None else DAILY.get(tool)
+
+
+def acted_today(ctx: Ctx, tool: str) -> int:
+    day0 = datetime(ctx.now.year, ctx.now.month, ctx.now.day)
+    return int(ctx.con.execute("SELECT count(*) FROM hq_tool_calls WHERE tool=? AND status='ran' AND called_at >= ?",
+                               [tool, day0]).fetchone()[0])
+
+
+def _act(ctx: Ctx, decision: dict, do: Callable[[], Any], tool: str = "") -> dict:
+    decision = {**decision, "shadow": ctx.shadow}
+    ctx.decisions.append(decision)
+    if ctx.shadow:
+        return {"recorded": True, "carried_out": False,
+                "why": "journal only (shadow mode, or the cheaper rival): not carried out"}
+    n = daily_cap(ctx.con, tool) if tool else None
+    if n is not None and acted_today(ctx, tool) >= n:
+        decision["held"] = f"today's limit of {n} reached"
+        return {"recorded": True, "carried_out": False, "why": f"today's limit of {n} for {tool} is reached: kept in "
+                                                               "the journal; say it in the note if it matters"}
+    decision["done"] = str(do())[:300]
+    return {"recorded": True, "carried_out": True, "result": decision["done"]}
+
+
+def _decision(action: str, agent: str, subject: str, question: str, reason: str, priority: str = "medium") -> dict:
+    return {"action": action, "agent": agent, "subject": subject, "question": question, "reason": reason,
+            "priority": priority}
+
+
+def ask_investor(ctx: Ctx, a: dict) -> dict:
+    from pflab.agents import questions as qs
+    q, why = _checked(ctx, a["question"]), _checked(ctx, a["why"])
+    return _act(ctx, _decision("ask", "", "", q, why),
+                lambda: qs.ask(ctx.con, "brain", f"brain:{abs(hash(q)) % 10 ** 8}", q, ctx.now), "ask_investor")
+
+
+def tell_investor(ctx: Ctx, a: dict) -> dict:
+    from pflab.hq import messenger
+    m = _checked(ctx, a["message"])
+    return _act(ctx, _decision("tell", "", "", m, "", a["priority"]),
+                lambda: messenger.send_now(ctx.rt, f"Brain: {m}", "brain", dedup_key=f"brain:{ctx.pass_id}:{abs(hash(m)) % 10 ** 6}"), "tell_investor")
+
+
+def order_research(ctx: Ctx, a: dict) -> dict:
+    from pflab.hq import board
+    q = a["question"]                          # a request to an agent: its numbers are parameters, not claims
+    return _act(ctx, _decision("investigate", "research", a["symbol"].upper(), q, _checked(ctx, a.get("why", ""))),
+                lambda: board.post(ctx.con, "research", f"{a['symbol'].upper()}: {q}", ctx.now, frm="brain"), "order_research")
+
+
+def order_calculation(ctx: Ctx, a: dict) -> dict:
+    from pflab.hq import board
+    q = a["question"]
+    return _act(ctx, _decision("investigate", "calc", "", q, _checked(ctx, a.get("why", ""))),
+                lambda: board.post(ctx.con, "calc", q, ctx.now, frm="brain"), "order_calculation")
+
+
+def prepare_plan(ctx: Ctx, a: dict) -> dict:
+    from pflab.app import research
+    amt = a.get("amount")
+    return _act(ctx, _decision("prepare_plan", "", f"Rs {amt:,.0f}" if amt else "the ready plans", "", _checked(ctx, a["why"])),
+                lambda: f"{len(research.compute_plan(ctx.rt, amt).get('plans', []))} plan(s) refreshed")
+
+
+def correct_memory(ctx: Ctx, a: dict) -> dict:
+    from pflab.agents import memory as mem
+    if not ctx.con.execute("SELECT 1 FROM memory WHERE mem_id=? AND valid_to IS NULL", [a["mem_id"]]).fetchone():
+        raise ValueError(f"no memory #{a['mem_id']} in force")
+    text, why = _checked(ctx, a["text"]), _checked(ctx, a["reason"])
+    return _act(ctx, _decision("correct_memory", "memory", f"#{a['mem_id']}", text, why),
+                lambda: mem.correct(ctx.con, int(a["mem_id"]), text, why, by=f"brain pass #{ctx.pass_id} ({ctx.model})",
+                                    now=ctx.now))
+
+
+def fetch_cited(ctx: Ctx, a: dict) -> dict:
+    from pflab.hq import fetch
+    if a["url"].strip() not in fetch.cited_urls(ctx.con, ctx.now):
+        raise ValueError("only a page the system already cites can be fetched")
+    q = a["question"]
+    return _act(ctx, _decision("investigate", "fetch", a["url"].strip()[:200], q, ""),
+                lambda: fetch.run(ctx.con, a["url"], q, ctx.client, ctx.gate, ctx.now, ctx.mode,
+                                  text_dir=ctx.rt.data_root / "kg" / "text")["text"], "fetch_cited")
+
+
+WEB = {"max_uses": 2, "max_tokens": 6000, "effort": "medium"}      # the brain's searches: lighter than the AI centre's
+
+
+def web_search(ctx: Ctx, a: dict) -> dict:
+    """S62 (PLAN A21): a public question searched on the web by the slider's `brain_web` model (Sonnet: the first real
+    lookup on Opus cost Rs 23.65, the results being input); priced first against the cap,
+    at most DAILY a day; only cited figures kept; the analyst's gate refuses anything of the investor's."""
+    from pflab.agents import analyst as an
+    q, got = a["question"], {}
+
+    def do():
+        from pflab.hq import models
+        cfg = {**an.config(), "model": models.model_id("brain_web", ctx.rt.settings)}
+        o = an.web_search(ctx.con, q, ctx.client, now=ctx.now, cfg=cfg, topic="brain web", **WEB)
+        if o.status != "done":
+            raise ValueError(f"web search {o.status}: {o.text[:200]}")
+        got["text"] = o.text
+        return f"answered with cited pages (Rs {o.cost_inr:.2f})"
+    out = _act(ctx, _decision("investigate", "web", "", q, _checked(ctx, a.get("why", ""))), do, "web_search")
+    if got:
+        out["result"] = got["text"][:4500]                      # the cited answer itself, for the brain to read
+    return out
+
+
+SYMBOL = _s("NSE symbol of a held or listed stock", 20)
+DAYS = _i("days back", 1, 365)
+TOOLS: Dict[str, Tool] = {t.name: t for t in [
+    Tool("portfolio", "read", "The portfolio today: buckets against targets and bands, holdings by weight and gain, "
+         "direct stocks' and all holdings' unrealised gain, Kite against the statements.", {}, (), portfolio),
+    Tool("stocks_overview", "read", "One row per held and listed stock: weight, its share, gap, gain, 3-month return, "
+         "guard, zone, chance of touching 10% below within 63 sessions, edge after costs with n and t; and the market's "
+         "tested states (the dip rule, the market state).", {}, (), stocks_overview),
+    Tool("stock_facts", "read", "One stock in full: drift (weight against its share and the bucket's bands, trend), odds "
+         "(10% moves over 21/63 sessions, touch chances of 5/10/20% falls, the buy zone), edge (excess over the Nifty "
+         "500 after costs, n, t; a description, never a signal).",
+         {"symbol": SYMBOL, "parts": {"type": "array", "items": {"type": "string", "enum": ["drift", "odds", "edge"]},
+                                      "description": "which parts (default all)"}}, ("symbol",), stock_facts),
+    Tool("tax_plan", "read", "Tax plan by code: per holding the FIFO ladder at today's price, long-term dates, what "
+         "waiting saves, the 112A exemption left, loss sales.", {}, (), tax_plan),
+    Tool("measure", "read", "A reviewed measure of a stock or index (NIFTY 50, NIFTY 500): drawdown, period_return, "
+         "volatility, extreme_days, worst_run, var_cvar, chance_of_fall, relation (needs second).",
+         {"measure": _s("which measure", enum=["drawdown", "period_return", "volatility", "extreme_days", "worst_run",
+                                                "var_cvar", "chance_of_fall", "relation"]),
+          "series": _s("a symbol, or NIFTY 50 / NIFTY 500", 30), "second": _s("second series for relation", 30),
+          "start": _s("YYYY-MM-DD", 10), "end": _s("YYYY-MM-DD", 10), "fall_pct": _n("fall in percent", 0.5, 90),
+          "sessions": _i("sessions", 1, 2520), "level": _n("confidence level", 0.5, 0.999)}, ("measure", "series"), measure),
+    Tool("simulation", "read", "Monte Carlo (10,000 paths) of the current, target and your-stocks mixes: the chance of a "
+         "35% fall, the one-year fan, the worst dated stress episodes.", {"years": _i("years", 1, 5)}, (), simulation),
+    Tool("forecasts", "read", "The latest kept forecasts (turnover, results ranges) with the model serving each.",
+         {"symbol": SYMBOL}, (), forecasts),
+    Tool("readings", "read", "What the Haiku readers made of a stock's recent public documents (materiality, summary, "
+         "checked figures).", {"symbol": SYMBOL, "days": DAYS}, ("symbol",), readings),
+    Tool("graph_timeline", "read", "A stock's documents in the knowledge graph (filings, results, articles, notes) with "
+         "their URLs.", {"symbol": SYMBOL, "days": DAYS}, ("symbol",), graph_timeline),
+    Tool("notes", "read", "The analyst's newest cited note on a company.", {"symbol": SYMBOL}, ("symbol",), notes),
+    Tool("memory_recall", "read", "Memory rows in force (decisions, reasons, outcomes, answers, notes) with their ids.",
+         {"words": _s("words that must all appear", 200), "subject": _s("subject, e.g. a symbol", 40),
+          "kind": _s("kind", enum=["decision", "reason", "outcome", "feedback", "answer", "note", "state"])}, (),
+         memory_recall),
+    Tool("journal", "read", "Your own recent passes, your prediction scorecard and your suggestions' record.", {}, (),
+         journal),
+    Tool("ready_plans", "read", "The ready plans kept current (next FD tranche, the monthly amount).", {}, (), ready_plans),
+    Tool("research_flags", "read", "Research flags found by code (material filings, results, guards, news spikes, falls).",
+         {"symbol": SYMBOL, "days": DAYS}, (), research_flags),
+    Tool("price_history", "read", "A stock's trend and weekly closes.", {"symbol": SYMBOL, "days": _i("sessions back", 20, 750)},
+         ("symbol",), price_history),
+    Tool("quant", "read", "Tested quant templates (event studies, drift checks of adopted rules) for an idea.",
+         {"idea": _s("the idea in words", 300)}, ("idea",), quant),
+    Tool("record_prediction", "journal", "Keep a prediction: a stock's price change from the last close to the close on "
+         "due (return_above / return_below a level in percent), due 5-90 days ahead, your confidence 0-1.",
+         {"symbol": SYMBOL, "kind": _s("kind", enum=["return_above", "return_below"]), "level": _n("percent", -90, 500),
+          "due": _s("YYYY-MM-DD", 10), "confidence": _n("probability", 0, 1), "claim": _s("the claim in words", 300)},
+         ("symbol", "kind", "level", "due", "confidence", "claim"), record_prediction),
+    Tool("record_suggestion", "journal", "Keep a suggestion for the investor in the suggestion ledger, scored at its "
+         "horizon taken or not. Name the tools it rests on.",
+         {"kind": _s("kind", enum=["add", "trim", "hold", "wait", "rebalance", "review", "other"]), "symbol": SYMBOL,
+          "text": _s("the suggestion in one or two sentences", 600), "reasoning": _s("why, from the facts read", 1500),
+          "horizon_days": _i("days until it is scored", 5, 180),
+          "rested_on": {"type": "array", "items": {"type": "string", "enum": []}, "description": "tool names"}},
+         ("kind", "text", "reasoning", "horizon_days", "rested_on"), record_suggestion),
+    Tool("save_state", "journal", "Save your working state (what you found, what is left to do) to memory; the next "
+         "context and the next pass start from it.", {"state": _s("the working state", 3000)}, ("state",), save_state),
+    Tool("ask_investor", "action", "Ask the investor something only he can answer.",
+         {"question": _s("the question", 400), "why": _s("why it matters", 400)}, ("question", "why"), ask_investor),
+    Tool("tell_investor", "action", "Tell the investor something he should know today.",
+         {"message": _s("the message", 600), "priority": _s("priority", enum=["low", "medium", "high"])},
+         ("message", "priority"), tell_investor),
+    Tool("order_research", "action", "Order the research analyst's cited note on a company (paid, priced first).",
+         {"symbol": SYMBOL, "question": _s("the question", 400), "why": _s("why", 300)}, ("symbol", "question"),
+         order_research),
+    Tool("order_calculation", "action", "Order a calculation from the workshop (a reviewed measure or new code with a "
+         "second writing).", {"question": _s("the question", 400), "why": _s("why", 300)}, ("question",),
+         order_calculation),
+    Tool("prepare_plan", "action", "Refresh the ready plans, or prepare one for an amount.",
+         {"amount": _n("rupees", 1_000, 1e8), "why": _s("why", 300)}, ("why",), prepare_plan),
+    Tool("correct_memory", "action", "Correct a memory row (the old row and your reason are kept).",
+         {"mem_id": _i("the row's id", 1, 10 ** 9), "text": _s("the corrected text", 1500), "reason": _s("why", 400)},
+         ("mem_id", "text", "reason"), correct_memory),
+    Tool("fetch_cited", "action", "Read a page or filing the system already cites (its URL from notes or graph_timeline) "
+         "and answer a question from it (paid).", {"url": _s("the cited URL", 600), "question": _s("the question", 400)},
+         ("url", "question"), fetch_cited),
+    Tool("who_is_buying", "read", "Who is buying or selling a stock: insider and SAST disclosures, bulk and block deals, "
+         "promoters' holding and pledges, institutions (funds, FPIs) by quarter. Context, never a signal.",
+         {"symbol": SYMBOL, "days": DAYS}, ("symbol",), who_is_buying),
+    Tool("market_context", "read", "The market's backdrop: FII / FPI net equity flows (last day, 5 and 20 days), India "
+         "VIX, Brent, the rupee, the US 10-year yield, the Nifty 500, each with its date and 30-day change.", {}, (),
+         market_context),
+    Tool("growth", "read", "Where the portfolio's change came from over a period: money put in, realised and unrealised "
+         "gains, income, charges (the statements' ledger).", {"months": _i("months back", 1, 60)}, (), growth),
+    Tool("findings", "read", "What the learner tested: claims from papers and blogs that passed a registered test on this "
+         "system's data (for a stock signal, where each held and listed name sits today) and those that failed.", {}, (),
+         findings),
+    Tool("web_search", "action", "Search the web for a public fact the system's data lacks (news, a rule, an event); paid, "
+         "a few a day. Never put the investor's holdings, amounts or anything personal in the question.",
+         {"question": _s("the public question", 300), "why": _s("why it is needed", 300)}, ("question",), web_search),
+]}
+TOOLS["record_suggestion"].params["rested_on"]["items"]["enum"] = [n for n, t in TOOLS.items() if t.kind == "read"]
+
+
+def definitions() -> List[dict]:
+    """The API's tool list, in a fixed order (a changed order would break the prompt cache)."""
+    return [t.definition() for t in TOOLS.values()]
+
+
+def _plain(x):
+    """JSON a model can read: NaN and infinities (pandas' missing values) become null."""
+    if isinstance(x, float):
+        return x if math.isfinite(x) else None
+    if isinstance(x, dict):
+        return {k: _plain(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return [_plain(v) for v in x]
+    return x
+
+
+def _log(ctx: Ctx, turn: int, tool: str, kind: str, args: Any, status: str, result: str, ms: int) -> None:
+    from pflab.pm.store import next_id
+    con = ctx.con
+    n = next_id(con, "hq_tool_calls", "call_no")
+    con.execute("INSERT INTO hq_tool_calls VALUES (?,?,?,?,?,?,?,?,?,?)",
+                [n, ctx.pass_id, ctx.now, turn, tool, kind, json.dumps(args, default=str)[:4000], status, result[:2000], ms])
+
+
+def run(ctx: Ctx, name: str, args: Any, turn: int = 1) -> Tuple[str, bool]:
+    """Run one tool call: (result text for the model, is_error)."""
+    from pflab.hq import egress, redact
+    tool = TOOLS.get(name)
+    t0 = time.monotonic()
+    if tool is None:
+        _log(ctx, turn, name, "?", args, "refused", "unknown tool", 0)
+        return f"unknown tool {name!r}", True
+    bad = validate(tool, args)
+    if bad:
+        _log(ctx, turn, name, tool.kind, args, "refused", bad, 0)
+        return f"input refused: {bad}", True
+    try:
+        res = tool.fn(ctx, args)
+        status = ("shadow" if ctx.shadow else "held" if res.get("carried_out") is False else "ran") \
+            if tool.kind == "action" else "ran"
+        err = False
+    except Exception as e:                                   # the model sees the failure and may try another way
+        res, status, err = {"error": f"{type(e).__name__}: {str(e)[:400]}"}, "error", True
+    text = json.dumps(_plain(res), default=str, ensure_ascii=False)
+    if len(text) > RESULT_CHARS:
+        text = text[:RESULT_CHARS] + f' ... (cut at {RESULT_CHARS} characters; ask for one stock or one part)'
+    text, _ = redact.redact(text, ctx.gate, lines=False)
+    try:
+        egress.check(text, ctx.gate, skip=("address",))
+    except egress.EgressBlocked as e:
+        text, status, err = f"withheld: the result carried identity or banking details ({e})", "withheld", True
+    ctx.results[name] = text
+    ctx.source += "\n" + text
+    _log(ctx, turn, name, tool.kind, args, status, text, int((time.monotonic() - t0) * 1000))
+    return text, err

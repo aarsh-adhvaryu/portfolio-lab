@@ -1,0 +1,6 @@
+# Names to watch for filings alerts (PLAN S20), in addition to current holdings.
+# EMPTY on purpose: alerts stay off until the investor names what he wants watched.
+# Example (commented out):
+# [[watch]]
+# isin = "INE999G01012"
+# note = "why I watch it"

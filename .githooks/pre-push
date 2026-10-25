@@ -1,0 +1,4 @@
+#!/bin/sh
+# S63: the privacy grep before every push: the investor's ids, name, address words, ledger amounts and stock-list
+# names must not be in any tracked file (hq/security.py push_check). Activate once: git config core.hooksPath .githooks
+exec .venv/Scripts/python -m pflab.hq.security

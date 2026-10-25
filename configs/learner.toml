@@ -1,0 +1,37 @@
+# The learner's free sources (S62, PLAN A22; src/pflab/learner/sources.py). Nothing here is paid or personal.
+# The investor's own books and papers go in the drop folder's `learn` sub-folder (D:\portfolio_lab\drop\learn).
+
+[arxiv]
+categories = ["q-fin.PM", "q-fin.ST", "q-fin.TR", "q-fin.GN"]
+max_results = 50
+
+[openalex]
+from = "2000-01-01"
+per_search = 8
+searches = [
+    "stock return anomalies India",
+    "momentum effect emerging markets stocks",
+    "low volatility anomaly stocks",
+    "short-term reversal stock returns",
+    "52-week high momentum",
+    "lottery stocks maximum daily return",
+    "post earnings announcement drift India",
+    "turn of the month effect stock market",
+    "illiquidity premium stock returns",
+    "credit rating downgrade stock price reaction India",
+]
+
+[rss]
+feeds = [
+    "https://alphaarchitect.com/feed/",
+    "https://quantpedia.com/feed/",
+    "https://www.cxoadvisory.com/feed/",
+    "https://blog.thinknewfound.com/feed/",
+    "https://www.capitalmind.in/feed/",
+    "https://freefincal.com/feed/",
+]
+
+[limits]
+screen_per_run = 25       # sources the local model screens a run (free, but GPU time)
+read_per_run = 6          # sources read in full for claims a run
+tests_per_run = 3         # registered claims tested a run (CPU, about a minute each)

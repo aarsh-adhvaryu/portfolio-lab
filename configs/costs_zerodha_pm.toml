@@ -1,0 +1,43 @@
+# Zerodha charges for the Portfolio Manager (PLAN S4). The engine's research file costs_zerodha.toml is
+# untouched (engine tests pin it). Contract notes are the truth for what was actually charged: these
+# rows exist to ESTIMATE a proposed trade, and every segment says whether its row was verified.
+#
+# Verified 2026-10-06 against https://zerodha.com/charges (fetched that day). Change the numbers here
+# when Zerodha changes them; `verified_on` older than 13 months fails a test.
+
+[source]
+url = "https://zerodha.com/charges"
+verified_on = 2026-10-06
+
+[equity_delivery]
+verification = "primary"     # read from the page: Equity delivery column
+brokerage_pct = 0.0
+stt_buy_pct = 0.001
+stt_sell_pct = 0.001
+exchange_txn_pct = 0.0000307     # NSE 0.00307% (BSE 0.00375%)
+sebi_per_crore = 10.0
+stamp_buy_pct = 0.00015          # 0.015% on the buy side
+gst_pct = 0.18                   # on brokerage + SEBI + transaction charges
+dp_charge_per_sell_scrip = 15.34 # Rs 3.5 CDSL + 9.5 Zerodha + 2.34 GST, per scrip sold, any quantity
+
+[equity_futures]                 # S39 (research: the short leg of a pair); read 2026-10-16, "F&O - Futures" column
+verification = "primary"
+brokerage_pct = 0.0003           # 0.03% or Rs 20 per executed order, whichever is lower
+brokerage_cap = 20.0
+stt_sell_pct = 0.0005            # 0.05% on the sell side
+exchange_txn_pct = 0.0000183     # NSE 0.00183%
+sebi_per_crore = 10.0
+stamp_buy_pct = 0.00002          # 0.002% on the buy side
+gst_pct = 0.18                   # on brokerage + SEBI + transaction charges
+
+[mf_direct]
+verification = "primary"     # "Free direct MF: Rs 0 commissions and DP charges"
+all_charges = 0.0
+
+[etf]
+verification = "unverified"  # the page lists equity delivery only; STT differs by ETF type (equity vs gold/debt)
+note = "estimated with the equity-delivery rates; STT for ETFs is not 0.1% in general: read the contract note"
+
+[sgb]
+verification = "unverified"  # SGB exchange sale charges not stated separately on the page
+note = "estimated with the equity-delivery rates; read the contract note"

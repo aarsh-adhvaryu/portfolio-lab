@@ -1,0 +1,117 @@
+# Bank statement line classification (PLAN S6). First matching rule wins; matching is case-insensitive over
+# the statement's Description. A line that matches nothing is "unclassified" and is LISTED, never guessed.
+#
+# Written 2026-10-06 from general knowledge of Indian bank narrations; calibrated 2026-10-14 on the investor's HDFC
+# (Apr-Oct 2026) and SBI (FY2025-26) exports. Every pattern here has a test on a synthetic line. Patterns are
+# generic: rules that name a person or an own account live in PFLAB_PM_DIR/bank_rules.local.toml (not in git)
+# and are tried first.
+
+# Rs 1 bank-account verifications by the broker (signup penny debit and its refund, penny-drop on a bank
+# change): they never reach the broker's ledger, so they must not be broker transfers. Calibrated 2026-10-15.
+[[rule]]
+id = "broker_verification_in"
+category = "verification"
+direction = "credit"
+patterns = ['BROKINGSIGNUP', 'ZERODHA REFUND', 'DOMIMPS']
+
+[[rule]]
+id = "broker_verification_out"
+category = "verification"
+direction = "debit"
+patterns = ['BROKINGSIGNUP']
+
+[[rule]]
+id = "broker_in"
+category = "broker_transfer"
+direction = "credit"
+patterns = ['ZERODHA', '\bZBL\b']
+
+[[rule]]
+id = "broker_out"
+category = "broker_transfer"
+direction = "debit"
+patterns = ['ZERODHA', '\bZBL\b']
+
+[[rule]]
+id = "dividend"
+category = "dividend"
+direction = "credit"
+patterns = ['\bDIV(IDEND|D)?\b', '\bDVD\b']
+
+[[rule]]
+id = "sgb_interest"
+category = "sgb_interest"
+direction = "credit"
+patterns = ['\bSGB\b', 'SOVEREIGN GOLD', 'GOLD BOND', 'HLY INT-IN\d']    # HDFC: half-yearly interest + the SGB ISIN
+
+[[rule]]
+id = "bond_interest"
+category = "bond_interest"
+direction = "credit"
+patterns = ['\bNCD\b', 'DEBENTURE', 'COUPON']
+
+[[rule]]
+id = "ipo_refund"
+category = "ipo_refund"
+direction = "credit"
+patterns = ['\bIPO\b', '\bASBA\b', 'APPLICATION MONEY', 'REFUND.*(ALLOT|APPL)']
+
+[[rule]]
+id = "tax_refund"
+category = "tax_refund"
+direction = "credit"
+patterns = ['INCOME TAX', '\bITD\b', 'ITDTAX', 'TDS REFUND', '\bCPC\b']
+
+[[rule]]
+id = "mf_redemption"
+category = "mf_redemption"
+direction = "credit"
+patterns = ['\bCAMS\b', '\bKFIN(TECH)?\b', 'BSE STAR', '\bNMF\b', '\bMFU\b', 'REDEMPTION', 'MUTUAL FUND']
+
+[[rule]]
+id = "interest"
+category = "interest"
+direction = "credit"
+patterns = ['INTEREST', '\bINT\.? ?(PD|PAID|CR)\b', 'SB INT']
+
+[[rule]]
+id = "mf_purchase"
+category = "mf_purchase"
+direction = "debit"
+patterns = ['\bCAMS\b', '\bKFIN(TECH)?\b', 'BSE STAR', '\bNMF\b', '\bMFU\b', '\bSIP\b', 'MUTUAL FUND']
+
+[[rule]]
+id = "ipo_application"
+category = "ipo_application"
+direction = "debit"
+patterns = ['\bIPO\b', '\bASBA\b']
+
+[[rule]]
+id = "tax_payment"
+category = "tax_payment"
+direction = "debit"
+patterns = ['INCOME TAX', '\bITD\b', 'CHALLAN', 'ADVANCE TAX', 'OLTAS']
+
+[[rule]]
+id = "bank_charges"
+category = "bank_charges"
+direction = "debit"
+patterns = ['\bCHARGES?\b', '\bSMS\b', '\bAMC\b', '\bGST\b', 'ANNUAL FEE', 'DEBIT CARD']
+
+[[rule]]
+id = "insurance_payout"
+category = "insurance_payout"
+direction = "credit"
+patterns = ['\bLIC\b']
+
+[[rule]]
+id = "refund"
+category = "refund"
+direction = "credit"
+patterns = ['^UPIRET', 'REFUND', 'REVERS']             # merchant refunds and failed-UPI reversals (HDFC: UPIRET-...)
+
+[[rule]]
+id = "upi_receipt"
+category = "upi_receipt"
+direction = "credit"
+patterns = ['^UPI-']                                   # LAST credit rule: any other UPI credit is a personal receipt

@@ -1,0 +1,172 @@
+# Income-tax rows for S13 (verified 2026-10-06 against the Gazette texts named in each row).
+# Primary texts read in full for these rows:
+#   Income-tax Act, 2025 (No. 30 of 2025), https://egazette.gov.in/WriteReadData/2025/265620.pdf
+#   Finance Act, 2026 (No. 4 of 2026),     https://egazette.gov.in/WriteReadData/2026/271439.pdf
+# Slabs and rebate cover resident individuals only. Age brackets apply to the old regime;
+# the new regime has no age difference.
+
+[[slab_table]]
+id = "new_regime_ty2026_27"
+regime = "new"
+age = "all"
+effective_from = 2026-04-01
+rates = [
+  { upto = 400000, rate = 0.0 },
+  { upto = 800000, rate = 0.05 },
+  { upto = 1200000, rate = 0.10 },
+  { upto = 1600000, rate = 0.15 },
+  { upto = 2000000, rate = 0.20 },
+  { upto = 2400000, rate = 0.25 },
+  { rate = 0.30 },
+]
+section_new = "202(1)"
+source_url = "https://egazette.gov.in/WriteReadData/2025/265620.pdf"
+source_title = "Income-tax Act, 2025, s.202(1) Table (Gazette p.227): up to 4,00,000 nil; then 5, 10, 15, 20, 25% in 4,00,000 steps; above 24,00,000 30%"
+verification = "primary"
+verified_on = 2026-10-06
+note = "Default regime from tax year 2026-27. The option to leave it is s.202(4). Tax-year 2025-26 new-regime slabs (Finance Act 2025) were not read: not covered."
+
+[[slab_table]]
+id = "old_regime_under60"
+regime = "old"
+age = "under60"
+effective_from = 2025-04-01
+rates = [
+  { upto = 250000, rate = 0.0 },
+  { upto = 500000, rate = 0.05 },
+  { upto = 1000000, rate = 0.20 },
+  { rate = 0.30 },
+]
+section_new = "Finance Act 2026 First Schedule Part I-B, Paragraph A(I); Part I-A for AY 2026-27"
+source_url = "https://egazette.gov.in/WriteReadData/2026/271439.pdf"
+source_title = "Finance Act, 2026, First Schedule Part I-A and I-B, Paragraph A(I) (Gazette pp.80-81 and Part I-B)"
+verification = "primary"
+verified_on = 2026-10-06
+
+[[slab_table]]
+id = "old_regime_60_79"
+regime = "old"
+age = "60-79"
+effective_from = 2025-04-01
+rates = [
+  { upto = 300000, rate = 0.0 },
+  { upto = 500000, rate = 0.05 },
+  { upto = 1000000, rate = 0.20 },
+  { rate = 0.30 },
+]
+section_new = "Finance Act 2026 First Schedule Part I-A Paragraph A(II)"
+source_url = "https://egazette.gov.in/WriteReadData/2026/271439.pdf"
+source_title = "Finance Act, 2026, First Schedule Part I-A, Paragraph A(II) (resident, 60 to under 80)"
+verification = "primary"
+verified_on = 2026-10-06
+
+[[slab_table]]
+id = "old_regime_80_plus"
+regime = "old"
+age = "80+"
+effective_from = 2025-04-01
+rates = [
+  { upto = 500000, rate = 0.0 },
+  { upto = 1000000, rate = 0.20 },
+  { rate = 0.30 },
+]
+section_new = "Finance Act 2026 First Schedule Part I-A Paragraph A(III)"
+source_url = "https://egazette.gov.in/WriteReadData/2026/271439.pdf"
+source_title = "Finance Act, 2026, First Schedule Part I-A, Paragraph A(III) (resident, 80 and over)"
+verification = "primary"
+verified_on = 2026-10-06
+
+# Rebate (old 87A, now s.156), resident individuals.
+[[rebate]]
+id = "rebate_new_regime"
+regime = "new"
+effective_from = 2026-04-01
+income_limit = 1200000.0
+max_rebate = 60000.0
+section_new = "156(2), (3)"
+source_url = "https://egazette.gov.in/WriteReadData/2025/265620.pdf"
+source_title = "Income-tax Act, 2025, s.156(2)-(3) (Gazette p.186)"
+verification = "primary"
+verified_on = 2026-10-06
+text = "(2) ... chargeable to tax under section 202(1) ... (a) the income does not exceed twelve lakh rupees, 100% of the income-tax payable or Rs 60000, whichever is less; (b) the total income exceeds twelve lakh rupees and the income-tax payable on such total income exceeds the amount by which the total income is in excess of twelve lakh rupees, an amount equal to the amount by which the income-tax payable on such total income is in excess of the amount by which the total income exceeds twelve lakh rupees. (3) The deduction under sub-section (2), shall not exceed income-tax payable as per the rates provided in section 202(1)."
+note = "Sub-section (3) caps the rebate at the tax computed on slab rates, so it never reduces the 20% / 12.5% special-rate tax on capital gains. PLAN §6 open item 7 resolved."
+
+[[rebate]]
+id = "rebate_old_regime"
+regime = "old"
+effective_from = 2026-04-01
+income_limit = 500000.0
+max_rebate = 12500.0
+section_new = "156(1)"
+source_url = "https://egazette.gov.in/WriteReadData/2025/265620.pdf"
+source_title = "Income-tax Act, 2025, s.156(1) (Gazette p.186): 100% of income-tax payable or Rs 12500, whichever is less, if total income does not exceed Rs 500000"
+verification = "primary"
+verified_on = 2026-10-06
+note = "Sub-section (1) refers to income-tax chargeable on the total income, with no slab-only cap: applied against the whole tax here. Not tested against an authority; the investor's case rarely reaches it."
+
+# Surcharge tiers (individuals), by total income.
+[[surcharge_tier]]
+id = "surcharge_new_ty2026_27"
+regime = "new"
+effective_from = 2026-04-01
+tiers = [
+  { over = 5000000, rate = 0.10 },
+  { over = 10000000, rate = 0.15 },
+  { over = 20000000, rate = 0.25 },
+]
+special_cap = 0.15
+section_new = "First Schedule Part I-B, surcharge Table Sl. 10"
+source_url = "https://egazette.gov.in/WriteReadData/2026/271439.pdf"
+source_title = "Finance Act, 2026 s.3 and First Schedule Part I-B surcharge Table Sl. 10 (s.202 taxpayers)"
+verification = "primary"
+verified_on = 2026-10-06
+note = "25% applies only if income excluding dividend and s.196-198 capital gains exceeds 2 crore, else 15%. Marginal relief is not implemented: the calculator refuses total income above Rs 50,00,000."
+
+[[surcharge_tier]]
+id = "surcharge_old_ty2026_27"
+regime = "old"
+effective_from = 2026-04-01
+tiers = [
+  { over = 5000000, rate = 0.10 },
+  { over = 10000000, rate = 0.15 },
+  { over = 20000000, rate = 0.25 },
+  { over = 50000000, rate = 0.37 },
+]
+special_cap = 0.15
+section_new = "First Schedule Part I-B, surcharge Table Sl. 1, 2"
+source_url = "https://egazette.gov.in/WriteReadData/2026/271439.pdf"
+source_title = "Finance Act, 2026 First Schedule Part I-B surcharge Table Sl. 1 and 2 (individuals not under s.202)"
+verification = "primary"
+verified_on = 2026-10-06
+note = "Same limits as the new regime above Rs 50,00,000: not computed."
+
+# Advance tax.
+[[advance_tax]]
+id = "advance_tax_instalments"
+effective_from = 2026-04-01
+threshold = 10000.0
+instalments = [
+  { due = "06-15", cumulative = 0.15 },
+  { due = "09-15", cumulative = 0.45 },
+  { due = "12-15", cumulative = 0.75 },
+  { due = "03-15", cumulative = 1.00 },
+]
+senior_exempt_without_business = true
+section_new = "403(3), 404, 408(1)"
+source_url = "https://egazette.gov.in/WriteReadData/2025/265620.pdf"
+source_title = "Income-tax Act, 2025, ss.403(3), 404 (liable if tax payable is Rs 10000 or more) and 408(1) Table (Gazette pp.396-398)"
+verification = "primary"
+verified_on = 2026-10-06
+note = "Residents aged 60+ with no business income need not pay advance tax (s.403(3)). The instalment dates are on or before the 15th of June, September, December, March."
+
+# Resident individual: unused basic exemption absorbs special-rate gains.
+[[special_rate_absorption]]
+id = "basic_exemption_absorbs_special_gains"
+effective_from = 2026-04-01
+applies_to = ["196(2)", "197(2)", "198(3)"]
+section_new = "196(2), 197(2), 198(3)"
+source_url = "https://egazette.gov.in/WriteReadData/2025/265620.pdf"
+source_title = "Income-tax Act, 2025, ss.196(2), 197(2), 198(3) (Gazette pp.221-223)"
+verification = "primary"
+verified_on = 2026-10-06
+note = "For a resident individual or HUF, where total income excluding the gain is below the maximum amount not chargeable to tax, the gain is reduced by the shortfall before the rate is applied (s.198(3): before the Rs 1,25,000 threshold). PLAN §6 open item 5 resolved. The Act does not say in which order the shortfall is spread over 196 / 197 / 198 gains: the calculator uses the tax-minimising order and says so."

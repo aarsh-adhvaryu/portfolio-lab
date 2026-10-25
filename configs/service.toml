@@ -1,0 +1,12 @@
+# Service settings (PLAN S9).
+# The backup job is built but DISABLED until a target folder is set here or in PFLAB_BACKUP_DIR.
+# The investor's decision: an external drive or a Google Drive folder, never inside PFLAB_PM_DIR.
+[backup]
+target = ""
+keep = 30
+# The investor's decision 2026-10-24: no external drive or folder for now ("if I need one I will tell you"). While no target
+# is set, the backup shows as off by his decision and is not asked for; setting a target turns it on.
+declined = "2026-10-24"
+
+[telegram]
+# token and chat id live in %USERPROFILE%\.pflab\secrets.toml under [telegram] token, chat_id

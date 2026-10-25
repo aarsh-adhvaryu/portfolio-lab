@@ -1,0 +1,18 @@
+Scheme Code;NAV Name;Plan;Option;ISIN Div Payout/ISIN Growth;ISIN Div Reinvestment;Net Asset Value;Date
+
+Open Ended Schemes ( Money Market )
+
+
+Taurus Mutual Fund
+139619;Taurus Investor Education Pool - Unclaimed Dividend - Growth;;;;;10.0000;01-Oct-2026
+139619;Taurus Investor Education Pool - Unclaimed Dividend - Growth;;;;;10.0000;05-Oct-2026
+139618;Taurus Investor Education Pool - Unclaimed Redemption - Growth;;Growth;;;10.0000;01-Oct-2026
+139618;Taurus Investor Education Pool - Unclaimed Redemption - Growth;;Growth;;;10.0000;05-Oct-2026
+139617;Taurus Unclaimed Redemption - Growth;;Growth;;;17.7626;01-Oct-2026
+139617;Taurus Unclaimed Redemption - Growth;;Growth;;;17.7659;05-Oct-2026
+
+Open Ended Schemes ( Equity Scheme - Large Cap Fund )
+
+Axis Mutual Fund
+120465;Axis Large Cap Fund - Direct Plan - Growth;Direct Plan;Growth Option;INF846K01DP8;;65.82;01-Oct-2026
+120465;Axis Large Cap Fund - Direct Plan - Growth;Direct Plan;Growth Option;INF846K01DP8;;66.11;05-Oct-2026

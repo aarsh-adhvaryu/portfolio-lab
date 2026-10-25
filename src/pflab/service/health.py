@@ -1,0 +1,112 @@
+"""Health of the always-on service in one structure: `pflab service status` and
+the dashboard's health page (S30) all render this (PLAN S9).
+
+Status per item is OK, WARN or FAIL; the overall status is the worst. Nothing here trusts a
+completion notice: it reads the job table, the stores and the files on disk.
+"""
+from __future__ import annotations
+
+import shutil
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from typing import List, Optional
+
+from pflab.service import backup as bk
+from pflab.service import jobs, telegram
+
+ORDER = {"OK": 0, "WARN": 1, "FAIL": 2}
+
+
+@dataclass(frozen=True)
+class Item:
+    name: str
+    status: str
+    detail: str
+
+
+def _last_weekday(d: date) -> date:
+    while d.weekday() >= 5:
+        d -= timedelta(days=1)
+    return d
+
+
+def check(ctx: jobs.Ctx, backup_target: Optional[Path] = None) -> List[Item]:
+    con, now = ctx.con, ctx.now
+    items: List[Item] = []
+
+    # jobs: a due job that is not running is stale; a failed last run is a failure
+    for name, job in jobs.REGISTRY.items():
+        if job.enabled_fn is not None:
+            ok, why = job.enabled_fn(ctx)
+            if not ok:
+                items.append(Item(f"job:{name}", "WARN", f"disabled: {why}"))
+                continue
+        last = con.execute("SELECT status, started_at, detail FROM job_runs WHERE job=? ORDER BY run_id DESC LIMIT 1",
+                           [name]).fetchone()
+        due, why = jobs.is_due(ctx, job)
+        if last is None:
+            items.append(Item(f"job:{name}", "WARN", "never run"))
+        elif last[0] == "failed":
+            items.append(Item(f"job:{name}", "FAIL", f"last run failed at {last[1]:%d-%b %H:%M}: {str(last[2])[:160]}"))
+        elif due and (now - last[1]) > timedelta(hours=26):
+            items.append(Item(f"job:{name}", "FAIL", f"overdue: {why}; last run {last[1]:%d-%b %H:%M}"))
+        elif due:
+            items.append(Item(f"job:{name}", "WARN", f"due: {why}"))
+        else:
+            items.append(Item(f"job:{name}", "OK", f"last {last[0]} at {last[1]:%d-%b %H:%M}"))
+
+    # data freshness
+    expect = _last_weekday(now.date() - timedelta(days=1) if now.hour < 20 else now.date())
+    px = con.execute("SELECT max(date) FROM prices").fetchone()[0]
+    items.append(_fresh("prices", px, expect, max_age_days=3))
+    nv = con.execute("SELECT max(date) FROM navs").fetchone()[0]
+    items.append(_fresh("navs", nv, _last_weekday(now.date() - timedelta(days=1)), max_age_days=3))
+    gd = con.execute("SELECT max(date) FROM gold_rates").fetchone()[0]
+    items.append(_fresh("gold rates", gd, _last_weekday(now.date() - timedelta(days=1)), max_age_days=4))
+
+    # telegram outbox
+    n = telegram.undelivered(con)
+    items.append(Item("telegram outbox", "OK" if n == 0 else "WARN", "nothing undelivered" if n == 0 else f"{n} undelivered message(s)"))
+    if ctx.secrets is None or not (ctx.secrets.has("telegram", "token") and ctx.secrets.has("telegram", "chat_id")):
+        items.append(Item("telegram config", "WARN", "token / chat_id not in the secrets file: nothing can be sent"))
+
+    # backups
+    tgt = backup_target if backup_target is not None else bk.target_dir()
+    if tgt is None and backup_target is None and bk.declined():
+        items.append(Item("backup", "OK", f"off: The investor's decision of {bk.declined()} (no target until he asks)"))
+    elif tgt is None:
+        items.append(Item("backup", "WARN", "no backup target set: the ledger has NO backup"))
+    else:
+        lt = bk.latest(tgt) if Path(tgt).exists() else None
+        if lt is None:
+            items.append(Item("backup", "FAIL", f"no backup found in {tgt}"))
+        else:
+            age = now - lt[1]
+            items.append(Item("backup", "OK" if age < timedelta(hours=36) else "FAIL",
+                              f"latest {lt[1]:%d-%b %H:%M} ({age.days}d {age.seconds // 3600}h old)"))
+
+    # disk
+    free_gb = shutil.disk_usage(ctx.pm_dir).free / 1e9 if Path(ctx.pm_dir).exists() else None
+    if free_gb is not None:
+        items.append(Item("disk", "OK" if free_gb > 5 else "WARN" if free_gb > 1 else "FAIL", f"{free_gb:,.1f} GB free"))
+    return items
+
+
+def _fresh(name: str, last: Optional[date], expect: date, max_age_days: int) -> Item:
+    if last is None:
+        return Item(name, "WARN", "no rows yet")
+    behind = (expect - last).days
+    if behind <= 0:
+        return Item(name, "OK", f"to {last}")
+    return Item(name, "WARN" if behind <= max_age_days else "FAIL", f"to {last}, expected {expect}: {behind} day(s) behind")
+
+
+def overall(items: List[Item]) -> str:
+    return max((i.status for i in items), key=lambda s: ORDER[s], default="OK")
+
+
+def render(items: List[Item], now: datetime) -> str:
+    lines = [f"Portfolio Manager health {now:%d-%b-%Y %H:%M}: {overall(items)}"]
+    lines += [f"  [{i.status:<4}] {i.name:<18} {i.detail}" for i in items]
+    return "\n".join(lines)

@@ -1,0 +1,6 @@
+{
+  "env": {
+    "PFLAB_DATA_DIR": "D:/portfolio_lab/data",
+    "PFLAB_PM_DIR": "D:/portfolio_lab/pm"
+  }
+}

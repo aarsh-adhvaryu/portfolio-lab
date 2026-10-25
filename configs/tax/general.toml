@@ -1,0 +1,89 @@
+# Rules that are not capital-gains rows (S2, 2026-10-06).
+
+# Surcharge on dividend and special-rate capital gains is capped at 15%.
+[[surcharge_cap]]
+id = "surcharge_cap_ay2026_27"
+effective_from = 2025-04-01
+effective_to = 2026-03-31
+cap = 0.15
+applies_to = "dividend income and capital gains taxed at special rates"
+section_old = "First Schedule Part I-A (AY 2026-27)"
+source_url = "https://egazette.gov.in/WriteReadData/2026/271439.pdf"
+source_title = "Finance Act 2026 s.2 and First Schedule Part I-A, surcharge table clause (vi)"
+verification = "primary"
+verified_on = 2026-10-06
+note = "Read from the surcharge table: surcharge on tax on that part of income does not exceed 15%."
+
+[[surcharge_cap]]
+id = "surcharge_cap_ty2026_27"
+effective_from = 2026-04-01
+cap = 0.15
+applies_to = "dividend income and short or long-term capital gains under s.210(1) Table Sl. 2 to 5"
+section_new = "First Schedule Part I-B (tax year 2026-27); Income-tax Act 2025 s.210"
+source_url = "https://egazette.gov.in/WriteReadData/2026/271439.pdf"
+source_title = "Finance Act 2026 s.3 and First Schedule Part I-B, surcharge table clause (vi)"
+verification = "primary"
+verified_on = 2026-10-06
+note = "Same cap under the 2025 Act."
+
+[[cess]]
+id = "cess_2026"
+effective_from = 2025-04-01
+rate = 0.04
+applies_to = "income-tax plus surcharge"
+source_url = "https://egazette.gov.in/WriteReadData/2026/271439.pdf"
+source_title = "Finance Act 2026 s.2(6) and s.3(6): Health and Education Cess at four per cent"
+verification = "primary"
+verified_on = 2026-10-06
+
+[[basic_exemption]]
+id = "new_regime_2026_27"
+regime = "new"
+effective_from = 2025-04-01
+amount = 400000.0
+section_old = "115BAC(1A)"
+section_new = "202"
+source_url = "https://egazette.gov.in/WriteReadData/2026/271439.pdf"
+source_title = "Finance Act 2026 s.2(2)(a) Table Sl. 4 (AY 2026-27) and s.3(2)(a) Table Sl. 4 (tax year 2026-27): maximum amount not chargeable Rs 4,00,000 for s.115BAC(1A) and s.202 taxpayers"
+verification = "primary"
+verified_on = 2026-10-06
+note = "Slabs above 4L and the 87A rebate are NOT here: they go to S13 with their own source (PLAN §10 amendment A1)."
+
+[[basic_exemption]]
+id = "old_regime_individual_under_60"
+regime = "old"
+effective_from = 2025-04-01
+amount = 250000.0
+source_url = "https://egazette.gov.in/WriteReadData/2026/271439.pdf"
+source_title = "Finance Act 2026 s.2(2)(a) Table Sl. 1 and s.3(2)(a) Table Sl. 1: Rs 2,50,000 (resident individual under 60); Sl. 2: 3,00,000 (60 to 79); Sl. 3: 5,00,000 (80 and over)"
+verification = "primary"
+verified_on = 2026-10-06
+
+# Loss set-off and carry-forward.
+[[loss_rule]]
+id = "set_off_and_carry_forward"
+short_term_loss_against = ["short_term_gain", "long_term_gain"]
+long_term_loss_against = ["long_term_gain"]
+carry_forward_years = 8
+requires_timely_return = true   # not verified in the sections above
+section_old = "70, 71, 74"
+section_new = "108(2), 109(2), 111(1)-(2)"
+source_url = "https://egazette.gov.in/WriteReadData/2025/265620.pdf"
+source_title = "Income-tax Act, 2025, s.108(2) (short-term loss against any other capital asset, long-term loss against long-term only), s.109(2) (capital loss not against other heads), s.111(1)-(2) (carry forward, short-term against any other asset, long-term against long-term only, not beyond eight tax years) (Gazette pp.147-148)"
+verification = "primary"
+verified_on = 2026-10-06
+note = "Matches pflab.tax.india_lots and tax.gains. Timely-return condition (carry forward only if the return is filed on time) is not in these sections as extracted: kept as a flag, unverified."
+
+# Dividend TDS.
+[[dividend_tds]]
+id = "dividend_tds"
+effective_from = 2026-04-01
+rate = 0.10
+threshold_per_payer_per_year = 10000.0
+threshold_applies_to = "individual shareholder paid by any mode other than cash"
+section_new = "393(1) Table Sl. 7; no-deduction Table Sl. 10(f)"
+source_url = "https://egazette.gov.in/WriteReadData/2025/265620.pdf"
+source_title = "Income-tax Act, 2025, s.393(1) Table Sl. 7 (dividend by a domestic company: 10%) and the no-deduction Table Sl. 10(f): individual shareholder, dividend paid other than in cash, aggregate not above Rs 10,000 in the tax year (Gazette pp.402-414)"
+verification = "primary"
+verified_on = 2026-10-06
+note = "Replaces the unverified Finance Act 2026 reading of 2026-10-06 morning. PLAN §6 open item 4 resolved. The Act's words are the amount or aggregate of amounts of dividend paid in the tax year not exceeding Rs 10,000; deductors apply it per payer."

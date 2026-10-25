@@ -1,0 +1,98 @@
+# NSE equity-segment trading holidays that fall on weekdays (weekends are closed anyway).
+# Used by the conductor (S53) to know the market's mode and when the next session opens.
+#
+# Source: NSE's 2026 list as reproduced by brokers and funds (bajajbroking.in/nse-holidays, cleartax.in/s/nse-holidays-2026,
+# tatamutualfund.com/blogs/nse-holidays-2026), read 2026-10-20; the NSE circular itself was not read.
+# verified = "bhavcopy": no NSE bhavcopy exists for that weekday in PFLAB_DATA_DIR/bhavcopy (checked 2026-10-20), so the
+# market really was shut. verified = "lists": a future date, the same in every list read.
+# Next year's list is published by NSE in December: add it here (the conductor warns from 1 December when it is missing).
+
+[meta]
+checked_on = 2026-10-20
+years = [2026]
+
+[[holiday]]
+date = 2026-01-15
+name = "Municipal Corporation election (Maharashtra)"
+verified = "bhavcopy"
+
+[[holiday]]
+date = 2026-01-26
+name = "Republic Day"
+verified = "bhavcopy"
+
+[[holiday]]
+date = 2026-03-03
+name = "Holi"
+verified = "bhavcopy"
+
+[[holiday]]
+date = 2026-03-26
+name = "Shri Ram Navami"
+verified = "bhavcopy"
+
+[[holiday]]
+date = 2026-03-31
+name = "Shri Mahavir Jayanti"
+verified = "bhavcopy"
+
+[[holiday]]
+date = 2026-04-03
+name = "Good Friday"
+verified = "bhavcopy"
+
+[[holiday]]
+date = 2026-04-14
+name = "Dr. Baba Saheb Ambedkar Jayanti"
+verified = "bhavcopy"
+
+[[holiday]]
+date = 2026-05-01
+name = "Maharashtra Day"
+verified = "bhavcopy"
+
+[[holiday]]
+date = 2026-05-28
+name = "Bakri Id"
+verified = "bhavcopy"
+
+[[holiday]]
+date = 2026-06-26
+name = "Muharram"
+verified = "bhavcopy"
+
+[[holiday]]
+date = 2026-09-14
+name = "Ganesh Chaturthi"
+verified = "bhavcopy"
+
+[[holiday]]
+date = 2026-10-02
+name = "Mahatma Gandhi Jayanti"
+verified = "bhavcopy"
+
+[[holiday]]
+date = 2026-10-20
+name = "Dussehra"
+verified = "lists"
+
+[[holiday]]
+date = 2026-11-10
+name = "Diwali Balipratipada"
+verified = "lists"
+
+[[holiday]]
+date = 2026-11-24
+name = "Prakash Gurpurb Sri Guru Nanak Dev"
+verified = "lists"
+
+[[holiday]]
+date = 2026-12-25
+name = "Christmas"
+verified = "lists"
+
+# A special session on a closed day (Muhurat trading on Diwali). NSE announces the hours shortly before; until then
+# the time is left out and the conductor only mentions the session.
+[[special]]
+date = 2026-11-08
+name = "Muhurat trading (Diwali Laxmi Pujan)"
