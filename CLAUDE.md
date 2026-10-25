@@ -10,8 +10,10 @@ The build follows `docs/PLAN.md` (sessions S0–S49), one session at a time, usi
 
 ## Non-negotiables
 
-1. **The old research project lives only on GitHub** (`origin/research-archive`
-   and its `lock/*` and `shelved/2026-10-01` tags); there is no local copy. It
+1. **The old research project lives only on GitHub**, since S63 in its own private repo
+   `portfolio_system_archive` on the same account (branch `research-archive`, the default,
+   and its `lock/*` and `shelved/2026-10-01` tags; this repo, `portfolio-lab`, started
+   fresh on 2026-10-25 and has no remote pointing there); there is no local copy. It
    is never checked out into `master`, merged, cherry-picked or rebased until
    The investor says so in writing. File copies out of it are allowed only as listed
    in `docs/MIGRATED.md` (done in S0). Hooks `.githooks/pre-merge-commit` and

@@ -6,8 +6,8 @@ You are starting **S64, the companion's day**, for Portfolio Lab, the investor's
 real money). Read, in this order, before anything else: `CLAUDE.md`, `docs/HANDOFF.md` "Start here", `docs/COMPANION.md`
 (the design), `docs/STATE.md` (S62, S63), `docs/PLAN.md` amendments A17-A23, `docs/BRAIN.md`. Then read the investor's
 own words below twice: they are the intent of the system, and every design choice is checked against them. Do not ask
-him to re-explain anything written here. Branch `pm/s64-companion` from `pm/s63-clean` (or from the new repo's `main`
-once the move is done; see HANDOFF).
+him to re-explain anything written here. Branch `pm/s64-finish` from `main` (the repo started fresh on 2026-10-25 as `portfolio-lab`;
+the old history is in `data\backups`).
 
 ## The investor's own words (2026-10-25; kept as he said them, two company names on his list replaced)
 

@@ -1,9 +1,10 @@
 # HANDOFF — 2026-10-25
 
 ## Start here
-**S63 DONE in the repo 2026-10-25 (branch `pm/s63-clean`, PLAN A23; STATE).** Waiting on the investor for the two GitHub
-steps (rename the old repo, create the new one), then the push of the single first commit and the old repo's branches
-deleted (archive and tags kept). **Next: S64 finish (seven gaps, then switch-on), from `docs/S64_KICKOFF_PROMPT.md`** (his own words,
+**S63 DONE 2026-10-25 (PLAN A23; STATE).** The repo started fresh: `portfolio-lab` (private), branch `main`, one first
+commit (neutral author), pushed after a clean privacy grep. The old repo is `portfolio_system_archive`: only
+`research-archive` (now its default branch) and its 9 tags; its 58 other branches deleted. No remote here points to it.
+The full old history, every branch and tag, is in `data\backups\portfolio_lab_full_history_2026-10-25.bundle`. **Next: S64 finish (seven gaps, then switch-on), from `docs/S64_KICKOFF_PROMPT.md`** (his own words,
 his answers, the design in `docs/COMPANION.md`). The first run from a clone (his requirement in PLAN A23) and the final
 clean moved to the very end, after a month in sync; the items below are for that last session. Known S64 items: a TimesFM-only `.venv-train`
 setup (today `qlora_setup.ps1` installs torch but not `timesfm`, and downloads Qwen files nobody needs) with the weights
