@@ -71,3 +71,17 @@ trip). A claim fits it only when its words name the kind (`claims.NAMES`). The t
 Rules in `learner/record.py` (docstring table), each needing n >= 20: lessons go live at once (text in the brain's
 cached part); daily action limits, a dearer model and any model-worded instruction change wait for the investor's yes; money
 limits are never proposed. Nothing retires a kind of suggestion.
+
+## Amendment 4 (2026-10-26, S64, before any further claim is tested): a test counter
+Each claim passed alone at t >= 2.0, with nothing counting how many tests had run. Added:
+- Every test ever run is counted in one family, "all": learner claims, the S64 studies, and seed rows for the past
+  studies (`learn_tests`, `learner/counter.py`).
+- The development bar becomes `t_needed(N) = max(2.0, Phi^-1(1 - 0.05/N))`, N counting the tests in the family
+  including this one (one-sided Bonferroni): N=20 gives 2.81, N=100 gives 3.29. The N and the bar in force are written
+  into the claim's protocol file at registration.
+- Validation stays at t >= 1.65: it is an independent replication.
+- The deflated Sharpe ratio (Bailey and Lopez de Prado 2014) of the development series is recorded and reported; it
+  does not decide.
+- Findings that passed under the old rule are re-decided under the new bar; their live feature ends if they fail.
+- A feature or covariate enters a model only if a registered comparison shows it beats the simpler model on unseen
+  data, and that comparison counts as a test (extra features fit noise).
