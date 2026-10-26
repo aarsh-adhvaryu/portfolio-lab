@@ -877,6 +877,30 @@ function techChart(c) {
     <polyline points="${line(c.ma200)}" fill="none" stroke="#F5B942" stroke-width="1.3" stroke-dasharray="4 3"></polyline></svg>
     <div class="row wrapr tiny soft" style="gap:14px"><span>— price</span><span style="color:#60A5FA">— 50-session average</span><span style="color:#F5B942">- - 200-session average</span><span class="muted">${esc(c.dates[0])} to ${esc(c.dates[c.dates.length - 1])}</span></div>`;
 }
+/* S64: a line chart from {dates, lines:[{name,y}], guides:[{y,label}]}: the maths block's plots (tools only, no model) */
+function lineSvg(pl, H = 130) {
+  if (!pl || pl.error || !pl.lines || !pl.dates || pl.dates.length < 2) return '<span class="tiny muted">no series</span>';
+  const W = 640, ys = pl.lines.flatMap((l) => l.y).concat((pl.guides || []).map((g) => g.y));
+  const mn = Math.min(...ys), mx = Math.max(...ys), n = pl.dates.length;
+  const Y = (v) => (H - 8 - (v - mn) / ((mx - mn) || 1) * (H - 16)).toFixed(1);
+  const cols = ['var(--text)', '#60A5FA', '#F5B942'];
+  const guides = (pl.guides || []).map((g) => `<line x1="0" x2="${W}" y1="${Y(g.y)}" y2="${Y(g.y)}" stroke="var(--line)" stroke-dasharray="4 3"></line><text x="${W - 4}" y="${Number(Y(g.y)) - 3}" text-anchor="end" font-size="10" fill="var(--muted)">${esc(g.label)}</text>`).join('');
+  const lines = pl.lines.map((l, k) => `<polyline points="${l.y.map((v, i) => `${(i * W / (n - 1)).toFixed(1)},${Y(v)}`).join(' ')}" fill="none" stroke="${cols[k % 3]}" stroke-width="1.5"></polyline>`).join('');
+  return `<div class="tiny soft">${esc(pl.title)}</div><svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="${esc(pl.title)}">${guides}${lines}</svg><div class="tiny muted">${esc(pl.dates[0])} to ${esc(pl.dates[n - 1])}</div>`;
+}
+function mathsBlock(m) {
+  const c = m.capm || {}, p = (m.process || {}).price || {}, sp = (m.process || {}).spread_to_sector || {}, mv = m.moves_with || {};
+  return `<div class="small soft"><b>CAPM.</b> ${esc(c.sentence || c.error || 'no fit')}${c.expected_return_pct != null ? ` · CAPM expected return ${c.expected_return_pct}% a year <span class="tiny muted">(${esc(c.expected_return_label || 'estimate')})</span>` : ''}</div>
+    <div class="small soft"><b>Process.</b> Its price ${esc(p.sentence || 'n/a')}${sp.sentence ? `; its spread to the ${esc((sp.sector_index || '').replace('SECTOR_', '').replace('_TRI', ''))} index ${esc(sp.sentence)}` : ''}. <span class="tiny muted">A description, never a signal.</span></div>
+    <div class="small soft"><b>Moves with.</b> ${(mv.peers || []).length ? (mv.peers || []).slice(0, 6).map((x) => `${esc(x.peer)} (corr ${x.corr_5y === null ? '—' : x.corr_5y.toFixed(2)}${x.cointegrated_after_bh ? ', cointegrated' : ''}${x.stable_share !== null ? `, held ${(x.stable_share * 100).toFixed(0)}% of windows` : ''})`).join(' · ') : esc(mv.note || 'no peers in the last weekly run')} <span class="tiny muted">${esc(mv.label || '')}${mv.run ? ' · ' + esc(mv.run.text) : ''}</span></div>
+    <div class="cols" style="gap:16px">${['rolling_beta', 'spread_z'].filter((k) => (m.plots || {})[k]).map((k) => `<div style="flex:1 1 300px">${lineSvg(m.plots[k])}</div>`).join('')}</div>`;
+}
+async function loadMaths(isin) {
+  const box = $('mathsBox');
+  if (!box || !isin) return;
+  try { const m = await api('/api/maths?isin=' + encodeURIComponent(isin)); if ($('mathsBox')) $('mathsBox').innerHTML = mathsBlock(m); }
+  catch (e) { if ($('mathsBox')) $('mathsBox').innerHTML = '<span class="small muted">Maths not available: ' + esc(e.message) + '</span>'; }
+}
 const rng = (r) => r ? `${num(r.low)}–${num(r.high)}` : '<span class="muted">at NAV</span>';
 const maskRs = (t) => S.settings.privacy ? String(t).replace(/(Rs|₹)\s?[\d,]+(\.\d+)?( (mn|cr|lakh))?/g, '$1 •••••') : String(t);
 function ringCol(x) {
@@ -941,7 +965,10 @@ function renderResearch(d) {
         <select id="techSel" class="inp" style="max-width:220px">${d.names.map((n) => `<option value="${esc(n.isin)}" ${n.isin === d.selected ? 'selected' : ''}>${esc(n.symbol)}</option>`).join('')}</select></div>
       ${t ? techChart(t.chart) + `<div class="cols small" style="gap:16px">${[['Close', num(t.close)], ['RSI 14', t.rsi14 === null ? '—' : num(t.rsi14, 1)], ['ATR 14', t.atr14 === null ? '—' : num(t.atr14)], ['52 weeks', `${num(t.low52, 0)}-${num(t.high52, 0)}`], ['Volume vs 20-day', t.volume_ratio ? num(t.volume_ratio, 2) + '×' : '—']].map(([k, v]) => `<div><span class="lbl">${k}</span><br><span class="num">${v}</span></div>`).join('')}</div>` : '<span class="small muted">No price history in the bhavcopy for this name.</span>'}
     </section>
-  </div>`;
+  </div>
+  <section class="panel" style="display:flex;flex-direction:column;gap:8px"><span class="lbl">The maths · beta, process, who it moves with (tools only, descriptions)</span>
+    <div id="mathsBox"><span class="small muted">Working it out…</span></div></section>`;
+  loadMaths(d.selected);
   $('replan').onclick = async () => { const a = parseFloat($('amt').value.replace(/,/g, '')); if (!a) return; await post('/api/plan', { amount: a }); $('replan').textContent = 'Planning…'; };
   $('idea2Btn').onclick = async () => { const t2 = $('idea2').value.trim(); if (!t2) return; const r = await post('/api/idea', { text: t2 }); $('idea2Out').innerHTML = (r.verdict ? `<b class="${r.verdict === 'yes' ? 'up' : r.verdict === 'no' ? 'down' : 'warn'}">${esc(r.verdict.toUpperCase())}.</b> ` : '') + esc(r.answer); };
   $('techSel').onchange = () => { S.rsel = $('techSel').value; load(true); };

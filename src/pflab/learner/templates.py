@@ -11,6 +11,8 @@ code, before any claim is run. A claim that fits no template is recorded as unte
                     the month): returns on the effect's days against the other days
     holder_event    S63 (amendment 3): who buys and sells: insider / SAST disclosures, bulk and block deals by side, a
                     quarter's promoter holding up or down, pledges up; the market-adjusted move after each
+    sector_reversion S64 (docs/research/s64_reversion_protocol.md): a stock cointegrated with its sector index and cheap
+                    against it (bottom quintile of the spread's z) against the sector's next-month return, long only
 
 Periods (as every study here; 2022-2025 are spent, CLAUDE.md 2): development 2010-2017 and validation 2018-2021 (filings:
 2015-2018 and 2019-2021, BSE announcements start in 2015). The rule, the same for every claim: the claimed direction in
@@ -59,7 +61,21 @@ SCHEMA = {
     "event_study": {"kind": list(EVENT_KINDS), "direction": ["up", "down"], "sessions": [1, 5, 20]},
     "calendar": {"effect": list(EFFECTS), "direction": ["high", "low"]},
     "holder_event": {"kind": list(HOLDER_KINDS), "direction": ["up", "down"], "sessions": [1, 5, 20]},
+    "sector_reversion": {"direction": ["low", "high"]},
 }
+
+# S64 protocol (fixed before the run): the sector TRI of an industry, by the sector map's taxonomy at the month end.
+_A = {"COMPUTERS - SOFTWARE": "IT", "BANKS": "BANK", "AUTOMOBILES - 2 AND 3 WHEELERS": "AUTO",
+      "AUTOMOBILES - 4 WHEELERS": "AUTO", "AUTO ANCILLARIES": "AUTO", "PHARMACEUTICALS": "PHARMA", "PERSONAL CARE": "FMCG",
+      "FOOD AND FOOD PROCESSING": "FMCG", "CIGARETTES": "FMCG", "BREW/DISTILLERIES": "FMCG", "REFINERIES": "OIL_GAS",
+      "OIL EXPLORATION/PRODUCTION": "OIL_GAS", "GAS": "OIL_GAS", "STEEL AND STEEL PRODUCTS": "METAL", "ALUMINIUM": "METAL",
+      "METALS": "METAL", "MINING": "METAL", "FINANCE": "FIN_SERVICES", "FINANCE - HOUSING": "FIN_SERVICES",
+      "FINANCIAL INSTITUTION": "FIN_SERVICES", "MEDIA & ENTERTAINMENT": "MEDIA", "CONSUMER DURABLES": "CONSUMER_DURABLES",
+      "CHEMICALS - INORGANIC": "CHEMICALS", "CHEMICALS - ORGANIC": "CHEMICALS", "CHEMICALS - SPECIALITY": "CHEMICALS"}
+_B = {"AUTOMOBILE": "AUTO", "IT": "IT", "PHARMA": "PHARMA", "CONSUMER GOODS": "FMCG", "FINANCIAL SERVICES": "FIN_SERVICES",
+      "OIL & GAS": "OIL_GAS", "METALS": "METAL", "MEDIA & ENTERTAINMENT": "MEDIA", "CHEMICALS": "CHEMICALS"}
+SECTOR_OF = {"A": {k: f"SECTOR_{v}_TRI" for k, v in _A.items()}, "B": {k: f"SECTOR_{v}_TRI" for k, v in _B.items()}}
+REV_HISTORY, REV_MIN_KEPT, REV_P = 756, 10, 0.05     # 36 months of sessions; names needed in a month; the EG level
 
 
 def check_params(template: str, params: dict) -> Optional[str]:
@@ -362,6 +378,95 @@ def calendar(root: Path, effect: str, direction: str, threshold_dev: float = T_D
     return {"decision": d, "why": why, **res}
 
 
+# --- sector reversion (S64) ------------------------------------------------------------------------------------------------
+
+def sector_index_key(taxonomy: Optional[str], industry: Optional[str]) -> Optional[str]:
+    """The sector TRI key of an industry label under its taxonomy (A, B or C), or None when the industry has none."""
+    if taxonomy == "C":
+        from pflab.quant.comove import SECTOR_INDEX
+        return SECTOR_INDEX.get(industry)
+    return SECTOR_OF.get(taxonomy or "", {}).get(industry)
+
+
+def spread_z(la: np.ndarray, lb: np.ndarray) -> Tuple[float, float]:
+    """(Engle-Granger p, z of today's spread) of two aligned log-price windows: spread = a - beta b, beta by OLS on the
+    window; z = (last spread - window mean) / window standard deviation."""
+    from statsmodels.tsa.stattools import coint
+    if np.std(la) == 0 or np.std(lb) == 0:
+        return 1.0, float("nan")
+    p = float(coint(la, lb, trend="c", autolag="aic")[1])
+    beta = float(np.polyfit(lb, la, 1)[0])
+    sp = la - beta * lb
+    sd = float(sp.std(ddof=1))
+    return p, ((float(sp[-1]) - float(sp.mean())) / sd if sd > 0 else float("nan"))
+
+
+def sector_reversion_series(root: Path, direction: str, start: str, end: str, round_trip_pct: float) -> pd.Series:
+    """Per formation month: the equal-weighted quintile (cheapest z for 'low', dearest for 'high') of the names
+    cointegrated with their sector TRI (EG p < 0.05 over 36 months), next month's return less their sector's, after
+    charges on the names that changed."""
+    from pflab.data import indices, sector_map
+    from pflab.quant.comove import SECTOR_INDEX
+    mem = members(root)
+    w = wide_panel(root, sorted(set(mem["isin"])), "2007-01-01", "2022-06-30")
+    sessions = w["tr"].index
+    table = sector_map.load(root)
+    keys = {k for m in SECTOR_OF.values() for k in m.values()} | set(SECTOR_INDEX.values())
+    sec = {}
+    for k in keys:
+        d = indices.load(k, root)
+        sec[k] = d.assign(date=pd.to_datetime(d["date"])).set_index("date")["close"].sort_index().reindex(sessions).ffill()
+    every = month_ends(sessions, str(sessions[0].date()), str(sessions[-1].date()))
+    tr_f = w["tr"].ffill()
+    out, prev = {}, set()
+    for k, i in enumerate(every):
+        t = sessions[i]
+        if i < REV_HISTORY or k + 1 >= len(every) or not pd.Timestamp(start) <= t <= pd.Timestamp(end):
+            continue
+        j = every[k + 1]
+        live = sorted(set(mem[(mem["from_date"] <= t) & (mem["to_date"] > t)]["isin"]) & set(w["tr"].columns))
+        have = w["tr"].iloc[i - REV_HISTORY + 1:i + 1][live].notna().sum()
+        live = [c for c in live if have[c] >= REV_HISTORY - 20 and pd.notna(w["tr"].iloc[i][c])]
+        lab = sector_map.sector_at(table, live, t.date(), allow_later=False).set_index("isin")
+        z, fwd_ex = {}, {}
+        for c in live:
+            key = sector_index_key(lab.at[c, "taxonomy"], lab.at[c, "industry"])
+            if not key or key not in sec:
+                continue
+            sx = sec[key].iloc[i - REV_HISTORY + 1:i + 1]
+            lx = w["tr"].iloc[i - REV_HISTORY + 1:i + 1][c].ffill()
+            if sx.isna().any() or lx.isna().any() or (sx <= 0).any() or (lx <= 0).any():
+                continue
+            p, zz = spread_z(np.log(lx.to_numpy(float)), np.log(sx.to_numpy(float)))
+            f_s = tr_f.iloc[j][c] / w["tr"].iloc[i][c] - 1
+            f_x = sec[key].iloc[j] / sec[key].iloc[i] - 1
+            if p < REV_P and math.isfinite(zz) and math.isfinite(f_s) and math.isfinite(f_x):
+                z[c], fwd_ex[c] = zz, float(f_s - f_x)
+        if len(z) < REV_MIN_KEPT:
+            continue
+        r = pd.Series(z).rank(pct=True)
+        pick = set(r[r <= 0.2].index) if direction == "low" else set(r[r > 0.8].index)
+        if not pick:
+            continue
+        changed = len(pick - prev) / len(pick) if prev else 1.0
+        prev = pick
+        out[t] = float(np.mean([fwd_ex[c] for c in pick])) - changed * round_trip_pct / 100
+    return pd.Series(out, dtype=float)
+
+
+def sector_reversion(root: Path, direction: str, round_trip_pct: float, periods=(DEV, VAL),
+                     threshold_dev: float = T_DEV) -> dict:
+    res = {}
+    for name, (a, b) in zip(("development", "validation"), periods):
+        s = sector_reversion_series(root, direction, a, b, round_trip_pct)
+        m, t, n = nw_t(s.values, lags=1)
+        res[name] = {"mean": m, "t": t, "n": n, "per": "1-month excess over the sector after charges"}
+        if name == "development":
+            res[name]["_returns"] = [float(v) for v in s.values]
+    d, why = decide(res["development"], res["validation"], 1, MIN_MONTHS, 0.0, "months", threshold_dev)
+    return {"decision": d, "why": why, **res}
+
+
 def run(root: Path, template: str, params: dict, threshold_dev: float = T_DEV) -> dict:
     """Run a registered claim's template; the decision comes from `decide`, never from a model."""
     from pflab.hq import stocks
@@ -376,4 +481,6 @@ def run(root: Path, template: str, params: dict, threshold_dev: float = T_DEV) -
         return event_study(root, params["kind"], params["direction"], int(params["sessions"]), rt, threshold_dev)
     if template == "holder_event":
         return holder_event(root, params["kind"], params["direction"], int(params["sessions"]), rt, threshold_dev)
+    if template == "sector_reversion":
+        return sector_reversion(root, params["direction"], rt, threshold_dev=threshold_dev)
     return calendar(root, params["effect"], params["direction"], threshold_dev)

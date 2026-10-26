@@ -355,6 +355,48 @@ def watch(rt) -> dict:
             "watches": ws}
 
 
+def maths(rt, isin: str, now: Optional[datetime] = None) -> dict:
+    """The stock page's maths block (S64): CAPM, the process it follows, who it moves with, and the series to draw.
+    Tools only (no model): every number is from code, each part carries its source and label."""
+    import numpy as np
+    from pflab.app import research as rs
+    from pflab.hq import stocks
+    from pflab.quant import comove, process
+    from pflab.risk import capm
+    now = now or rt.clock()
+    asof, root, con = now.date(), rt.data_root, rt.cursor()
+    row = con.execute("SELECT symbol FROM instruments WHERE isin=? ORDER BY valid_to DESC NULLS FIRST LIMIT 1", [isin]).fetchone()
+    sym = row[0] if row else isin
+    c = rs.closes(con, root, isin, asof, years=4)
+    out = {"isin": isin, "symbol": sym, "asof": str(asof), "capm": stocks.capm_part(root, isin, asof),
+           "process": stocks.process_part(root, isin, c, asof), "moves_with": comove.moves_with(sym, root), "plots": {}}
+    try:
+        rb = capm.rolling_beta(root, isin, asof)
+        if len(rb):
+            out["plots"]["rolling_beta"] = {"title": "Beta over the trailing 36 months", "dates": [str(d.date()) for d in rb.index],
+                                            "lines": [{"name": "beta", "y": [round(float(v), 3) for v in rb.values]}],
+                                            "guides": [{"y": 1.0, "label": "market"}]}
+    except Exception as e:
+        out["plots"]["rolling_beta"] = {"error": f"{type(e).__name__}"}
+    try:
+        ind, key = comove.sector_index_for(root, isin, asof)
+        if key:
+            from pflab.data import indices
+            d = indices.load(key, root)
+            idx = d.assign(date=pd.to_datetime(d["date"])).set_index("date")["close"].sort_index()
+            sp, _ = process.spread(c.dropna().iloc[-stocks.ODDS_SESSIONS:], idx[idx.index <= pd.Timestamp(asof)])
+            if len(sp) > 60:
+                z = (sp - sp.mean()) / sp.std(ddof=1)
+                z = z.iloc[::3]
+                out["plots"]["spread_z"] = {"title": f"Spread to {key.replace('SECTOR_', '').replace('_TRI', '')} index, in standard deviations",
+                                            "dates": [str(x.date()) for x in z.index],
+                                            "lines": [{"name": "z", "y": [round(float(v), 2) for v in z.values]}],
+                                            "guides": [{"y": 2.0, "label": "+2"}, {"y": 0.0, "label": "mean"}, {"y": -2.0, "label": "-2"}]}
+    except Exception as e:
+        out["plots"]["spread_z"] = {"error": f"{type(e).__name__}"}
+    return out
+
+
 def research(rt, isin: Optional[str] = None, now: Optional[datetime] = None) -> dict:
     """Research and plans: the ready plan and what not to buy now, results ranges, flags, notes, a stock's technicals."""
     from pflab.app import research as rs

@@ -276,6 +276,10 @@ def create_app(rt) -> FastAPI:
     def research(isin: str = ""):
         return json.loads(json.dumps(views.research(rt, isin or None), default=str))
 
+    @app.get("/api/maths")
+    def maths(isin: str):
+        return json.loads(json.dumps(views.maths(rt, isin), default=str))
+
     @app.post("/api/plan")
     def replan(amount: float = Body(..., embed=True)):
         from pflab.app import research as rs

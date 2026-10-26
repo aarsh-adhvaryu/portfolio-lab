@@ -33,7 +33,7 @@ def nifty50_tri() -> Optional[pd.Series]:
 
 
 def build(con, asof: date, bench_loader: BenchLoader = nifty50_tri, window_sessions: int = 252,
-          lookthrough: Optional[pd.DataFrame] = None) -> Dict[str, object]:
+          lookthrough: Optional[pd.DataFrame] = None, capm_root=None) -> Dict[str, object]:
     log = ev.load(con)
     led = Ledger.replay(log, upto=asof)
     pf = val.store_price_fn(con)
@@ -44,6 +44,12 @@ def build(con, asof: date, bench_loader: BenchLoader = nifty50_tri, window_sessi
     out: Dict[str, object] = {"asof": asof, "total": v.total, "invested": v.invested, "cash": v.cash_total,
                               "exposure": ex, "concentration": stats.concentration(stock_w),
                               "unpriced": v.unpriced, "stale": v.stale}
+    if capm_root is not None:                                    # S64: holdings-weighted beta and alpha (risk/capm.py)
+        try:
+            from pflab.risk import capm
+            out["capm"] = capm.portfolio(con, capm_root, asof)
+        except Exception as e:
+            out["capm"] = {"beta": None, "note": f"not computed: {type(e).__name__}"}
     # NAV series over the last `window_sessions` price dates
     sessions = [r[0] for r in con.execute(
         "SELECT DISTINCT date FROM prices WHERE date <= ? ORDER BY date DESC LIMIT ?", [asof, window_sessions]).fetchall()]
@@ -72,6 +78,12 @@ def render(rep: Dict[str, object]) -> str:
     c = rep["concentration"]
     lines.append(f"Concentration: HHI {c['hhi']:.4f}, effective N {c['effective_n']:.1f}, "
                  f"top1 {c['top1']:.2%}, top5 {c['top5']:.2%} ({c['n']} holdings)")
+    cp = rep.get("capm")
+    if cp and cp.get("beta") is not None:
+        lines.append(f"CAPM (direct stocks, Nifty 500 TRI, last 60 months): beta {cp['beta']:.2f}, alpha "
+                     f"{cp['alpha_ann'] * 100:+.1f}% a year over {cp['names']} names"
+                     + (f" ({len(cp['unfit'])} without 36 months count as beta 1)" if cp.get("unfit") else "")
+                     + "; a description, not a forecast")
     ns = rep.get("nav_stats")
     if ns:
         b = ns.get("beta")

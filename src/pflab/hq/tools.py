@@ -212,6 +212,11 @@ def stock_facts(ctx: Ctx, a: dict) -> dict:
     return stocks.facts(ctx.con, ctx.rt.data_root, ctx.book(), a["symbol"], tuple(a.get("parts") or ("drift", "odds", "edge")))
 
 
+def comovement(ctx: Ctx, a: dict) -> dict:
+    from pflab.quant import comove
+    return comove.moves_with(a["symbol"], ctx.rt.data_root)
+
+
 def tax_plan(ctx: Ctx, a: dict) -> dict:
     from pflab.tax import plan as tp
     return {"lines": tp.render(tp.overview(ctx.con, ctx.asof))[:60],
@@ -593,9 +598,12 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
          "tested states (the dip rule, the market state).", {}, (), stocks_overview),
     Tool("stock_facts", "read", "One stock in full: drift (weight against its share and the bucket's bands, trend), odds "
          "(10% moves over 21/63 sessions, touch chances of 5/10/20% falls, the buy zone), edge (excess over the Nifty "
-         "500 after costs, n, t; a description, never a signal).",
-         {"symbol": SYMBOL, "parts": {"type": "array", "items": {"type": "string", "enum": ["drift", "odds", "edge"]},
-                                      "description": "which parts (default all)"}}, ("symbol",), stock_facts),
+         "500 after costs, n, t; a description, never a signal); also on request capm (beta, alpha with t, the CAPM "
+         "expected return) and process (does its price revert to a mean or walk at random: ADF, variance ratios, "
+         "half-life; descriptions, never signals).",
+         {"symbol": SYMBOL, "parts": {"type": "array", "items": {"type": "string", "enum": ["drift", "odds", "edge", "capm",
+                                                                                          "process"]},
+                                      "description": "which parts (default drift, odds, edge)"}}, ("symbol",), stock_facts),
     Tool("tax_plan", "read", "Tax plan by code: per holding the FIFO ladder at today's price, long-term dates, what "
          "waiting saves, the 112A exemption left, loss sales.", {}, (), tax_plan),
     Tool("measure", "read", "A reviewed measure of a stock or index (NIFTY 50, NIFTY 500): drawdown, period_return, "
@@ -674,6 +682,11 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
     Tool("web_search", "action", "Search the web for a public fact the system's data lacks (news, a rule, an event); paid, "
          "a few a day. Never put the investor's holdings, amounts or anything personal in the question.",
          {"question": _s("the public question", 300), "why": _s("why it is needed", 300)}, ("question",), web_search),
+    # S64: appended at the end, because the tool order fixes the prompt cache
+    Tool("comovement", "read", "The peers a stock moves with (same industry, Nifty 500) from the weekly run: monthly "
+         "correlation over 5 years, Engle-Granger cointegration (Benjamini-Hochberg adjusted), how often it held in "
+         "rolling windows, the spread's half-life. A description: relations break (9% stayed cointegrated).",
+         {"symbol": SYMBOL}, ("symbol",), comovement),
 ]}
 TOOLS["record_suggestion"].params["rested_on"]["items"]["enum"] = [n for n, t in TOOLS.items() if t.kind == "read"]
 

@@ -54,6 +54,8 @@ READ_SYSTEM = (
     "- holder_event: prices after who buys or sells; direction up or down; sessions 1, 5 or 20. Kinds: insider_sast "
     "(insider or SAST disclosures), bulk_buy, bulk_sell, block_buy, block_sell (exchange deals), promoter_up, "
     "promoter_down (promoters' holding changed over a quarter), pledge_up (promoters pledged more).\n"
+    "- sector_reversion: a stock cointegrated with its sector index and cheap relative to it earns more than the sector "
+    "next month (long only); direction 'low' = the cheapest quintile, 'high' = the dearest.\n"
     "- none: no test above fits; say in 'needs' what data a test would need.\n"
     "Fill only the fields of the chosen test; use \"\" or 0 for the others. Reply with JSON only.")
 
@@ -61,7 +63,7 @@ CLAIM = {"type": "object", "additionalProperties": False,
          "required": ["claim", "quote", "template", "signal", "direction", "months", "kind", "sessions", "effect", "needs"],
          "properties": {"claim": {"type": "string"}, "quote": {"type": "string"},
                         "template": {"type": "string", "enum": ["cross_section", "event_study", "calendar",
-                                                                "holder_event", "none"]},
+                                                                "holder_event", "sector_reversion", "none"]},
                         "signal": {"type": "string", "enum": list(tp.SIGNALS) + [""]},
                         "direction": {"type": "string", "enum": ["high", "low", "up", "down", ""]},
                         "months": {"type": "integer", "enum": [0, 1, 3]},
@@ -76,7 +78,8 @@ READ_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["cl
 def params_of(c: dict) -> Tuple[str, dict]:
     t = c.get("template", "none")
     keys = {"cross_section": ("signal", "direction", "months"), "event_study": ("kind", "direction", "sessions"),
-            "calendar": ("effect", "direction"), "holder_event": ("kind", "direction", "sessions")}.get(t, ())
+            "calendar": ("effect", "direction"), "holder_event": ("kind", "direction", "sessions"),
+            "sector_reversion": ("direction",)}.get(t, ())
     return t, {k: c.get(k) for k in keys}
 
 
@@ -117,6 +120,8 @@ NAMES = {
     "block_buy": r"block deals?|block purchase\w*", "block_sell": r"block deals?|block sale\w*",
     "promoter_up": r"promoter\w*", "promoter_down": r"promoter\w*",
     "pledge_up": r"pledg\w*|encumb\w*",
+    # S64: reversion against a cointegrated sector index
+    "sector_reversion": r"cointegrat\w*|mean[- ]revers\w*|revert\w*|relative to (its |the )?sector|sector index|sector",
 }
 
 
@@ -128,7 +133,8 @@ ABSENT = re.compile(r"\b(not|no|cannot|can't|never|neither|nor|insignificant|fai
 def fits(claim: str, quote: str, template: str, params: dict) -> bool:
     """The claim and its quote name the signal, filing kind or calendar effect its test measures, and the claim sentence
     says the effect exists (a quote may deny another effect on its way: "no low-volatility anomaly; high volatility pays")."""
-    key = params.get("signal") or params.get("kind") or params.get("effect")
+    key = params.get("signal") or params.get("kind") or params.get("effect") or (
+        "sector_reversion" if template == "sector_reversion" else None)
     named = key in NAMES and re.search(r"\b(" + NAMES[key] + r")", f"{claim} {quote}", re.I)
     return bool(named) and not ABSENT.search(claim or "")
 
@@ -301,6 +307,37 @@ def test(con, claim_id: int, root: Path, now: datetime, run: Optional[Callable] 
     if d == "pass":
         wire(con, claim_id, now)
     return d
+
+
+STUDY_SOURCE = "study:s64_reversion"
+
+
+def register_study(con, template: str, params: dict, claim: str, quote: str, title: str, url: str, now: datetime) -> int:
+    """A claim made by the system's own pre-registered study (model 'study'), not read from a paper: a source row and a
+    claim row 'proposed' (the same-test check in `register` still applies). Returns the claim id; the existing one if it
+    was made before."""
+    from pflab.pm.store import next_id
+    bad = tp.check_params(template, params)
+    if bad:
+        raise ValueError(bad)
+    pj = json.dumps(params, sort_keys=True)
+    old = con.execute("SELECT claim_id FROM learn_claims WHERE template=? AND params_json=? AND model='study' AND status NOT IN "
+                      "('untestable', 'withdrawn') ORDER BY claim_id LIMIT 1", [template, pj]).fetchone()
+    if old:
+        return int(old[0])
+    ref = f"{STUDY_SOURCE}:{template}:{pj}"
+    row = con.execute("SELECT src_id FROM learn_sources WHERE ref=?", [ref]).fetchone()
+    if row:
+        sid = int(row[0])
+    else:
+        sid = next_id(con, "learn_sources", "src_id")
+        con.execute("INSERT INTO learn_sources (src_id, found_at, origin, ref, title, authors, year, url, abstract, status, "
+                    "why, read_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                    [sid, now, "study", ref, title, "the system", now.year, url, claim, "read", "pre-registered study", now])
+    cid = next_id(con, "learn_claims", "claim_id")
+    con.execute("INSERT INTO learn_claims (claim_id, src_id, made_at, claim, quote, template, params_json, model, status) "
+                "VALUES (?,?,?,?,?,?,?,?,?)", [cid, sid, now, claim[:600], quote[:600], template, pj, "study", "proposed"])
+    return cid
 
 
 def reregister_stale(con, proto_dir: Path, now: datetime) -> int:

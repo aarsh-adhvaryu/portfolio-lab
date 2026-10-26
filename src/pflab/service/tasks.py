@@ -307,6 +307,17 @@ def _security(ctx: Ctx) -> dict:
     return security.job(ctx)
 
 
+def _comove(ctx: Ctx) -> dict:
+    """S64 how stocks and sectors move together: rebuilt weekly (the table is skipped while under 6 days old)."""
+    from pflab.quant import comove
+    return comove.job(ctx)
+
+
+register(Job("comove", Daily(10, 0, weekdays_only=False), _comove,
+             "comove: correlation and cointegration of his names with their peers and of the sectors; weekly",
+             cooldown_minutes=120))
+
+
 register(Job("learner", Daily(22, 0, weekdays_only=False), _learner,
              "learner: papers and blogs -> registered tests; proposals from the system's own record", cooldown_minutes=120))
 register(Job("security", Daily(21, 15, weekdays_only=False), _security,

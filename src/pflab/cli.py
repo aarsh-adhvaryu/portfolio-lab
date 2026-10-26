@@ -220,7 +220,13 @@ def main(argv=None):
     fcp.add_argument("--asof", type=_d, default=date.today())
     fcp.add_argument("--no-timesfm", action="store_true", help="baselines and scoring only (TimesFM not run)")
 
+    lp = sub.add_parser("learner", help="S64 the learner's tests: status, register-s64, reregister, test --claim ID, seed")
+    lp.add_argument("action", choices=["status", "register-s64", "reregister", "test", "seed"])
+    lp.add_argument("--claim", type=int, help="claim id (test)")
+
     a = p.parse_args(argv)
+    if a.cmd == "learner":
+        return _learner(a)
     if a.cmd == "forecast":
         return _forecast(a)
     if a.cmd == "studies":
@@ -420,6 +426,51 @@ def _llm(a) -> int:
         r = smoke.run(store.connect(), a.model)
         print(r)
         return 0 if r["passed"] else 1
+    return 0
+
+
+def _learner(a) -> int:
+    """The learner's own commands. `test` is long (the full panel, more than 5 minutes): the investor's."""
+    from datetime import datetime
+    from pathlib import Path
+
+    from pflab.data import data_dir
+    from pflab.learner import claims, counter, run as lrun
+    from pflab.pm import store
+    con, now = store.connect(), datetime.now()
+    proto = data_dir() / "learner" / "protocols"
+    if a.action == "status":
+        print(lrun.status(con))
+        return 0
+    if a.action == "seed":
+        print(f"seed rows added: {counter.seed(con, now)}; {counter.line(con)}")
+        return 0
+    if a.action == "reregister":
+        print(f"re-registered {claims.reregister_stale(con, proto, now)} claims under the current test code")
+        return 0
+    if a.action == "register-s64":
+        url = "docs/research/s64_reversion_protocol.md"
+        ids = {
+            "sector_reversion": claims.register_study(
+                con, "sector_reversion", {"direction": "low"},
+                "A stock that is cheap relative to a sector index it is cointegrated with earns more than that sector over the "
+                "next month.", "The bottom quintile of the spread's z, among names cointegrated with their sector index "
+                "(Engle-Granger p < 0.05 over 36 months), against the sector's next-month return.",
+                "S64 pre-registered study: sector reversion", url, now),
+            "short_term_reversal": claims.register_study(
+                con, "cross_section", {"signal": "reversal_1m", "direction": "low", "months": 1},
+                "The previous month's losers outperform the previous month's winners over the next month: short-term "
+                "reversal.", "Stocks ranked by the last month's total return; the lowest quintile against all members, "
+                "one month ahead.", "S64 pre-registered study: short-term reversal", url, now)}
+        for name, cid in ids.items():
+            print(f"{name}: claim #{cid} -> {claims.register(con, cid, proto, now)}")
+        return 0
+    if a.claim is None:
+        print("pass --claim ID")
+        return 2
+    print(f"claim #{a.claim}: {claims.test(con, a.claim, data_dir(), now)}")
+    row = con.execute("SELECT status, why FROM learn_claims WHERE claim_id=?", [a.claim]).fetchone()
+    print(row[0], "-", row[1])
     return 0
 
 
@@ -995,7 +1046,8 @@ def _pm(a) -> int:
         return 0
     if a.pm_cmd == "risk":
         from pflab.risk import report
-        print(report.render(report.build(store.connect(), a.asof)))
+        from pflab.data import data_dir
+        print(report.render(report.build(store.connect(), a.asof, capm_root=data_dir())))
         return 0
     if a.pm_cmd == "taxplan":
         from pflab.tax import plan as tp

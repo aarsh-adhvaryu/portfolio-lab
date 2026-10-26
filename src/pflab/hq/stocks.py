@@ -272,8 +272,58 @@ def facts(con, root: Path, bk: Book, symbol: str, parts=("drift", "odds", "edge"
         out["edge"] = edge(bk, isin, c, index if index is not None else index_series(root), order_size(bk, isin))
         if bk.results.get(isin):
             out["results_forecast"] = bk.results[isin][:3]
+    if "capm" in parts:
+        out["capm"] = capm_part(root, isin, bk.asof)
+    if "process" in parts:
+        out["process"] = process_part(root, isin, c, bk.asof)
     if bk.notes:
         out["notes"] = bk.notes
+    return out
+
+
+_ERP: Dict[str, float] = {}
+
+
+def capm_part(root: Path, isin: str, asof: date) -> dict:
+    """S64 CAPM facts by code (risk/capm.py): beta, alpha with t, the CAPM expected return (an estimate)."""
+    from pflab.risk import capm
+    try:
+        f = capm.for_isin(root, isin, asof)
+        out = {k: (round(v, 3) if isinstance(v, float) else v) for k, v in f.items()}
+        out["sentence"] = capm.describe(f)
+        if f.get("beta") is not None:
+            key = str(root)
+            if key not in _ERP:
+                _ERP[key] = capm.erp(root)
+            out["expected_return_pct"] = round(capm.expected_return(f["beta"], f["rf_now"], _ERP[key]) * 100, 1)
+            out["expected_return_label"] = (f"estimate: cash {f['rf_now'] * 100:.1f}% ({f['rf_label']}) + beta x market "
+                                            f"premium {_ERP[key] * 100:.1f}% ({capm.ERP_LABEL}); a long-run average, not a forecast")
+        out["source"] = "risk/capm.py (monthly excess returns on the Nifty 500 TRI, Newey-West)"
+        return out
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {str(e)[:120]}"}
+
+
+def process_part(root: Path, isin: str, c: pd.Series, asof: date) -> dict:
+    """S64: what process the stock's log price (and its spread to its sector index) behaves like (quant/process.py)."""
+    from pflab.data import indices
+    from pflab.quant import comove, process
+    v = c.dropna().iloc[-ODDS_SESSIONS:]
+    out: dict = {"price": process.describe(np.log(v)) if len(v) >= 30 else {"sentence": "too little history"},
+                 "source": "quant/process.py: ADF, Lo-MacKinlay variance ratios, OU half-life; the last 3 years of closes"}
+    try:
+        ind, key = comove.sector_index_for(root, isin, asof)
+        if key:
+            df = indices.load(key, root)
+            idx = df.assign(date=pd.to_datetime(df["date"])).set_index("date")["close"].sort_index()
+            sp, beta = process.spread(v, idx[idx.index <= pd.Timestamp(asof)])
+            if len(sp) >= 250:
+                out["spread_to_sector"] = {"sector_index": key, "industry": ind, "beta": round(beta, 2),
+                                           **process.describe(sp)}
+        else:
+            out["spread_to_sector"] = {"note": f"no sector index for {ind or 'its industry'}"}
+    except Exception as e:
+        out["spread_to_sector"] = {"error": f"{type(e).__name__}: {str(e)[:100]}"}
     return out
 
 

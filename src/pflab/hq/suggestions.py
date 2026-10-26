@@ -116,6 +116,16 @@ def _qty_now(con, isin: str, asof: date) -> Optional[float]:
     return float(pos.loc[pos["isin"] == isin, "qty"].sum())
 
 
+def beta_at(isin: str, day: date) -> Optional[float]:
+    """The stock's CAPM beta as known on `day` (the day the suggestion was made); None when it has no fit."""
+    try:
+        from pflab.data import data_dir
+        from pflab.risk import capm
+        return capm.for_isin(data_dir(), isin, day)["beta"]
+    except Exception:
+        return None
+
+
 def score_due(con, now: datetime, index: Optional[pd.Series], qty_fn=None) -> int:
     """Score every suggestion past its horizon (outcomes after it was made, never before); detect a taken one."""
     from pflab.hq import stocks
@@ -147,10 +157,16 @@ def score_due(con, now: datetime, index: Optional[pd.Series], qty_fn=None) -> in
         sp = (end[1] / ref_close - 1) * 100
         ip = (i1 / i0 - 1) * 100
         cost = stocks.round_trip_pct(stocks.DEFAULT_ORDER)
-        out = judge(kind, sp, sp - ip, cost)
+        beta = beta_at(isin, ref_date)                     # S64: an edge is beating market exposure, not the market
+        adj = sp - (beta if beta is not None else 1.0) * ip
+        out = judge(kind, sp, adj, cost)
         con.execute("UPDATE hq_suggestions SET outcome=?, outcome_json=?, scored_at=? WHERE sug_id=?",
                     [out, json.dumps({"from": str(ref_date), "to": str(end[0]), "stock_pct": round(sp, 2),
                                       "nifty500_pct": round(ip, 2), "excess_pct": round(sp - ip, 2),
+                                      "beta": None if beta is None else round(beta, 2),
+                                      "market_adjusted_pct": round(adj, 2),
+                                      "judged_on": "return - beta x Nifty 500 return" if beta is not None
+                                      else "excess over Nifty 500 (no beta fit)",
                                       "round_trip_pct": round(cost, 3)}), now, sid])
         n += 1
     return n
