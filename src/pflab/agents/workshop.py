@@ -134,10 +134,12 @@ def load_dataset(name: str, con, root: Path, asof: date) -> pd.DataFrame:
 
 # --- 1. static check -------------------------------------------------------------------------------------------------
 
-# The checks and the sandbox guard against a writer's MISTAKES (a stray file read, a network call, a runaway loop); the
-# writers are our own models, not adversaries, and this is not a security boundary against hostile code.
+# The checks guard against a writer's MISTAKES (a stray file read, a network call, a runaway loop); the writers are our
+# own models, not adversaries. The code runs in Docker (no network, read-only root; agents/sandbox.py) when Docker works;
+# the local subprocess is the fallback and is marked `contained: False`.
 ALLOWED_IMPORTS = {"math", "statistics", "datetime", "itertools", "collections", "functools", "numpy", "pandas",
-                   "scipy.stats", "scipy.optimize"}
+                   "scipy.stats", "scipy.optimize", "statsmodels", "statsmodels.api", "statsmodels.tsa.api",
+                   "statsmodels.tsa.stattools", "statsmodels.stats.api"}
 BANNED_NAMES = {"open", "exec", "eval", "compile", "__import__", "globals", "locals", "vars", "getattr", "setattr",
                 "delattr", "input", "breakpoint", "help", "exit", "quit", "memoryview", "__builtins__"}
 BANNED_ATTRS = {"eval", "query", "system", "popen", "pickle", "memmap", "fromfile", "tofile", "genfromtxt", "pipe",
@@ -200,6 +202,7 @@ class Run:
     result: Dict[str, object] = field(default_factory=dict)
     cross_checked: bool = False
     seconds: float = 0.0
+    contained: bool = False                      # ran in Docker (no network, read-only root), not the local subprocess
 
 
 def parse_spec(text: str) -> Spec:
@@ -233,9 +236,10 @@ def defaults(spec: Spec) -> dict:
 
 
 def run(spec: Spec, frames: Dict[str, pd.DataFrame], python: str = sys.executable,
-        time_limit: int = TIME_LIMIT_S, values: Optional[dict] = None) -> Run:
-    """Static check, then the sandbox: the test case first, then the real frames (with `values` for the parameters,
-    else their defaults); a second method must agree."""
+        time_limit: int = TIME_LIMIT_S, values: Optional[dict] = None, sandbox=None) -> Run:
+    """Static check, then the sandbox (Docker when it works, else the local subprocess): the test case first, then the
+    real frames (with `values` for the parameters, else their defaults); a second method must agree."""
+    from pflab.agents import sandbox as sb
     if spec.alt_code and same_method(spec.code, spec.alt_code):
         from dataclasses import replace
         spec = replace(spec, alt_code="")          # a copy is no second method: dropped (optional), never a failed try
@@ -255,24 +259,23 @@ def run(spec: Spec, frames: Dict[str, pd.DataFrame], python: str = sys.executabl
         (work / "job.json").write_text(json.dumps({"datasets": spec.datasets, "test": t,
                                                     "params": {**defaults(spec), **(values or {})}}, default=str),
                                         encoding="utf-8")
-        env = {k: v for k, v in __import__("os").environ.items() if k.upper() in ("SYSTEMROOT", "PATH", "TEMP", "TMP")}
-        env.update({"HTTP_PROXY": "http://127.0.0.1:9", "HTTPS_PROXY": "http://127.0.0.1:9", "NO_PROXY": ""})
+        box = sandbox or sb.pick(python)
         t0 = datetime.now()
         try:
-            subprocess.run([python, "-I", str(RUNNER), str(work)], cwd=str(work), env=env, capture_output=True,
-                           timeout=time_limit)
+            box.run(work, time_limit)
         except subprocess.TimeoutExpired:
-            return Run(False, [f"stopped after {time_limit} s"])
+            return Run(False, [f"stopped after {time_limit} s"], contained=box.contained)
         secs = (datetime.now() - t0).total_seconds()
         out = json.loads((work / "out.json").read_text(encoding="utf-8")) if (work / "out.json").exists() else {}
+        c = box.contained
         if "error" in out:
-            return Run(False, [out.get("test_detail") or out["error"]], seconds=secs)
+            return Run(False, [out.get("test_detail") or out["error"]], seconds=secs, contained=c)
         if not out.get("test_ok"):
-            return Run(False, ["the run produced no result"], seconds=secs)
+            return Run(False, ["the run produced no result"], seconds=secs, contained=c)
         if out.get("disagree"):
             return Run(False, ["the two methods disagree: " + "; ".join(out["disagree"][:5])], out.get("result", {}),
-                       seconds=secs)
-        return Run(True, [], out["result"], cross_checked="alt_result" in out, seconds=secs)
+                       seconds=secs, contained=c)
+        return Run(True, [], out["result"], cross_checked="alt_result" in out, seconds=secs, contained=c)
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
@@ -285,7 +288,8 @@ WRITER_SYSTEM = (
     '"alt_code": "...", "explain": "one short paragraph"}\n'
     "Rules: code defines def compute(data) where data maps each dataset name to a pandas DataFrame with the listed "
     "columns, and returns a flat dict of result names to numbers, booleans or short text. Imports only math, "
-    "statistics, datetime, itertools, collections, functools, numpy, pandas, scipy.stats, scipy.optimize. No files, "
+    "statistics, datetime, itertools, collections, functools, numpy, pandas, scipy.stats, scipy.optimize, "
+    "statsmodels (api, tsa.api, tsa.stattools, stats.api). No files, "
     "network, printing, eval, or names starting with an underscore. The test is a tiny made-up case you can work out "
     "by hand, with the exact expected results; work them out from the question, not from your code. Apply every "
     "condition in the question (its period, units, percent or points). alt_code is optional: the same calculation by a "
@@ -512,6 +516,7 @@ def keep(pm_dir: Path, question: str, out: Outcome, now: datetime) -> Path:
             "datasets": out.spec.datasets if out.spec else [], "explain": out.spec.explain if out.spec else "",
             "test": out.spec.test if out.spec else {}, "result": out.run.result if out.run else {},
             "cross_checked": bool(out.run and out.run.cross_checked),
+            "contained": bool(out.run and out.run.contained),
             "params": out.spec.params if out.spec else {}, "values": getattr(out, "values", None) or
             (defaults(out.spec) if out.spec else {}), "reused_from": getattr(out, "reused_from", None)}
     (d / "meta.json").write_text(json.dumps(meta, indent=1, default=str), encoding="utf-8")
@@ -700,6 +705,12 @@ def ask(con, question: str, pm_dir: Path, root: Path, asof: date, *, writer: str
             if out.confirm["status"] == "disagrees":
                 out.status = "disputed"
     d = keep(pm_dir, question, out, now)
+    if out.run is not None and not out.run.contained:       # S64: Docker did not run it; one ask a day, never a stop
+        from pflab.agents import questions as qs
+        qs.ask(con, "workshop", f"workshop:uncontained:{now:%Y-%m-%d}",
+               "Docker Desktop is not running; calculations run uncontained (a plain subprocess, not a security boundary). "
+               "Start Docker Desktop (and build the image once: docker build -t pflab-sandbox:1 -f sandbox/Dockerfile .). "
+               "Answer 'seen' when noted.", now)
     if out.status == "checked":
         summary = "; ".join(f"{k} {v}" for k, v in list(out.run.result.items())[:10])
         how = "reviewed measure" if out.measure else f"{UNREVIEWED}; second writing {(out.confirm or {}).get('status', 'n/a')}"

@@ -486,7 +486,7 @@ def fan(con, isin: str, root: Optional[Path] = None) -> dict:
     return {"method": method, "label": label, "ranges": rows}
 
 
-def show(con) -> str:
+def show(con, root: Optional[Path] = None) -> str:
     L = []
     for use in USES + PRICE_USES:
         n = con.execute("SELECT count(*), max(as_of), count(scored_at) FROM forecasts WHERE use=?", [use]).fetchone()
@@ -496,7 +496,7 @@ def show(con) -> str:
             cv = coverage(con, m, h)
             if cv:
                 L.append(f"  coverage {m} {h} sessions: {cv['covered']:.0%} of the last {cv['n']} scored (the target is 80%)")
-    L.append("serving: " + " - ".join(serving_method()))
+    L.append("serving: " + " - ".join(serving_method(root)))
     for (s,) in con.execute("SELECT DISTINCT subject FROM forecasts WHERE use IN ('revenue', 'margin')").fetchall():
         L += ["  " + x for x in results_lines(con, s)]
     return "\n".join(L)

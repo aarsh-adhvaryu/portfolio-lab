@@ -47,6 +47,32 @@ def open_window(url: str, profile: Path) -> Optional[subprocess.Popen]:
                              "--disable-features=msEdgeStartupBoost"])
 
 
+DOCKER_DESKTOP = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Docker/Docker/Docker Desktop.exe"
+
+
+def start_docker(log, exe: Path = DOCKER_DESKTOP, running=None, popen=subprocess.Popen) -> str:
+    """S64: the workshop's sandbox needs Docker Desktop. Start it if it is installed and not running; do not wait for it
+    (the workshop falls back to the local subprocess, marked uncontained, until it answers). Returns what happened."""
+    if not exe.exists():
+        return "not installed"
+    if running is None:
+        try:
+            out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq Docker Desktop.exe", "/NH"], capture_output=True,
+                                 text=True, timeout=10).stdout
+            running = "Docker Desktop.exe" in out
+        except Exception:
+            running = False
+    if running:
+        return "already running"
+    try:
+        popen([str(exe)], close_fds=True, creationflags=0x00000008 if os.name == "nt" else 0)    # DETACHED_PROCESS
+        log.info("started Docker Desktop for the workshop's sandbox")
+        return "started"
+    except OSError as e:
+        log.warning("could not start Docker Desktop: %s", e)
+        return f"failed: {e}"
+
+
 def alert(text: str) -> None:
     """A message box: the only way a pythonw process can tell the investor something went wrong."""
     try:
@@ -168,6 +194,7 @@ def _run(pm: Path, log) -> int:
             time.sleep(0.5)
         open_window(url, profile)
         return 0
+    start_docker(log)                                      # the workshop's sandbox; not waited for
     job = end_children_with_me()                           # kept open until this process exits
     log.info("children end with the system: %s", "yes" if job else "NO (Windows refused the job object)")
     starting = pm / "app" / "starting.html"

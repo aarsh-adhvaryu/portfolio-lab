@@ -1059,6 +1059,8 @@ local model wherever it can do the job, Claude decides the limits).**
   weights, the learner, starting the system. Bank-account money movements are labelled by the system itself (as was done
   by hand in chat), asking him only where a label needs it.
 
+- **A24 (2026-10-26, S64 Phase 4): the workshop's sandbox is Docker.** Model-written calculations run in a container (`docker run --network none --read-only`, 2 GB, 2 CPUs, no new privileges; image `pflab-sandbox:1`, `sandbox/Dockerfile`, libraries pinned to the main `.venv`) behind one interface, `agents/sandbox.py` (`Docker`, `Local`). Without Docker the old subprocess runs, marked `contained: False`, with one Needs-from-you item a day. OpenSandbox is not adopted: it adds a server and its fast microVM mode is Linux-only; our jobs are single-shot, and `--network none` gives the same isolation. The interface is where it would slot in later. The launcher starts Docker Desktop with the system.
+
 **Still open**
 - **Backup target**: declined by the investor on 2026-10-24 (no external drive or folder for now; he will say if he wants one).
 - The 27B model (Q4): registered before evaluation in S21. Any preference?

@@ -63,3 +63,4 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["docker: needs Docker running and the pflab-sandbox image (skipped otherwise)"]

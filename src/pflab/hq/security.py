@@ -346,13 +346,29 @@ def review(rt, client=None, gate=None, draft=None) -> dict:
     return {"reviewed": 1, "findings": len(fs), "cost": float(getattr(draft, "cost", 0.0)), "model": gv.SONNET}
 
 
+def uncontained(rt) -> dict:
+    """S64: workshop calculations that ran outside Docker (the local subprocess is no security boundary): a count, and
+    whether Docker answers now. Reported, never an alert by itself."""
+    import json as _json
+    from pflab.agents import sandbox, workshop
+    n = total = 0
+    for p in workshop.folder(rt.pm_dir).glob("*/meta.json"):
+        try:
+            m = _json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        total += 1
+        n += int(m.get("contained") is False and m.get("status") in ("checked", "disputed"))
+    return {"uncontained_runs": n, "of": total, "docker_now": sandbox.available(force=True)}
+
+
 def job(ctx) -> dict:
     """The `security` job (daily): flows, privacy grep, the tests; the code review on Sundays."""
     from pflab.hq import desk, service
     rt = desk.from_ctx(ctx)
     out = {}
     parts = [("egress", lambda: egress(rt)), ("flows", lambda: flows(rt)), ("privacy", lambda: privacy(rt)),
-             ("tests", lambda: tests(rt))]
+             ("sandbox", lambda: uncontained(rt)), ("tests", lambda: tests(rt))]
     if review_due(rt.cursor(), rt.clock()) and service.paid_allowed(rt):
         parts.append(("review", lambda: review(rt)))
     for name, fn in parts:

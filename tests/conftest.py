@@ -21,6 +21,16 @@ def _no_backup_decision(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _local_sandbox(request, monkeypatch):
+    """The suite runs the workshop's code in the local subprocess (fast, the same everywhere); a test marked `docker`
+    uses the real Docker sandbox (S64 Phase 4)."""
+    if request.node.get_closest_marker("docker"):
+        monkeypatch.delenv("PFLAB_SANDBOX", raising=False)
+    else:
+        monkeypatch.setenv("PFLAB_SANDBOX", "local")
+
+
+@pytest.fixture(autouse=True)
 def _fake_investor_name(monkeypatch):
     """Tests never read the investor's real name list (S63); the analyst's gate sees an invented one."""
     from pflab.agents import analyst

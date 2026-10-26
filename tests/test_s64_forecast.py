@@ -124,7 +124,7 @@ def test_the_baselines_are_dated_and_shown_to_the_agents(env):
     f = rs.forecast_flags(con, A, "AAA", "500002", datetime(2026, 10, 25), datetime(2026, 10, 31))
     sur = [x for x in f if x.kind == "results_surprise"]
     assert sur and sur[0].happened_at == datetime(2026, 10, 20) and "against about" in sur[0].detail
-    assert "turnover: 2 forecast(s)" in fl.show(con) and "not tested yet" in fl.show(con)
+    assert "turnover: 2 forecast(s)" in fl.show(con, root) and "not tested yet" in fl.show(con, root)
 
 
 # --- price ranges --------------------------------------------------------------------------------------------------------------
