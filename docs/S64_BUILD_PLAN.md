@@ -700,7 +700,7 @@ Fixes:
   and bank file classified by content, then the bank-label questions open.
 
 ## Progress (tick as phases finish; one line each)
-- [ ] Phase 0 set-up and rescue
+- [x] Phase 0 set-up and rescue (2026-10-26: branch pm/s64-finish; data/fo_bhavcopy.py restored and imports, 225 month-end files present; pairs.py/pairs_study.py saved to scratchpad only; rescue ref deleted; 1757 tests pass; Rs 0). Docker ASK is open: investor to confirm `docker run --rm hello-world` works. Amendment 2026-10-26: pytest needs `--basetemp <scratchpad>` here (default temp folder is access-denied); pairs files were not deleted at the s62 tip, read directly from it.
 - [ ] Phase 1 test counter
 - [ ] Phase 2 maths (2a-2f); studies handed to the investor
 - [ ] Phase 3 forecasting; calibration test handed to the investor
