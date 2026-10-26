@@ -97,8 +97,8 @@ def send_now(rt, text: str, kind: str, dedup_key: Optional[str] = None) -> Optio
     con = rt.cursor()
     now = rt.clock()
     mid = tgm.enqueue(con, text, kind, dedup_key=dedup_key, now=now)
-    if mid is None or not rt.settings.get("telegram_send") or rt.secrets is None:
-        return mid
+    if mid is None or not tgm.goes_at_once(kind) or not rt.settings.get("telegram_send") or rt.secrets is None:
+        return mid                                           # a held kind waits for the summary (S64)
     try:
         tgm.make_sender(rt.secrets)(text)
         con.execute("UPDATE outbox SET status='sent', sent_at=?, attempts=1 WHERE msg_id=?", [now, mid])

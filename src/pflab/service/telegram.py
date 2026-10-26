@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
+
+from pflab import _toml
 
 MAX_LEN = 4096
 MAX_ATTEMPTS = 5
@@ -86,15 +89,29 @@ def make_sender(secrets, transport: Optional[Transport] = None, sleep: Callable[
 
 # --- outbox --------------------------------------------------------------------------------------------------
 
+CONFIG = Path(__file__).resolve().parents[3] / "configs" / "telegram.toml"
+
+
+def goes_at_once(kind: str, config: Optional[Path] = None) -> bool:
+    """True for an urgent or direct kind (configs/telegram.toml); any other kind waits for the summaries. Without the
+    file everything goes at once (the behaviour before S64)."""
+    p = config or CONFIG
+    if not p.exists():
+        return True
+    c = _toml.load(p)
+    return kind in set(c.get("urgent", [])) | set(c.get("direct", []))
+
+
 def enqueue(con, text: str, kind: str = "alert", dedup_key: Optional[str] = None,
             now: Optional[datetime] = None) -> Optional[int]:
-    """Queue a message. A `dedup_key` already in the outbox is not queued again (returns None)."""
+    """Queue a message. A `dedup_key` already in the outbox is not queued again (returns None). A kind that does not
+    matter today is stored as 'held' for the summaries (S64)."""
     if dedup_key and con.execute("SELECT 1 FROM outbox WHERE dedup_key=?", [dedup_key]).fetchone():
         return None
     from pflab.pm.store import next_id
     mid = next_id(con, "outbox", "msg_id")
     con.execute("INSERT INTO outbox VALUES (?,?,?,?,?,?,?,?,?)",
-                [mid, now or datetime.now(), kind, text, dedup_key, "pending", 0, None, None])
+                [mid, now or datetime.now(), kind, text, dedup_key, "pending" if goes_at_once(kind) else "held", 0, None, None])
     return mid
 
 
@@ -129,8 +146,8 @@ def flush(con, send: Callable[[str], None], now: Optional[datetime] = None, max_
 def drop_before(con, before: datetime) -> int:
     """Mark held messages queued before `before` as dropped (S58b switch-on: stale ones never go out). Kept, not
     deleted, so `pflab pm alerts --all` still shows them."""
-    n = con.execute("SELECT count(*) FROM outbox WHERE status='pending' AND created_at < ?", [before]).fetchone()[0]
-    con.execute("UPDATE outbox SET status='dropped' WHERE status='pending' AND created_at < ?", [before])
+    n = con.execute("SELECT count(*) FROM outbox WHERE status IN ('pending','held') AND created_at < ?", [before]).fetchone()[0]
+    con.execute("UPDATE outbox SET status='dropped' WHERE status IN ('pending','held') AND created_at < ?", [before])
     return n
 
 

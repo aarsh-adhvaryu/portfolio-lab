@@ -310,6 +310,20 @@ register(Job("comove", Daily(10, 0, weekdays_only=False), _comove,
              cooldown_minutes=120))
 
 
+def _summary(which: str):
+    def run(ctx: Ctx) -> dict:
+        """S64: the morning or evening summary, on trading days; the held messages since the last one ride along."""
+        from pflab.conductor import calendar as mcal
+        from pflab.service import summary
+        cal = mcal.load()
+        if not cal.is_trading_day(ctx.now.date()):
+            return {"skipped": True, "why": cal.why_closed(ctx.now.date())}
+        return summary.send(ctx.con, ctx.now.date(), ctx.now, which, cal, ctx.data_root)
+    return run
+
+
+register(Job("summary_morning", Daily(9, 0), _summary("morning"), "Telegram morning summary (trading days)"))
+register(Job("summary_evening", Daily(21, 45), _summary("evening"), "Telegram evening summary (trading days)"))
 register(Job("learner", Daily(22, 0, weekdays_only=False), _learner,
              "learner: papers and blogs -> registered tests; proposals from the system's own record", cooldown_minutes=120))
 register(Job("security", Daily(21, 15, weekdays_only=False), _security,

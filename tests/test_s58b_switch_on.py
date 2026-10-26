@@ -27,8 +27,8 @@ def test_stale_held_messages_can_be_dropped_before_telegram_goes_on(tmp_path, mo
     from pflab.service import telegram as tgm
     monkeypatch.setenv("PFLAB_PM_DIR", str(tmp_path))
     con = store.connect()
-    tgm.enqueue(con, "old wake note", "conductor", now=datetime(2026, 10, 17, 9, 0))
-    tgm.enqueue(con, "today's research", "research", now=datetime(2026, 10, 24, 9, 0))
+    tgm.enqueue(con, "old wake note", "guard", now=datetime(2026, 10, 17, 9, 0))
+    tgm.enqueue(con, "today's research", "guard", now=datetime(2026, 10, 24, 9, 0))
     con.close()
     assert cli.main(["pm", "alerts", "--drop-before", "2026-10-24"]) == 0 and "1 held message" in capsys.readouterr().out
     con = store.connect()

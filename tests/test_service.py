@@ -221,8 +221,8 @@ def test_unconfigured_sender_says_so():
 
 
 def test_outbox_delivers_oldest_first_and_dedups(con, tmp_path):
-    assert tgm.enqueue(con, "first", "alert", "k1") == 1 and tgm.enqueue(con, "second", "alert", "k2") == 2
-    assert tgm.enqueue(con, "first again", "alert", "k1") is None                            # same key: not queued twice
+    assert tgm.enqueue(con, "first", "guard", "k1") == 1 and tgm.enqueue(con, "second", "guard", "k2") == 2
+    assert tgm.enqueue(con, "first again", "guard", "k1") is None                            # same key: not queued twice
     w = Wire()
     out = tgm.flush(con, tgm.make_sender(secrets_of(tmp_path), w))
     assert out == {"sent": 2, "still_pending": 0, "failed": 0}
@@ -230,7 +230,7 @@ def test_outbox_delivers_oldest_first_and_dedups(con, tmp_path):
 
 
 def test_failed_delivery_stays_queued_then_fails_visibly(con, tmp_path):
-    tgm.enqueue(con, "msg", "alert", "k")
+    tgm.enqueue(con, "msg", "guard", "k")
     send = tgm.make_sender(secrets_of(tmp_path), Wire(*[(500, {"description": "oops"})] * 10))
     for i in range(tgm.MAX_ATTEMPTS - 1):
         assert tgm.flush(con, send)["still_pending"] == 1
@@ -240,7 +240,7 @@ def test_failed_delivery_stays_queued_then_fails_visibly(con, tmp_path):
 
 
 def test_no_config_keeps_everything_pending(con):
-    tgm.enqueue(con, "msg", "alert", "k")
+    tgm.enqueue(con, "msg", "guard", "k")
     out = tgm.flush(con, tgm.make_sender(None))
     assert out["still_pending"] == 1 and "not in the secrets file" in out["error"] and tgm.undelivered(con) == 1
 
@@ -256,7 +256,7 @@ def test_filing_alert_message_carries_the_evidence_link(con, tmp_path):
     a = filings.Alert("e1", "INE111A01011", "Acme Ltd", "DEFAULT", "Disclosure of default on NCD interest",
                       datetime(2026, 9, 22, 10, 5), "https://www.bseindia.com/xml-data/corpfiling/AttachLive/x.pdf",
                       ["Past: 8 similar events, median 21-day CAR -4.1%"])
-    tgm.enqueue(con, a.text(), "filing", a.event_id)
+    tgm.enqueue(con, a.text(), "guard", a.event_id)
     w = Wire()
     tgm.flush(con, tgm.make_sender(secrets_of(tmp_path), w))
     t = w.sent[0][1]["text"]

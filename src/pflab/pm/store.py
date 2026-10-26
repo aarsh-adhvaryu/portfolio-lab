@@ -488,6 +488,39 @@ MIGRATIONS = [
     (36, "forecasts_s64", """
     ALTER TABLE tfm_forecasts RENAME TO forecasts;
     """),
+    # 2026-10-26: S64 Phase 5 (the companion's gaps): suggestion numbers from code and the watch behind each; cause
+    # hypotheses; limit proposals (theme, dip reserve, pot); the opportunity pot; theme baskets; scans. A pass's tool
+    # results are already in hq_tool_calls (v33), which the replay bench reads, so hq_passes needs no new column.
+    (37, "companion_s64", """
+    ALTER TABLE hq_suggestions ADD COLUMN price_low DOUBLE;
+    ALTER TABLE hq_suggestions ADD COLUMN price_high DOUBLE;
+    ALTER TABLE hq_suggestions ADD COLUMN max_buy DOUBLE;
+    ALTER TABLE hq_suggestions ADD COLUMN amount DOUBLE;
+    ALTER TABLE hq_suggestions ADD COLUMN wrong_if VARCHAR;
+    ALTER TABLE hq_suggestions ADD COLUMN wrong_price DOUBLE;
+    ALTER TABLE hq_suggestions ADD COLUMN stats_json VARCHAR;
+    ALTER TABLE hq_suggestions ADD COLUMN watch_id BIGINT;
+    CREATE TABLE kg_hypotheses (
+        hyp_id BIGINT PRIMARY KEY, made_at TIMESTAMP NOT NULL, pass_id BIGINT, subject VARCHAR NOT NULL, cause VARCHAR NOT NULL,
+        effect VARCHAR, evidence_json VARCHAR, status VARCHAR NOT NULL, check_by DATE NOT NULL, decided_at TIMESTAMP, why VARCHAR
+    );
+    CREATE TABLE limit_proposals (
+        prop_id BIGINT PRIMARY KEY, kind VARCHAR NOT NULL, key VARCHAR NOT NULL, value VARCHAR, evidence_json VARCHAR,
+        status VARCHAR NOT NULL, proposed_at TIMESTAMP NOT NULL, decided_at TIMESTAMP, q_id BIGINT
+    );
+    CREATE TABLE pot_ideas (
+        idea_id BIGINT PRIMARY KEY, made_at TIMESTAMP NOT NULL, isin VARCHAR NOT NULL, symbol VARCHAR, reason VARCHAR,
+        buy_below DOUBLE, exit_above DOUBLE, stop_below DOUBLE, amount DOUBLE, horizon_days INTEGER, status VARCHAR NOT NULL,
+        closed_at TIMESTAMP, ret DOUBLE, ret_vs_market DOUBLE
+    );
+    CREATE TABLE theme_baskets (
+        theme VARCHAR NOT NULL, isin VARCHAR NOT NULL, weight DOUBLE, since DATE NOT NULL, until DATE, status VARCHAR NOT NULL
+    );
+    CREATE TABLE scans (
+        scan_id BIGINT PRIMARY KEY, name VARCHAR NOT NULL, conditions_json VARCHAR NOT NULL, universe VARCHAR NOT NULL,
+        active BOOLEAN NOT NULL DEFAULT true, created_by VARCHAR, created_at TIMESTAMP NOT NULL, claim_id BIGINT
+    );
+    """),
 ]
 
 

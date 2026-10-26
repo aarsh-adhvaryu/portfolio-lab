@@ -27,7 +27,7 @@ CHOICES = {"theme": ("dark", "light", "system"), "preset": ("off", "light", "ful
 # What each preset runs. Light keeps the data and the checks current and leaves out the heavy agents; full runs every
 # job; marathon adds the nightly 100,000-path simulation. The outbox stays held until Telegram is switched on.
 LIGHT_JOBS = ("collect", "prices", "nav", "filings", "global", "guards", "tradecheck", "backup", "conductor", "plans",
-              "hq")                       # S59: his orders, reminders and the drop folder; the paid agents only on full
+              "hq", "summary_morning", "summary_evening")                     # S59: his orders, reminders and the drop folder; the paid agents only on full
 PRESETS = {
     "off": "nothing runs on its own; live prices and the screens still work",
     "light": "data and checks only: prices, NAVs, filings, world markets, guards, trades against the ledger, backup",
