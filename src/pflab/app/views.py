@@ -313,8 +313,15 @@ def ai(rt, chat_id: Optional[int] = None, now: Optional[datetime] = None) -> dic
         latest = max(runs, key=lambda r: r[2]) if runs else None
         state = "running" if rt.busy and any(j in (rt.busy or "") for j in (js or [])) else \
             (latest[1] if latest else ("in the app" if js is None else "never run"))
+        detail = latest[3] if latest else ""
+        if name == "Learner":                                  # S64: how many tests have run and the bar now
+            from pflab.learner import counter
+            try:
+                detail = f"{counter.line(con)} {detail}".strip()
+            except Exception:                                  # a store before v35
+                pass
         agents.append({"name": name, "jobs": js or [], "model": model, "autonomy": autonomy, "check": check, "duty": duty,
-                       "state": state, "last": latest[2] if latest else None, "detail": latest[3] if latest else ""})
+                       "state": state, "last": latest[2] if latest else None, "detail": detail})
     cfg = an.config()
     qs = [{"id": i, "agent": a, "text": t, "at": str(c)[:16]} for i, c, a, t in con.execute(
         "SELECT q_id, created_at, agent, text FROM questions WHERE status='open' ORDER BY created_at DESC").fetchall()]

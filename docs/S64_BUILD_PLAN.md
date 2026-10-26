@@ -701,7 +701,7 @@ Fixes:
 
 ## Progress (tick as phases finish; one line each)
 - [x] Phase 0 set-up and rescue (2026-10-26: branch pm/s64-finish; data/fo_bhavcopy.py restored and imports, 225 month-end files present; pairs.py/pairs_study.py saved to scratchpad only; rescue ref deleted; 1757 tests pass; Rs 0). Docker ASK is open: investor to confirm `docker run --rm hello-world` works. Amendment 2026-10-26: pytest needs `--basetemp <scratchpad>` here (default temp folder is access-denied); pairs files were not deleted at the s62 tip, read directly from it.
-- [ ] Phase 1 test counter
+- [x] Phase 1 test counter (2026-10-26: protocol Amendment 4 committed first; migration v35; `learner/counter.py`; wired into `claims.test/register`, `reregister_stale`, `redecide_passed`; status line in `run.status`, the `findings` tool and the Learner agent row. Real store (backed up first): seed added 22 rows (21 studies + claim #13), N=22, next bar t >= 2.85, no old passes to re-decide, no stale registered claims; Rs 0. 1765 tests pass.) Amendments 2026-10-26: the repo has no `/learn` board or `learner` CLI command, so the line is shown through `run.status`, the `findings` tool and the Learner row of the AI centre; split_study, maths_audit and brain_shadow have no results file with a verdict, so they are not seeded (N is therefore not overstated); `tests/test_pm_store.py` and one stub in `test_s62_learner.py` updated for v35 and the `threshold_dev` argument (not engine tests).
 - [ ] Phase 2 maths (2a-2f); studies handed to the investor
 - [ ] Phase 3 forecasting; calibration test handed to the investor
 - [ ] Phase 4 Docker sandbox

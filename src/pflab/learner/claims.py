@@ -14,14 +14,16 @@ Public text only: nothing of the investor's is in a source or a prompt here.
 """
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
+import math
 import re
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
-from pflab.learner import templates as tp
+from pflab.learner import counter, templates as tp
 
 MAX_CLAIMS = 3
 READ_CHARS = 24_000
@@ -241,10 +243,13 @@ def register(con, claim_id: int, proto_dir: Path, now: datetime) -> str:
     proto = {"claim_id": claim_id, "registered_at": now.isoformat(timespec="seconds"), "claim": claim, "quote": quote,
              "source": {"title": title, "url": url}, "template": t, "params": json.loads(prm_json),
              "periods": {"development": tp.EV_DEV if events else tp.DEV, "validation": tp.EV_VAL if events else tp.VAL},
-             "rule": (f"claimed direction in both periods; t >= {tp.T_DEV} (development) and >= {tp.T_VAL} (validation); "
+             "rule": (f"claimed direction in both periods; t >= counter.t_needed(N) (development; never under {tp.T_DEV}, "
+                      f"N = the tests in the family 'all' including this one) and >= {tp.T_VAL} (validation); "
                       f"at least {tp.MIN_EVENTS if events else tp.MIN_MONTHS} "
                       f"{'events' if events else 'months'} each; the effect larger than its cost "
-                      "(templates.decide)"),
+                      "(templates.decide; protocol amendment 4)"),
+             "tests_run_at_registration": counter.n_tests(con),
+             "dev_bar_if_tested_now": round(counter.t_needed(counter.n_tests(con) + 1), 3),
              "code": "src/pflab/learner/templates.py", "code_sha256": code_sha(),
              "protocol": "docs/research/learner_protocol.md"}
     proto_dir.mkdir(parents=True, exist_ok=True)
@@ -271,8 +276,23 @@ def test(con, claim_id: int, root: Path, now: datetime, run: Optional[Callable] 
         raise RuntimeError(f"claim #{claim_id}: its protocol file changed after registration: not run")
     if csha != code_sha():
         raise RuntimeError(f"claim #{claim_id}: the test code changed since registration: register it again")
-    res = (run or tp.run)(root, t, json.loads(prm))
+    n = counter.n_tests(con) + 1                                # amendment 4: this test counts too
+    bar = counter.t_needed(n)
+    res = (run or functools.partial(tp.run, threshold_dev=bar))(root, t, json.loads(prm))
     d = res["decision"]
+    dev, val = res.get("development") or {}, res.get("validation") or {}
+    rets = dev.pop("_returns", None)                            # the development series: for the DSR, not stored
+    sr = dsr = None
+    if rets and len(rets) > 3:
+        x = [v for v in rets if math.isfinite(v)]
+        sd = (sum((v - sum(x) / len(x)) ** 2 for v in x) / (len(x) - 1)) ** 0.5 if len(x) > 1 else 0.0
+        sr = (sum(x) / len(x)) / sd if sd > 0 else None
+        dsr = counter.deflated_sharpe(x, counter.sharpe_trials(con))
+    res["tests_in_family"], res["dev_bar"] = n, round(bar, 3)
+    if dsr is not None and math.isfinite(dsr):
+        res["deflated_sharpe"] = round(dsr, 3)
+    counter.record(con, now, "learner", t, json.loads(prm), claim_id=claim_id, n_dev=dev.get("n"), t_dev=dev.get("t"),
+                   t_val=val.get("t"), sr_dev=sr, dsr=dsr, threshold_dev=bar, passed=d == "pass", note=f"claim:{claim_id}")
     con.execute("UPDATE learn_claims SET status=?, decision=?, why=?, result_json=?, decided_at=? WHERE claim_id=?",
                 ["passed" if d == "pass" else "failed", d, res["why"][:600], json.dumps(res, default=str)[:8000], now,
                  claim_id])
@@ -281,6 +301,47 @@ def test(con, claim_id: int, root: Path, now: datetime, run: Optional[Callable] 
     if d == "pass":
         wire(con, claim_id, now)
     return d
+
+
+def reregister_stale(con, proto_dir: Path, now: datetime) -> int:
+    """Editing templates.py changes `code_sha` and so invalidates every claim registered but not yet tested; none of them
+    has run, so each is registered again under the new code (protocol amendment 4). Tested claims are left alone."""
+    stale = [r[0] for r in con.execute("SELECT claim_id FROM learn_claims WHERE status='registered' AND code_sha<>? "
+                                       "ORDER BY claim_id", [code_sha()]).fetchall()]
+    for cid in stale:
+        con.execute("UPDATE learn_claims SET status='proposed' WHERE claim_id=?", [cid])
+    for cid in stale:
+        register(con, cid, proto_dir, now)
+    return len(stale)
+
+
+def redecide_passed(con, now: datetime) -> List[dict]:
+    """Amendment 4: an old pass is judged again against the bar of today's N (its stored development t, in the claimed
+    direction). One that misses it becomes a fail and its live finding ends. Returns what changed."""
+    from pflab.learner import live
+    n = counter.n_tests(con)
+    bar = counter.t_needed(n)
+    changed = []
+    for cid, t, prm, res in con.execute("SELECT claim_id, template, params_json, result_json FROM learn_claims WHERE "
+                                        "status='passed' ORDER BY claim_id").fetchall():
+        try:
+            r = json.loads(res or "{}")
+            t_dev = float((r.get("development") or {})["t"])
+        except Exception:
+            continue                                            # no stored t: left as it is, nothing to compare
+        p = json.loads(prm or "{}")
+        sign = -1 if p.get("direction") in ("down", "low") and t != "cross_section" else 1
+        if sign * t_dev >= bar:
+            continue
+        why = (f"re-decided under protocol amendment 4 ({now.date()}): development t {sign * t_dev:+.2f} is under the bar "
+               f"{bar:.2f} for {n} tests run; no live feature")
+        con.execute("UPDATE learn_claims SET status='failed', decision='fail', why=?, decided_at=? WHERE claim_id=?",
+                    [why, now, cid])
+        con.execute("UPDATE learn_claims SET decision='fail', why=?, decided_at=? WHERE same_as=?", [why, now, cid])
+        con.execute("UPDATE learn_tests SET passed=false, note=note || ' (re-decided)' WHERE claim_id=?", [cid])
+        live.end(con, "finding", f"{t}:{prm}", now)
+        changed.append({"claim_id": cid, "t_dev": t_dev, "bar": bar})
+    return changed
 
 
 def wire(con, claim_id: int, now: datetime) -> int:

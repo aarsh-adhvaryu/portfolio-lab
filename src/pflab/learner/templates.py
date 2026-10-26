@@ -85,9 +85,12 @@ def nw_t(x: Sequence[float], lags: int = 0) -> Tuple[float, float, int]:
     return float(y.mean()), float(fit.tvalues[0]), int(len(y))
 
 
-def decide(dev: dict, val: dict, sign: int, minimum: int, cost: float, unit: str) -> Tuple[str, str]:
-    """The one rule for every template: ('pass' | 'fail', why). `cost` in the effect's own units."""
-    for name, d, t_min in (("development", dev, T_DEV), ("validation", val, T_VAL)):
+def decide(dev: dict, val: dict, sign: int, minimum: int, cost: float, unit: str,
+           threshold_dev: float = T_DEV) -> Tuple[str, str]:
+    """The one rule for every template: ('pass' | 'fail', why). `cost` in the effect's own units. `threshold_dev` is the
+    development bar: counter.t_needed(N) since protocol amendment 4 (never under T_DEV)."""
+    threshold_dev = max(threshold_dev, T_DEV)
+    for name, d, t_min in (("development", dev, threshold_dev), ("validation", val, T_VAL)):
         if d["n"] < minimum:
             return "fail", f"{name}: {d['n']} {unit}, fewer than {minimum} (small numbers: no conclusion)"
         if not math.isfinite(d["t"]) or sign * d["mean"] <= 0:
@@ -187,7 +190,7 @@ def cross_section_series(w: Dict[str, pd.DataFrame], mem: pd.DataFrame, signal: 
 
 
 def cross_section(root: Path, signal: str, direction: str, months: int, round_trip_pct: float,
-                  periods=(DEV, VAL)) -> dict:
+                  periods=(DEV, VAL), threshold_dev: float = T_DEV) -> dict:
     mem = members(root)
     w = wide_panel(root, sorted(set(mem["isin"])), "2008-06-01", "2022-06-30")
     res = {}
@@ -195,7 +198,9 @@ def cross_section(root: Path, signal: str, direction: str, months: int, round_tr
         s = cross_section_series(w, mem, signal, direction, months, a, b, round_trip_pct)
         m, t, n = nw_t(s.values, lags=max(1, months))
         res[name] = {"mean": m, "t": t, "n": n, "per": f"{months}-month excess after charges"}
-    d, why = decide(res["development"], res["validation"], 1, MIN_MONTHS, 0.0, "months")
+        if name == "development":
+            res[name]["_returns"] = [float(v) for v in s.values]       # for the deflated Sharpe ratio (counter.py)
+    d, why = decide(res["development"], res["validation"], 1, MIN_MONTHS, 0.0, "months", threshold_dev)
     return {"decision": d, "why": why, **res}
 
 
@@ -228,7 +233,8 @@ def today_quintiles(con, root: Path, signal: str, isins: Sequence[str], asof) ->
 
 # --- event study and calendar ----------------------------------------------------------------------------------------------
 
-def event_study(root: Path, kind: str, direction: str, sessions: int, round_trip_pct: float) -> dict:
+def event_study(root: Path, kind: str, direction: str, sessions: int, round_trip_pct: float,
+                threshold_dev: float = T_DEV) -> dict:
     from pflab.agents import quant as qn
     from pflab.data import red_flags
     from pflab.quant import event_study as es
@@ -243,7 +249,7 @@ def event_study(root: Path, kind: str, direction: str, sessions: int, round_trip
         x = c[f"car_{sessions}"].to_numpy() if len(c) else np.array([])
         m, t, n = nw_t(x, 0)
         res[name] = {"mean": m, "t": t, "n": n, "per": f"CAR[0,{sessions}] per filing"}
-    d, why = decide(res["development"], res["validation"], sign, MIN_EVENTS, round_trip_pct / 100, "events")
+    d, why = decide(res["development"], res["validation"], sign, MIN_EVENTS, round_trip_pct / 100, "events", threshold_dev)
     return {"decision": d, "why": why, **res}
 
 
@@ -298,7 +304,8 @@ def holder_events(root: Path, kind: str, start: str, end: str) -> pd.DataFrame:
     return pd.DataFrame({"isin": hit["isin"], "t": hit["t"], "headline": kind})
 
 
-def holder_event(root: Path, kind: str, direction: str, sessions: int, round_trip_pct: float) -> dict:
+def holder_event(root: Path, kind: str, direction: str, sessions: int, round_trip_pct: float,
+                 threshold_dev: float = T_DEV) -> dict:
     from pflab.quant import event_study as es
     res, sign = {}, 1 if direction == "up" else -1
     mkt = es.market(root)
@@ -311,7 +318,7 @@ def holder_event(root: Path, kind: str, direction: str, sessions: int, round_tri
             x = c[f"car_{sessions}"].to_numpy() if len(c) else np.array([])
         m, t, n = nw_t(x, 0)
         res[name] = {"mean": m, "t": t, "n": n, "per": f"CAR[0,{sessions}] per event"}
-    d, why = decide(res["development"], res["validation"], sign, MIN_EVENTS, round_trip_pct / 100, "events")
+    d, why = decide(res["development"], res["validation"], sign, MIN_EVENTS, round_trip_pct / 100, "events", threshold_dev)
     return {"decision": d, "why": why, **res}
 
 
@@ -336,7 +343,7 @@ def effect_days(dates: pd.DatetimeIndex, effect: str) -> np.ndarray:
 WINDOW_DAYS = {"turn_of_month": 4, "monday": 1, "friday": 1, "january": 21, "first_half_month": 10}
 
 
-def calendar(root: Path, effect: str, direction: str) -> dict:
+def calendar(root: Path, effect: str, direction: str, threshold_dev: float = T_DEV) -> dict:
     from pflab.data import indices
     df = indices.load("NIFTY500_TRI", root)
     s = df.assign(date=pd.to_datetime(df["date"])).set_index("date")["close"].sort_index()
@@ -351,11 +358,11 @@ def calendar(root: Path, effect: str, direction: str) -> dict:
         months = len({(d.year, d.month) for d in x.index})
         res[name] = {"mean": diff * WINDOW_DAYS[effect], "t": diff / se if se and se > 0 else float("nan"), "n": months,
                      "per": f"excess over a {WINDOW_DAYS[effect]}-session window"}
-    d, why = decide(res["development"], res["validation"], sign, MIN_MONTHS, ETF_ROUND_TRIP_PCT / 100, "months")
+    d, why = decide(res["development"], res["validation"], sign, MIN_MONTHS, ETF_ROUND_TRIP_PCT / 100, "months", threshold_dev)
     return {"decision": d, "why": why, **res}
 
 
-def run(root: Path, template: str, params: dict) -> dict:
+def run(root: Path, template: str, params: dict, threshold_dev: float = T_DEV) -> dict:
     """Run a registered claim's template; the decision comes from `decide`, never from a model."""
     from pflab.hq import stocks
     bad = check_params(template, params)
@@ -363,9 +370,10 @@ def run(root: Path, template: str, params: dict) -> dict:
         raise ValueError(bad)
     rt = stocks.round_trip_pct(stocks.DEFAULT_ORDER)
     if template == "cross_section":
-        return cross_section(root, params["signal"], params["direction"], int(params["months"]), rt)
+        return cross_section(root, params["signal"], params["direction"], int(params["months"]), rt,
+                             threshold_dev=threshold_dev)
     if template == "event_study":
-        return event_study(root, params["kind"], params["direction"], int(params["sessions"]), rt)
+        return event_study(root, params["kind"], params["direction"], int(params["sessions"]), rt, threshold_dev)
     if template == "holder_event":
-        return holder_event(root, params["kind"], params["direction"], int(params["sessions"]), rt)
-    return calendar(root, params["effect"], params["direction"])
+        return holder_event(root, params["kind"], params["direction"], int(params["sessions"]), rt, threshold_dev)
+    return calendar(root, params["effect"], params["direction"], threshold_dev)

@@ -475,6 +475,14 @@ MIGRATIONS = [
         text VARCHAR NOT NULL, ref VARCHAR, q_id INTEGER, sent BOOLEAN NOT NULL DEFAULT false
     );
     """),
+    # 2026-10-26: S64 Phase 1: every test ever run in one family, for the learner's Bonferroni bar (protocol amendment 4)
+    (35, "learn_tests_s64", """
+    CREATE TABLE learn_tests (
+        test_id BIGINT PRIMARY KEY, ran_at TIMESTAMP, family VARCHAR, origin VARCHAR, claim_id BIGINT, template VARCHAR,
+        params_json VARCHAR, n_dev INTEGER, t_dev DOUBLE, t_val DOUBLE, sr_dev DOUBLE, dsr DOUBLE, threshold_dev DOUBLE,
+        passed BOOLEAN, note VARCHAR
+    );
+    """),
 ]
 
 

@@ -394,7 +394,9 @@ def findings(ctx: Ctx, a: dict) -> dict:
                                               f"breakpoints {v['breakpoints_at']})" for i, v in q.items()}
             item["claimed_quintile"] = 5 if p["direction"] == "high" else 1
         (passed if d == "pass" else failed).append(item)
+    from pflab.learner import counter
     return {"passed": passed, "failed": [{k: f[k] for k in ("claim", "result", "claim_id")} for f in failed[:15]],
+            "tests_run": counter.n_tests(con), "bar_for_next_test": counter.line(con),
             "source": "learner (claims from reading, each registered before its test; learner/templates.py decides)"}
 
 

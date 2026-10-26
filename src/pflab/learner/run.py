@@ -99,13 +99,14 @@ def job(ctx) -> dict:
 
 
 def status(con, limit: int = 8) -> str:
-    from pflab.learner import claims, live
+    from pflab.learner import claims, counter, live
     n = dict(con.execute("SELECT status, count(*) FROM learn_sources GROUP BY status").fetchall())
     c = dict(con.execute("SELECT status, count(*) FROM learn_claims GROUP BY status").fetchall())
     lines = ["Sources: " + (", ".join(f"{k} {v}" for k, v in sorted(n.items())) or "none yet"),
              "Claims: " + (", ".join(f"{k} {v}" for k, v in sorted(c.items())) or "none yet")]
     for r in claims.table(con, limit):
         lines.append(f"#{r['id']} [{r['status']}] {r['claim'][:140]}" + (f" -> {r['why'][:160]}" if r["why"] else ""))
+    lines.append(counter.line(con))
     lines.append(live.brain_text(con))
     pend = con.execute("SELECT prop_id, kind, text FROM learn_proposals WHERE status='to_investor' ORDER BY prop_id").fetchall()
     if pend:

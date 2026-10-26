@@ -305,7 +305,7 @@ def test_cycle_end_to_end_without_network(con, tmp_path, monkeypatch):
     (d / "paper.txt").write_text(TEXT, encoding="utf-8")
     monkeypatch.setattr(run, "drafts", lambda rt, paid: [("local", lambda s, p, sc: {"claims": [CLAIM]} if "claims" in sc
                                                            ["properties"] else {"testable": True, "why": "ok"})])
-    monkeypatch.setattr(tp, "run", lambda root, t, prm: {"decision": "pass", "why": "held in both", "development": {},
+    monkeypatch.setattr(tp, "run", lambda root, t, prm, threshold_dev=2.0: {"decision": "pass", "why": "held in both", "development": {},
                                                          "validation": {}})
     monkeypatch.setattr(sources, "collect", lambda con, now, repo, text_dir, **k: {"drop": sources.drop(con, now, repo, text_dir)})
     monkeypatch.setattr(run, "proposal_draft", lambda rt: None)
