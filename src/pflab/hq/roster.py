@@ -85,17 +85,17 @@ def _analysis(rt, t: dict) -> Reply:
 
 
 def _sim(rt, t: dict) -> Reply:
-    """Monte Carlo of the current and target mixes with the dated stress episodes; 'forecast' shows TimesFM's ranges."""
+    """Monte Carlo of the current and target mixes with the dated stress episodes; 'forecast' shows the kept forecasts and price ranges."""
     text = t["text"].lower()
     if re.search(r"forecast|times ?fm", text):
         rows = rt.cursor().execute(
-            "SELECT use, subject, as_of, target, q10, q50, q90, model FROM tfm_forecasts WHERE as_of = (SELECT max(as_of) "
-            "FROM tfm_forecasts) ORDER BY use, subject LIMIT 30").fetchall()
+            "SELECT use, subject, as_of, target, q10, q50, q90, model FROM forecasts WHERE as_of = (SELECT max(as_of) "
+            "FROM forecasts) ORDER BY use, subject LIMIT 30").fetchall()
         if not rows:
             return Reply("No forecasts kept yet (the forecast job runs nightly).", ["forecasts (S52)"])
         return Reply("Forecasts of " + str(rows[0][2]) + " (q10 / q50 / q90; the model serving each use is on the "
                      "scoreboard):\n" + "\n".join(f"{u} {s} to {tg}: {a:,.4g} / {b:,.4g} / {c:,.4g} ({m})"
-                                                  for u, s, _a, tg, a, b, c, m in rows), ["forecasts (S52, TimesFM or baseline)"])
+                                                  for u, s, _a, tg, a, b, c, m in rows), ["forecasts (S64, calibrated statistics and baselines)"])
     from pflab.app import sims
     paths = 100_000 if re.search(r"100[, ]?000|marathon", text) else 10_000
     years = int(m.group(1)) if (m := re.search(r"\b([1-5])\s*(?:years?|yrs?)\b", text)) else 5
@@ -315,7 +315,7 @@ ROSTER: Dict[str, Agent] = {a.name: a for a in [
           "the inbox", "the graph, the research agent", _analysis),
     Agent("calc", "Calculation", "reviewed measures; Opus writes, Sonnet checks", "maths only: measures and new calculations as code",
           "prices, the ledger, datasets", "kept calculations", _chat("calc")),
-    Agent("sim", "Simulation", "code (Monte Carlo, TimesFM)", "Monte Carlo, stress and crash episodes, forecasts",
+    Agent("sim", "Simulation", "code (Monte Carlo, calibrated statistics)", "Monte Carlo, stress and crash episodes, forecasts",
           "returns history, the mix", "the simulation cache", _sim),
     Agent("quant", "Quant researcher", "code (tested templates)", "hypotheses as pre-registered studies; tested templates",
           "market data", "study results", _quant),

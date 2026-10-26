@@ -267,17 +267,23 @@ def simulation(ctx: Ctx, a: dict) -> dict:
 
 
 def forecasts(ctx: Ctx, a: dict) -> dict:
-    q = ("SELECT use, subject, as_of, target, q10, q50, q90, model FROM tfm_forecasts WHERE as_of = (SELECT max(as_of) "
-         "FROM tfm_forecasts)")
-    args: list = []
+    from pflab.quant import forecast as fc
+    con = ctx.con
+    method, label = fc.serving_method(ctx.rt.data_root)
+    q = ("SELECT use, subject, as_of, target, q10, q50, q90, model FROM forecasts WHERE as_of = (SELECT max(as_of) "
+         "FROM forecasts) AND (model IS NULL OR model IN ('baseline', ?))")
+    args: list = [method]
     if a.get("symbol"):
         sym = a["symbol"].strip().upper()
         q += " AND (upper(subject) LIKE ? OR subject = ?)"
-        args = [f"%{sym}%", ctx.syms.get(sym, "")]
-    rows = ctx.con.execute(q + " ORDER BY use, subject LIMIT 20", args).fetchall()
+        args += [f"%{sym}%", ctx.syms.get(sym, "")]
+    rows = con.execute(q + " ORDER BY use, subject LIMIT 30", args).fetchall()
+    cover = {f"{m} {h} sessions": c for m in fc.METHODS for h in fc.PRICE_H if (c := fc.coverage(con, m, h))}
     return {"rows": [{"use": u, "subject": s, "as_of": str(a_), "target": str(t), "q10": q1, "q50": q5, "q90": q9,
                       "model": m} for u, s, a_, t, q1, q5, q9, m in rows],
-            "source": "quant/tfm2_live.py (TimesFM where its scoreboard passes, else the baseline)"}
+            "price_ranges": f"80% ranges of the price (q10 to q90), method {method}: {label}",
+            "rolling_coverage_last_60_scored": {k: f"{v['covered']:.0%} of {v['n']}" for k, v in cover.items()},
+            "source": "quant/forecast.py (calibrated statistics: block bootstrap with the CAPM centre; baselines for turnover and results)"}
 
 
 def readings(ctx: Ctx, a: dict) -> dict:

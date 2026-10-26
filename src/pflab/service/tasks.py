@@ -222,22 +222,14 @@ def _analyst_batch(ctx: Ctx) -> dict:
 
 
 def _forecast(ctx: Ctx) -> dict:
-    """S52 live forecasts (quant/tfm2_live.py): TimesFM in .venv-train on the CPU, the baselines, scoring, the
-    scoreboard; a switch to or from the baseline goes to the outbox. TimesFM failing leaves the baseline serving."""
+    """S64 forecasts (quant/forecast.py): price ranges for held and listed stocks by calibrated statistics, the baselines
+    for turnover and results, everything due scored. No model runs."""
     from pflab.conductor import calendar as mcal
     from pflab.kg import build as kb
     from pflab.plan import guards as gd
-    from pflab.quant import tfm2_live as fl
-    r = fl.run(ctx.con, ctx.data_root, ctx.now.date(), kb.universe(ctx.con, gd.stock_list()), mcal.load(),
-               fl.timesfm_subprocess(ctx.repo, ctx.data_root / "forecasts" / "live"), now=ctx.now)
-    for m in r["changes"]:
-        tgm.enqueue(ctx.con, m, "forecast", dedup_key=f"forecast:{r['asof']}:{m[:40]}", now=ctx.now)
-    from pflab.agents import questions as qs                 # S63: a refresh due is asked once a month per reason
-    for key, why in fl.refresh_due(ctx.con, ctx.data_root, ctx.now.date()):
-        qs.ask(ctx.con, "forecaster", f"tfm:refresh:{key}:{ctx.now:%Y-%m}", why + " Answer 'seen' when noted.", ctx.now)
-    if r["error"]:
-        raise RuntimeError(f"TimesFM did not run (the baseline serves): {r['error']}")
-    return {k: r[k] for k in ("asof", "turnover", "revenue", "margin", "stored", "scored")}
+    from pflab.quant import forecast as fl
+    r = fl.run(ctx.con, ctx.data_root, ctx.now.date(), kb.universe(ctx.con, gd.stock_list()), mcal.load(), now=ctx.now)
+    return {k: r[k] for k in ("asof", "turnover", "revenue", "margin", "stored", "scored", "serving")}
 
 
 def _plans(ctx: Ctx) -> dict:
@@ -252,7 +244,7 @@ def _plans(ctx: Ctx) -> dict:
 
 
 register(Job("plans", Daily(21, 30), _plans, "ready plans for the next money (FD tranches, the monthly amount)"))
-register(Job("forecast", Daily(21, 0), _forecast, "S52 forecasts: turnover for tickets, results ranges; scoreboard"))
+register(Job("forecast", Daily(21, 0), _forecast, "forecasts: price ranges, turnover for tickets, results before the result; scored when due"))
 register(Job("kg", Daily(23, 0), _kg, "knowledge graph: portfolio, filings, results, guards, GKG news, article text"))
 register(Job("analyst", Daily(1, 0, weekdays_only=False), _analyst_batch,
              "API analyst: collect last night's batch, submit today's queue", enabled_fn=_analyst_enabled))

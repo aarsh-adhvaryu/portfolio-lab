@@ -53,7 +53,7 @@ def summary(df: pd.DataFrame) -> dict:
 def ohlcv(root, isin: str, start, end) -> pd.DataFrame:
     """The stock's NSE bhavcopy rows (EQ, BE, BZ) between two dates."""
     from pflab import _duck
-    from pflab.quant.tfm2_live import bhav_files
+    from pflab.data.bhavcopy import bhav_files
     files = bhav_files(root, start, end)
     if not files:
         return pd.DataFrame(columns=["date", "open", "high", "low", "close", "volume"])

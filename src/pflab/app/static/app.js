@@ -893,7 +893,7 @@ function mathsBlock(m) {
   return `<div class="small soft"><b>CAPM.</b> ${esc(c.sentence || c.error || 'no fit')}${c.expected_return_pct != null ? ` · CAPM expected return ${c.expected_return_pct}% a year <span class="tiny muted">(${esc(c.expected_return_label || 'estimate')})</span>` : ''}</div>
     <div class="small soft"><b>Process.</b> Its price ${esc(p.sentence || 'n/a')}${sp.sentence ? `; its spread to the ${esc((sp.sector_index || '').replace('SECTOR_', '').replace('_TRI', ''))} index ${esc(sp.sentence)}` : ''}. <span class="tiny muted">A description, never a signal.</span></div>
     <div class="small soft"><b>Moves with.</b> ${(mv.peers || []).length ? (mv.peers || []).slice(0, 6).map((x) => `${esc(x.peer)} (corr ${x.corr_5y === null ? '—' : x.corr_5y.toFixed(2)}${x.cointegrated_after_bh ? ', cointegrated' : ''}${x.stable_share !== null ? `, held ${(x.stable_share * 100).toFixed(0)}% of windows` : ''})`).join(' · ') : esc(mv.note || 'no peers in the last weekly run')} <span class="tiny muted">${esc(mv.label || '')}${mv.run ? ' · ' + esc(mv.run.text) : ''}</span></div>
-    <div class="cols" style="gap:16px">${['rolling_beta', 'spread_z'].filter((k) => (m.plots || {})[k]).map((k) => `<div style="flex:1 1 300px">${lineSvg(m.plots[k])}</div>`).join('')}</div>`;
+    <div class="cols" style="gap:16px">${['price_fan', 'rolling_beta', 'spread_z'].filter((k) => (m.plots || {})[k]).map((k) => `<div style="flex:1 1 300px">${lineSvg(m.plots[k])}</div>`).join('')}</div>`;
 }
 async function loadMaths(isin) {
   const box = $('mathsBox');

@@ -136,8 +136,8 @@ try {
         PfCli "system job: kg" 60 $false "service run kg"
         PfCli "knowledge graph with news since $((Get-Date).AddDays(-7).ToString('yyyy-MM-dd'))" 60 $false "kg build --gkg-since $((Get-Date).AddDays(-7).ToString('yyyy-MM-dd'))"
         PfCli "article text (where robots.txt allows)" 45 $true "kg text --limit 200"
-        # S52: TimesFM in .venv-train on the CPU, then the baselines, scoring and scoreboard (before the researcher)
-        PfCli "S52 forecasts: turnover and results ranges" 30 $false "forecast run"
+        # S64: price ranges by calibrated statistics, the baselines and the scoring (before the researcher)
+        PfCli "forecasts: price ranges, turnover and results; scoring" 30 $false "forecast run"
     }
     if ($Phases -contains "research") {
         PfCli "inbox: dropped files into the graph" 20 $false "inbox"

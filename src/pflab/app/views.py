@@ -278,7 +278,7 @@ ROSTER = [
     ("Portfolio keeper", None, "none", "acts", "maths audit (S43)", "live values every minute in market hours (Kite), the rest at the close"),
     ("Risk manager", ["guards"], "none", "acts (alerts)", "S34, S40, S51", "guards, market state, surveillance, dip and FD alerts"),
     ("Simulator", None, "none", "acts", "closed forms (S43)", "Monte Carlo of the current mix, refreshed daily"),
-    ("Forecaster", ["forecast"], "TimesFM", "acts", "live scoreboard", "turnover for tickets, results ranges before results"),
+    ("Forecaster", ["forecast"], "statistics", "acts", "live coverage score", "price ranges, turnover for tickets, results before the result"),
     ("Researcher", ["research"], "Opus notes for what changed (batch); local guarded brief", "acts", "S42, S47",
      "what changed per company; Opus researches it overnight, the brief cites the note"),
     ("Watch list", None, "none", "acts (nudges)", "buy-zone v1 (an estimate)", "buy zones, yes / wait / no, price watches"),
@@ -378,6 +378,19 @@ def maths(rt, isin: str, now: Optional[datetime] = None) -> dict:
                                             "guides": [{"y": 1.0, "label": "market"}]}
     except Exception as e:
         out["plots"]["rolling_beta"] = {"error": f"{type(e).__name__}"}
+    try:
+        from pflab.quant import forecast as fcst
+        fan = fcst.fan(con, isin, root)
+        if fan["ranges"]:
+            px0 = fan["ranges"][0]["price"]
+            out["plots"]["price_fan"] = {
+                "title": f"Price range, 80% (q10, middle, q90) at 21, 63 and 252 sessions: {fan['method']}, {fan['label']}",
+                "dates": ["now"] + [f"{r['sessions']} sessions" for r in fan["ranges"]],
+                "lines": [{"name": n, "y": [round(px0, 2)] + [round(r[k], 2) for r in fan["ranges"]]}
+                          for n, k in (("q90", "q90"), ("middle", "q50"), ("q10", "q10"))],
+                "guides": [{"y": round(px0, 2), "label": "price now"}]}
+    except Exception as e:
+        out["plots"]["price_fan"] = {"error": f"{type(e).__name__}"}
     try:
         ind, key = comove.sector_index_for(root, isin, asof)
         if key:

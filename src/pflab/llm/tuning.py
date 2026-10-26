@@ -2,8 +2,7 @@
 
 Each task has prompt variants fixed in the protocol before any run, a TRAIN set to choose the variant on and a TEST
 set it is judged on once. Nothing here changes what the agents use: the results file is read, and the winning
-prompt wired in by hand, only if it passes the registered rule. QLoRA (`.venv-train`) is considered only for a task
-whose best prompt still fails.
+prompt wired in by hand, only if it passes the registered rule.
 
     materiality  BSE headline -> material / routine. Train: round-1 set (200); test: round-2 set (200).
     routing      question -> agent tools. Train: round-1 questions (60); test: round-2 questions (60).

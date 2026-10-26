@@ -9,7 +9,7 @@ optionally a conditional action: keep a share of new money in a liquid fund unti
                `hold_cash` of it in debt (median, bad 5%, chance of a fall beyond 35% on any day)
     expiry     on the expiry date a question asks the investor to decide (keep, extend, or end it)
     results    S52 Q6: for the holdings it concerns, the next quarter's revenue and margin range before the result, the
-               result against it after (ESTIMATES, quant/tfm2_live.py)
+               result against it after (ESTIMATES, quant/forecast.py)
 """
 from __future__ import annotations
 
@@ -70,7 +70,7 @@ def exposure(con, keywords: List[str], sectors: List[str], asof: date) -> dict:
 def results(con, isins: List[str], asof: date) -> List[str]:
     """S52 Q6 lines for the matched companies (their newest quarter: a range before the result, a surprise after)."""
     from pflab.data import data_dir
-    from pflab.quant import tfm2_live as fl
+    from pflab.quant import forecast as fl
     out = []
     for i in isins:
         if not str(i).startswith("INE"):

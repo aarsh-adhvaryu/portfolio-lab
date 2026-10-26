@@ -483,6 +483,11 @@ MIGRATIONS = [
         passed BOOLEAN, note VARCHAR
     );
     """),
+    # 2026-10-26: S64 Phase 3: TimesFM is gone; the forecast table is just `forecasts`. Its `model` column now holds
+    # baseline (turnover, results), stats_ewma or stats_plain (price ranges: use price21 / price63 / price252)
+    (36, "forecasts_s64", """
+    ALTER TABLE tfm_forecasts RENAME TO forecasts;
+    """),
 ]
 
 

@@ -131,13 +131,13 @@ def result_flags(con, isin: str, symbol: Optional[str], scrip: Optional[str], st
 
 
 def forecast_flags(con, isin: str, symbol: Optional[str], scrip: Optional[str], start: datetime, end: datetime) -> List[Flag]:
-    """S52 Q6 (quant/tfm2_live.py): a range when the forecast for a quarter is made; the result against it once
-    scored. One flag per quarter and kind; the text says which model serves (TimesFM or its baseline)."""
+    """S52 Q6 (quant/forecast.py): what the baseline expects for a quarter when it is made; the result against it once
+    scored. One flag per quarter and kind."""
     if not scrip:
         return []
-    from pflab.quant import tfm2_live as fl
+    from pflab.quant import forecast as fl
     out = []
-    rows = con.execute("SELECT target, min(created_at), max(scored_at), count(scored_at) FROM tfm_forecasts "
+    rows = con.execute("SELECT target, min(created_at), max(scored_at), count(scored_at) FROM forecasts "
                        "WHERE subject=? AND use IN ('revenue', 'margin') GROUP BY target", [str(scrip)]).fetchall()
     for target, made, scored, n_scored in rows:
         tq = str(target)

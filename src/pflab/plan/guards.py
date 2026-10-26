@@ -176,7 +176,7 @@ def vol_chance(r: pd.Series, config: Path = VOL_CONFIG) -> Optional[float]:
     if not config.exists() or len(r) < 22:
         return None
     import numpy as np
-    from pflab.quant import vol_study as vs
+    from pflab.quant import baselines as vs
     c = _toml.load(config)["volatility"]
     ew = vs.ewma(r.to_numpy(), lam=float(c["lam"]), warm=int(c["warm"]))[-1]
     return float(1 / (1 + np.exp(-(c["a"] + c["b"] * np.log(max(ew, vs.FLOOR))))))

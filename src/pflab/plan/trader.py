@@ -45,8 +45,8 @@ def tickets(symbol: str, qty: int, last_close: float, plan: Optional[str],
     if note:
         out.append(note)
     if turnover and isin:
-        from pflab.quant import tfm2_live
-        size = tfm2_live.size_note(qty * last_close, turnover(isin))
+        from pflab.quant import forecast
+        size = forecast.size_note(qty * last_close, turnover(isin))
         if size:
             out.append(size)
     return out

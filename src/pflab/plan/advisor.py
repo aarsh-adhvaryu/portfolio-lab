@@ -125,9 +125,9 @@ def run(con, asof: date, amount: float, with_plan: bool = False):
             prices[s["symbol"]] = float(p.value)
     adv = advise(alloc.get("equity", 0.0), cands, held, prices, (eq_t.target if eq_t else 0.0) * investable,
                  investable, asof, float(raw.get("max_weight", DEFAULT_MAX_WEIGHT)), skipped)
-    from pflab.quant import tfm2_live
+    from pflab.quant import forecast
     tk = trader.plan_all(adv.buys, impact=kite_depth.impact_note_fn(con),
-                         turnover=tfm2_live.turnover_fn(con, asof))         # S52 Q5: the size check
+                         turnover=forecast.turnover_fn(con, asof))          # the size check
     if with_plan:
         return monthly.render(plan), adv, tk, plan, alloc
     return monthly.render(plan), adv, tk

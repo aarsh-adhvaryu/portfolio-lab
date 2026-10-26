@@ -1,4 +1,4 @@
-"""S63 wiring (the investor's yes, 2026-10-25): the TimesFM refresh check, the collectors' daily mode (history kept, the
+"""S63 wiring (the investor's yes, 2026-10-25): the collectors' daily mode (history kept, the
 running month refetched), holders and market context for the brain, deals and holdings in the graph. Synthetic data."""
 from __future__ import annotations
 
@@ -13,22 +13,6 @@ from pflab.pm import store
 @pytest.fixture
 def con(tmp_path):
     return store.connect(tmp_path / "l.duckdb")
-
-
-def test_refresh_due_when_weights_are_missing_or_timesfm_lost(con, tmp_path):
-    from pflab.quant import tfm2_live as fl
-    asof = date(2026, 11, 2)
-    assert [k for k, _ in fl.refresh_due(con, tmp_path, asof)] == ["missing"]          # a fresh install
-    for f in ("A", "B"):
-        p = tmp_path / "research" / "timesfm2" / "ft" / f"q6_ln_revenue_{f}"
-        p.mkdir(parents=True)
-        (p / "model.safetensors").write_bytes(b"x")
-    assert fl.refresh_due(con, tmp_path, asof) == []
-    for k in range(31):
-        con.execute("INSERT INTO tfm_scoreboard VALUES (?,?,?,?,?,?,?,?)",
-                    ["revenue", asof - timedelta(days=30 - k), 10, 12, 1.2, "baseline", False, datetime(2026, 11, 2)])
-    keys = [k for k, _ in fl.refresh_due(con, tmp_path, asof)]
-    assert keys == ["lost:revenue"]
 
 
 def test_latest_quarter_waits_for_the_filing_deadline():

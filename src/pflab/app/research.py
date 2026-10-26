@@ -75,7 +75,7 @@ def compute_watch(rt, now: Optional[datetime] = None, paths: int = bz.PATHS) -> 
     from pflab.app import views
     from pflab.fundamentals import pit
     from pflab.plan import guards as gd
-    from pflab.quant import tfm2_live as fl
+    from pflab.quant import forecast as fl
     now = now or rt.clock()
     asof = now.date()
     con = rt.cursor()
@@ -140,7 +140,7 @@ def hold_off(watch: Optional[dict], con, now: datetime) -> List[dict]:
     """Names on the list not to buy now, with the reason: a guard, a price above its zone, results within reach."""
     out = []
     pending = {s: str(t) for s, t in con.execute(
-        "SELECT subject, max(target) FROM tfm_forecasts WHERE use='revenue' AND scored_at IS NULL GROUP BY subject").fetchall()}
+        "SELECT subject, max(target) FROM forecasts WHERE use='revenue' AND scored_at IS NULL GROUP BY subject").fetchall()}
     for r in (watch or {}).get("rows", []):
         if not r.get("on_list"):
             continue

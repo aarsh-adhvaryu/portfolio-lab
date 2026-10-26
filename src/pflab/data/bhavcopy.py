@@ -16,7 +16,7 @@ import time
 import zipfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import pandas as pd
 import requests
@@ -205,3 +205,8 @@ def load(start: Optional[date] = None, end: Optional[date] = None, root: Optiona
     if conds:
         q += " where " + " and ".join(conds)
     return _duck.sql(q + " order by date, isin").to_df()
+
+
+def bhav_files(root: Path, start: date, end: date) -> List[str]:
+    """The normalised bhavcopy parquet files of the years from `start` to `end` (paths, for DuckDB read_parquet)."""
+    return [p.as_posix() for y in range(start.year, end.year + 1) for p in sorted((root / "bhavcopy" / str(y)).glob("*.parquet"))]

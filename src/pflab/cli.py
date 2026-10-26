@@ -215,10 +215,9 @@ def main(argv=None):
     sub.add_parser("inbox", help="read every file dropped into PFLAB_PM_DIR/inbox into the knowledge graph")
     stp = sub.add_parser("studies", help="results of the S45 split study and the S49 memory comparison")
     stp.add_argument("which", choices=["split", "memory"])
-    fcp = sub.add_parser("forecast", help="S52 live forecasts: turnover (tickets), results ranges (theses, researcher)")
-    fcp.add_argument("action", choices=["run", "show"])
+    fcp = sub.add_parser("forecast", help="S64 forecasts: price ranges, turnover (tickets), results; run | show | test (calibration, long)")
+    fcp.add_argument("action", choices=["run", "show", "test"])
     fcp.add_argument("--asof", type=_d, default=date.today())
-    fcp.add_argument("--no-timesfm", action="store_true", help="baselines and scoring only (TimesFM not run)")
 
     lp = sub.add_parser("learner", help="S64 the learner's tests: status, register-s64, reregister, test --claim ID, seed")
     lp.add_argument("action", choices=["status", "register-s64", "reregister", "test", "seed"])
@@ -475,27 +474,28 @@ def _learner(a) -> int:
 
 
 def _forecast(a) -> int:
-    from pathlib import Path
-
     from pflab.pm import store
-    from pflab.quant import tfm2_live as fl
+    from pflab.quant import forecast as fl
     con = store.connect()
     if a.action == "show":
         print(fl.show(con))
+        return 0
+    if a.action == "test":                                   # the registered calibration test: long, the investor's
+        from datetime import datetime as _dt
+
+        from pflab.data import data_dir
+        from pflab.quant import ranges_eval as re_
+        res = re_.run_test(data_dir(), con=con, now=_dt.now(), progress=print)
+        print(res["text"])
         return 0
     from pflab.conductor import calendar as mcal
     from pflab.data import data_dir
     from pflab.kg import build as kb
     from pflab.plan import guards as gd
-    repo = Path(__file__).resolve().parents[2]
-    fc = None if a.no_timesfm else fl.timesfm_subprocess(repo, data_dir() / "forecasts" / "live")
-    r = fl.run(con, data_dir(), a.asof, kb.universe(con, gd.stock_list()), mcal.load(), fc)
+    r = fl.run(con, data_dir(), a.asof, kb.universe(con, gd.stock_list()), mcal.load())
     print(f"forecasts as of {r['asof']}: turnover {r['turnover']}, revenue {r['revenue']}, margin {r['margin']} "
-          f"(stored {r['stored']}, scored {r['scored']}, skipped {r['skipped']}); TimesFM "
-          + ("ran" if r["timesfm"] else f"did not run{': ' + r['error'] if r['error'] else ''} (the baseline serves)"))
-    for m in r["changes"]:
-        print(m)
-    return 0 if r["error"] is None else 1
+          f"(stored {r['stored']}, scored {r['scored']}, skipped {r['skipped']}); price ranges served by {r['serving']}")
+    return 0
 
 
 def _agents_cli(a) -> int:
