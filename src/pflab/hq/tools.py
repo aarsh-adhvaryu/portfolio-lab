@@ -291,9 +291,12 @@ def readings(ctx: Ctx, a: dict) -> dict:
     isin = _isin(ctx, a["symbol"])
     since = ctx.now - timedelta(days=int(a.get("days", 30)))
     rows = [r for r in readers.recent(ctx.con, since, material_only=False) if isin in r["isins"]][:10]
-    return {"readings": [{"kind": r["kind"], "published": str(r["published"])[:10], "material": r.get("material"),
-                          "summary": (r["summary"] or "")[:400], "figures": r["figures"][:4]} for r in rows],
-            "source": "hq/readers.py (Haiku readings; figures kept only when found in the document)"}
+    from pflab.hq import recency
+    return {"readings": recency.stamp([{"kind": r["kind"], "published": str(r["published"])[:10], "material": r.get("material"),
+                                        "summary": (r["summary"] or "")[:400], "figures": r["figures"][:4]} for r in rows],
+                                      None, ctx.asof),
+            "source": "hq/readers.py (Haiku readings; figures kept only when found in the document); stale = older than "
+                      "the policy (news 3 days, filings 30, results 100)"}
 
 
 def graph_timeline(ctx: Ctx, a: dict) -> dict:
@@ -301,8 +304,11 @@ def graph_timeline(ctx: Ctx, a: dict) -> dict:
     isin = _isin(ctx, a["symbol"])
     df = g.timeline(ctx.con, f"company:{isin}", ctx.now - timedelta(days=int(a.get("days", 30))),
                     kinds=("filing", "result", "article", "reading", "analyst_note", "dataset", "deal", "holding"), limit=20)
-    return {"items": [{"date": str(r.published_at)[:10], "kind": r.kind, "title": (r.title or "")[:160],
-                       "url": getattr(r, "url", None)} for r in df.itertuples()], "source": "knowledge graph (kg/graph.py)"}
+    from pflab.hq import recency
+    items = [{"date": str(r.published_at)[:10], "kind": r.kind, "title": (r.title or "")[:160],
+              "url": getattr(r, "url", None)} for r in df.itertuples()]
+    return {"items": recency.stamp(items, None, ctx.asof, date_key="date"),
+            "source": "knowledge graph (kg/graph.py); stale = older than the policy (news 3 days, filings 30, results 100)"}
 
 
 def notes(ctx: Ctx, a: dict) -> dict:
@@ -348,7 +354,9 @@ def research_flags(ctx: Ctx, a: dict) -> dict:
         q += f" AND isin IN ({','.join('?' * len(mine))})"
         args += mine
     rows = ctx.con.execute(q + " ORDER BY happened_at DESC LIMIT 20", args).fetchall()
-    return {"flags": [{"symbol": s, "kind": k, "at": str(h)[:16], "detail": (d or "")[:300]} for s, k, h, d in rows],
+    from pflab.hq import recency
+    return {"flags": recency.stamp([{"symbol": s, "kind": "flag:" + k, "at": str(h)[:16], "detail": (d or "")[:300]}
+                                    for s, k, h, d in rows], None, ctx.asof, date_key="at"),
             "source": "agents/researcher.py (flags found and measured by code)"}
 
 
@@ -591,6 +599,7 @@ def web_search(ctx: Ctx, a: dict) -> dict:
     out = _act(ctx, _decision("investigate", "web", "", q, _checked(ctx, a.get("why", ""))), do, "web_search")
     if got:
         out["result"] = got["text"][:4500]                      # the cited answer itself, for the brain to read
+        out["recency"] = "web results older than 7 days, or with no date shown, are not a cause of today"
     return out
 
 

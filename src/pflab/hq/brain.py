@@ -64,6 +64,8 @@ SYSTEM = (
     "findings, lessons and instructions in force. who_is_buying (insiders, bulk deals, promoters, institutions) and "
     "market_context (FII flows, VIX, oil, the rupee, US yields) connect the dots behind a move; they are context, never "
     "a signal on their own. growth says where the portfolio's change came from.\n"
+    "6c. Items carry age_days and stale (news 3 days, filings 30, results 100, web 7). A stale or undated item is never "
+    "cited as a cause of today; say it is old, or leave it out.\n"
     "7. If told your context is near its limit, call save_state at once with your working state.\n"
     "7b. In a pass the investor asked for (an event 'from the investor (question)'), your final message is the answer he "
     "reads: do not also tell_investor it.\n"

@@ -264,6 +264,13 @@ def facts(con, root: Path, bk: Book, symbol: str, parts=("drift", "odds", "edge"
     c = closes(con, root, isin, bk.asof)
     out = {"symbol": bk.symbols[isin], "isin": isin, "asof": str(bk.asof),
            "guard": bk.guards.get(isin, ("not checked", []))[0], "guard_reasons": bk.guards.get(isin, ("", []))[1][:3]}
+    if isin.startswith("INE"):                                 # S64: a company with too little detail -> the Tijori ask
+        from pflab.agents import needs
+        try:
+            if needs.check_company(con, root, isin, symbol=bk.symbols[isin]) is not None:
+                out["missing_detail"] = "results history is short; the investor was asked for the Tijori sheet"
+        except Exception:                                      # a read never fails because the ask could not be made
+            pass
     if "drift" in parts:
         out["drift"] = drift(bk, isin, c)
     if "odds" in parts:

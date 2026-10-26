@@ -265,11 +265,12 @@ def run(con, asof: date, client, gate, now: datetime, mode: str, held: Sequence[
 
 
 def recent(con, since: datetime, material_only: bool = True) -> List[dict]:
-    """Readings since `since` (the brain's input): newest first."""
+    """Readings of documents PUBLISHED since `since` (the brain's input): newest first. S64: the filter was the time of
+    reading, so a document read late but published weeks ago looked new."""
     rows = con.execute("""SELECT r.doc_id, r.read_at, r.material, r.why, r.summary, r.figures_json, r.isins_json,
                                  d.kind, d.published_at, d.title
                           FROM hq_readings r JOIN kg_docs d ON d.doc_id = r.doc_id
-                          WHERE r.read_at >= ? """ + ("AND r.material = 'yes' " if material_only else "") +
+                          WHERE d.published_at >= ? """ + ("AND r.material = 'yes' " if material_only else "") +
                        "ORDER BY d.published_at DESC", [since]).fetchall()
     keys = ["doc_id", "read_at", "material", "why", "summary", "figures", "isins", "kind", "published", "title"]
     out = []

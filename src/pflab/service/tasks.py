@@ -182,7 +182,7 @@ def _research(ctx: Ctx) -> dict:
                  root=ctx.data_root)
     if rep.new_flags:
         tgm.enqueue(ctx.con, rep.digest(), "research", dedup_key=f"research:{asof}", now=ctx.now)
-    _ask_for_tijori(ctx, [f for f in rep.new_flags if f.kind == "fall"])
+    _ask_for_tijori(ctx, lst)
     deep = {}
     from pflab.agents import analyst as an
     # The investor 2026-10-22: Opus writes the research for what changed. Every run looks at the last 2 days' flags, not only its
@@ -193,18 +193,14 @@ def _research(ctx: Ctx) -> dict:
             "opus_queued": sum(1 for v in deep.values() if v == "queued")}
 
 
-def _ask_for_tijori(ctx: Ctx, falls: list) -> int:
-    """S56: a stock falling on its own -> ask the investor for its Tijori export before Opus writes the night's note (The investor
-    2026-10-20). Only once he has Tijori (an export has reached the inbox before), once per company a month."""
-    from pflab.agents import questions as qs
-    inbox = ctx.pm_dir / "inbox"
-    if not inbox.exists() or not any("tijori" in p.name.lower() for p in inbox.rglob("*") if p.is_file()):
-        return 0
+def _ask_for_tijori(ctx: Ctx, stocks: list) -> int:
+    """S64: the moment a company's detail is missing (fewer than 8 quarters, or no results), ask for its Tijori sheet
+    (agents/needs.py; once a company a month). Replaces the S56 ask that waited for a fall."""
+    from pflab.agents import needs
     n = 0
-    for f in falls:
-        n += qs.ask(ctx.con, "researcher", f"tijori:{f.isin}:{ctx.now:%Y-%m}",
-                    f"{f.symbol or f.isin} is falling on its own ({f.detail}). If you can, drop its Tijori export in Inbox "
-                    "and files tonight: it stays on this PC, and the researcher reads it beside the filings.", ctx.now) is not None
+    for s in stocks:
+        if str(s.get("isin", "")).startswith("INE"):
+            n += needs.check_company(ctx.con, ctx.data_root, s["isin"], ctx.now, s.get("symbol")) is not None
     return n
 
 
