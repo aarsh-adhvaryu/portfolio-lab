@@ -68,6 +68,36 @@ def below_sma200(flag: Optional[bool], tested: Optional[dict] = None) -> Optiona
     return base
 
 
+def growth_lines(v: dict, peg_test: Optional[dict] = None) -> List[str]:
+    """PEG, the forward P/E and the five-year profit, in words (from the valuation facts)."""
+    out: List[str] = []
+    peg = v.get("peg")
+    if peg is not None:
+        s = (f"PEG {peg:.2f}: the P/E divided by the yearly profit growth in percent. Below 1 means you pay less than one year of "
+             "the P/E for each point of growth; traders read that as cheap for its growth. ")
+        s += ("It leans on last year's growth continuing, which is the shaky part. " if peg < 1 else "Above 1 means the price asks more than the growth supports. ")
+        t = (peg_test or {}).get("label")
+        if t in ("passed", "failed"):
+            s += (f"This system tested 'PEG below 1 becomes a multibagger within 5 years' on the Nifty 500 (2010-2016 starts): {t}, "
+                  "with weak power (seven starting years).")
+        else:
+            s += "The 'PEG below 1 means multibagger' claim has not been tested here."
+        out.append(s)
+    elif v.get("eps_growth_ttm_yoy_pct") is not None and v["eps_growth_ttm_yoy_pct"] <= 0:
+        out.append("PEG cannot be worked out: the profit did not grow over the last year, and a PEG needs growth above zero.")
+    if v.get("forward_pe_our_estimate") is not None:
+        out.append(f"Forward P/E (our own estimate) {v['forward_pe_our_estimate']:.1f}: the price over next year's profit if it grows "
+                   f"as fast as last year's, capped at 30%. Analysts publish their own; we hold none, so this one is only an extrapolation.")
+    if v.get("next_5y_profit_pct_of_price") is not None:
+        p5 = v["next_5y_profit_pct_of_price"]
+        out.append(f"If the profit grows at that pace, the next 5 years of profit add up to about {p5:.0f}% of today's price. "
+                   + ("Traders look for 100% or more, that is, the profits of five years repay the whole price, as a sign of a potential "
+                      "multibagger; this one clears it." if p5 >= 100 else
+                      "Traders look for 100% or more (the profits of five years repaying the price); this one is below that, so the price "
+                      "depends on growth beyond five years."))
+    return out
+
+
 def all_lines(pe_value: Optional[float], own, mkt, assumed, delivered, vol: dict, sma_flag, tested: dict) -> List[str]:
     out: List[str] = []
     if pe_value:

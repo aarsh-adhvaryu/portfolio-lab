@@ -107,6 +107,27 @@ def flags(pe: Optional[float], own_median: Optional[float], mkt: Optional[dict],
     ]
 
 
+GROWTH_CLIP = (0.0, 0.30)         # the growth carried forward is the last year's, clipped to 0-30% (as the buy zone does)
+
+
+def growth_view(px: float, eps: Optional[float], g: Optional[float]) -> dict:
+    """PEG, a forward P/E and the five-year profit against the price, all from the filed numbers:
+    PEG = P/E over the last year's EPS growth in percent (growth above zero only);
+    forward P/E (OUR estimate, not analysts') = price over the TTM EPS grown once at that growth, clipped to 0-30%;
+    five-year profit = the next five years' EPS at that clipped growth, added up, as a share of today's price."""
+    out: dict = {}
+    if not eps or eps <= 0 or not px:
+        return out
+    gc = 0.0 if g is None else min(max(g, GROWTH_CLIP[0]), GROWTH_CLIP[1])
+    out["peg"] = None if g is None or g <= 0 else round((px / eps) / (g * 100.0), 2)
+    out["forward_pe_our_estimate"] = round(px / (eps * (1 + gc)), 1)
+    out["forward_pe_basis"] = (f"price over TTM EPS grown by {gc * 100:.0f}% (its last year's EPS growth, clipped to 0-30%): "
+                               "an extrapolation of ours, not analysts' estimates (we hold none)")
+    cum = sum(eps * (1 + gc) ** k for k in range(1, 6))
+    out["next_5y_profit_pct_of_price"] = round(cum / px * 100, 1)
+    return out
+
+
 def facts(con, root, isin: str, symbol: str, closes: pd.Series, asof: date) -> dict:
     from pflab.fundamentals import pit
     from pflab.quant import forecast as fc
@@ -126,6 +147,7 @@ def facts(con, root, isin: str, symbol: str, closes: pd.Series, asof: date) -> d
             out["eps_ttm"], out["eps_growth_ttm_yoy_pct"] = eps, None if g is None else round(g * 100, 1)
             pe = pit.valuation_ratios(px, eps)["pe_ttm"]
             out["pe_ttm"] = None if pe is None else round(pe, 1)
+            out.update(growth_view(px, eps, g))
             if pe is not None:
                 h = pe_history(with_older_quarters(q, scrip, root), scrip, c, asof)
                 if len(h) >= MIN_MONTHS:
@@ -162,14 +184,16 @@ def facts(con, root, isin: str, symbol: str, closes: pd.Series, asof: date) -> d
         pass
     try:
         from pflab.learner import rules
-        tested = {"pe_above_50": rules.status(con, "pe_above_50"), "below_sma200": rules.status(con, "below_sma200")}
+        from pflab.quant import peg_study
+        tested = {"pe_above_50": rules.status(con, "pe_above_50"), "below_sma200": rules.status(con, "below_sma200"),
+                  "peg": peg_study.status(con)}
     except Exception:
         tested = None
     out["rules_of_thumb"] = flags(pe, own_median, mkt, rich, vol, from_high, tested)
     try:                                                    # the same facts in plain words (hq/plain.py), built by code
         from pflab.hq import plain
         sma = float(c.iloc[-200:].mean()) if len(c) >= 200 else None
-        out["in_plain_words"] = plain.all_lines(
+        out["in_plain_words"] = plain.growth_lines(out, (tested or {}).get("peg")) + plain.all_lines(
             out.get("pe_ttm"), out.get("pe_own_5y") if isinstance(out.get("pe_own_5y"), dict) else None, mkt,
             out.get("growth_assumed_by_price_pct"), out.get("eps_growth_ttm_yoy_pct"), vol,
             None if sma is None else bool(px < sma), tested or {})
