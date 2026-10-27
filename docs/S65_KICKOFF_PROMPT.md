@@ -13,7 +13,7 @@ READ FIRST, IN THIS ORDER
 6. docs/STATE.md (top entries), and docs/research/s64_rules_results.md, s64_peg_results.md (what passed and failed).
 
 HIS DECISIONS (2026-10-28, do not reopen)
-- Two installations. The APP runs his money: installed from the GitHub repo (aarsh-adhvaryu/portfolio-lab, private) at a release
+- Two installations. The APP runs his money: installed from the private GitHub repo portfolio-lab (this repo's origin) at a release
   tag into its own folder, only the files needed to run, its own data and store; the desktop shortcut, the scheduled tick and
   Telegram point at it; updates arrive like an app update, with backup and rollback. The WORKSHOP is D:\portfolio_lab: the beta,
   where Claude Code develops; its data may be stale; it sends nothing outward and makes no paid calls unless told.
