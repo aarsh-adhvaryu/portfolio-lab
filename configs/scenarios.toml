@@ -1,0 +1,25 @@
+# Scenario chains (S64 Phase 5 item 6): what a shock in one factor would do to the holdings through their own history.
+# `factor` is a monthly series (BRENT, USDINR from FRED; US_SP500 from the global markets file); `shock` is the change of
+# that series in one month (a fraction). `path`:
+#   direct      each holding's 60-month beta to the factor (risk/shock_betas.py's rolling-beta idea, with its standard error)
+#   via_market  the factor moves the Nifty 500 TRI through its own 60-month beta, and the market moves each holding through
+#               its CAPM beta (risk/capm.py)
+# Stock holdings use their own betas; index funds are treated as the Nifty 500 itself. Gold, debt and cash are not modelled.
+
+[scenario.oil_up_30]
+label = "Oil up 30% in a month (Brent)"
+factor = "BRENT"
+shock = 0.30
+path = "direct"
+
+[scenario.rupee_down_10]
+label = "Rupee down 10% against the dollar in a month"
+factor = "USDINR"
+shock = 0.10                 # rupees per dollar up 10%
+path = "direct"
+
+[scenario.us_crash]
+label = "US crash: S&P 500 down 20% in a month"
+factor = "US_SP500"
+shock = -0.20
+path = "via_market"

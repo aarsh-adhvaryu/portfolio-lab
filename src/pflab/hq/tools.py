@@ -662,6 +662,21 @@ def record_hypothesis(ctx: Ctx, a: dict) -> dict:
             "note": "confirmed or refuted later; a refuted one leaves the graph"}
 
 
+def scenario(ctx: Ctx, a: dict) -> dict:
+    from pflab.risk import scenarios as sn
+    name = a["name"]
+    r = sn.run(ctx.con, ctx.rt.data_root, ctx.asof, name)
+    for row in r.get("rows", []):
+        row["beta"] = round(row["beta"], 2)
+        row["impact"], row["plus_minus"], row["value"] = round(row["impact"]), round(row["plus_minus"]), round(row["value"])
+        row.pop("beta_se", None)
+    if "total" in r:
+        r["total"], r["total_range"] = round(r["total"]), [round(x) for x in r["total_range"]]
+        r["modelled_value"] = round(r["modelled_value"])
+    r["source"] = "risk/scenarios.py (historical betas with standard errors; a description, not a forecast)"
+    return r
+
+
 def hypotheses(ctx: Ctx, a: dict) -> dict:
     from pflab.kg import hypotheses as hy
     return {"to_decide_now": hy.due_for_the_brain(ctx.con), "recent": hy.listing(ctx.con, a.get("status"), 15),
@@ -777,6 +792,10 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
          "correlation over 5 years, Engle-Granger cointegration (Benjamini-Hochberg adjusted), how often it held in "
          "rolling windows, the spread's half-life. A description: relations break (9% stayed cointegrated).",
          {"symbol": SYMBOL}, ("symbol",), comovement),
+    Tool("scenario", "read", "A scenario chain on his holdings: oil_up_30 (Brent +30% in a month), rupee_down_10, us_crash "
+         "(S&P 500 -20% in a month through the Nifty 500). Rupee impact per holding and in total with a +-2 standard-error range, "
+         "from historical betas: a description, not a forecast.",
+         {"name": _s("scenario", enum=["oil_up_30", "rupee_down_10", "us_crash"])}, ("name",), scenario),
     Tool("hypotheses", "read", "Your cause hypotheses: those the keeper handed over to decide now, and the recent ones with "
          "their status.", {"status": _s("status", enum=["open", "review", "confirmed", "refuted", "expired"])}, (), hypotheses),
     Tool("record_hypothesis", "journal", "Record 'this seems the cause' for a move: the subject (a symbol or a topic), the "

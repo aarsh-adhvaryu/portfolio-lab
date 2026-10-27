@@ -1178,8 +1178,24 @@ function renderSims(d) {
         ${scatter(r.frontier, mixes)}
         <div class="row wrapr tiny muted" style="gap:12px"><span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted)"></span> a random mix of the five assets</span><span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--down)"></span> one that fell more than 35% on some day</span></div>
         <span class="tiny muted">Return and volatility a year over the history; up and to the left is better. ${r.frontier.length} of the mixes drawn.</span></div>
+      <div class="panel" style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Scenarios on your holdings · oil, the rupee, a US crash</span>
+        <div id="scenBox"><span class="small muted">Working it out…</span></div></div>
     </section></div>`;
   bindSims(d, f, r);
+  loadScenarios();
+}
+/* S64: scenario chains from historical betas (risk/scenarios.py): a description, never a forecast */
+function scenBlock(all) {
+  const rs = (x) => (x < 0 ? '-' : '+') + 'Rs ' + groupIN(Math.abs(Math.round(x)));
+  return Object.values(all).map((v) => v.error ? `<span class="small muted">${esc(v.scenario)}: ${esc(v.error)}</span>` : `<div style="display:flex;flex-direction:column;gap:3px">
+    <b class="small">${esc(v.label)}</b><span class="tiny muted">${esc(v.chain)}</span>
+    <span class="small"><span class="${v.total < 0 ? 'down' : 'up'}">${rs(v.total)}</span> <span class="tiny muted">(${rs(v.total_range[0])} to ${rs(v.total_range[1])}, about 2 standard errors) on Rs ${groupIN(Math.round(v.modelled_value))} of stocks and index funds</span></span>
+    <span class="tiny muted">${v.rows.slice(0, 3).map((r) => esc(r.symbol) + ' ' + rs(r.impact)).join(' · ')}${v.not_modelled.length ? ' · not modelled: ' + v.not_modelled.length + ' holdings (gold, debt, cash, or too little history)' : ''}</span></div>`).join('<hr style="border:0;border-top:1px solid var(--line);width:100%">')
+    + '<span class="tiny muted">From historical betas; a description, not a forecast. A beta mixes calm and rough months, and a rupee fall in the past came with selling of shares, so it is a co-movement, not a cause.</span>';
+}
+async function loadScenarios() {
+  try { const m = await api('/api/scenarios'); if ($('scenBox')) $('scenBox').innerHTML = scenBlock(m); }
+  catch (e) { if ($('scenBox')) $('scenBox').innerHTML = '<span class="small muted">Scenarios not available: ' + esc(e.message) + '</span>'; }
 }
 function bindSims(d, f, r) {
   const ps = $('simPaths'); ps.onchange = () => { S.simPaths = Number(ps.value); };

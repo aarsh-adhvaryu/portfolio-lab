@@ -276,6 +276,11 @@ def create_app(rt) -> FastAPI:
     def research(isin: str = ""):
         return json.loads(json.dumps(views.research(rt, isin or None), default=str))
 
+    @app.get("/api/scenarios")
+    def scenarios_api():
+        from pflab.risk import scenarios as sn
+        return json.loads(json.dumps(sn.run_all(rt.cursor(), rt.data_root, rt.clock().date()), default=str))
+
     @app.get("/api/maths")
     def maths(isin: str):
         return json.loads(json.dumps(views.maths(rt, isin), default=str))
