@@ -1,6 +1,7 @@
 # HANDOFF — 2026-10-25
 
 ## Start here
+**S64 PHASE 5 DONE 2026-10-27 (docs/S64_BUILD_PLAN.md Progress; STATE).** Next: Phase 6 (US sleeve), then 7-9. First the investor's: say yes or no to the proposals the `companion` job will open on its first night (3 baskets, 3 theme limits, the pot), and run `tools\backfill_fo.py --start 2024-01-01` (more than 5 minutes) so the implied-volatility percentile fills. The real store is at v37 (backup in data\backups). Not done in Phase 5: the `scan_rule` template, segment revenue, 3-year peer growth, the two-Telegram real run.
 **S63 DONE 2026-10-25 (PLAN A23; STATE).** The repo started fresh: `portfolio-lab` (private), branch `main`, one first
 commit (neutral author), pushed after a clean privacy grep. The old repo is `portfolio_system_archive`: only
 `research-archive` (now its default branch) and its 9 tags; its 58 other branches deleted. No remote here points to it.
