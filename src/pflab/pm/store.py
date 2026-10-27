@@ -510,7 +510,8 @@ MIGRATIONS = [
     );
     CREATE TABLE pot_ideas (
         idea_id BIGINT PRIMARY KEY, made_at TIMESTAMP NOT NULL, isin VARCHAR NOT NULL, symbol VARCHAR, reason VARCHAR,
-        buy_below DOUBLE, exit_above DOUBLE, stop_below DOUBLE, amount DOUBLE, horizon_days INTEGER, status VARCHAR NOT NULL,
+        ref_close DOUBLE, buy_below DOUBLE, exit_above DOUBLE, stop_below DOUBLE, amount DOUBLE, horizon_days INTEGER,
+        status VARCHAR NOT NULL,
         closed_at TIMESTAMP, ret DOUBLE, ret_vs_market DOUBLE
     );
     CREATE TABLE theme_baskets (

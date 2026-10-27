@@ -113,6 +113,14 @@ def run(con, asof: date, amount: float, with_plan: bool = False):
     verdicts = {g.symbol: g.verdict for g in gd.check_all(con, asof, lst)}
     cands = [s for s in lst if verdicts.get(s["symbol"]) == "ok"]
     skipped = [f"{s['symbol']} ({verdicts.get(s['symbol'], 'unknown')})" for s in lst if verdicts.get(s["symbol"]) != "ok"]
+    try:                                                    # S64: never past a theme limit he applied
+        from pflab.data import data_dir
+        from pflab.risk import themes
+        over = themes.over_limit(con, data_dir(), asof, [s["isin"] for s in cands])
+        skipped += [f"{s['symbol']} ({over[s['isin']]})" for s in cands if s["isin"] in over]
+        cands = [s for s in cands if s["isin"] not in over]
+    except Exception:
+        pass
     sym_of = {s["isin"]: s["symbol"] for s in lst}
     held: Dict[str, float] = {}
     for r in v.positions.itertuples():

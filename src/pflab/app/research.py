@@ -171,11 +171,33 @@ def add_watch(con, isin: str, symbol: str, kind: str, level: float, note: str, n
 
 def check_watches(rt, now: Optional[datetime] = None) -> List[str]:
     """Each active watch against the latest price (live in market hours, else the close): a hit once a day becomes a
-    message (held while Telegram is off) and a notification."""
+    message and a notification."""
+    now = now or rt.clock()
+    hits = check_watches_con(rt.cursor(), now, rt.data_root)
+    if hits:
+        rt.bump("notifications", "watch", "command")
+    return hits
+
+
+def ticket_text(con, wid: int, price: float, root: Optional[Path]) -> str:
+    """The ready ticket for a watch made by a suggestion (S64): the amount over the price, entered by the investor; a GTT is
+    an order and is never placed."""
+    from pflab.plan import trader
+    r = con.execute("SELECT sug_id, symbol, amount, max_buy, wrong_if FROM hq_suggestions WHERE watch_id=?", [wid]).fetchone()
+    if not r or not r[2] or price <= 0:
+        return ""
+    qty = int(r[2] // price)
+    if qty < 1:
+        return ""
+    lines = trader.tickets(r[1], qty, price, trader.decision(root))
+    nl = "\n"
+    return (f"{nl}Suggestion #{r[0]}: about Rs {r[2]:,.0f}, highest buy {r[3]:,.2f}." + (f" Wrong if {r[4]}." if r[4] else "")
+            + f"{nl}Ticket (you enter it yourself; nothing is placed):{nl}" + nl.join(lines))
+
+
+def check_watches_con(con, now: datetime, root: Optional[Path] = None) -> List[str]:
     from pflab.pm import prices
     from pflab.service import telegram as tgm
-    now = now or rt.clock()
-    con = rt.cursor()
     hits = []
     for wid, isin, sym, kind, level, last in con.execute(
             "SELECT watch_id, isin, symbol, kind, level, last_hit_at FROM watches WHERE active").fetchall():
@@ -186,11 +208,13 @@ def check_watches(rt, now: Optional[datetime] = None) -> List[str]:
             continue
         if (kind == "below" and q.value <= level) or (kind == "above" and q.value >= level):
             text = f"Watch: {sym or isin} at {q.value:,.2f} is {kind} {level:,.2f} ({'live' if q.kind == 'live' else 'close ' + str(q.date)})"
+            try:
+                text += ticket_text(con, wid, q.value, root)
+            except Exception:                                    # the hit is told even if the ticket cannot be made
+                pass
             con.execute("UPDATE watches SET last_hit_at=?, hits = hits + 1 WHERE watch_id=?", [now, wid])
             tgm.enqueue(con, text, "watch", dedup_key=f"watch:{wid}:{now.date()}", now=now)
             hits.append(text)
-    if hits:
-        rt.bump("notifications", "watch", "command")
     return hits
 
 

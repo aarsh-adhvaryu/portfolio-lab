@@ -101,6 +101,12 @@ def build(con, asof: date, now: datetime, which: str, cal=None, root=None, netwo
             lines += w
     except Exception as e:
         left_out.append(f"watches ({type(e).__name__})")
+    if which == "evening" and root is not None:
+        try:
+            from pflab.risk import themes
+            lines += themes.drift(con, root, asof)
+        except Exception as e:
+            left_out.append(f"basket drift ({type(e).__name__})")
     s = _suggestion_lines(con, last)
     if s:
         lines.append("New suggestions (numbers from code; you place every order):")

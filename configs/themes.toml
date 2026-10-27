@@ -1,0 +1,23 @@
+# Themes the system measures (S64 Phase 5 item 4; the investor's answers 2026-10-25 and 2026-10-26).
+# A theme is the holdings (stocks, and funds through look-through) in its `industries` (the sector map's labels, matched
+# whole and case-insensitively) plus its named `symbols` (NSE symbols, resolved to ISINs by date). `basket` is the list
+# proposed as the theme's basket, equal-weighted; the basket, each member and each limit apply only after his yes (Needs
+# from you). `index` is a sector index in data/indices to use for the theme's history where one exists; otherwise the
+# basket's own history is built from its members' adjusted closes.
+# The brain may propose more themes and members; those go through limit_proposals as `theme_member` and wait for his yes.
+
+[theme.ai_it]
+label = "AI and IT"
+industries = ["it", "information technology", "computers - software"]
+index = "SECTOR_IT_TRI"
+basket = ["TCS", "INFY", "WIPRO", "HCLTECH", "TECHM", "LTIM", "COFORGE", "PERSISTENT", "MPHASIS", "TATAELXSI"]
+
+[theme.defence]
+label = "Defence"
+industries = []
+basket = ["HAL", "BEL", "BDL", "MAZDOCK", "COCHINSHIP", "DATAPATTNS", "SOLARINDS", "BEML"]
+
+[theme.ev_auto_tech]
+label = "EV and auto-tech"
+industries = []
+basket = ["M&M", "EXIDEIND", "ARE&M", "SONACOMS", "UNOMINDA", "OLECTRA", "OLAELEC", "TATAELXSI"]

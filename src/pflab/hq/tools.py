@@ -76,7 +76,7 @@ class Tool:
         return {"type": "object", "additionalProperties": False, "properties": self.params,
                 "required": list(self.required)}
 
-    def definition(self) -> dict:
+    def definition(self, strict: bool = True) -> dict:
         """For the API: bounds the strict grammar may not take are moved into the descriptions (checked here anyway)."""
         props = {}
         for k, v in self.params.items():
@@ -88,7 +88,7 @@ class Tool:
             props[k] = d
         d = {"name": self.name, "description": f"[{self.kind}] {self.about}",
              "input_schema": {**self.schema(), "properties": props}}
-        if self.required:                  # the API takes at most 20 strict tools: those with required inputs
+        if self.required and strict:       # the API takes at most 20 strict tools: the first 20 with required inputs
             d["strict"] = True
         return d
 
@@ -455,10 +455,14 @@ def record_suggestion(ctx: Ctx, a: dict) -> dict:
             "facts_at_the_time": facts}
     sid = sg.record(ctx.con, pass_id=ctx.pass_id, model=ctx.model, kind=a["kind"], isin=isin, symbol=sym or None,
                     text=text.split("\n\n(")[0], reasoning=why.split("\n\n(")[0], data=data,
-                    horizon_days=int(a["horizon_days"]), now=ctx.now, shadow=ctx.shadow, ref=ref, ref_qty=qty, facts=facts)
+                    horizon_days=int(a["horizon_days"]), now=ctx.now, shadow=ctx.shadow, ref=ref, ref_qty=qty, facts=facts,
+                    root=ctx.rt.data_root, amount=stocks.order_size(bk, isin) if isin and a["kind"] == "add" else None)
     ctx.suggestions.append(sid)
-    q = ctx.con.execute("SELECT quality, quality_why FROM hq_suggestions WHERE sug_id=?", [sid]).fetchone()
+    q = ctx.con.execute("SELECT quality, quality_why, price_low, price_high, max_buy, amount, wrong_if, watch_id "
+                        "FROM hq_suggestions WHERE sug_id=?", [sid]).fetchone()
     return {"kept": sid, "quality_at_the_time": q[0], "why": q[1],
+            "numbers_by_code": {"price_low": q[2], "price_high": q[3], "highest_buy": q[4], "amount_rs": q[5],
+                                "wrong_if": q[6], "price_watch": q[7]},
             "scored": f"in {a['horizon_days']} days against the Nifty 500, taken or not"}
 
 
@@ -603,6 +607,42 @@ def web_search(ctx: Ctx, a: dict) -> dict:
     return out
 
 
+def themes_tool(ctx: Ctx, a: dict) -> dict:
+    """Theme exposure with the applied limits, the dip reserve and the opportunity pot (all by code)."""
+    from pflab.plan import pot
+    from pflab.risk import themes
+    ex = themes.exposure_of(ctx.con, ctx.rt.data_root, ctx.asof)
+    lims = {t: themes.applied(ctx.con, "theme_limit", t) for t in ex}
+    pend = ctx.con.execute("SELECT kind, key, value, status FROM limit_proposals WHERE status IN ('pending','applied') "
+                           "ORDER BY prop_id DESC LIMIT 20").fetchall()
+    ideas = ctx.con.execute("SELECT idea_id, symbol, reason, buy_below, exit_above, stop_below, amount, status FROM pot_ideas "
+                            "ORDER BY idea_id DESC LIMIT 10").fetchall()
+    return {"themes": {t: {"label": e["label"], "share_of_portfolio": round(e["weight"], 4), "limit": lims[t],
+                           "holdings": e["holdings"][:8]} for t, e in ex.items()},
+            "proposals": [{"kind": k, "key": key, "value": v, "status": s} for k, key, v, s in pend],
+            "pot": {"limit_rs": pot.limit(ctx.con), "used_rs": pot.used(ctx.con), "room_rs": pot.room(ctx.con),
+                    "ideas": [{"id": i, "symbol": sy, "reason": r, "buy_below": b, "exit_above": x, "stop_below": st,
+                               "amount": am, "status": sts} for i, sy, r, b, x, st, am, sts in ideas]},
+            "source": "risk/themes.py, plan/pot.py (limits apply only after the investor's yes; history is not a forecast)"}
+
+
+def propose_pot_idea(ctx: Ctx, a: dict) -> dict:
+    """A missed winner or an IPO for the opportunity pot: the reason in words, every price and the amount by code."""
+    from pflab.agents import analyst as an
+    from pflab.plan import pot
+    sym = a["symbol"].strip().upper()
+    isin = _isin(ctx, sym)
+    reason, dropped = an.only_sourced_numbers(a["reason"], an.Request(ctx.source, "brain"))
+    if dropped:
+        ctx.problems.append(f"pot idea on {sym}: {dropped} sentence(s) dropped (numbers not read)")
+    if ctx.shadow:
+        return {"shadow": True, "note": "shadow pass: the idea is not kept"}
+    iid = pot.add_idea(ctx.con, ctx.rt.data_root, isin, sym, reason.split("\n\n(")[0], ctx.asof, ctx.now)
+    r = ctx.con.execute("SELECT buy_below, exit_above, stop_below, amount, horizon_days FROM pot_ideas WHERE idea_id=?", [iid]).fetchone()
+    return {"kept": iid, "buy_below": r[0], "exit_above": r[1], "stop_below": r[2], "amount_rs": r[3], "scored_after_days": r[4],
+            "note": "prices and amount by code; an idea for the investor, never an order"}
+
+
 SYMBOL = _s("NSE symbol of a held or listed stock", 20)
 DAYS = _i("days back", 1, 365)
 TOOLS: Dict[str, Tool] = {t.name: t for t in [
@@ -702,13 +742,26 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
          "correlation over 5 years, Engle-Granger cointegration (Benjamini-Hochberg adjusted), how often it held in "
          "rolling windows, the spread's half-life. A description: relations break (9% stayed cointegrated).",
          {"symbol": SYMBOL}, ("symbol",), comovement),
+    Tool("themes", "read", "Theme exposure (AI and IT, defence, EV and auto-tech) as a share of the portfolio with the limits he "
+         "applied, pending proposals (limits, dip reserve, pot), and the opportunity pot with its ideas.", {}, (), themes_tool),
+    Tool("propose_pot_idea", "journal", "Put a missed winner or a new listing into the opportunity pot: the reason in words; "
+         "buy price, exit, stop and amount are computed by code. Needs the pot's limit applied by the investor.",
+         {"symbol": SYMBOL, "reason": _s("why it belongs in the pot", 600)}, ("symbol", "reason"), propose_pot_idea),
 ]}
 TOOLS["record_suggestion"].params["rested_on"]["items"]["enum"] = [n for n, t in TOOLS.items() if t.kind == "read"]
 
 
+MAX_STRICT = 20
+
+
 def definitions() -> List[dict]:
     """The API's tool list, in a fixed order (a changed order would break the prompt cache)."""
-    return [t.definition() for t in TOOLS.values()]
+    out, strict = [], 0
+    for t in TOOLS.values():
+        on = bool(t.required) and strict < MAX_STRICT              # S64: tools after the 20th are checked by `validate` only
+        strict += on
+        out.append(t.definition(on))
+    return out
 
 
 def _plain(x):

@@ -3,8 +3,8 @@ so a laptop that slept for days catches up in one run per job. Importing this mo
 from __future__ import annotations
 
 import subprocess
-from datetime import date, timedelta
-from typing import Tuple
+from datetime import date, datetime, timedelta
+from typing import Optional, Tuple
 
 from pflab.service import backup as bk
 from pflab.service import telegram as tgm
@@ -320,6 +320,57 @@ def _summary(which: str):
 
 register(Job("summary_morning", Daily(9, 0), _summary("morning"), "Telegram morning summary (trading days)"))
 register(Job("summary_evening", Daily(21, 45), _summary("evening"), "Telegram evening summary (trading days)"))
+def _watches(ctx: Ctx) -> dict:
+    """S64: the price watches against the latest price while the market is open and once at the close (the dashboard checks
+    them too every 10 minutes while it runs). A hit is urgent; a watch made by a suggestion carries its ready ticket."""
+    from pflab.app import research
+    hits = research.check_watches_con(ctx.con, ctx.now, ctx.data_root)
+    return {"hits": len(hits)}
+
+
+IDLE_CASH_MIN, IDLE_CASH_DAYS = 10_000.0, 7
+
+
+def idle_cash_days(con, now: datetime) -> Optional[Tuple[float, int]]:
+    """(the smallest Kite cash over the last 7 days, days covered) when Rs 10,000 or more sat unused for 7 days or more."""
+    rows = con.execute("SELECT taken_at, amount FROM kite_snapshots WHERE kind='cash' AND taken_at >= ? ORDER BY taken_at",
+                       [now - timedelta(days=IDLE_CASH_DAYS + 1)]).fetchall()
+    if not rows or rows[0][0] > now - timedelta(days=IDLE_CASH_DAYS):
+        return None                                           # no snapshots reaching back a full week
+    low = min(a for _t, a in rows if a is not None)
+    return (low, IDLE_CASH_DAYS) if low >= IDLE_CASH_MIN else None
+
+
+def _idle_cash(ctx: Ctx) -> dict:
+    """S64: Kite cash of Rs 10,000 or more unused for a week -> a line in the evening summary (not urgent)."""
+    got = idle_cash_days(ctx.con, ctx.now)
+    if not got:
+        return {"idle": False}
+    week = ctx.now.isocalendar()
+    tgm.enqueue(ctx.con, f"Idle cash: at least Rs {got[0]:,.0f} has sat unused in your Kite account for {got[1]} days. "
+                         "Ready plans and suggestions are on the dashboard; nothing is placed for you.", "idle_cash",
+                dedup_key=f"idle_cash:{week[0]}-W{week[1]}", now=ctx.now)
+    return {"idle": True, "cash": got[0]}
+
+
+register(Job("watches", Interval(15, 9, 16, weekdays_only=True), _watches, "price watches against the latest price (market hours)",
+             cooldown_minutes=10))
+register(Job("watches_close", Daily(16, 0), _watches, "price watches once after the close", cooldown_minutes=30))
+register(Job("idle_cash", Daily(20, 30), _idle_cash, "Kite cash unused for a week -> a line in the evening summary"))
+def _companion(ctx: Ctx) -> dict:
+    """S64: theme baskets, theme limits, the dip reserve and the pot proposed once and applied after his yes; applied
+    limits held to; open pot ideas scored."""
+    from pflab.hq import stocks
+    from pflab.plan import companion
+    try:
+        index = stocks.index_series(ctx.data_root)
+    except Exception:
+        index = None
+    return companion.run(ctx.con, ctx.data_root, ctx.now.date(), ctx.now, index)
+
+
+register(Job("companion", Daily(21, 10, weekdays_only=False), _companion,
+             "limits: theme baskets and limits, the dip reserve, the opportunity pot (proposals wait for his yes)", cooldown_minutes=120))
 register(Job("learner", Daily(22, 0, weekdays_only=False), _learner,
              "learner: papers and blogs -> registered tests; proposals from the system's own record", cooldown_minutes=120))
 register(Job("security", Daily(21, 15, weekdays_only=False), _security,

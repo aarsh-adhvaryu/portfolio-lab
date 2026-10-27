@@ -59,21 +59,65 @@ def quality(kind: str, f: dict) -> tuple:
     return "sound", "not judged by code"
 
 
+def numbers(con, root, isin: str, asof: date, guard: str = "ok") -> dict:
+    """The price numbers of a suggestion, all by code (S64 Phase 5 item 5; the model gives words only):
+    price_low / price_high = the buy zone (20th-40th percentile of the year's closes); max_buy = the lower of the zone's
+    top and the 21-session middle of the price range; wrong_price = the 63-session 10th percentile and `wrong_if` its wording.
+    Missing history or no stored range leaves the field None; nothing is guessed."""
+    from pflab.app import research
+    from pflab.plan import buyzone
+    from pflab.quant import forecast as fc
+    c = research.closes(con, root, isin, asof, years=4).dropna()
+    z = buyzone.zone(c, asof, guard=guard, paths=5_000)
+    out: dict = {"price_low": None, "price_high": None, "max_buy": None, "wrong_price": None, "wrong_if": None,
+                 "stats": {"zone_verdict": z.get("verdict"), "zone_headline": z.get("headline")}}
+    if "bottom" not in z:
+        return out
+    out["price_low"], out["price_high"] = float(z["bottom"]), float(z["top"])
+    method, label = fc.serving_method(root)
+    q = {h: con.execute("SELECT q10, q50, q90 FROM forecasts WHERE use=? AND subject=? AND model=? ORDER BY as_of DESC LIMIT 1",
+                        [f"price{h}", isin, method]).fetchone() for h in (21, 63)}
+    out["max_buy"] = min(out["price_high"], float(q[21][1])) if q[21] else out["price_high"]
+    if q[63]:
+        out["wrong_price"] = float(q[63][0])
+        out["wrong_if"] = (f"it closes below {q[63][0]:,.0f}, the 10th percentile of its 3-month price range "
+                           f"(80% range, an estimate: {label})")
+    out["stats"].update(price=float(c.iloc[-1]), method=method, q21=q[21], q63=q[63], touch_bottom=z.get("touch_bottom"))
+    return out
+
+
 def record(con, *, pass_id: Optional[int], model: str, kind: str, isin: Optional[str], symbol: Optional[str], text: str,
            reasoning: str, data: dict, horizon_days: int, now: datetime, shadow: bool, ref: Optional[tuple] = None,
-           ref_qty: Optional[float] = None, facts: Optional[dict] = None) -> int:
+           ref_qty: Optional[float] = None, facts: Optional[dict] = None, root=None, amount: Optional[float] = None) -> int:
+    """Keep a suggestion. With `root`, a priced kind on a stock gets its numbers from `numbers`; an 'add' that is not a shadow
+    also gets a price watch below its highest buy price (the watch's hit carries a ready ticket) and the amount given."""
     from pflab.pm.store import next_id
     if kind not in KINDS:
         raise ValueError(f"kind must be one of {KINDS}")
     if not HORIZON_MIN <= int(horizon_days) <= HORIZON_MAX:
         raise ValueError(f"horizon {horizon_days} days: {HORIZON_MIN}-{HORIZON_MAX}")
     q, why = quality(kind, facts or {}) if isin else ("sound", "not about one stock")
+    num = None
+    if root is not None and isin and kind in PRICED:
+        try:
+            num = numbers(con, root, isin, now.date(), (facts or {}).get("guard", "ok"))
+        except Exception as e:                                   # no prices or ranges: the words stand, the numbers wait
+            num = {"stats": {"numbers_error": f"{type(e).__name__}: {str(e)[:120]}"}}
+    num = num or {}
+    amt = amount if kind == "add" else None
     sid = next_id(con, "hq_suggestions", "sug_id")
     con.execute("INSERT INTO hq_suggestions (sug_id, pass_id, model, made_at, kind, isin, symbol, text, reasoning, data_json, "
-                "horizon_days, ref_date, ref_close, ref_qty, shadow, quality, quality_why) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "horizon_days, ref_date, ref_close, ref_qty, shadow, quality, quality_why, price_low, price_high, max_buy, "
+                "amount, wrong_if, wrong_price, stats_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 [sid, pass_id, model, now, kind, isin, symbol, text[:600], reasoning[:1500],
                  json.dumps(data, default=str)[:20000], int(horizon_days), ref[0] if ref else None, ref[1] if ref else None,
-                 ref_qty, shadow, q, why])
+                 ref_qty, shadow, q, why, num.get("price_low"), num.get("price_high"), num.get("max_buy"), amt,
+                 num.get("wrong_if"), num.get("wrong_price"), json.dumps(num.get("stats"), default=str) if num.get("stats") else None])
+    if kind == "add" and not shadow and isin and num.get("max_buy"):
+        from pflab.app import research
+        wid = research.add_watch(con, isin, symbol or isin, "below", round(float(num["max_buy"]), 2),
+                                 f"suggestion #{sid}: highest buy price", now)
+        con.execute("UPDATE hq_suggestions SET watch_id=? WHERE sug_id=?", [wid, sid])
     return sid
 
 
