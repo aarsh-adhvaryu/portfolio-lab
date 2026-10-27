@@ -224,7 +224,7 @@ def main(argv=None):
     fcp.add_argument("--asof", type=_d, default=date.today())
 
     lp = sub.add_parser("learner", help="S64 the learner's tests: status, register-s64, reregister, test --claim ID, seed")
-    lp.add_argument("action", choices=["status", "register-s64", "reregister", "test", "seed"])
+    lp.add_argument("action", choices=["status", "register-s64", "register-rules", "reregister", "test", "seed"])
     lp.add_argument("--claim", type=int, help="claim id (test)")
 
     a = p.parse_args(argv)
@@ -452,6 +452,12 @@ def _learner(a) -> int:
         return 0
     if a.action == "reregister":
         print(f"re-registered {claims.reregister_stale(con, proto, now)} claims under the current test code")
+        return 0
+    if a.action == "register-rules":
+        from pflab.learner import rules
+        for rule, state in rules.register_all(con, proto, now).items():
+            print(f"{rule}: {state}")
+        print(counter.line(con))
         return 0
     if a.action == "register-s64":
         url = "docs/research/s64_reversion_protocol.md"

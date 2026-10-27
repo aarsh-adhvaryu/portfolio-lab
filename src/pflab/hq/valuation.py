@@ -84,13 +84,16 @@ def market_pe(root: Path, asof: date) -> Optional[dict]:
 
 
 def flags(pe: Optional[float], own_median: Optional[float], mkt: Optional[dict], rich: Optional[bool], vol: dict,
-          from_high: Optional[float]) -> List[dict]:
+          from_high: Optional[float], tested: Optional[dict] = None) -> List[dict]:
     """The rules of thumb, each with whether it applies today. `applies` is None where the fact is missing."""
-    def f(rule, applies, note):
-        return {"rule": rule, "applies": applies, "note": note, "status": NOT_TESTED}
+    def f(rule, applies, note, status=NOT_TESTED):
+        return {"rule": rule, "applies": applies, "note": note, "status": status}
+    t50 = (tested or {}).get("pe_above_50")
+    s50 = NOT_TESTED if not t50 or t50["label"] == "not tested" else (
+        f"TESTED by the learner (claim #{t50['claim_id']}): {t50['label']}" + (f". {t50['why']}" if t50.get("why") else ""))
     return [
         f(f"P/E above {PE_HIGH:g}", None if pe is None else pe > PE_HIGH,
-          "no P/E (loss-making or no filed EPS)" if pe is None else f"P/E is {pe:.1f}"),
+          "no P/E (loss-making or no filed EPS)" if pe is None else f"P/E is {pe:.1f}", s50),
         f(f"P/E more than {OWN_MEDIAN_MULT:g}x its own 5-year median", None if not (pe and own_median) else pe > OWN_MEDIAN_MULT * own_median,
           "" if not (pe and own_median) else f"{pe / own_median:.2f}x its median {own_median:.1f}"),
         f(f"P/E more than {MARKET_MULT:g}x the Nifty 500's", None if not (pe and mkt) else pe > MARKET_MULT * mkt["pe"],
@@ -157,7 +160,12 @@ def facts(con, root, isin: str, symbol: str, closes: pd.Series, asof: date) -> d
             out["futures_buildup"] = {**bu, "note": "price against open interest in its futures; information, not a signal"}
     except Exception:
         pass
-    out["rules_of_thumb"] = flags(pe, own_median, mkt, rich, vol, from_high)
+    try:
+        from pflab.learner import rules
+        tested = {"pe_above_50": rules.status(con, "pe_above_50")}
+    except Exception:
+        tested = None
+    out["rules_of_thumb"] = flags(pe, own_median, mkt, rich, vol, from_high, tested)
     out["how_to_use"] = ("read like a trader: say which of these matter for this company and why (a high P/E can be fair for "
                          "fast growth, a low one a trap); every flag is untested folklore, a reason to look, not a rule")
     out["source"] = "hq/valuation.py: filed quarters (point in time) and closes; ratios of a price and a filed number"

@@ -13,6 +13,8 @@ code, before any claim is run. A claim that fits no template is recorded as unte
                     quarter's promoter holding up or down, pledges up; the market-adjusted move after each
     sector_reversion S64 (docs/research/s64_reversion_protocol.md): a stock cointegrated with its sector index and cheap
                     against it (bottom quintile of the spread's z) against the sector's next-month return, long only
+    rule_filter     S64 (docs/research/s64_rules_protocol.md): a yes/no rule (P/E above 50, near the 52-week low, below the
+                    200-day average, ...): the group that meets it against all members the next month
 
 Periods (as every study here; 2022-2025 are spent, CLAUDE.md 2): development 2010-2017 and validation 2018-2021 (filings:
 2015-2018 and 2019-2021, BSE announcements start in 2015). The rule, the same for every claim: the claimed direction in
@@ -62,6 +64,8 @@ SCHEMA = {
     "calendar": {"effect": list(EFFECTS), "direction": ["high", "low"]},
     "holder_event": {"kind": list(HOLDER_KINDS), "direction": ["up", "down"], "sessions": [1, 5, 20]},
     "sector_reversion": {"direction": ["low", "high"]},
+    "rule_filter": {"rule": ["pe_above_50", "pe_below_15", "near_52w_low_5", "below_sma200", "volume_spike_2", "ath_fall_40",
+                             "rsi_below_30"], "direction": ["out", "under"], "months": [1]},
 }
 
 # S64 protocol (fixed before the run): the sector TRI of an industry, by the sector map's taxonomy at the month end.
@@ -139,7 +143,7 @@ def wide_panel(root: Path, isins: Sequence[str], start: str, end: str) -> Dict[s
     r = px.groupby("isin")["adj_close"].pct_change()
     px["r"] = (1 + r) * (1 + (px["dividend"].fillna(0.0) / px["close"]).where(px["close"] > 0, 0.0)) - 1
     out = {k: px.pivot(index="date", columns="isin", values=v) for k, v in
-           (("adj", "adj_close"), ("r", "r"), ("turnover", "turnover"))}
+           (("adj", "adj_close"), ("r", "r"), ("turnover", "turnover"), ("close", "close"))}
     out["tr"] = (1 + out["r"].fillna(0.0)).cumprod().where(out["adj"].notna())
     return out
 
@@ -467,6 +471,153 @@ def sector_reversion(root: Path, direction: str, round_trip_pct: float, periods=
     return {"decision": d, "why": why, **res}
 
 
+# --- rule_filter (S64, docs/research/s64_rules_protocol.md): a yes/no rule on a stock against the other members -----------------
+
+RULES = ("pe_above_50", "pe_below_15", "near_52w_low_5", "below_sma200", "volume_spike_2", "ath_fall_40", "rsi_below_30")
+RULE_TEXT = {
+    "pe_above_50": "price over trailing-twelve-month EPS above 50", "pe_below_15": "that ratio above 0 and below 15",
+    "near_52w_low_5": "within 5% above the 250-session low", "below_sma200": "below the 200-session average",
+    "volume_spike_2": "month-end traded value over twice the prior 20 sessions' average",
+    "ath_fall_40": "40% or more below the highest close since 2008-06", "rsi_below_30": "Wilder RSI(14) below 30",
+}
+RULE_SCAN = {"near_52w_low_5": "near_52w_low:5.0", "below_sma200": "price_below_sma:200", "volume_spike_2": "volume_spike:2.0",
+             "ath_fall_40": "ath_fall_at_least:40.0", "rsi_below_30": "rsi_below:30.0"}
+RULE_MIN_GROUP, RULE_MIN_UNIVERSE = 10, 50
+EPS_USABLE_DAYS, EPS_STALE_DAYS, ADJ_TOLERANCE = 60, 450, 0.02
+
+
+def eps_ttm_frame(root: Path, w: Dict[str, pd.DataFrame], load=None) -> pd.DataFrame:
+    """Trailing-twelve-month basic EPS for every isin on every session, point in time: four consecutive filed quarters (80-100
+    days apart), usable 60 days after the latest quarter ended; left out (NaN) when older than 15 months or when the adjustment
+    factor has moved more than 2% since (a split or bonus: the old EPS is another unit). `load(scrip)` -> DataFrame with
+    quarter_end and eps_basic (default: the filed history in data/bse_results)."""
+    from pflab.fundamentals import pit
+    load = load or (lambda scrip: pit.load_history(scrip, root))
+    cols = list(w["tr"].columns)
+    sessions = w["tr"].index
+    m = _duck.sql(f"select scrip_code, isin from '{root}/bse_scrip_isin/map.parquet' where isin is not null and isin <> ''").df()
+    m = m[m["isin"].isin(cols)].drop_duplicates(["scrip_code", "isin"])
+    eps = pd.DataFrame(np.nan, index=sessions, columns=cols)
+    born = pd.DataFrame(np.nan, index=sessions, columns=cols)          # the adjustment factor on the day the EPS became usable
+    qend = pd.DataFrame(np.nan, index=sessions, columns=cols)
+    fac = (w["adj"] / w["close"]) if "close" in w else None
+    for scrip, g in m.groupby("scrip_code"):
+        try:
+            h = load(str(scrip))
+        except Exception:
+            continue
+        if h is None or len(h) < 4:
+            continue
+        h = h.sort_values("quarter_end").drop_duplicates("quarter_end")
+        qe = pd.to_datetime(h["quarter_end"]).reset_index(drop=True)
+        e = h["eps_basic"].astype(float).reset_index(drop=True)
+        gap = qe.diff().dt.days
+        ok = gap.between(80, 100).rolling(3).sum().eq(3) & e.rolling(4).count().eq(4)
+        ttm = e.rolling(4).sum().where(ok)
+        usable = qe + pd.Timedelta(days=EPS_USABLE_DAYS)
+        pos = sessions.searchsorted(usable.to_numpy())
+        for isin in g["isin"]:
+            for p, v, q in zip(pos, ttm.to_numpy(), qe.to_numpy()):
+                if p >= len(sessions) or not np.isfinite(v):
+                    continue
+                eps.iat[p, cols.index(isin)] = v
+                qend.iat[p, cols.index(isin)] = q.astype("datetime64[D]").astype("int64")
+                if fac is not None:
+                    born.iat[p, cols.index(isin)] = fac.iat[p, cols.index(isin)]
+    eps, born, qend = eps.ffill(), born.ffill(), qend.ffill()
+    age = sessions.to_numpy().astype("datetime64[D]").astype("int64")[:, None] - qend.to_numpy()
+    out = eps.where(age <= EPS_STALE_DAYS)
+    if fac is not None:
+        out = out.where(((fac / born) - 1.0).abs() <= ADJ_TOLERANCE)
+    return out
+
+
+def rule_frame(w: Dict[str, pd.DataFrame], rule: str, eps: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+    """1.0 where the rule is true, 0.0 where false, NaN where it cannot be told, for every session and isin (rows up to i
+    use only sessions <= i)."""
+    adj = w["adj"]
+    if rule in ("pe_above_50", "pe_below_15"):
+        if eps is None:
+            raise ValueError("a P/E rule needs the EPS frame")
+        pe = (w["close"] / eps).where(eps > 0)
+        t = (pe > 50) if rule == "pe_above_50" else ((pe > 0) & (pe < 15))
+        return t.astype(float).where(pe.notna())
+    if rule == "near_52w_low_5":
+        low = adj.rolling(250, min_periods=200).min()
+        return (adj <= 1.05 * low).astype(float).where(low.notna() & adj.notna())
+    if rule == "below_sma200":
+        sma = adj.rolling(200, min_periods=200).mean()
+        return (adj < sma).astype(float).where(sma.notna() & adj.notna())
+    if rule == "volume_spike_2":
+        to = w["turnover"]
+        avg = to.rolling(20, min_periods=15).mean().shift(1)
+        return (to > 2 * avg).astype(float).where(avg.notna() & to.notna() & (avg > 0))
+    if rule == "ath_fall_40":
+        ath = adj.cummax()
+        ok = adj.expanding().count() >= 250
+        return (adj <= 0.6 * ath).astype(float).where(ok & adj.notna())
+    if rule == "rsi_below_30":
+        d = adj.diff()
+        au = d.clip(lower=0).ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
+        ad = (-d).clip(lower=0).ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
+        rsi = 100 - 100 / (1 + au / ad.replace(0, np.nan))
+        rsi = rsi.where(ad != 0, 100.0)
+        return (rsi < 30).astype(float).where(rsi.notna())
+    raise ValueError(rule)
+
+
+def rule_filter_series(w: Dict[str, pd.DataFrame], mem: pd.DataFrame, frame: pd.DataFrame, direction: str, months: int,
+                       start: str, end: str, round_trip_pct: float) -> pd.Series:
+    """Per formation month: the group's next-`months` total return minus all members' (equal weights). For `out` the charges on
+    the share of the group that changed are taken off; for `under` the series is the group's excess as it is and the decision
+    uses the opposite sign (avoiding a name is not a trade)."""
+    sessions = w["tr"].index
+    every = month_ends(sessions, str(sessions[0].date()), str(sessions[-1].date()))
+    tr_f = w["tr"].ffill()
+    out, prev = {}, {}
+    for k, i in enumerate(every):
+        t = sessions[i]
+        if i < HISTORY or k + months >= len(every) or not pd.Timestamp(start) <= t <= pd.Timestamp(end):
+            continue
+        j = every[k + months]
+        live = set(mem[(mem["from_date"] <= t) & (mem["to_date"] > t)]["isin"]) & set(w["tr"].columns)
+        cols = sorted(live)
+        hist = w["adj"].iloc[i - HISTORY + 1:i + 1][cols].notna().sum()
+        cols = [c for c in cols if hist[c] >= 200 and pd.notna(w["tr"].iloc[i][c])]
+        if len(cols) < RULE_MIN_UNIVERSE:
+            continue
+        fwd = (tr_f.iloc[j][cols] / w["tr"].iloc[i][cols] - 1).dropna()
+        sig = frame.iloc[i][fwd.index]
+        pick = set(sig[sig == 1.0].index)
+        if len(pick) < RULE_MIN_GROUP:
+            continue
+        last = prev.get(k - months, set())
+        changed = len(pick - last) / len(pick) if last else 1.0
+        prev[k] = pick
+        cost = changed * round_trip_pct / 100 if direction == "out" else 0.0
+        out[t] = float(fwd[list(pick)].mean() - fwd.mean()) - cost
+    return pd.Series(out, dtype=float)
+
+
+def rule_filter(root: Path, rule: str, direction: str, months: int, round_trip_pct: float, periods=(DEV, VAL),
+                threshold_dev: float = T_DEV, load=None) -> dict:
+    mem = members(root)
+    w = wide_panel(root, sorted(set(mem["isin"])), "2008-06-01", "2022-06-30")
+    eps = eps_ttm_frame(root, w, load) if rule.startswith("pe_") else None
+    frame = rule_frame(w, rule, eps)
+    sign = 1 if direction == "out" else -1
+    res = {}
+    for name, (a, b) in zip(("development", "validation"), periods):
+        s = rule_filter_series(w, mem, frame, direction, months, a, b, round_trip_pct)
+        m, t, n = nw_t(s.values, lags=max(1, months))
+        res[name] = {"mean": m, "t": t, "n": n, "per": f"{months}-month excess of the group over all members"
+                     + (" after charges" if direction == "out" else "")}
+        if name == "development":
+            res[name]["_returns"] = [float(sign * v) for v in s.values]     # the claimed side, for the deflated Sharpe ratio
+    d, why = decide(res["development"], res["validation"], sign, MIN_MONTHS, 0.0, "months", threshold_dev)
+    return {"decision": d, "why": why, **res}
+
+
 def run(root: Path, template: str, params: dict, threshold_dev: float = T_DEV) -> dict:
     """Run a registered claim's template; the decision comes from `decide`, never from a model."""
     from pflab.hq import stocks
@@ -483,4 +634,6 @@ def run(root: Path, template: str, params: dict, threshold_dev: float = T_DEV) -
         return holder_event(root, params["kind"], params["direction"], int(params["sessions"]), rt, threshold_dev)
     if template == "sector_reversion":
         return sector_reversion(root, params["direction"], rt, threshold_dev=threshold_dev)
+    if template == "rule_filter":
+        return rule_filter(root, params["rule"], params["direction"], int(params["months"]), rt, threshold_dev=threshold_dev)
     return calendar(root, params["effect"], params["direction"], threshold_dev)

@@ -79,7 +79,7 @@ def params_of(c: dict) -> Tuple[str, dict]:
     t = c.get("template", "none")
     keys = {"cross_section": ("signal", "direction", "months"), "event_study": ("kind", "direction", "sessions"),
             "calendar": ("effect", "direction"), "holder_event": ("kind", "direction", "sessions"),
-            "sector_reversion": ("direction",)}.get(t, ())
+            "sector_reversion": ("direction",), "rule_filter": ("rule", "direction", "months")}.get(t, ())
     return t, {k: c.get(k) for k in keys}
 
 
@@ -120,6 +120,14 @@ NAMES = {
     "block_buy": r"block deals?|block purchase\w*", "block_sell": r"block deals?|block sale\w*",
     "promoter_up": r"promoter\w*", "promoter_down": r"promoter\w*",
     "pledge_up": r"pledg\w*|encumb\w*",
+    # S64: rules (docs/research/s64_rules_protocol.md)
+    "pe_above_50": r"p/?e\b|price[- ]to[- ]earnings|times (their |its )?(trailing )?earnings|earnings multiple|expensive|overvalu\w*",
+    "pe_below_15": r"p/?e\b|price[- ]to[- ]earnings|times (their |its )?(trailing )?earnings|earnings multiple|cheap|undervalu\w*|value stocks?",
+    "near_52w_low_5": r"52[- ]week low|year'?s low|annual low|near (their |its )?lows?",
+    "below_sma200": r"200[- ]day|200[- ]session|long[- ]term (moving )?average",
+    "volume_spike_2": r"volume (spike|surge|burst)|spike in volume|unusual volume|heavy volume",
+    "ath_fall_40": r"all[- ]time high|below (their |its )?(high|peak)|drawdown|rebound",
+    "rsi_below_30": r"oversold|rsi|relative strength index",
     # S64: reversion against a cointegrated sector index
     "sector_reversion": r"cointegrat\w*|mean[- ]revers\w*|revert\w*|relative to (its |the )?sector|sector index|sector",
 }
@@ -133,7 +141,7 @@ ABSENT = re.compile(r"\b(not|no|cannot|can't|never|neither|nor|insignificant|fai
 def fits(claim: str, quote: str, template: str, params: dict) -> bool:
     """The claim and its quote name the signal, filing kind or calendar effect its test measures, and the claim sentence
     says the effect exists (a quote may deny another effect on its way: "no low-volatility anomaly; high volatility pays")."""
-    key = params.get("signal") or params.get("kind") or params.get("effect") or (
+    key = params.get("signal") or params.get("kind") or params.get("effect") or params.get("rule") or (
         "sector_reversion" if template == "sector_reversion" else None)
     named = key in NAMES and re.search(r"\b(" + NAMES[key] + r")", f"{claim} {quote}", re.I)
     return bool(named) and not ABSENT.search(claim or "")

@@ -236,6 +236,11 @@ def make_scan(con, name: str, text: str, universe: str, created_by: str, now: da
     sid = next_id(con, "scans", "scan_id")
     con.execute("INSERT INTO scans (scan_id, name, conditions_json, universe, active, created_by, created_at) VALUES (?,?,?,?,?,?,?)",
                 [sid, name.strip()[:80], json.dumps(conds), universe, True, created_by, now])
+    try:                                                    # a scan that is exactly a registered rule carries its claim
+        from pflab.learner import rules
+        rules.link_scans(con)
+    except Exception:
+        pass
     return sid
 
 
@@ -250,8 +255,13 @@ def seed_starters(con, now: datetime) -> int:
 
 def tested(con, scan_id: int) -> str:
     """'passed' / 'failed' from the learner's decision on the scan's claim, else 'not tested'."""
-    r = con.execute("SELECT c.decision FROM scans s JOIN learn_claims c ON c.claim_id = s.claim_id WHERE s.scan_id=?", [scan_id]).fetchone()
-    return {"pass": "passed", "fail": "failed"}.get(r[0] if r else None, "not tested")
+    r = con.execute("SELECT c.decision, c.status, c.same_as FROM scans s JOIN learn_claims c ON c.claim_id = s.claim_id "
+                    "WHERE s.scan_id=?", [scan_id]).fetchone()
+    if not r:
+        return "not tested"
+    if r[0] in ("pass", "fail"):
+        return {"pass": "passed", "fail": "failed"}[r[0]]
+    return "test pending" if r[1] in ("registered", "proposed", "same") else "not tested"
 
 
 def listing(con) -> List[dict]:
@@ -260,7 +270,10 @@ def listing(con) -> List[dict]:
             "SELECT scan_id, name, conditions_json, universe, active, created_by, created_at FROM scans ORDER BY scan_id").fetchall():
         t = tested(con, sid)
         out.append({"scan_id": sid, "name": name, "conditions": text_of(json.loads(cj)), "universe": uni, "active": bool(active),
-                    "created_by": by, "tested": t, "label": LABEL_UNTESTED if t == "not tested" else f"tested: {t}"})
+                    "created_by": by, "tested": t,
+                    "label": LABEL_UNTESTED if t == "not tested" else
+                    ("registered for testing: the learner runs it; until then information, not evidence" if t == "test pending"
+                     else f"tested: {t}")})
     return out
 
 

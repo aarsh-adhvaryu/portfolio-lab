@@ -412,6 +412,15 @@ def findings(ctx: Ctx, a: dict) -> dict:
             item["today"] = {names.get(i, i): f"quintile {v['quintile']} of 5 ({p['signal']} {v['value']:.3g}, "
                                               f"breakpoints {v['breakpoints_at']})" for i, v in q.items()}
             item["claimed_quintile"] = 5 if p["direction"] == "high" else 1
+        elif d == "pass" and t == "rule_filter":
+            from pflab.learner import rules
+            p = _json.loads(prm)
+            try:
+                item["today"] = rules.today(ctx.con, ctx.rt.data_root, p["rule"], ctx.asof) or "none of his names meets it today"
+            except Exception as e:
+                item["today"] = f"not read ({type(e).__name__})"
+            item["claimed"] = ("the names that meet it earn MORE than the rest" if p["direction"] == "out"
+                               else "the names that meet it earn LESS than the rest")
         (passed if d == "pass" else failed).append(item)
     from pflab.learner import counter
     return {"passed": passed, "failed": [{k: f[k] for k in ("claim", "result", "claim_id")} for f in failed[:15]],
