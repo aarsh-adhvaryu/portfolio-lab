@@ -971,10 +971,13 @@ function renderResearch(d) {
     <div id="bizBox"><span class="small muted">Gathering…</span></div></section>
   <section class="panel" style="display:flex;flex-direction:column;gap:8px"><span class="lbl">The maths · beta, process, who it moves with (tools only, descriptions)</span>
     <div id="mathsBox"><span class="small muted">Working it out…</span></div></section>
+  <section class="panel" style="display:flex;flex-direction:column;gap:8px"><span class="lbl">US sleeve · dollar trades and money sent abroad (entered by hand until a statement parser exists)</span>
+    <div id="usBox"><span class="small muted">Loading…</span></div></section>
   <section class="panel" style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Scans · information, not evidence until tested</span>
     <div id="scanBox"><span class="small muted">Loading…</span></div></section>`;
   loadMaths(d.selected);
   loadBusiness(d.selected);
+  loadUs();
   loadScans();
   $('replan').onclick = async () => { const a = parseFloat($('amt').value.replace(/,/g, '')); if (!a) return; await post('/api/plan', { amount: a }); $('replan').textContent = 'Planning…'; };
   $('idea2Btn').onclick = async () => { const t2 = $('idea2').value.trim(); if (!t2) return; const r = await post('/api/idea', { text: t2 }); $('idea2Out').innerHTML = (r.verdict ? `<b class="${r.verdict === 'yes' ? 'up' : r.verdict === 'no' ? 'down' : 'warn'}">${esc(r.verdict.toUpperCase())}.</b> ` : '') + esc(r.answer); };
@@ -1212,6 +1215,23 @@ function bizBlock(b) {
 async function loadBusiness(isin) {
   try { const b = await api('/api/business?isin=' + encodeURIComponent(isin)); if ($('bizBox')) $('bizBox').innerHTML = bizBlock(b); }
   catch (e) { if ($('bizBox')) $('bizBox').innerHTML = '<span class="small muted">Not available: ' + esc(e.message) + '</span>'; }
+}
+/* S64 Phase 6: the US sleeve (ledger/foreign.py): positions, the LRS year, and two small forms */
+async function loadUs() {
+  const box = $('usBox'); if (!box) return;
+  try {
+    const d = await api('/api/us'); const fx = d.fx ? d.fx[0] : null;
+    const inr = (x) => Math.round(x).toLocaleString('en-IN');
+    box.innerHTML = `<span class="small">Sent abroad this financial year (${esc(d.lrs.fy)}): USD ${inr(d.lrs.usd)} (Rs ${inr(d.lrs.inr)}), TCS Rs ${inr(d.lrs.tcs_inr)}; room under the USD 250,000 limit: USD ${inr(d.lrs.room_usd)}.${fx ? ' Rate ' + fx.toFixed(2) + ' (' + esc(d.fx_label) + ').' : ' No exchange rate stored yet.'}</span>
+      ${d.positions.length ? `<div class="scroll"><table><thead><tr><th>Name</th><th>Shares</th><th>Cost USD</th></tr></thead><tbody>${d.positions.map((p) => `<tr><td>${esc(p.symbol)}</td><td class="num">${p.qty}</td><td class="num">${inr(p.cost_usd)}</td></tr>`).join('')}</tbody></table></div>` : '<span class="small muted">No US holdings recorded.</span>'}
+      <div class="row wrapr" style="gap:6px"><input id="usD" class="inp" type="date" style="flex:0 0 150px"><input id="usS" class="inp" placeholder="symbol" style="flex:0 0 90px">
+        <select id="usSide" class="inp" style="flex:0 0 80px"><option>buy</option><option>sell</option></select><input id="usQ" class="inp" placeholder="shares" style="flex:0 0 90px">
+        <input id="usP" class="inp" placeholder="USD per share" style="flex:0 0 120px"><input id="usC" class="inp" placeholder="fees USD" style="flex:0 0 90px"><button class="btn primary" id="usAdd">Add trade</button></div>
+      <div class="row wrapr" style="gap:6px"><input id="rD" class="inp" type="date" style="flex:0 0 150px"><input id="rU" class="inp" placeholder="USD sent" style="flex:0 0 110px">
+        <input id="rI" class="inp" placeholder="rupees paid" style="flex:0 0 120px"><input id="rT" class="inp" placeholder="TCS rupees (blank: estimate)" style="flex:0 0 190px"><button class="btn" id="rAdd">Add remittance</button></div>`;
+    $('usAdd').onclick = async () => { try { await post('/api/us/trade', { date: $('usD').value, symbol: $('usS').value, side: $('usSide').value, qty: Number($('usQ').value), price: Number($('usP').value), charges: Number($('usC').value || 0) }); loadUs(); } catch (e) { alert(e.message); } };
+    $('rAdd').onclick = async () => { try { const r = await post('/api/us/remit', { date: $('rD').value, usd: Number($('rU').value), inr: Number($('rI').value), tcs: $('rT').value === '' ? null : Number($('rT').value) }); alert('Recorded. TCS Rs ' + inr(r.tcs_inr) + ' (' + r.tcs_basis + ')'); loadUs(); } catch (e) { alert(e.message); } };
+  } catch (e) { box.innerHTML = '<span class="small muted">Not available: ' + esc(e.message) + '</span>'; }
 }
 /* S64: scanners (quant/scan.py): saved scans over his names; a hit can become a price watch; none is a signal */
 async function loadScans() {

@@ -43,6 +43,12 @@ def run(con, root, asof: date, now: datetime, index=None) -> dict:
         pass
     out["reserve_proposed"] = reserve.propose(con, asof, now, p["investable"], p["equity"], p["target"], p["soft"], beta) is not None
     out["pot_proposed"] = pot.propose_limit(con, now, p["equity"], p["target"] * p["investable"] - p["equity"]) is not None
+    try:                                    # the US sleeve study goes to Needs from you once, when the US history is on this PC
+        from pflab.risk import sleeve
+        if (root / "us" / "raw" / "SPY.parquet").exists():
+            out["us_sleeve_proposed"] = sleeve.propose(con, root, asof, now, p["investable"]) is not None
+    except Exception as e:
+        out["us_sleeve_error"] = f"{type(e).__name__}: {str(e)[:100]}"
     alerts = 0
     try:
         ex = themes.exposure_of(con, root, asof)

@@ -14,12 +14,15 @@ import pandas as pd
 
 from pflab.calc.valuation import Valuation, by_isin
 
-BUCKETS = ("equity", "equity_fund", "debt", "gold", "reit_invit", "cash", "unclassified")
+BUCKETS = ("equity", "equity_fund", "debt", "gold", "reit_invit", "cash", "intl_equity", "unclassified")      # S64: intl_equity = the US sleeve
 
 
 def bucket(asset_class: Optional[str], tax_class: Optional[str], category: Optional[str] = None,
-           name: Optional[str] = None) -> str:
-    """Risk bucket for one instrument, from labels the instrument master already holds."""
+           name: Optional[str] = None, market: Optional[str] = None) -> str:
+    """Risk bucket for one instrument, from labels the instrument master already holds. An instrument that trades outside
+    NSE and BSE (S64: a US stock or ETF) is `intl_equity`."""
+    if isinstance(market, str) and market and market not in ("NSE", "BSE"):
+        return "intl_equity"
     ac, tc = (asset_class or ""), (tax_class or "")
     text = f"{category or ''} {name or ''}".lower()
     if ac in ("sgb", "gold_physical") or tc in ("SGB", "PHYSICAL_GOLD"):
@@ -57,7 +60,7 @@ def exposures(v: Valuation, instruments: pd.DataFrame,
         i = inst.loc[r.isin] if r.isin in inst.index else None
         rows.append(dict(isin=r.isin, value=r.value,
                          bucket=bucket(*(None if i is None else (i["asset_class"], i["tax_class"],
-                                                                 i.get("category"), i.get("name"))))
+                                                                 i.get("category"), i.get("name"), i.get("market"))))
                          if i is not None else bucket(None, None),
                          sector=None if i is None else i.get("sector"),
                          issuer=None if i is None else i.get("issuer"),

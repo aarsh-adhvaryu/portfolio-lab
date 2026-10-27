@@ -1,0 +1,80 @@
+# NYSE market holidays and early closes, 2026 and 2027, exactly as NYSE's page lists them.
+# Source: https://www.nyse.com/trade/hours-calendars , read 2026-10-27. Core session 9:30 to 16:00 America/New_York (13:00 on an
+# early-close day). The market follows US daylight saving (clocks change on 2026-11-01 and 2027-03-14), so the IST time of the
+# open moves by an hour: conductor/us_calendar.py computes it from the zone, never from a fixed offset.
+# Next year's list: NYSE publishes it ahead; add it here (the system warns from 1 December when the next year is missing).
+
+[meta]
+checked_on = 2026-10-27
+years = [2026, 2027]
+
+[[holiday]]
+date = 2026-01-01
+name = "New Year's Day"
+[[holiday]]
+date = 2026-01-19
+name = "Martin Luther King, Jr. Day"
+[[holiday]]
+date = 2026-02-16
+name = "Washington's Birthday"
+[[holiday]]
+date = 2026-04-03
+name = "Good Friday"
+[[holiday]]
+date = 2026-05-25
+name = "Memorial Day"
+[[holiday]]
+date = 2026-06-19
+name = "Juneteenth National Independence Day"
+[[holiday]]
+date = 2026-07-03
+name = "Independence Day (observed)"
+[[holiday]]
+date = 2026-09-07
+name = "Labor Day"
+[[holiday]]
+date = 2026-11-26
+name = "Thanksgiving Day"
+[[holiday]]
+date = 2026-12-25
+name = "Christmas Day"
+[[holiday]]
+date = 2027-01-01
+name = "New Year's Day"
+[[holiday]]
+date = 2027-01-18
+name = "Martin Luther King, Jr. Day"
+[[holiday]]
+date = 2027-02-15
+name = "Washington's Birthday"
+[[holiday]]
+date = 2027-03-26
+name = "Good Friday"
+[[holiday]]
+date = 2027-05-31
+name = "Memorial Day"
+[[holiday]]
+date = 2027-06-18
+name = "Juneteenth National Independence Day (observed)"
+[[holiday]]
+date = 2027-07-05
+name = "Independence Day (observed)"
+[[holiday]]
+date = 2027-09-06
+name = "Labor Day"
+[[holiday]]
+date = 2027-11-25
+name = "Thanksgiving Day"
+[[holiday]]
+date = 2027-12-24
+name = "Christmas Day (observed)"
+
+[[early_close]]
+date = 2026-11-27
+name = "Day after Thanksgiving"
+[[early_close]]
+date = 2026-12-24
+name = "Christmas Eve"
+[[early_close]]
+date = 2027-11-26
+name = "Day after Thanksgiving"

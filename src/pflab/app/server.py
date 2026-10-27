@@ -276,6 +276,41 @@ def create_app(rt) -> FastAPI:
     def research(isin: str = ""):
         return json.loads(json.dumps(views.research(rt, isin or None), default=str))
 
+    @app.get("/api/us")
+    def us_api():
+        from pflab.ledger import foreign as lf
+        from pflab.tax import foreign as tf
+        con, today = rt.cursor(), rt.clock().date()
+        rem = lf.remitted_in_fy(con, today)
+        return json.loads(json.dumps({"positions": lf.positions(con, today), "lrs": {**rem, "room_usd": tf.lrs_room(rem["usd"])},
+                                      "fx": lf.fx_on(con, today), "fx_label": lf.FX_LABEL}, default=str))
+
+    @app.post("/api/us/trade")
+    def us_trade(date: str = Body(...), symbol: str = Body(...), side: str = Body(...), qty: float = Body(...), price: float = Body(...),
+                 charges: float = Body(0.0), cik: int = Body(0), etf: bool = Body(False)):
+        from datetime import date as _d
+        from pflab.ledger import foreign as lf
+        con = rt.cursor()
+        key = lf.pseudo_isin(cik) if cik else f"US:{symbol.strip().upper()}"
+        try:
+            lf.register_instrument(con, symbol.strip().upper(), key, symbol.strip().upper(), etf=etf)
+            tid = lf.add_trade(con, _d.fromisoformat(date), symbol, key, side, qty, price, charges, source="dashboard")
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        rt.bump("portfolio")
+        return {"id": tid, "isin": key}
+
+    @app.post("/api/us/remit")
+    def us_remit(date: str = Body(...), usd: float = Body(...), inr: float = Body(...), tcs: float = Body(None), bank: str = Body("")):
+        from datetime import date as _d
+        from pflab.ledger import foreign as lf
+        from pflab.tax import foreign as tf
+        con = rt.cursor()
+        d = _d.fromisoformat(date)
+        t = tcs if tcs is not None else tf.tcs(lf.remitted_in_fy(con, d)["inr"], inr)["tcs_rs"]
+        return {"id": lf.add_remittance(con, d, usd, inr, t, bank, source="dashboard"), "tcs_inr": t,
+                "tcs_basis": "recorded" if tcs is not None else "estimate (configs/tax/foreign.toml)"}
+
     @app.get("/api/scans")
     def scans_api():
         from pflab.quant import scan

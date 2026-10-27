@@ -522,6 +522,27 @@ MIGRATIONS = [
         active BOOLEAN NOT NULL DEFAULT true, created_by VARCHAR, created_at TIMESTAMP NOT NULL, claim_id BIGINT
     );
     """),
+    # 2026-10-27: S64 Phase 6 (the US sleeve): where an instrument trades and in what currency; daily exchange rates; a US
+    # identifier mapped to a real ISIN when a statement shows one; US trades in dollars with the rate that converts them; money
+    # sent abroad under LRS (the TCS paid is a tax credit)
+    (38, "us_s64", """
+    ALTER TABLE instruments ADD COLUMN market VARCHAR DEFAULT 'NSE';
+    ALTER TABLE instruments ADD COLUMN currency VARCHAR DEFAULT 'INR';
+    ALTER TABLE accounts ADD COLUMN currency VARCHAR DEFAULT 'INR';
+    CREATE TABLE fx_rates (
+        date DATE NOT NULL, pair VARCHAR NOT NULL, rate DOUBLE NOT NULL, source VARCHAR NOT NULL, PRIMARY KEY (date, pair)
+    );
+    CREATE TABLE instrument_alias (alias VARCHAR PRIMARY KEY, isin VARCHAR NOT NULL, since DATE NOT NULL);
+    CREATE TABLE us_trades (
+        trade_id BIGINT PRIMARY KEY, trade_date DATE NOT NULL, symbol VARCHAR NOT NULL, isin VARCHAR NOT NULL, side VARCHAR NOT NULL,
+        qty DOUBLE NOT NULL, price_usd DOUBLE NOT NULL, charges_usd DOUBLE, fx_rate DOUBLE, fx_source VARCHAR, source VARCHAR NOT NULL,
+        entered_at TIMESTAMP NOT NULL, note VARCHAR
+    );
+    CREATE TABLE us_remittances (
+        remit_id BIGINT PRIMARY KEY, remit_date DATE NOT NULL, usd DOUBLE NOT NULL, inr DOUBLE NOT NULL, tcs_inr DOUBLE,
+        bank VARCHAR, source VARCHAR NOT NULL, entered_at TIMESTAMP NOT NULL, note VARCHAR
+    );
+    """),
 ]
 
 

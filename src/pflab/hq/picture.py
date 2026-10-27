@@ -63,6 +63,31 @@ def gauges_block(root: Path, asof: date) -> dict:
     return out
 
 
+def us_sleeve(con, root: Path, asof: date) -> dict:
+    """The US sleeve: positions in dollars and rupees, the LRS year so far, whether the US market is open, and the pending study."""
+    from pflab.conductor import us_calendar as uc
+    from pflab.ledger import foreign as lf
+    from pflab.tax import foreign as tf
+    out: dict = {}
+    pos = lf.positions(con, asof)
+    cal = uc.load()
+    now = datetime.now()
+    out["us_market_now"] = cal.mode(now)
+    nxt = asof if cal.is_trading_day(asof) else cal.next_trading_day(asof)
+    sess = cal.session_ist(nxt)
+    if sess:
+        out["next_session_ist"] = f"{sess[0]:%a %d %b %H:%M} to {sess[1]:%H:%M}"
+    rem = lf.remitted_in_fy(con, asof)
+    out["lrs"] = {**rem, "room_usd": tf.lrs_room(rem["usd"])}
+    out["positions"] = pos
+    if not pos and not rem["usd"]:
+        out["note"] = "no US holdings and nothing sent abroad yet"
+    pend = con.execute("SELECT prop_id FROM limit_proposals WHERE kind='us_sleeve' AND status='pending'").fetchone()
+    if pend:
+        out["study_waiting_for_his_answer"] = True
+    return out
+
+
 def news_mood(con, asof: date, holdings: Dict[str, str]) -> dict:
     """Average news tone (GDELT) of the last 3 days against the last 90 days, for the market and for each holding."""
     def mean(q, args):
@@ -223,6 +248,7 @@ def build(con, root: Path, asof: date, bk=None, pm_dir: Optional[Path] = None) -
     if bk is not None:
         held = {i: s for i, s in bk.symbols.items() if i in bk.values or i in bk.on_list}
     _try("gauges", lambda: gauges_block(root, asof), out)
+    _try("us_sleeve", lambda: us_sleeve(con, root, asof), out)
     _try("news_mood", lambda: news_mood(con, asof, held), out)
     _try("portfolio", lambda: portfolio(con, asof), out)
     mood = out["news_mood"] if "holdings" in out.get("news_mood", {}) else {"holdings": {}}

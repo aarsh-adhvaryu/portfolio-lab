@@ -17,7 +17,7 @@ BenchLoader = Callable[[], Optional[pd.Series]]
 
 
 def instruments_frame(con) -> pd.DataFrame:
-    return con.execute("SELECT isin, asset_class, tax_class, sector, issuer, name, category "
+    return con.execute("SELECT isin, asset_class, tax_class, sector, issuer, name, category, market "
                        "FROM instruments").df()
 
 

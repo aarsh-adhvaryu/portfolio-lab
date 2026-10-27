@@ -357,6 +357,15 @@ register(Job("watches", Interval(15, 9, 16, weekdays_only=True), _watches, "pric
              cooldown_minutes=10))
 register(Job("watches_close", Daily(16, 0), _watches, "price watches once after the close", cooldown_minutes=30))
 register(Job("idle_cash", Daily(20, 30), _idle_cash, "Kite cash unused for a week -> a line in the evening summary"))
+def _us_fx(ctx: Ctx) -> dict:
+    """S64 Phase 6: the dollar's price in rupees (FRED) into the store, for US lots and the sleeve's value."""
+    from pflab.ledger import foreign as lf
+    return {"new_rates": lf.load_fx(ctx.con, ctx.data_root)}
+
+
+register(Job("us_fx", Daily(7, 25, weekdays_only=False), _us_fx, "US sleeve: USDINR rates into the store"))
+
+
 def _companion(ctx: Ctx) -> dict:
     """S64: theme baskets, theme limits, the dip reserve and the pot proposed once and applied after his yes; applied
     limits held to; open pot ideas scored."""

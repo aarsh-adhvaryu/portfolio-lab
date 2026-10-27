@@ -144,6 +144,15 @@ def main(argv=None):
     ipop.add_argument("--price", type=float, required=True, help="issue price")
     ipop.add_argument("--budget", type=float, required=True, help="rupees to invest in all, allotment included")
     ipop.add_argument("--group", default=None, help="his business group name (PFLAB_PM_DIR/groups.toml)")
+    usp = sub.add_parser("us", help="S64 Phase 6: the US sleeve's trades, remittances, gains and rates")
+    usp.add_argument("action", choices=["trade", "remit", "show", "gains", "fx"])
+    usp.add_argument("--date"); usp.add_argument("--symbol"); usp.add_argument("--side", choices=["buy", "sell"])
+    usp.add_argument("--qty", type=float); usp.add_argument("--price", type=float, help="USD per share")
+    usp.add_argument("--charges", type=float, help="USD fees on the trade")
+    usp.add_argument("--cik", type=int, help="SEC CIK (makes the pseudo-ISIN ZZ+CIK)"); usp.add_argument("--isin")
+    usp.add_argument("--etf", action="store_true")
+    usp.add_argument("--usd", type=float); usp.add_argument("--inr", type=float); usp.add_argument("--tcs", type=float)
+    usp.add_argument("--bank"); usp.add_argument("--fy", type=int, help="financial year's starting year"); usp.add_argument("--slab", type=float)
     hqp = sub.add_parser("hq", help="the agent HQ (S64: the replay bench)")
     hqp.add_argument("action", choices=["replay"])
     hqp.add_argument("pass_id", type=int, help="the journaled pass to run again")
@@ -269,6 +278,8 @@ def main(argv=None):
         return _hq(a)
     if a.cmd == "ipo":
         return _ipo(a)
+    if a.cmd == "us":
+        return _us(a)
     if a.cmd == "list":
         from pflab.plan import stock_list as slm
         from pflab.pm import store as _store
@@ -764,6 +775,45 @@ def _service(a) -> int:
             return 2
         print(bk.backup(ctx.con, ctx.pm_dir / "ledger.duckdb", t, ctx.now, bk.keep_count()))
         return 0
+    return 0
+
+
+def _us(a) -> int:
+    """pflab us trade|remit|show|gains|fx: the US sleeve's entries (S64 Phase 6). A statement parser will land in the same tables."""
+    import json as _js
+    from datetime import date as _date
+
+    from pflab.data import data_dir
+    from pflab.ledger import foreign as lf
+    from pflab.pm import store
+    con = store.connect()
+    today = _date.today()
+    if a.action == "fx":
+        print(f"{lf.load_fx(con, data_dir())} new USDINR rates; {lf.FX_LABEL}")
+        return 0
+    if a.action == "trade":
+        key = a.isin or (lf.pseudo_isin(a.cik) if a.cik else f"US:{a.symbol.upper()}")
+        lf.register_instrument(con, a.symbol.upper(), key, a.symbol.upper(), etf=a.etf)
+        tid = lf.add_trade(con, _date.fromisoformat(a.date), a.symbol, key, a.side, a.qty, a.price, a.charges or 0.0, source="manual")
+        print(f"trade #{tid}: {a.side} {a.qty:g} {a.symbol.upper()} at USD {a.price:g} ({key})")
+        return 0
+    if a.action == "remit":
+        from pflab.tax import foreign as tf
+        before = lf.remitted_in_fy(con, _date.fromisoformat(a.date))
+        tcs = a.tcs if a.tcs is not None else tf.tcs(before["inr"], a.inr)["tcs_rs"]
+        rid = lf.add_remittance(con, _date.fromisoformat(a.date), a.usd, a.inr, tcs, a.bank or "")
+        print(f"remittance #{rid}: USD {a.usd:,.0f} (Rs {a.inr:,.0f}), TCS {'recorded' if a.tcs is not None else 'estimated'} Rs {tcs:,.0f}; "
+              f"{lf.remitted_in_fy(con, _date.fromisoformat(a.date))}")
+        return 0
+    if a.action == "gains":
+        if a.slab is None:
+            print("give your slab rate for short-term gains: --slab 0.30")
+            return 2
+        print(_js.dumps(lf.gains(con, a.fy or (today.year if today.month >= 4 else today.year - 1), a.slab), indent=1, default=str))
+        return 0
+    from pflab.tax import foreign as tf
+    print(_js.dumps({"positions": lf.positions(con, today), "lrs_this_year": lf.remitted_in_fy(con, today),
+                     "lrs_room_usd": tf.lrs_room(lf.remitted_in_fy(con, today)["usd"])}, indent=1, default=str))
     return 0
 
 

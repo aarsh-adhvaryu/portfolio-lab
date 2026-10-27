@@ -254,11 +254,11 @@ def load_into_store(con, master: pd.DataFrame, amfi: pd.DataFrame, source_sha: s
     a["source_doc_sha"], a["ingested_at"] = source_sha, now
     con.execute("BEGIN")
     try:
-        con.execute("DELETE FROM instruments")
+        con.execute("DELETE FROM instruments WHERE market IS NULL OR market IN ('NSE', 'BSE')")        # S64: US rows stay
         con.execute("DELETE FROM amfi_schemes")
         con.register("_m", master)
         con.register("_a", a)
-        con.execute(f"INSERT INTO instruments SELECT {', '.join(MASTER_COLUMNS)} FROM _m")
+        con.execute(f"INSERT INTO instruments ({', '.join(MASTER_COLUMNS)}) SELECT {', '.join(MASTER_COLUMNS)} FROM _m")
         con.execute("""INSERT INTO amfi_schemes
             SELECT scheme_code, isin_1, isin_2, name, plan, option, amc, category, nav, nav_date,
                    source_doc_sha, ingested_at FROM _a""")

@@ -82,6 +82,10 @@ SYSTEM = (
     "never putting his shares or amounts in the question; connect it to the picture (how much of that business group he already "
     "holds, his targets and limits) and set out the choices with their numbers. Do not call it up or down: say what is known, what "
     "history shows for other IPOs, and what is not known. Tell him to decide sell, hold or part BEFORE the listing.\n"
+    "6e. US instruments (market US, prices in dollars, keys 'ZZ' + SEC number or 'US:' + symbol) are the investor's small "
+    "diversification sleeve, held through Zerodha's GIFT City route. Say dollars when you mean dollars; remember the rupee moves "
+    "the sleeve too; the learner tests only the ETFs, so a stock-level claim about a US stock is untested. The picture's "
+    "us_sleeve part shows the positions, the year's remittances and TCS.\n"
     "7. If told your context is near its limit, call save_state at once with your working state.\n"
     "7b. In a pass the investor asked for (an event 'from the investor (question)'), your final message is the answer he "
     "reads: do not also tell_investor it.\n"
@@ -252,7 +256,23 @@ def due_scheduled(con, now: datetime, cal=None) -> Optional[str]:
         day0 = datetime.combine(now.date(), datetime.min.time())
         if not con.execute("SELECT 1 FROM hq_passes WHERE trigger='morning' AND role='brain' AND passed_at >= ?", [day0]).fetchone():
             return "morning"
+    if _us_open_due(con, now):
+        return "us_open"
     return None
+
+
+def _us_open_due(con, now: datetime) -> bool:
+    """S64 Phase 6: once per US trading day, 20 minutes after the New York open (on his clock), and only while he holds US shares."""
+    try:
+        from pflab.conductor import us_calendar as uc
+        from pflab.ledger import foreign as lf
+        pt = uc.load().pass_time_ist(now.date())
+        if pt is None or now < pt or not lf.positions(con, now.date()):
+            return False
+        day0 = datetime.combine(now.date(), datetime.min.time())
+        return not con.execute("SELECT 1 FROM hq_passes WHERE trigger='us_open' AND role='brain' AND passed_at >= ?", [day0]).fetchone()
+    except Exception:
+        return False
 
 
 # --- a pass ------------------------------------------------------------------------------------------------------------

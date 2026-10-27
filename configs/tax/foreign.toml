@@ -1,0 +1,153 @@
+# Foreign (US) investing rows for the US sleeve (S64 Phase 6 item 1). Facts looked up on 2026-10-27, never from memory.
+#
+# Same vocabulary as the other files in this folder (tests/test_tax_rules.py checks every row):
+#   verification = primary     the official page's own text was read
+#                  secondary   an official page's wording seen in a search result, or Zerodha's own published guide (read in full);
+#                              the primary page was not opened (or refused: the Income Tax Department answered 403). Listed as open in
+#                              docs/PLAN.md section 6, as the capital-gains rows are.
+#                  unverified  no source seen: tax/foreign.py REFUSES it, it is never used in a figure
+#   source_kind  says which kind of secondary this is (official wording vs the broker's guide).
+# Rates here are sourced inputs to ESTIMATES (the investor's actual tax depends on his total income and his adviser).
+
+[[fact]]
+id = "lrs_limit_usd"
+value = 250000
+unit = "USD per financial year (April-March), per person, across all remittances under LRS (not only investing)"
+source_url = "https://www.rbi.org.in/commonman/english/Scripts/FAQs.aspx?Id=1834"
+source_title = "RBI FAQ: Liberalised Remittance Scheme (LRS) limit"
+broker_url = "https://support.zerodha.com/category/trading-and-markets/general-kite/global-investing/articles/global-investing-guide"
+verification = "secondary"
+source_kind = "official page, wording seen in search results (page itself not opened or refused)"
+verified_on = 2026-10-27
+note = "Above the limit needs RBI's prior permission. Tracked per PAN across banks."
+
+[[fact]]
+id = "tcs_lrs_threshold_inr"
+value = 1000000
+unit = "INR of LRS remittances in a financial year before TCS is collected (raised from 7 lakh effective 2025-04-01)"
+source_url = "https://www.incometaxindia.gov.in/w/tcs-rates"
+source_title = "Income Tax Department: TCS rates (206C(1G)); Brief on budget 2025"
+broker_url = "https://support.zerodha.com/category/trading-and-markets/general-kite/global-investing/articles/global-investing-guide"
+verification = "secondary"
+source_kind = "official page, wording seen in search results (page itself not opened or refused)"
+verified_on = 2026-10-27
+note = "The department's page returned 403 when opened; its wording was seen in search results. The Finance Act 2026 reportedly moved this to section 394 of the Income-tax Act 2025 (secondary sources); the investment rate below is unchanged in every source seen."
+
+[[fact]]
+id = "tcs_lrs_rate_investment"
+value = 0.20
+unit = "share of the amount remitted ABOVE the threshold, for purposes other than education and medical (investing in US stocks)"
+source_url = "https://www.incometaxindia.gov.in/w/tcs-rates"
+source_title = "Income Tax Department: TCS rates"
+broker_url = "https://support.zerodha.com/category/trading-and-markets/general-kite/global-investing/articles/global-investing-guide"
+verification = "secondary"
+source_kind = "official page, wording seen in search results (page itself not opened or refused)"
+verified_on = 2026-10-27
+note = "TCS is a credit against the investor's tax when he files (Zerodha); it is a cash-flow cost until then."
+
+[[fact]]
+id = "cg_foreign_long_term_months"
+value = 24
+unit = "months: held MORE than this is long-term for shares of a foreign company; up to it, short-term"
+source_url = "https://zerodha.com/varsity/chapter/foreign-stocks-and-taxation/"
+source_title = "Zerodha Varsity: Foreign stocks taxation in India"
+verification = "secondary"
+source_kind = "broker (Zerodha) guide, read in full"
+verified_on = 2026-10-27
+note = "Foreign shares are unlisted for Indian tax. The Income Tax Department page was not opened; the existing capital_gains.toml rows cover unlisted shares and should agree. Foreign ETFs: 24 months from 2025-04-01 (same source)."
+
+[[fact]]
+id = "cg_foreign_ltcg_rate"
+value = 0.125
+unit = "long-term gains on foreign shares, sales on or after 2024-07-23, no indexation, plus surcharge and cess"
+source_url = "https://zerodha.com/varsity/chapter/foreign-stocks-and-taxation/"
+source_title = "Zerodha Varsity: Foreign stocks taxation in India"
+verification = "secondary"
+source_kind = "broker (Zerodha) guide, read in full"
+verified_on = 2026-10-27
+
+[[fact]]
+id = "cg_foreign_stcg_rate"
+value = "slab"
+unit = "short-term gains on foreign shares are taxed at the investor's slab rate"
+source_url = "https://zerodha.com/varsity/chapter/foreign-stocks-and-taxation/"
+source_title = "Zerodha Varsity: Foreign stocks taxation in India"
+verification = "secondary"
+source_kind = "broker (Zerodha) guide, read in full"
+verified_on = 2026-10-27
+
+[[fact]]
+id = "fx_conversion_rule"
+value = "SBI telegraphic-transfer buying rate on the last day of the month BEFORE the month of the sale (cost and proceeds), and before the month of a dividend's receipt"
+unit = "Income-tax Rules rule 115 (renumbering under the Income-tax Rules 2026 not checked)"
+source_url = "https://wmstatic-prd.incometaxindia.gov.in/web/guest/w/rule-115-2"
+source_title = "Income Tax Department: Rule 115"
+broker_url = "https://zerodha.com/varsity/chapter/foreign-stocks-and-taxation/"
+verification = "secondary"
+source_kind = "official page, wording seen in search results (page itself not opened or refused)"
+verified_on = 2026-10-27
+note = "Not stated: whether gain is converted net or cost and proceeds separately. The SBI rate itself is not in our data (FBIL/RBI reference rate stands in, labelled estimate)."
+
+[[fact]]
+id = "dtaa_dividend_withholding"
+value = 0.25
+unit = "US withholding on dividends to an Indian resident with a valid Form W-8BEN (30% standard rate without it)"
+source_url = "https://support.zerodha.com/category/trading-and-markets/general-kite/global-investing/articles/global-investing-guide"
+source_title = "Zerodha: Investing in US stocks through Zerodha (guide)"
+verification = "secondary"
+source_kind = "broker (Zerodha) guide, read in full"
+verified_on = 2026-10-27
+note = "The India-US treaty text (article 10) was not opened. W-8BEN is valid for the year signed plus three calendar years (Zerodha)."
+
+[[fact]]
+id = "foreign_tax_credit_form_67"
+value = "Form 67 furnished on or before the ITR due date under section 139(1), with proof of the foreign tax; credit claimed in Schedule TR; the foreign tax is converted at the SBI TT buying rate of the last day of the month before it was withheld"
+unit = "rule 128"
+source_url = "https://www.incometaxindia.gov.in/w/rule-128-1"
+source_title = "Income Tax Department: Rule 128; Double Taxation Relief; Form 67"
+verification = "secondary"
+source_kind = "official page, wording seen in search results (page itself not opened or refused)"
+verified_on = 2026-10-27
+
+[[fact]]
+id = "schedule_fa_period"
+value = "calendar year (for assessment year 2026-27: 1 January to 31 December 2025); not needed for a non-resident or not-ordinarily-resident filer; ITR-1 and ITR-4 have no Schedule FA"
+unit = "reporting of foreign assets: US stocks, ETFs and cash in the global wallet"
+source_url = "https://www.incometax.gov.in/iec/foportal/sites/default/files/2026-03/Step%20by%20Step%20Guide%20FA%20FSI.pdf"
+source_title = "Income Tax e-filing portal: Step-by-step guide to fill FSI, TR and FA schedules"
+broker_url = "https://support.zerodha.com/category/trading-and-markets/general-kite/global-investing/articles/global-investing-guide"
+verification = "secondary"
+source_kind = "official page, wording seen in search results (page itself not opened or refused)"
+verified_on = 2026-10-27
+
+[[fact]]
+id = "us_estate_tax_nra_threshold_usd"
+value = 60000
+unit = "USD of US-situated assets above which a nonresident alien's estate must file Form 706-NA and may owe US estate tax (18% to 40% per Zerodha); no India-US estate tax treaty (Zerodha)"
+source_url = "https://www.irs.gov/individuals/international-taxpayers/some-nonresidents-with-us-assets-must-file-estate-tax-returns"
+source_title = "IRS: Some nonresidents with U.S. assets must file estate tax returns"
+broker_url = "https://support.zerodha.com/category/trading-and-markets/general-kite/global-investing/articles/global-investing-guide"
+verification = "secondary"
+source_kind = "official page, wording seen in search results (page itself not opened or refused)"
+verified_on = 2026-10-27
+note = "A real exposure for a sleeve held in US-listed stocks and ETFs above USD 60,000: US-listed ETFs and stocks are US-situs assets. The investor should be told before the sleeve passes that size; the tax is on his heirs, not on him."
+
+[[fact]]
+id = "gift_city_route"
+value = "resident Indian individuals only (no joint accounts, HUFs, companies, NRIs); trades go through BSE's India INX Global Access at GIFT City IFSC; USD wallet funded by netbanking from five partner banks; fractional investing; beta on Kite web as of the guide"
+unit = "Zerodha's US investing"
+source_url = "https://support.zerodha.com/category/trading-and-markets/general-kite/global-investing/articles/global-investing-guide"
+source_title = "Zerodha: Investing in US stocks through Zerodha (guide)"
+verification = "secondary"
+source_kind = "broker (Zerodha) guide, read in full"
+verified_on = 2026-10-27
+
+[[fact]]
+id = "gift_city_charges"
+value = "brokerage 0.10% (min USD 0.01, max USD 10) on buys and sells; IGST 18% on brokerage; IFSCA turnover fee 0.005% both sides; SEC fee 0.00206% and FINRA TAF USD 0.000195 a share (cap USD 9.79) on sells only (FINRA fee paused 2026-10-01 to 2026-12-31); currency conversion markup 0.4% to 1.4% above the RBI reference rate by the bank"
+unit = "Zerodha's published charges"
+source_url = "https://support.zerodha.com/category/trading-and-markets/general-kite/global-investing/articles/global-investing-guide"
+source_title = "Zerodha: Investing in US stocks through Zerodha (guide)"
+verification = "secondary"
+source_kind = "broker (Zerodha) guide, read in full"
+verified_on = 2026-10-27

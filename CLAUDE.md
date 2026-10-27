@@ -23,7 +23,9 @@ The build follows `docs/PLAN.md` (sessions S0–S49), one session at a time, usi
    evidence of anything out-of-sample.
 3. **Point-in-time.** A feature at date M uses only rows dated <= M.
    Announcements use the dissemination timestamp.
-4. **ISIN is the security key.** Never join on symbol without a date.
+4. **ISIN is the security key.** Never join on symbol without a date. A US instrument uses its real ISIN when a statement shows
+   one; until then the pseudo-ISIN "ZZ" + the 10-digit SEC CIK (12 characters; ZZ is not an ISO country, so it never meets a real
+   ISIN), mapped to the real one in `instrument_alias` from a date (S64 Phase 6).
 5. **Prefer maintained libraries over hand-written code.** Core: pandas,
    pyarrow, duckdb, numpy, requests, python-dateutil, tomli/tomllib, pypdf,
    openpyxl 3.1.5 (added 2026-10-06, S16: AMC monthly portfolio Excel files).

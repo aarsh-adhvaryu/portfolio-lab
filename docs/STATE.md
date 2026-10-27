@@ -1,5 +1,7 @@
 # STATE — 2026-10-25
 
+**US sleeve (2026-10-27, PLAN Phase 6):** facts sourced and dated, schema v38, dollar ledger and gains, US data, NYSE calendar, the sleeve study (a 10% US share: chance of a 35% fall 20.5% to 18.1%, growth about the same; TCS above Rs 10 lakh a year, so fund over two financial years). Waiting on: his SEC contact, his sleeve share, a GIFT City statement. S&P 500 backfill is his: `tools\\backfill_us.py`.
+
 **The one picture (2026-10-27, his steer: one brain wired to everything):** `hq/picture.py` lays the market state and crash gauges, news mood (and whether the news is current), allocation, every holding, themes, cash, offers, scenarios, what changed, what waits and what is learned side by side by code; brain tool `picture` is called first in every pass (rule 2b); numbers in plain words in `hq/plain.py`. First live build: 50 s; it showed the news is stale (the system has not run since 24 Oct; a 3-day news fetch took about 40 minutes).
 
 **Rule test results (2026-10-27, run by the investor; docs/research/s64_rules_results.md):** 1 of 7 passed. Below the 200-day average earns about 0.6-0.75% a month less (both periods): an avoid rule, wired as a finding. His P/E-above-50 rule failed (development t -2.86 against a 2.89 bar, validation the other way); cheap P/E, near the 52-week low, volume spike, 40% below the high and RSI below 30 failed (four of them the other way). The reversed claims are leads for fresh data, not registered. Tests run 31.

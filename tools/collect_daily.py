@@ -187,6 +187,31 @@ def _fo(start, end, root):
     return got
 
 
+def _us_prices(start, end, root):
+    # S64 Phase 6: US ETFs and his US names (daily, last days only), the panel rebuilt; not critical. The S&P 500 backfill is
+    # tools/backfill_us.py (the investor's).
+    from pflab.data import us_prices
+    from pflab.pm import store
+    out = us_prices.collect(us_prices.universe(store.pm_dir()), root, recent_days=14)
+    us_prices.build_panel(root)
+    return {"symbols": len(out), "failed": {k: v for k, v in out.items() if isinstance(v, str) and not v.startswith("kept")}}
+
+
+def _sec_filings(start, end, root):
+    # S64 Phase 6: filings accepted by SEC for his US names (stock-level only); needs his SEC contact (see data/sec_edgar.py); not critical
+    from pflab.data import sec_edgar, us_prices
+    from pflab.pm import store
+    names = us_prices.my_names(store.pm_dir())
+    if not names:
+        return {"skipped": "no US names on his list yet"}
+    ck = us_prices.cik_map()
+    done = {}
+    for sym in names:
+        if sym in ck:
+            done[sym] = len(sec_edgar.submissions(ck[sym], root))
+    return done
+
+
 def _gdelt(start, end, root):
     from pflab.data import gdelt
     # GDELT publishes in arrears, so ask for yesterday and back.
@@ -210,6 +235,8 @@ SOURCES = {
     "macro": _macro,
     "holders": _holders,
     "fo": _fo,
+    "us_prices": _us_prices,
+    "sec_filings": _sec_filings,
 }
 
 

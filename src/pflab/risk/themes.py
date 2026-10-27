@@ -30,7 +30,7 @@ WINDOW = 252                     # sessions: "12 months"
 MIN_SESSIONS = 250
 DRIFT_POINTS = 0.05
 REVISE_AT = 0.20                 # an approved limit is re-proposed when new history moves it by more than this (relative)
-KINDS = ("theme_limit", "theme_basket", "theme_member", "dip_reserve", "pot_limit")
+KINDS = ("theme_limit", "theme_basket", "theme_member", "dip_reserve", "pot_limit", "us_sleeve")
 YES = ("yes", "y", "ok", "okay", "approve", "approved", "apply", "go ahead", "sure")
 NO = ("no", "n", "decline", "declined", "reject", "not now", "don't", "dont")
 

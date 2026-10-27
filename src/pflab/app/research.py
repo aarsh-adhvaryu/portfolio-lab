@@ -40,6 +40,13 @@ def closes(con, root: Path, isin: str, asof: date, years: int = 4) -> pd.Series:
     """Daily closes: the research panel's adjusted closes, joined to the store's closes at their last shared date
     (the panel ends mid-September 2026; the store's prices start in August), split-safe."""
     from pflab import _duck
+    if isin.startswith(("ZZ", "US:")):                                 # S64 Phase 6: a US instrument; dollars, total-return adjusted
+        up = root / "us" / "prices.parquet"
+        if not up.exists():
+            return pd.Series(dtype=float)
+        d = _duck.sql(f"SELECT date, adj_close FROM '{up.as_posix()}' WHERE isin = '{isin}' AND date >= DATE "
+                      f"'{asof - timedelta(days=365 * years)}' AND date <= DATE '{asof}' ORDER BY date").df()
+        return pd.Series(d["adj_close"].to_numpy(float), index=pd.to_datetime(d["date"]))
     p = root / "panel" / "prices.parquet"
     a = pd.Series(dtype=float)
     if p.exists():
