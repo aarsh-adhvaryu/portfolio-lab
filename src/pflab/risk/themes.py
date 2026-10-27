@@ -29,6 +29,7 @@ RISK_BUDGET = 0.10               # the theme's worst fall may cost at most this 
 WINDOW = 252                     # sessions: "12 months"
 MIN_SESSIONS = 250
 DRIFT_POINTS = 0.05
+REVISE_AT = 0.20                 # an approved limit is re-proposed when new history moves it by more than this (relative)
 KINDS = ("theme_limit", "theme_basket", "theme_member", "dip_reserve", "pot_limit")
 YES = ("yes", "y", "ok", "okay", "approve", "approved", "apply", "go ahead", "sure")
 NO = ("no", "n", "decline", "declined", "reject", "not now", "don't", "dont")
@@ -197,14 +198,16 @@ def equity_cap(root_targets: Optional[Path] = None) -> float:
 
 # --- proposals: asked, answered, applied -------------------------------------------------------------------------
 
-def propose(con, kind: str, key: str, value, evidence: dict, text: str, now: datetime) -> Optional[int]:
-    """Store a proposal and open its question; None when one for (kind, key) is already pending or applied."""
+def propose(con, kind: str, key: str, value, evidence: dict, text: str, now: datetime, revise: bool = False) -> Optional[int]:
+    """Store a proposal and open its question; None when one for (kind, key) is already pending or applied. With `revise`, an
+    applied one does not block (a new value for a limit he approved); a pending one still does. The old value stays in force
+    until he says yes to the new one."""
     from pflab.agents import questions
     from pflab.pm.store import next_id
     if kind not in KINDS:
         raise ValueError(f"kind is one of {KINDS}")
-    if con.execute("SELECT 1 FROM limit_proposals WHERE kind=? AND key=? AND status IN ('pending','applied')",
-                   [kind, key]).fetchone():
+    if con.execute("SELECT 1 FROM limit_proposals WHERE kind=? AND key=? AND status IN " +
+                   ("('pending')" if revise else "('pending','applied')"), [kind, key]).fetchone():
         return None
     pid = next_id(con, "limit_proposals", "prop_id")
     qid = questions.ask(con, "limits", f"limit:{kind}:{key}:{pid}", f"{text} Answer yes to apply it, no to decline.", now)
@@ -241,6 +244,9 @@ def resolve(con, now: datetime) -> dict:
         else:
             continue
         _apply_side_effects(con, kind, key, json.loads(ev or "{}"), now, new == "applied")
+        if new == "applied":                                 # a newer approved value replaces the older one
+            con.execute("UPDATE limit_proposals SET status='superseded', decided_at=? WHERE kind=? AND key=? AND status='applied'",
+                        [now, kind, key])
         con.execute("UPDATE limit_proposals SET status=?, decided_at=? WHERE prop_id=?", [new, now, pid])
         out[new] += 1
     return out
@@ -283,11 +289,15 @@ def propose_limits(con, root, asof: date, now: datetime, cap: Optional[float] = 
         p = propose_limit(con, root, theme, asof, cap)
         if "limit" not in p:
             continue
+        old = applied(con, "theme_limit", theme)
+        if old is not None and abs(p["limit"] - old) / old <= REVISE_AT:
+            continue                                         # the approved limit still stands
         got = propose(con, "theme_limit", theme, round(p["limit"], 4), p,
                       f"Limit for '{cfg['label']}': at most {p['limit']:.1%} of the portfolio. Its worst fall from the 12-month "
                       f"high was {p['worst_fall']:.0%} ({p['on']}, {p['history']}); {RISK_BUDGET:.0%} / {abs(p['worst_fall']):.0%} = "
                       f"{p['uncapped']:.1%}" + (", cut to the equity targets" if p["capped"] else "") + ". A description of history, "
-                      "not a forecast.", now)
+                      "not a forecast." + (f" This revises the {old:.1%} you approved, because the history has moved it." if old is not None else ""),
+                      now, revise=old is not None)
         n += got is not None
     return n
 

@@ -1,5 +1,7 @@
 # STATE — 2026-10-25
 
+**Rule tests (2026-10-27):** seven rules of thumb registered as pre-registered claims #18-#24 (protocol committed first; `rule_filter` template; P/E point in time). Nothing has been run on them yet: the learner's nightly cycle takes three a night, or by hand `.venv\Scripts\python -m pflab.cli learner test --claim 18` (and 19-24; more than 5 minutes each). Theme history no longer has survivorship or hindsight.
+
 **S64 Phase 5 (2026-10-27, branch `pm/s64-finish`):** the companion's gaps wired on the real path, 1,827 tests pass. Telegram only when it matters plus 09:00 and 21:45 summaries; news recency and the Tijori ask; cause hypotheses in the graph; theme limits, dip reserve and opportunity pot (all proposals wait for his yes); every suggestion with a price range, highest buy, amount, wrong-if, a price watch and a ticket with Kite-style nudges; scenario chains (oil, rupee, US crash); F&O daily data with IV, PCR, premium, max pain and build-up (information only); the replay bench; scanners (starter scans, labelled not tested); business at a glance; valuation facts and rules of thumb for the brain. Open: `scan_rule` template, segment revenue, 3-year peer growth, Telegram real-path with sending on, the F&O backfill (his: `tools\backfill_fo.py --start 2024-01-01`), docs of the new tables in PLAN.
 
 **S63 the clean (2026-10-25, branch `pm/s63-clean` from `pm/s62-learner`, PLAN A23):** the delete list shown first,

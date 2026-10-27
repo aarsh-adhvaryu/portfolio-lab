@@ -149,3 +149,27 @@ def test_pit_proxy_history_includes_names_that_later_died_and_ignores_names_not_
     survivors_only = (1 + r[list("BCDE")].mean(axis=1)).cumprod()
     assert s.min() < survivors_only.reindex(s.index).min() or s.iloc[-1] < survivors_only.iloc[-1]       # A's crash is in
     assert themes.pit_proxy_history(mem, labels, r, ["capital goods"], min_names=6).empty                # too few live names: nothing invented
+
+
+def test_an_approved_limit_is_revised_only_when_history_moves_it_a_lot_and_only_after_a_new_yes(con, monkeypatch):
+    def fake(limit):
+        return lambda *a, **k: {"limit": limit, "uncapped": limit, "capped": False, "history": "t", "worst_fall": -0.5, "on": "2020-03-23",
+                                "risk_budget": 0.1, "equity_cap": 0.65}
+    monkeypatch.setattr(themes, "propose_limit", fake(0.20))
+    monkeypatch.setattr(themes, "config", lambda *a, **k: {"theme": {"ai_it": {"label": "AI and IT"}}})
+    assert themes.propose_limits(con, None, ASOF, NOW, cap=0.65) == 1
+    questions.answer(con, con.execute("SELECT q_id FROM limit_proposals").fetchone()[0], "yes", NOW)
+    themes.resolve(con, NOW)
+    assert themes.applied(con, "theme_limit", "ai_it") == 0.20
+    monkeypatch.setattr(themes, "propose_limit", fake(0.22))                              # 10% off: the approved one stands
+    assert themes.propose_limits(con, None, ASOF, NOW, cap=0.65) == 0
+    monkeypatch.setattr(themes, "propose_limit", fake(0.14))                              # 30% off: a revision is asked for
+    assert themes.propose_limits(con, None, ASOF, NOW, cap=0.65) == 1
+    assert themes.applied(con, "theme_limit", "ai_it") == 0.20                            # still the old one until he says yes
+    assert themes.propose_limits(con, None, ASOF, NOW, cap=0.65) == 0                     # and it is not asked twice
+    q = con.execute("SELECT q_id, status FROM limit_proposals WHERE status='pending'").fetchone()
+    assert "revises the 20.0% you approved" in con.execute("SELECT text FROM questions WHERE q_id=?", [q[0]]).fetchone()[0]
+    questions.answer(con, q[0], "yes", NOW)
+    themes.resolve(con, NOW)
+    assert themes.applied(con, "theme_limit", "ai_it") == 0.14
+    assert con.execute("SELECT count(*) FROM limit_proposals WHERE status='superseded'").fetchone()[0] == 1
