@@ -114,6 +114,10 @@ def market(root: Path, asof: date) -> dict:
     try:                                                   # S64: F&O facts (information, never a signal)
         from pflab.quant import options
         fo = options.summary(root, asof)
+        from pflab.quant import implied
+        im = implied.line(root, asof)
+        if im:
+            out["options_implied"] = im
         if fo:
             out["fo"] = {"line": options.line(root, asof), "atm_iv_pct": None if fo.get("atm_iv") is None else round(fo["atm_iv"] * 100, 1),
                          "iv_percentile_1y": fo.get("iv_percentile_1y"), "pcr": fo.get("pcr"), "max_pain": fo.get("max_pain"),

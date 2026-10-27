@@ -181,6 +181,8 @@ def _fo(start, end, root):
     from pflab.quant import options
     got = fo_daily.collect(max(start, end - timedelta(days=10)), end, root)
     got["derived"] = options.derive_missing(root)
+    from pflab.quant import implied                         # option-implied probabilities, kept daily and scored when due
+    got["implied"] = implied.derive_missing(root)
     got["missing"] = got["missing"][-3:]
     return got
 

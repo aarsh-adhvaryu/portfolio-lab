@@ -42,6 +42,14 @@ def market(con, root: Path, asof: date) -> dict:
     fo = options.line(root, asof)
     if fo:
         out["options_line"] = fo
+    from pflab.quant import implied
+    im = implied.latest(root, asof)
+    if im:
+        sc = implied.scorecard(root)
+        out["options_implied"] = {"line": implied.line(root, asof),
+                                  **{k: im[k] for k in ("expiry", "days", "p_below_10", "p_below_5", "p_above_5", "skew_90_110")},
+                                  "record": {k: sc["levels"][k] for k in ("below_5", "below_10")} if sc.get("levels") else None,
+                                  "record_n": f"{sc.get('scored', 0)} days over {sc.get('expiries', 0)} expiries"}
     return out
 
 
@@ -228,6 +236,8 @@ def headline(p: dict) -> List[str]:
     """The picture in a few lines, by code."""
     m = p.get("market", {})
     lines = []
+    if m.get("options_implied"):
+        lines.append(m["options_implied"]["line"])
     if "stance" in m:
         lines.append(f"Market: {m['stance']} (fall-clustering {m.get('fall_clustering_state')}, Nifty 500 {m.get('nifty500_below_1y_high_pct')}% "
                      f"below its 1-year high, dip rule {'on' if m.get('dip_rule_active') else 'off'}).")
