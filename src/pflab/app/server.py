@@ -306,6 +306,12 @@ def create_app(rt) -> FastAPI:
         from pflab.risk import scenarios as sn
         return json.loads(json.dumps(sn.run_all(rt.cursor(), rt.data_root, rt.clock().date()), default=str))
 
+    @app.get("/api/business")
+    def business_api(isin: str):
+        from pflab.hq import business
+        sym = (rt.cursor().execute("SELECT symbol FROM instruments WHERE isin=?", [isin]).fetchone() or [isin])[0]
+        return json.loads(json.dumps(business.facts(rt.cursor(), rt.data_root, isin, sym, rt.clock().date(), rt.pm_dir), default=str))
+
     @app.get("/api/maths")
     def maths(isin: str):
         return json.loads(json.dumps(views.maths(rt, isin), default=str))

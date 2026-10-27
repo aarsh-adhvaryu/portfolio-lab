@@ -730,10 +730,10 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
          "(10% moves over 21/63 sessions, touch chances of 5/10/20% falls, the buy zone), edge (excess over the Nifty "
          "500 after costs, n, t; a description, never a signal); also on request capm (beta, alpha with t, the CAPM "
          "expected return) and process (does its price revert to a mean or walk at random: ADF, variance ratios, "
-         "half-life; descriptions, never signals); valuation (P/E now, against its own 5-year range and the "
+         "half-life; descriptions, never signals); business (12 quarters of revenue, profit and margins, holders and deals, peers ranked, concall and presentation filings); valuation (P/E now, against its own 5-year range and the "
          "market's, what growth the price assumes, volatility against its norm, and the usual rules of thumb as flags).",
          {"symbol": SYMBOL, "parts": {"type": "array", "items": {"type": "string", "enum": ["drift", "odds", "edge", "capm",
-                                                                                          "process", "valuation"]},
+                                                                                          "process", "valuation", "business"]},
                                       "description": "which parts (default drift, odds, edge, valuation)"}}, ("symbol",), stock_facts),
     Tool("tax_plan", "read", "Tax plan by code: per holding the FIFO ladder at today's price, long-term dates, what "
          "waiting saves, the 112A exemption left, loss sales.", {}, (), tax_plan),

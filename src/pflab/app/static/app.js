@@ -967,11 +967,14 @@ function renderResearch(d) {
       ${t ? techChart(t.chart) + `<div class="cols small" style="gap:16px">${[['Close', num(t.close)], ['RSI 14', t.rsi14 === null ? '—' : num(t.rsi14, 1)], ['ATR 14', t.atr14 === null ? '—' : num(t.atr14)], ['52 weeks', `${num(t.low52, 0)}-${num(t.high52, 0)}`], ['Volume vs 20-day', t.volume_ratio ? num(t.volume_ratio, 2) + '×' : '—']].map(([k, v]) => `<div><span class="lbl">${k}</span><br><span class="num">${v}</span></div>`).join('')}</div>` : '<span class="small muted">No price history in the bhavcopy for this name.</span>'}
     </section>
   </div>
+  <section class="panel" style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Business at a glance · filed results, holders, peers, concalls (our own data, descriptions)</span>
+    <div id="bizBox"><span class="small muted">Gathering…</span></div></section>
   <section class="panel" style="display:flex;flex-direction:column;gap:8px"><span class="lbl">The maths · beta, process, who it moves with (tools only, descriptions)</span>
     <div id="mathsBox"><span class="small muted">Working it out…</span></div></section>
   <section class="panel" style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Scans · information, not evidence until tested</span>
     <div id="scanBox"><span class="small muted">Loading…</span></div></section>`;
   loadMaths(d.selected);
+  loadBusiness(d.selected);
   loadScans();
   $('replan').onclick = async () => { const a = parseFloat($('amt').value.replace(/,/g, '')); if (!a) return; await post('/api/plan', { amount: a }); $('replan').textContent = 'Planning…'; };
   $('idea2Btn').onclick = async () => { const t2 = $('idea2').value.trim(); if (!t2) return; const r = await post('/api/idea', { text: t2 }); $('idea2Out').innerHTML = (r.verdict ? `<b class="${r.verdict === 'yes' ? 'up' : r.verdict === 'no' ? 'down' : 'warn'}">${esc(r.verdict.toUpperCase())}.</b> ` : '') + esc(r.answer); };
@@ -1187,6 +1190,28 @@ function renderSims(d) {
     </section></div>`;
   bindSims(d, f, r);
   loadScenarios();
+}
+/* S64: business at a glance (hq/business.py): 12 quarters, holders, peers ranked, concall filings; what is missing is said */
+function bizBlock(b) {
+  const L = (x) => Array.isArray(x) ? x.map((y) => `<div class="tiny">${esc(y)}</div>`).join('') || '<span class="tiny muted">none</span>' : `<span class="tiny muted">${esc(x)}</span>`;
+  const q = b.results_12_quarters || [], p = b.peers || {}, h = b.holders || {};
+  const n = (v, d = 1) => v === null || v === undefined ? '—' : Number(v).toLocaleString('en-IN', { maximumFractionDigits: d });
+  return `<div class="scroll"><table><thead><tr><th>Quarter</th><th>Revenue Cr</th><th>Net profit Cr</th><th>Net margin %</th><th>Revenue vs year ago %</th><th>EPS</th></tr></thead><tbody>
+    ${q.map((r) => `<tr><td>${esc(r.quarter)}</td><td class="num">${n(r.revenue_cr, 0)}</td><td class="num">${n(r.net_profit_cr, 0)}</td><td class="num">${n(r.net_margin_pct)}</td><td class="num">${n(r.revenue_yoy_pct)}</td><td class="num">${n(r.eps, 2)}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No filed quarters on record.</td></tr>'}</tbody></table></div>
+    <span class="tiny muted">Quarters with gaps in the filings are shown as they are; nothing is filled in. ${esc(b.segment_revenue || '')}</span>
+    <div class="cols" style="gap:16px"><div style="flex:1 1 300px"><span class="lbl">Promoters and institutions</span>${L(h.promoters_by_quarter)}${L(h.institutions_by_quarter)}</div>
+      <div style="flex:1 1 300px"><span class="lbl">Deals and insider filings (a year)</span>${L(h.bulk_block_deals)}${L(h.insider_and_sast)}</div></div>
+    <span class="lbl">Peers · ${esc(p.industry || 'no industry label')}${p.with_results_on_record ? ' · ' + p.with_results_on_record + ' of ' + p.names_in_industry + ' with results on record' : ''}</span>
+    ${(p.rows || []).length ? `<div class="scroll"><table><thead><tr><th>Name</th><th>P/E</th><th>rank</th><th>Net margin %</th><th>rank</th><th>Revenue growth 1y %</th><th>rank</th></tr></thead><tbody>
+      ${p.rows.map((r) => `<tr ${r.self ? 'style="font-weight:600"' : ''}><td>${esc(r.symbol)}</td><td class="num">${n(r.pe)}</td><td class="num">${n(r.pe_rank, 0)}</td><td class="num">${n(r.net_margin_pct)}</td><td class="num">${n(r.margin_rank, 0)}</td><td class="num">${n(r.revenue_growth_1y_pct)}</td><td class="num">${n(r.growth_rank, 0)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+    <span class="tiny muted">${esc(p.note || '')}</span>
+    <span class="lbl">Concall, presentation and transcript filings</span>
+    ${(b.concall_and_presentations || []).map((d) => `<div class="tiny">${esc(d.date)} <a href="${esc(d.url || '#')}" target="_blank" rel="noopener">${esc(d.title)}</a></div>`).join('') || '<span class="tiny muted">none in the graph</span>'}
+    <span class="lbl">Operating KPIs</span><span class="tiny muted">${esc(b.operating_kpis || '')}</span>`;
+}
+async function loadBusiness(isin) {
+  try { const b = await api('/api/business?isin=' + encodeURIComponent(isin)); if ($('bizBox')) $('bizBox').innerHTML = bizBlock(b); }
+  catch (e) { if ($('bizBox')) $('bizBox').innerHTML = '<span class="small muted">Not available: ' + esc(e.message) + '</span>'; }
 }
 /* S64: scanners (quant/scan.py): saved scans over his names; a hit can become a price watch; none is a signal */
 async function loadScans() {
