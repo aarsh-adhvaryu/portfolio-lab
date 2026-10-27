@@ -33,8 +33,18 @@ YES = ("yes", "y", "ok", "okay", "approve", "approved", "apply", "go ahead", "su
 NO = ("no", "n", "decline", "declined", "reject", "not now", "don't", "dont")
 
 
-def config(path: Optional[Path] = None) -> dict:
-    return _toml.load(path or CONFIG)
+def config(path: Optional[Path] = None, pm_dir: Optional[Path] = None) -> dict:
+    """configs/themes.toml plus the basket symbols from the investor's own PFLAB_PM_DIR/theme_baskets.toml (out of git: his
+    list overlaps the themes)."""
+    cfg = _toml.load(path or CONFIG)
+    if path is None:
+        from pflab.pm import store
+        extra = Path(pm_dir or store.pm_dir()) / "theme_baskets.toml"
+        if extra.exists():
+            for t, v in _toml.load(extra).get("theme", {}).items():
+                if t in cfg.get("theme", {}):
+                    cfg["theme"][t]["basket"] = v.get("basket", [])
+    return cfg
 
 
 def symbol_isins(root, symbols: Iterable[str], asof: date) -> Dict[str, str]:

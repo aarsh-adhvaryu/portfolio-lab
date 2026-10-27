@@ -137,18 +137,18 @@ def test_benjamini_hochberg_and_the_run_summary():
 
 
 def test_moves_with_reads_the_weekly_table(tmp_path):
-    assert "has not produced" in comove.moves_with("TCS", tmp_path)["note"]
-    rows = [{"asof": "2026-10-23", "group": "stock", "kind": "pair", "a": "i1", "b": "i2", "a_sym": "TCS", "b_sym": "INFY",
+    assert "has not produced" in comove.moves_with("AAA", tmp_path)["note"]
+    rows = [{"asof": "2026-10-23", "group": "stock", "kind": "pair", "a": "i1", "b": "i2", "a_sym": "AAA", "b_sym": "BBB",
              "industry": "IT", "corr_5y": 0.7, "months": 60, "eg_p": 0.01, "eg_q": 0.05, "significant": True, "stability": 0.3,
              "windows": 36, "half_life": 20.0, "beta": 1.1, "johansen_rank": np.nan, "n_sessions": 750},
-            {"asof": "2026-10-23", "group": "stock", "kind": "pair", "a": "i1", "b": "i3", "a_sym": "WIPRO", "b_sym": "TCS",
+            {"asof": "2026-10-23", "group": "stock", "kind": "pair", "a": "i1", "b": "i3", "a_sym": "CCC", "b_sym": "AAA",
              "industry": "IT", "corr_5y": 0.4, "months": 60, "eg_p": 0.4, "eg_q": 0.9, "significant": False, "stability": np.nan,
              "windows": np.nan, "half_life": 40.0, "beta": 0.9, "johansen_rank": np.nan, "n_sessions": 750}]
     p = comove.out_path(tmp_path)
     p.parent.mkdir(parents=True)
     pd.DataFrame(rows).reindex(columns=comove.COLUMNS).to_parquet(p)
-    out = comove.moves_with("tcs", tmp_path)
-    assert [x["peer"] for x in out["peers"]] == ["INFY", "WIPRO"] and out["peers"][0]["cointegrated_after_bh"] is True
+    out = comove.moves_with("aaa", tmp_path)
+    assert [x["peer"] for x in out["peers"]] == ["BBB", "CCC"] and out["peers"][0]["cointegrated_after_bh"] is True
     assert out["peers"][1]["stable_share"] is None and "relations break" in out["label"]
 
 

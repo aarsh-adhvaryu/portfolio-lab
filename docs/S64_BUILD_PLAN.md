@@ -661,7 +661,7 @@ Fixes:
      `src/pflab/data/fo_bhavcopy.py` exists first).
    - **ASK the investor to run** these two commands himself, because deleting a GitHub repo is irreversible and needs
      his login:
-     `gh auth refresh -h github.com -s delete_repo` then `gh repo delete aarsh-adhvaryu/portfolio_system_archive --yes`
+     `gh auth refresh -h github.com -s delete_repo` then `gh repo delete <account>/portfolio_system_archive --yes`
    - Update Claude's memory files: the build state, the TimesFM memory, the US sleeve, and reinstall-from-clone.
 4. **Merge.** Merge `pm/s64-finish` into `main` with a fast-forward, run the privacy grep, push `main`, and delete the
    remote branch if it was pushed.

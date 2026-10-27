@@ -63,7 +63,10 @@ def test_a_no_declines_and_it_may_be_proposed_again(con):
     assert themes.propose(con, "pot_limit", "pot", 40_000, {}, "Pot.", NOW + timedelta(days=40)) is not None
 
 
-def test_basket_proposal_activates_only_on_yes(con, monkeypatch):
+def test_basket_proposal_activates_only_on_yes(con, monkeypatch, tmp_path):
+    (tmp_path / "theme_baskets.toml").write_text('[theme.ai_it]\nbasket = ["AAA", "BBB"]\n[theme.defence]\nbasket = ["CCC"]\n'
+                                                 '[theme.ev_auto_tech]\nbasket = ["DDD"]\n', encoding="utf-8")
+    monkeypatch.setenv("PFLAB_PM_DIR", str(tmp_path))
     monkeypatch.setattr(themes, "symbol_isins", lambda root, syms, asof: {s: f"INE{i:09d}" for i, s in enumerate(syms)})
     assert themes.seed_baskets(con, None, ASOF, NOW) == 3
     assert {s for (s,) in con.execute("SELECT DISTINCT status FROM theme_baskets").fetchall()} == {"proposed"}
