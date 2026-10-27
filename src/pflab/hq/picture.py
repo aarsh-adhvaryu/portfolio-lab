@@ -53,6 +53,16 @@ def market(con, root: Path, asof: date) -> dict:
     return out
 
 
+def gauges_block(root: Path, asof: date) -> dict:
+    """IPO froth, breadth and past correction lengths (quant/gauges.py): descriptions from our own data, each on its own."""
+    from pflab.quant import gauges
+    out: dict = {}
+    for name, fn in (("ipo_froth", lambda: gauges.ipo_froth(root, asof)), ("breadth", lambda: gauges.breadth(root, asof)),
+                     ("corrections", lambda: gauges.corrections(root, asof))):
+        _try(name, fn, out)
+    return out
+
+
 def news_mood(con, asof: date, holdings: Dict[str, str]) -> dict:
     """Average news tone (GDELT) of the last 3 days against the last 90 days, for the market and for each holding."""
     def mean(q, args):
@@ -212,6 +222,7 @@ def build(con, root: Path, asof: date, bk=None, pm_dir: Optional[Path] = None) -
     held = {}
     if bk is not None:
         held = {i: s for i, s in bk.symbols.items() if i in bk.values or i in bk.on_list}
+    _try("gauges", lambda: gauges_block(root, asof), out)
     _try("news_mood", lambda: news_mood(con, asof, held), out)
     _try("portfolio", lambda: portfolio(con, asof), out)
     mood = out["news_mood"] if "holdings" in out.get("news_mood", {}) else {"holdings": {}}
@@ -241,6 +252,20 @@ def headline(p: dict) -> List[str]:
     if "stance" in m:
         lines.append(f"Market: {m['stance']} (fall-clustering {m.get('fall_clustering_state')}, Nifty 500 {m.get('nifty500_below_1y_high_pct')}% "
                      f"below its 1-year high, dip rule {'on' if m.get('dip_rule_active') else 'off'}).")
+    g = p.get("gauges", {})
+    b = g.get("breadth", {})
+    if "above_200d_pct" in b:
+        lines.append(f"Breadth: {b['above_200d_pct']}% of the Nifty 500 above its 200-day average, {b['above_50d_pct']}% above the 50-day "
+                     f"(the 200-day share is lower than on {100 - b['above_200d_percentile_1y']}% of days this year): {b['read']}.")
+    f = g.get("ipo_froth", {})
+    if f.get("ratio") is not None:
+        lines.append(f"IPOs: {f['per_quarter_now']} large listings a quarter against {f['per_quarter_prior_5_years']} in the 5 years before: "
+                     f"{f['read']}; median listing gain {f['median_listing_gain_now_pct']}%.")
+    c = g.get("corrections", {}).get("indices", {}).get("Nifty500")
+    if c:
+        lines.append(f"Nifty 500 is {abs(c['now_below_peak_pct'])}% below its peak, {c['sessions_since_peak']} sessions in; past falls of 10%+ "
+                     f"took a median {c.get('median_sessions_peak_to_trough')} sessions down and {c.get('median_sessions_trough_to_new_high')} "
+                     f"back to a new high (longest {c.get('longest_peak_to_new_high')}).")
     nm = p.get("news_mood", {})
     if nm.get("stale"):
         lines.append("News mood: " + nm["stale"] + ".")
