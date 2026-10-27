@@ -162,10 +162,19 @@ def facts(con, root, isin: str, symbol: str, closes: pd.Series, asof: date) -> d
         pass
     try:
         from pflab.learner import rules
-        tested = {"pe_above_50": rules.status(con, "pe_above_50")}
+        tested = {"pe_above_50": rules.status(con, "pe_above_50"), "below_sma200": rules.status(con, "below_sma200")}
     except Exception:
         tested = None
     out["rules_of_thumb"] = flags(pe, own_median, mkt, rich, vol, from_high, tested)
+    try:                                                    # the same facts in plain words (hq/plain.py), built by code
+        from pflab.hq import plain
+        sma = float(c.iloc[-200:].mean()) if len(c) >= 200 else None
+        out["in_plain_words"] = plain.all_lines(
+            out.get("pe_ttm"), out.get("pe_own_5y") if isinstance(out.get("pe_own_5y"), dict) else None, mkt,
+            out.get("growth_assumed_by_price_pct"), out.get("eps_growth_ttm_yoy_pct"), vol,
+            None if sma is None else bool(px < sma), tested or {})
+    except Exception:
+        pass
     out["how_to_use"] = ("read like a trader: say which of these matter for this company and why (a high P/E can be fair for "
                          "fast growth, a low one a trap); every flag is untested folklore, a reason to look, not a rule")
     out["source"] = "hq/valuation.py: filed quarters (point in time) and closes; ratios of a price and a filed number"
