@@ -19,26 +19,26 @@ def con(tmp_path):
 
 
 def test_pseudo_isin_round_trip_and_it_cannot_meet_a_real_isin():
-    assert lf.pseudo_isin(320193) == "ZZ0000320193" and lf.pseudo_isin("0000320193") == "ZZ0000320193"
-    assert len(lf.pseudo_isin(1)) == 12 and lf.is_pseudo("ZZ0000320193")
-    assert not lf.is_pseudo("INE002A01018") and not lf.is_pseudo("US0378331005") and not lf.is_pseudo("ZZ00003201AB")
+    assert lf.pseudo_isin(777777) == "ZZ0000777777" and lf.pseudo_isin("0000777777") == "ZZ0000777777"
+    assert len(lf.pseudo_isin(1)) == 12 and lf.is_pseudo("ZZ0000777777")
+    assert not lf.is_pseudo("INE999Z01010") and not lf.is_pseudo("US0000000001") and not lf.is_pseudo("ZZ00003201AB")
     for bad in (0, -5, 10 ** 10, "abc"):
         with pytest.raises(ValueError):
             lf.pseudo_isin(bad)
 
 
 def test_an_alias_maps_the_pseudo_key_to_the_real_isin_from_a_date(con):
-    key = lf.pseudo_isin(320193)
-    lf.add_alias(con, key, "US0378331005", date(2026, 11, 1))
-    assert lf.resolve(con, key, date(2026, 10, 1)) == key and lf.resolve(con, key, date(2026, 11, 2)) == "US0378331005"
-    assert lf.resolve(con, "INE002A01018") == "INE002A01018"
+    key = lf.pseudo_isin(777777)
+    lf.add_alias(con, key, "US0000000001", date(2026, 11, 1))
+    assert lf.resolve(con, key, date(2026, 10, 1)) == key and lf.resolve(con, key, date(2026, 11, 2)) == "US0000000001"
+    assert lf.resolve(con, "INE999Z01010") == "INE999Z01010"
     with pytest.raises(ValueError):
-        lf.add_alias(con, "INE002A01018", "x", date(2026, 1, 1))
+        lf.add_alias(con, "INE999Z01010", "x", date(2026, 1, 1))
 
 
 def test_a_us_instrument_goes_to_the_intl_equity_bucket(con):
-    lf.register_instrument(con, "AAPL", lf.pseudo_isin(320193), "Apple Inc", now=NOW)
-    r = con.execute("SELECT market, currency, key_kind, asset_class FROM instruments WHERE symbol='AAPL'").fetchone()
+    lf.register_instrument(con, "ACME", lf.pseudo_isin(777777), "Acme Corp", now=NOW)
+    r = con.execute("SELECT market, currency, key_kind, asset_class FROM instruments WHERE symbol='ACME'").fetchone()
     assert r == ("US", "USD", "pseudo", "equity")
     assert exposure.bucket("equity", "FOREIGN", None, None, "US") == "intl_equity" and exposure.bucket("equity", "EQUITY", None, None, "NSE") == "equity"
     assert exposure.bucket("equity", "EQUITY", None, None, float("nan")) == "equity"            # an old row with no market stays Indian
