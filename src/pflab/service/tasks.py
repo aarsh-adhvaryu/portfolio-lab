@@ -371,6 +371,23 @@ def _companion(ctx: Ctx) -> dict:
 
 register(Job("companion", Daily(21, 10, weekdays_only=False), _companion,
              "limits: theme baskets and limits, the dip reserve, the opportunity pot (proposals wait for his yes)", cooldown_minutes=120))
+def _scans(ctx: Ctx) -> dict:
+    """S64: the saved scans (closed set of conditions) over his holdings, his list or the Nifty 500; hits on his names go into
+    the evening summary as held lines. Information only: a scan is not evidence until the learner has tested it."""
+    import json as _json
+
+    from pflab.quant import scan
+    scan.seed_starters(ctx.con, ctx.now)
+    out = scan.run_all(ctx.con, ctx.data_root, ctx.now.date(), ctx.now)
+    cache = out.pop("_cache")
+    p = ctx.pm_dir / "app" / "cache" / "scans.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(_json.dumps({"at": str(ctx.now)[:16], "scans": cache}, default=str), encoding="utf-8")
+    return {k: v for k, v in out.items()}
+
+
+register(Job("scans", Daily(20, 40), _scans, "scanners: saved scans over his names (information, labelled not tested)",
+             cooldown_minutes=120))
 register(Job("learner", Daily(22, 0, weekdays_only=False), _learner,
              "learner: papers and blogs -> registered tests; proposals from the system's own record", cooldown_minutes=120))
 register(Job("security", Daily(21, 15, weekdays_only=False), _security,

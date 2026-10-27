@@ -662,6 +662,32 @@ def record_hypothesis(ctx: Ctx, a: dict) -> dict:
             "note": "confirmed or refuted later; a refuted one leaves the graph"}
 
 
+def scans_tool(ctx: Ctx, a: dict) -> dict:
+    """The saved scans with their tested label and the hits of their last run."""
+    from pflab.quant import scan
+    p = ctx.rt.pm_dir / "app" / "cache" / "scans.json"
+    try:
+        res = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    except ValueError:
+        res = {}
+    out = []
+    for s in scan.listing(ctx.con):
+        r = (res.get("scans") or {}).get(str(s["scan_id"]))
+        out.append({**s, "last_run": r["at"] if r else None,
+                    "hits": [f"{h['symbol']}: {'; '.join(h['why'])}"[:200] for h in (r["hits"][:8] if r else [])]})
+    return {"scans": out, "conditions": scan.__doc__.split("Conditions (name:value):")[1].strip(),
+            "source": "quant/scan.py: conditions from a closed set, evaluated by code; information until the learner has tested one"}
+
+
+def make_scan(ctx: Ctx, a: dict) -> dict:
+    """The brain makes a scan: information only, labelled not tested; it can never turn one into a rule."""
+    from pflab.quant import scan
+    if ctx.shadow:
+        return {"shadow": True, "note": "shadow pass: the scan is not kept"}
+    sid = scan.make_scan(ctx.con, a["name"], a["conditions"], a.get("universe", "list"), f"brain:{ctx.model}", ctx.now)
+    return {"kept": sid, "label": scan.LABEL_UNTESTED, "note": "runs each evening; hits on his names reach the evening summary"}
+
+
 def scenario(ctx: Ctx, a: dict) -> dict:
     from pflab.risk import scenarios as sn
     name = a["name"]
@@ -792,6 +818,13 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
          "correlation over 5 years, Engle-Granger cointegration (Benjamini-Hochberg adjusted), how often it held in "
          "rolling windows, the spread's half-life. A description: relations break (9% stayed cointegrated).",
          {"symbol": SYMBOL}, ("symbol",), comovement),
+    Tool("scans", "read", "The saved scans (conditions from a closed set: moving averages, RSI, 52-week range, volume spike, P/E "
+         "against its own median, alpha sign, futures build-up) with their last hits and whether the learner tested them.",
+         {}, (), scans_tool),
+    Tool("make_scan", "journal", "Make a scan from the closed set of conditions, as 'price_below_sma:200; volume_spike:2'. "
+         "Information only, labelled not tested; hits on his names go into his evening summary.",
+         {"name": _s("a short name", 80), "conditions": _s("conditions joined by ';'", 300),
+          "universe": _s("universe", enum=["list", "holdings", "nifty500"])}, ("name", "conditions"), make_scan),
     Tool("scenario", "read", "A scenario chain on his holdings: oil_up_30 (Brent +30% in a month), rupee_down_10, us_crash "
          "(S&P 500 -20% in a month through the Nifty 500). Rupee impact per holding and in total with a +-2 standard-error range, "
          "from historical betas: a description, not a forecast.",

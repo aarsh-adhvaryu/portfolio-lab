@@ -968,8 +968,11 @@ function renderResearch(d) {
     </section>
   </div>
   <section class="panel" style="display:flex;flex-direction:column;gap:8px"><span class="lbl">The maths · beta, process, who it moves with (tools only, descriptions)</span>
-    <div id="mathsBox"><span class="small muted">Working it out…</span></div></section>`;
+    <div id="mathsBox"><span class="small muted">Working it out…</span></div></section>
+  <section class="panel" style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Scans · information, not evidence until tested</span>
+    <div id="scanBox"><span class="small muted">Loading…</span></div></section>`;
   loadMaths(d.selected);
+  loadScans();
   $('replan').onclick = async () => { const a = parseFloat($('amt').value.replace(/,/g, '')); if (!a) return; await post('/api/plan', { amount: a }); $('replan').textContent = 'Planning…'; };
   $('idea2Btn').onclick = async () => { const t2 = $('idea2').value.trim(); if (!t2) return; const r = await post('/api/idea', { text: t2 }); $('idea2Out').innerHTML = (r.verdict ? `<b class="${r.verdict === 'yes' ? 'up' : r.verdict === 'no' ? 'down' : 'warn'}">${esc(r.verdict.toUpperCase())}.</b> ` : '') + esc(r.answer); };
   $('techSel').onchange = () => { S.rsel = $('techSel').value; load(true); };
@@ -1184,6 +1187,31 @@ function renderSims(d) {
     </section></div>`;
   bindSims(d, f, r);
   loadScenarios();
+}
+/* S64: scanners (quant/scan.py): saved scans over his names; a hit can become a price watch; none is a signal */
+async function loadScans() {
+  const box = $('scanBox'); if (!box) return;
+  try {
+    const d = await api('/api/scans');
+    const rows = d.scans.map((s) => {
+      const r = (d.results || {})[s.scan_id], hits = r ? r.hits : [];
+      return `<div style="display:flex;flex-direction:column;gap:3px"><div class="row wrapr" style="gap:8px;justify-content:space-between"><b class="small">${esc(s.name)}</b>
+        <span class="tiny" style="padding:2px 8px;border-radius:999px;border:1px solid var(--line)">${esc(s.label)}</span></div>
+        <span class="tiny muted">${esc(s.conditions)} · ${esc(s.universe)}${s.active ? '' : ' · off'}${r ? ' · run ' + esc(r.at) + ': ' + hits.length + ' of ' + r.checked : ' · not run yet'}</span>
+        ${hits.slice(0, 12).map((h) => `<div class="row small" style="gap:8px"><b>${esc(h.symbol)}</b><span class="tiny muted" style="flex:1">${esc(h.why.join('; '))}</span><button class="btn" data-watch="${esc(h.isin)}|${esc(h.symbol)}|${h.close}">Watch</button></div>`).join('')}</div>`;
+    }).join('<hr style="border:0;border-top:1px solid var(--line);width:100%">');
+    box.innerHTML = rows + `<hr style="border:0;border-top:1px solid var(--line);width:100%"><span class="lbl">New scan</span>
+      <div class="row wrapr" style="gap:8px"><input id="scName" class="inp" placeholder="name" style="flex:1 1 160px"><input id="scCond" class="inp" placeholder="price_below_sma:50; volume_spike:2" style="flex:2 1 260px">
+        <select id="scUni" class="inp" style="flex:0 0 auto"><option value="list">my names</option><option value="holdings">holdings</option><option value="nifty500">Nifty 500</option></select>
+        <button class="btn primary" id="scMake">Save</button></div>
+      <span class="tiny muted" style="white-space:pre-line">Conditions, joined by ';' (a hit needs all):
+${esc(d.help)}</span>
+      <span class="tiny muted">A scan used as a buying rule counts only after the learner has tested it on data it never saw; until then it is a description. Runs each evening; hits on your names go into the evening summary.</span>`;
+    $('scMake').onclick = async () => { try { await post('/api/scans', { name: $('scName').value, conditions: $('scCond').value, universe: $('scUni').value }); loadScans(); } catch (e) { alert(e.message); } };
+    box.querySelectorAll('[data-watch]').forEach((b) => { b.onclick = async () => {
+      const [isin, sym, close] = b.dataset.watch.split('|'); const lv = prompt('Alert me when ' + sym + ' falls to (price):', (Number(close) * 0.97).toFixed(2));
+      if (!lv) return; try { await post('/api/watches', { isin, symbol: sym, kind: 'below', level: Number(lv), note: 'from a scan' }); b.textContent = 'Watching'; } catch (e) { alert(e.message); } }; });
+  } catch (e) { box.innerHTML = '<span class="small muted">Scans not available: ' + esc(e.message) + '</span>'; }
 }
 /* S64: scenario chains from historical betas (risk/scenarios.py): a description, never a forecast */
 function scenBlock(all) {

@@ -276,6 +276,31 @@ def create_app(rt) -> FastAPI:
     def research(isin: str = ""):
         return json.loads(json.dumps(views.research(rt, isin or None), default=str))
 
+    @app.get("/api/scans")
+    def scans_api():
+        from pflab.quant import scan
+        cache = rt.pm_dir / "app" / "cache" / "scans.json"
+        try:
+            hits = json.loads(cache.read_text(encoding="utf-8")) if cache.exists() else {"scans": {}}
+        except ValueError:
+            hits = {"scans": {}}
+        return {"scans": scan.listing(rt.cursor()), "results": hits.get("scans", {}), "at": hits.get("at"),
+                "help": scan.__doc__.split("Conditions (name:value):")[1].strip()}
+
+    @app.post("/api/scans")
+    def make_scan_api(name: str = Body(...), conditions: str = Body(...), universe: str = Body("list")):
+        from pflab.quant import scan
+        try:
+            sid = scan.make_scan(rt.cursor(), name, conditions, universe, "investor", rt.clock())
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return {"id": sid}
+
+    @app.post("/api/scans/{sid}/active")
+    def scan_active(sid: int, active: bool = Body(..., embed=True)):
+        rt.cursor().execute("UPDATE scans SET active=? WHERE scan_id=?", [active, sid])
+        return {"ok": True}
+
     @app.get("/api/scenarios")
     def scenarios_api():
         from pflab.risk import scenarios as sn
