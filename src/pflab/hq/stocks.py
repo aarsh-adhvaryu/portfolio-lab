@@ -283,6 +283,15 @@ def facts(con, root: Path, bk: Book, symbol: str, parts=("drift", "odds", "edge"
         out["capm"] = capm_part(root, isin, bk.asof)
     if "process" in parts:
         out["process"] = process_part(root, isin, c, bk.asof)
+    if "nudges" in parts:
+        from pflab.plan import nudges
+        try:
+            from pflab.quant import forecast as fc
+            out["nudges"] = {"apply": nudges.check(root, isin, bk.asof, scrip=fc.scrip_of(root, isin, bk.asof)),
+                             "not_checked": nudges.NOT_CHECKED,
+                             "note": "Kite-style pre-trade warnings from our own data; a warning, not a block and not a signal"}
+        except Exception as e:
+            out["nudges"] = {"error": f"{type(e).__name__}: {str(e)[:120]}"}
     if "business" in parts:
         from pflab.hq import business
         try:

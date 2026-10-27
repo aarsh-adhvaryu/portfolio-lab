@@ -26,8 +26,10 @@ def decision(root: Optional[Path] = None) -> Optional[str]:
 
 def tickets(symbol: str, qty: int, last_close: float, plan: Optional[str],
             impact: Optional[Callable[[str, float], Optional[str]]] = None, isin: Optional[str] = None,
-            turnover: Optional[Callable[[str], Optional[tuple]]] = None) -> List[str]:
-    """Lines the investor copies into Kite. Prices are rounded to the NSE tick of 0.05."""
+            turnover: Optional[Callable[[str], Optional[tuple]]] = None,
+            nudge: Optional[Callable[[str, float], List[str]]] = None) -> List[str]:
+    """Lines the investor copies into Kite. Prices are rounded to the NSE tick of 0.05. `nudge` (plan/nudges.py) adds Kite-style
+    pre-trade warnings for the stock, each its own line."""
     tick = lambda x: round(round(x / 0.05) * 0.05, 2)
     out: List[str] = []
     if plan and plan.startswith("L"):
@@ -49,9 +51,11 @@ def tickets(symbol: str, qty: int, last_close: float, plan: Optional[str],
         size = forecast.size_note(qty * last_close, turnover(isin))
         if size:
             out.append(size)
+    if nudge and isin:
+        out += nudge(isin, qty * last_close)
     return out
 
 
-def plan_all(buys, root: Optional[Path] = None, impact=None, turnover=None) -> Dict[str, List[str]]:
+def plan_all(buys, root: Optional[Path] = None, impact=None, turnover=None, nudge=None) -> Dict[str, List[str]]:
     p = decision(root)
-    return {b.symbol: tickets(b.symbol, b.qty, b.price, p, impact, b.isin, turnover) for b in buys}
+    return {b.symbol: tickets(b.symbol, b.qty, b.price, p, impact, b.isin, turnover, nudge) for b in buys}

@@ -134,8 +134,11 @@ def run(con, asof: date, amount: float, with_plan: bool = False):
     adv = advise(alloc.get("equity", 0.0), cands, held, prices, (eq_t.target if eq_t else 0.0) * investable,
                  investable, asof, float(raw.get("max_weight", DEFAULT_MAX_WEIGHT)), skipped)
     from pflab.quant import forecast
+    from pflab.data import data_dir
+    from pflab.plan import nudges
     tk = trader.plan_all(adv.buys, impact=kite_depth.impact_note_fn(con),
-                         turnover=forecast.turnover_fn(con, asof))          # the size check
+                         turnover=forecast.turnover_fn(con, asof),          # the size check
+                         nudge=nudges.fn(con, data_dir(), asof))            # Kite-style warnings before the order
     if with_plan:
         return monthly.render(plan), adv, tk, plan, alloc
     return monthly.render(plan), adv, tk

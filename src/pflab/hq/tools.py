@@ -209,7 +209,7 @@ def stocks_overview(ctx: Ctx, a: dict) -> dict:
 
 def stock_facts(ctx: Ctx, a: dict) -> dict:
     from pflab.hq import stocks
-    return stocks.facts(ctx.con, ctx.rt.data_root, ctx.book(), a["symbol"], tuple(a.get("parts") or ("drift", "odds", "edge", "valuation")))
+    return stocks.facts(ctx.con, ctx.rt.data_root, ctx.book(), a["symbol"], tuple(a.get("parts") or ("drift", "odds", "edge", "valuation", "nudges")))
 
 
 def comovement(ctx: Ctx, a: dict) -> dict:
@@ -460,7 +460,10 @@ def record_suggestion(ctx: Ctx, a: dict) -> dict:
     ctx.suggestions.append(sid)
     q = ctx.con.execute("SELECT quality, quality_why, price_low, price_high, max_buy, amount, wrong_if, watch_id "
                         "FROM hq_suggestions WHERE sug_id=?", [sid]).fetchone()
+    st = ctx.con.execute("SELECT stats_json FROM hq_suggestions WHERE sug_id=?", [sid]).fetchone()[0]
+    nudges_ = (json.loads(st).get("nudges") if st else None) or []
     return {"kept": sid, "quality_at_the_time": q[0], "why": q[1],
+            "nudges": [n["text"] for n in nudges_] or "none apply (tips from unregistered sources cannot be checked)",
             "numbers_by_code": {"price_low": q[2], "price_high": q[3], "highest_buy": q[4], "amount_rs": q[5],
                                 "wrong_if": q[6], "price_watch": q[7]},
             "scored": f"in {a['horizon_days']} days against the Nifty 500, taken or not"}
@@ -730,10 +733,10 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
          "(10% moves over 21/63 sessions, touch chances of 5/10/20% falls, the buy zone), edge (excess over the Nifty "
          "500 after costs, n, t; a description, never a signal); also on request capm (beta, alpha with t, the CAPM "
          "expected return) and process (does its price revert to a mean or walk at random: ADF, variance ratios, "
-         "half-life; descriptions, never signals); business (12 quarters of revenue, profit and margins, holders and deals, peers ranked, concall and presentation filings); valuation (P/E now, against its own 5-year range and the "
+         "half-life; descriptions, never signals); nudges (Kite-style pre-trade warnings: trade-to-trade, surveillance lists, insolvency, split or bonus coming, thin trading, suspension); business (12 quarters of revenue, profit and margins, holders and deals, peers ranked, concall and presentation filings); valuation (P/E now, against its own 5-year range and the "
          "market's, what growth the price assumes, volatility against its norm, and the usual rules of thumb as flags).",
          {"symbol": SYMBOL, "parts": {"type": "array", "items": {"type": "string", "enum": ["drift", "odds", "edge", "capm",
-                                                                                          "process", "valuation", "business"]},
+                                                                                          "process", "valuation", "business", "nudges"]},
                                       "description": "which parts (default drift, odds, edge, valuation)"}}, ("symbol",), stock_facts),
     Tool("tax_plan", "read", "Tax plan by code: per holding the FIFO ladder at today's price, long-term dates, what "
          "waiting saves, the 112A exemption left, loss sales.", {}, (), tax_plan),

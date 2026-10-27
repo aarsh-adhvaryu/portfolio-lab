@@ -83,6 +83,11 @@ def numbers(con, root, isin: str, asof: date, guard: str = "ok") -> dict:
         out["wrong_if"] = (f"it closes below {q[63][0]:,.0f}, the 10th percentile of its 3-month price range "
                            f"(80% range, an estimate: {label})")
     out["stats"].update(price=float(c.iloc[-1]), method=method, q21=q[21], q63=q[63], touch_bottom=z.get("touch_bottom"))
+    try:                                                    # Kite-style pre-trade warnings (plan/nudges.py), saved with it
+        from pflab.plan import nudges
+        out["stats"]["nudges"] = nudges.check(root, isin, asof, scrip=fc.scrip_of(root, isin, asof))
+    except Exception:
+        pass
     return out
 
 

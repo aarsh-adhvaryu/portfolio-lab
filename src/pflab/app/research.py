@@ -189,7 +189,12 @@ def ticket_text(con, wid: int, price: float, root: Optional[Path]) -> str:
     qty = int(r[2] // price)
     if qty < 1:
         return ""
-    lines = trader.tickets(r[1], qty, price, trader.decision(root))
+    isin = con.execute("SELECT isin FROM hq_suggestions WHERE watch_id=?", [wid]).fetchone()[0]
+    nudge = None
+    if root is not None and isin:
+        from pflab.plan import nudges
+        nudge = nudges.fn(con, root, con.execute("SELECT max(date) FROM prices").fetchone()[0] or date.today())
+    lines = trader.tickets(r[1], qty, price, trader.decision(root), isin=isin, nudge=nudge)
     nl = "\n"
     return (f"{nl}Suggestion #{r[0]}: about Rs {r[2]:,.0f}, highest buy {r[3]:,.2f}." + (f" Wrong if {r[4]}." if r[4] else "")
             + f"{nl}Ticket (you enter it yourself; nothing is placed):{nl}" + nl.join(lines))
