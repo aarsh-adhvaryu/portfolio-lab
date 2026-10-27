@@ -847,7 +847,7 @@ def _log(ctx: Ctx, turn: int, tool: str, kind: str, args: Any, status: str, resu
     con = ctx.con
     n = next_id(con, "hq_tool_calls", "call_no")
     con.execute("INSERT INTO hq_tool_calls VALUES (?,?,?,?,?,?,?,?,?,?)",
-                [n, ctx.pass_id, ctx.now, turn, tool, kind, json.dumps(args, default=str)[:4000], status, result[:2000], ms])
+                [n, ctx.pass_id, ctx.now, turn, tool, kind, json.dumps(args, default=str)[:4000], status, result[:RESULT_CHARS + 200], ms])
 
 
 def run(ctx: Ctx, name: str, args: Any, turn: int = 1) -> Tuple[str, bool]:

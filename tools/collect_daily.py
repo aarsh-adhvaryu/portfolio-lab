@@ -174,6 +174,17 @@ def _holders(start, end, root):
     return {"scrips": len(scrips), "quarters": [q - 1, q], "shareholding": str(a)[:120], "institutions": str(b)[:120]}
 
 
+def _fo(start, end, root):
+    # S64: F&O daily (futures and options rows, participant-wise open interest) and its derived tables: Nifty ATM IV, PCR,
+    # futures premium, max pain, stock build-up classes; not critical. A session not yet published is tried again next run.
+    from pflab.data import fo_daily
+    from pflab.quant import options
+    got = fo_daily.collect(max(start, end - timedelta(days=10)), end, root)
+    got["derived"] = options.derive_missing(root)
+    got["missing"] = got["missing"][-3:]
+    return got
+
+
 def _gdelt(start, end, root):
     from pflab.data import gdelt
     # GDELT publishes in arrears, so ask for yesterday and back.
@@ -196,6 +207,7 @@ SOURCES = {
     "fpi": _fpi,
     "macro": _macro,
     "holders": _holders,
+    "fo": _fo,
 }
 
 

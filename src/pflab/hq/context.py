@@ -111,7 +111,16 @@ def market(root: Path, asof: date) -> dict:
             out[name] = _last_and_change(d.rename(columns={"value": "close"}), col, asof)
         except Exception as e:
             out[name] = f"not available ({type(e).__name__})"
-    out["source"] = "NSDL (FPI), FRED (Brent, USDINR, US 10-year), NSE (India VIX, Nifty 500 TRI); context, never a signal"
+    try:                                                   # S64: F&O facts (information, never a signal)
+        from pflab.quant import options
+        fo = options.summary(root, asof)
+        if fo:
+            out["fo"] = {"line": options.line(root, asof), "atm_iv_pct": None if fo.get("atm_iv") is None else round(fo["atm_iv"] * 100, 1),
+                         "iv_percentile_1y": fo.get("iv_percentile_1y"), "pcr": fo.get("pcr"), "max_pain": fo.get("max_pain"),
+                         "max_pain_expiry": fo.get("max_pain_expiry"), "on": fo.get("date")}
+    except Exception as e:
+        out["fo"] = f"not available ({type(e).__name__})"
+    out["source"] = "NSDL (FPI), FRED (Brent, USDINR, US 10-year), NSE (India VIX, Nifty 500 TRI, F&O bhavcopy); context, never a signal"
     return out
 
 

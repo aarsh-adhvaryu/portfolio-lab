@@ -150,6 +150,13 @@ def facts(con, root, isin: str, symbol: str, closes: pd.Series, asof: date) -> d
     vol = vol_ratio(c) if len(c) else {"ratio": None}
     out["volatility"] = vol
     from_high = float(c.iloc[-1] / c.iloc[-250:].max() - 1) if len(c) >= 2 else None
+    try:                                                   # F&O build-up class of the stock's future, where it has one
+        from pflab.quant import options
+        bu = options.buildup_for(root, asof, [symbol]).get(symbol)
+        if bu:
+            out["futures_buildup"] = {**bu, "note": "price against open interest in its futures; information, not a signal"}
+    except Exception:
+        pass
     out["rules_of_thumb"] = flags(pe, own_median, mkt, rich, vol, from_high)
     out["how_to_use"] = ("read like a trader: say which of these matter for this company and why (a high P/E can be fair for "
                          "fast growth, a low one a trap); every flag is untested folklore, a reason to look, not a rule")

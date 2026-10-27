@@ -130,6 +130,12 @@ def market(asof: date) -> dict:
         out.update(drawdown=dp["drawdown"], dip_active=dp["active"])
     except Exception as e:
         out["error"] = str(e)[:200]
+    try:                                                   # S64: Nifty IV, PCR, futures premium (information only)
+        from pflab.data import data_dir
+        from pflab.quant import options
+        out["fo_line"] = options.line(data_dir(), asof)
+    except Exception:
+        pass
     return out
 
 

@@ -137,6 +137,10 @@ def main(argv=None):
     svsub.add_parser("status", help="health: jobs, data freshness, outbox, backup, disk")
     svsub.add_parser("test-alert", help="queue and send a Telegram test message")
     svsub.add_parser("backup", help="back up the ledger now (needs a target)")
+    hqp = sub.add_parser("hq", help="the agent HQ (S64: the replay bench)")
+    hqp.add_argument("action", choices=["replay"])
+    hqp.add_argument("pass_id", type=int, help="the journaled pass to run again")
+    hqp.add_argument("--model", default=None, help="run it on another model (default: the original pass model)")
     wkp = sub.add_parser("workshop", help="calculation workshop (S53): a model writes the maths as code, it runs here")
     wkp.add_argument("action", choices=["ask", "list", "show", "promote", "rerun"])
     wkp.add_argument("text", nargs="?", default="", help="ask: the question; show/promote/rerun: the calculation id")
@@ -254,6 +258,8 @@ def main(argv=None):
         return _conductor(a)
     if a.cmd == "workshop":
         return _workshop(a)
+    if a.cmd == "hq":
+        return _hq(a)
     if a.cmd == "list":
         from pflab.plan import stock_list as slm
         from pflab.pm import store as _store
@@ -744,6 +750,24 @@ def _service(a) -> int:
         print(bk.backup(ctx.con, ctx.pm_dir / "ledger.duckdb", t, ctx.now, bk.keep_count()))
         return 0
     return 0
+
+
+def _hq(a) -> int:
+    """pflab hq replay <pass_id> [--model M]: a journaled pass run again with its tools answered from the journal."""
+    from pathlib import Path
+
+    from pflab.data import data_dir
+    from pflab.hq import desk, replay, service
+    from pflab.pm import secrets as sec
+    from pflab.pm import store
+    rt = desk.Desk(store.connect(), store.pm_dir(), data_dir(), Path(__file__).resolve().parents[2], sec.load())
+    try:
+        r = replay.replay(rt, service.client(rt), service.gate(rt), a.pass_id, a.model)
+    except (LookupError, ValueError) as e:
+        print(e)
+        return 2
+    print(replay.side_by_side(r))
+    return 0 if r["status"] == "done" else 1
 
 
 def _workshop(a) -> int:

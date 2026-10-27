@@ -101,6 +101,14 @@ def build(con, asof: date, now: datetime, which: str, cal=None, root=None, netwo
             lines += w
     except Exception as e:
         left_out.append(f"watches ({type(e).__name__})")
+    if root is not None:
+        try:
+            from pflab.quant import options
+            fo = options.line(root, asof)
+            if fo:
+                lines.append("F&O: " + fo)
+        except Exception as e:
+            left_out.append(f"F&O ({type(e).__name__})")
     if which == "evening" and root is not None:
         try:
             from pflab.risk import themes

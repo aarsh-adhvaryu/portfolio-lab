@@ -367,11 +367,12 @@ def check_prediction(p: dict, syms: Dict[str, str], now: datetime) -> Tuple[Opti
 
 
 def think(rt, trigger: str, evs: List[dict], client, gate, *, model: str = gv.OPUS, role: str = "brain",
-          withheld: int = 0, cfg=None) -> int:
+          withheld: int = 0, cfg=None, run_tool=None) -> int:
     """One pass by one model: the tool loop (each turn governed), the note checked, the journal written. Returns the
     pass id. A first turn refused or failed leaves a 'not made' row; a later one stops the pass with what it had."""
     from pflab.agents import analyst as an
     from pflab.hq import tools as tl
+    run_tool = run_tool or tl.run                        # S64: the replay bench answers tools from a journaled pass
     con, now = rt.cursor(), rt.clock()
     mode = rt.settings.get("brain", "economy")
     agent = "reflection" if trigger == "reflection" else ("brain" if role == "brain" else "brain_rival")
@@ -413,13 +414,13 @@ def think(rt, trigger: str, evs: List[dict], client, gate, *, model: str = gv.OP
         messages.append({"role": "assistant", "content": kept})
         results = []
         for b in uses:
-            text, err = tl.run(ctx, b.name, b.input, turn)
+            text, err = run_tool(ctx, b.name, b.input, turn)
             results.append({"type": "tool_result", "tool_use_id": b.id, "content": text, **({"is_error": True} if err else {})})
         pending = ""                                # the results were redacted and checked in tools.run
         if asked_save:                              # the turn after the request: hand off to a fresh context
             state = ctx.state if ctx.state != state_before else None
             if state is None:
-                tl.run(ctx, "save_state", {"state": _code_state(ctx)[:3000]}, turn)
+                run_tool(ctx, "save_state", {"state": _code_state(ctx)[:3000]}, turn)
                 state = ctx.state
             messages = [first_message(stable, change + f"\n\nYOUR WORKING STATE (saved this pass, turn {turn}): {state}\n"
                                       "Continue from it on this fresh context.")]
