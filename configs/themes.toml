@@ -15,7 +15,11 @@ index = "SECTOR_IT_TRI"
 [theme.defence]
 label = "Defence"
 industries = []
+# no "defence" label exists in the sector taxonomy, so the risk history is the broader industry group it sits in, point in
+# time (names later delisted included); the named basket is only for showing what you hold, never for the limit.
+proxy = ["capital goods", "industrial manufacturing", "electrical equipment", "shipping"]
 
 [theme.ev_auto_tech]
 label = "EV and auto-tech"
 industries = []
+proxy = ["auto"]            # automobiles, auto ancillaries, auto components: the group EV makers and suppliers sit in

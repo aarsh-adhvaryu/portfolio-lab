@@ -131,3 +131,21 @@ def test_a_pot_idea_is_scored_at_its_horizon(con, monkeypatch):
     assert pot.score_due(con, NOW + timedelta(days=31), None, index) == 1
     ret, vs, st = con.execute("SELECT ret, ret_vs_market, status FROM pot_ideas").fetchone()
     assert ret == pytest.approx(0.30) and st == "closed" and 0.2 < vs < 0.3
+
+
+def test_pit_proxy_history_includes_names_that_later_died_and_ignores_names_not_yet_members():
+    idx = pd.bdate_range("2020-01-01", "2020-06-30")
+    n = len(idx)
+    r = pd.DataFrame({"A": [0.01] * n, "B": [0.01] * n, "C": [0.01] * n, "D": [0.01] * n, "E": [0.01] * n, "F": [0.01] * n,
+                      "G": [0.01] * n}, index=idx)
+    r.loc[idx[60]:, "A"] = float("nan")                                   # A is delisted in April: its fall is not in the data after
+    r.loc[idx[40]:idx[60], "A"] = -0.20                                   # ...but it crashed first, while it was a member
+    mem = pd.DataFrame({"isin": list("ABCDEFG"), "from_date": pd.Timestamp("2019-01-01"), "to_date": pd.Timestamp("2099-01-01")})
+    mem.loc[mem["isin"] == "G", "from_date"] = pd.Timestamp("2021-01-01")      # G joins long after: never in this history
+    labels = pd.DataFrame({"capture_date": pd.Timestamp("2019-06-01"), "isin": list("ABCDEFG"),
+                           "industry": ["Capital Goods"] * 5 + ["Banks", "Capital Goods"]})
+    s = themes.pit_proxy_history(mem, labels, r, ["capital goods"], min_names=5)
+    assert s.index.min() > idx[0] and s.index.max() <= idx[-1]
+    survivors_only = (1 + r[list("BCDE")].mean(axis=1)).cumprod()
+    assert s.min() < survivors_only.reindex(s.index).min() or s.iloc[-1] < survivors_only.iloc[-1]       # A's crash is in
+    assert themes.pit_proxy_history(mem, labels, r, ["capital goods"], min_names=6).empty                # too few live names: nothing invented

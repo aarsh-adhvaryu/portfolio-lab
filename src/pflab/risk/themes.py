@@ -2,8 +2,9 @@
 with evidence, applied after his yes; then it holds itself to them).
 
     exposure        the share of the portfolio in each theme (stocks, and funds through look-through)
-    history         the theme's price history: its sector index where one exists, else the equal-weighted basket of its
-                    members' adjusted closes (today's members' past: a description, with survivorship in it)
+    history         the theme's price history, free of survivorship and hindsight: its published sector index where one
+                    exists, else the point-in-time industry group (the Nifty 500 members of each day with that sector label,
+                    delisted names included). A named basket of today's names is never used: it is chosen with hindsight
     propose_limit   by code: the largest weight w with w x (the theme's worst fall from its trailing 12-month high) <= 10%
                     of the portfolio, capped at the equity targets; the evidence is stored with the proposal
     propose/resolve a proposal is a `limit_proposals` row and a Needs-from-you question; it applies only on his yes
@@ -109,28 +110,61 @@ def exposure_of(con, root, asof: date, ex: Optional[dict] = None) -> dict:
 
 # --- history and the proposed limit ------------------------------------------------------------------------------
 
+def pit_proxy_history(mem: pd.DataFrame, labels: pd.DataFrame, r: pd.DataFrame, keywords: List[str],
+                      min_names: int = 5) -> pd.Series:
+    """The history of an industry group WITHOUT survivorship or hindsight: each month-end the Nifty 500 members of that day
+    whose own sector label of that day contains a keyword (names later delisted included: they were members then), held equal
+    weight over the next month; the daily total return `r` (sessions x isin). Names that stop trading drop out of the average
+    from that day. Fewer than `min_names` live names in a month leave it out (NaN), never filled."""
+    sessions = r.index
+    every = pd.Series(range(len(sessions)), index=sessions).groupby([sessions.year, sessions.month]).max().tolist()
+    kw = [k.lower() for k in keywords]
+    out = {}
+    lab = labels.assign(hit=labels["industry"].fillna("").str.lower().map(lambda s: any(k in s for k in kw)))
+    for k in range(len(every) - 1):
+        t = sessions[every[k]]
+        live = set(mem[(mem["from_date"] <= t) & (mem["to_date"] > t)]["isin"])
+        l = lab[(lab["capture_date"] <= t)].sort_values("capture_date").drop_duplicates("isin", keep="last")
+        pick = sorted(live & set(l.loc[l["hit"], "isin"]) & set(r.columns))
+        if len(pick) < min_names:
+            continue
+        seg = r.iloc[every[k] + 1: every[k + 1] + 1][pick]
+        out.update(seg.mean(axis=1, skipna=True).to_dict())
+    s = pd.Series(out, dtype=float).sort_index()
+    return (1 + s).cumprod()
+
+
 def history(con, root, theme: str, asof: date) -> tuple:
-    """(series, how): the theme's index close where configured and present, else the basket's equal-weighted value."""
+    """(series, how) with no survivorship and no hindsight: the theme's published index where one exists; else the point-in-time
+    industry group named in `proxy` (pit_proxy_history). A named basket is never the history: a list of today's names is chosen
+    with hindsight (the winners are on it), so it understates the falls."""
     cfg = config()["theme"][theme]
     if cfg.get("index"):
         try:
             from pflab.data import indices
             d = indices.load(cfg["index"], root)
             s = pd.Series(d["close"].to_numpy(float), index=pd.to_datetime(d["date"])).sort_index()
-            return s[s.index <= pd.Timestamp(asof)], f"index {cfg['index']}"
+            return s[s.index <= pd.Timestamp(asof)], f"index {cfg['index']} (published, constituents change with the index)"
         except Exception:
             pass
-    isins = list(basket_isins(con, root, theme, asof).values())
-    if not isins:
-        return pd.Series(dtype=float), "no members"
-    from pflab import _duck
-    p = (Path(root) / "panel" / "prices.parquet").as_posix()
-    q = ",".join(f"'{i}'" for i in isins)
-    d = _duck.sql(f"SELECT date, isin, adj_close FROM '{p}' WHERE isin IN ({q}) AND date <= DATE '{asof}'").df()
-    w = d.pivot(index="date", columns="isin", values="adj_close").sort_index()
-    w.index = pd.to_datetime(w.index)
-    r = w.pct_change(fill_method=None).mean(axis=1, skipna=True).dropna()
-    return (1 + r).cumprod(), f"equal-weighted basket of {w.shape[1]} members (today's members' past)"
+    kws = cfg.get("proxy", [])
+    if not kws:
+        return pd.Series(dtype=float), "no survivorship-free history for this theme"
+    cache = Path(root) / "derived" / f"theme_history_{theme}.parquet"
+    if cache.exists() and (datetime.now() - datetime.fromtimestamp(cache.stat().st_mtime)).days < 7:
+        c = pd.read_parquet(cache)["v"]
+        return c[c.index <= pd.Timestamp(asof)], f"point-in-time industry group {kws} (Nifty 500 members of each day, delisted included)"
+    from pflab.data import sector_map
+    from pflab.learner import templates as tp
+    root = Path(root)
+    mem = tp.members(root)
+    w = tp.wide_panel(root, sorted(set(mem["isin"])), "2008-06-01", str(asof))
+    labels = sector_map.load(root)[["capture_date", "isin", "industry"]]
+    labels = labels.assign(capture_date=pd.to_datetime(labels["capture_date"]))
+    s = pit_proxy_history(mem, labels, w["r"], kws)
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    s.rename("v").to_frame().to_parquet(cache)
+    return s, f"point-in-time industry group {kws} (Nifty 500 members of each day, delisted included)"
 
 
 def worst_fall(s: pd.Series, window: int = WINDOW) -> dict:
