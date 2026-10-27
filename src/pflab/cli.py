@@ -137,6 +137,13 @@ def main(argv=None):
     svsub.add_parser("status", help="health: jobs, data freshness, outbox, backup, disk")
     svsub.add_parser("test-alert", help="queue and send a Telegram test message")
     svsub.add_parser("backup", help="back up the ledger now (needs a target)")
+    ipop = sub.add_parser("ipo", help="S64: an IPO allotment and the money around it")
+    ipop.add_argument("action", choices=["plan"])
+    ipop.add_argument("--name", required=True)
+    ipop.add_argument("--qty", type=int, required=True, help="shares allotted")
+    ipop.add_argument("--price", type=float, required=True, help="issue price")
+    ipop.add_argument("--budget", type=float, required=True, help="rupees to invest in all, allotment included")
+    ipop.add_argument("--group", default=None, help="his business group name (PFLAB_PM_DIR/groups.toml)")
     hqp = sub.add_parser("hq", help="the agent HQ (S64: the replay bench)")
     hqp.add_argument("action", choices=["replay"])
     hqp.add_argument("pass_id", type=int, help="the journaled pass to run again")
@@ -260,6 +267,8 @@ def main(argv=None):
         return _workshop(a)
     if a.cmd == "hq":
         return _hq(a)
+    if a.cmd == "ipo":
+        return _ipo(a)
     if a.cmd == "list":
         from pflab.plan import stock_list as slm
         from pflab.pm import store as _store
@@ -755,6 +764,19 @@ def _service(a) -> int:
             return 2
         print(bk.backup(ctx.con, ctx.pm_dir / "ledger.duckdb", t, ctx.now, bk.keep_count()))
         return 0
+    return 0
+
+
+def _ipo(a) -> int:
+    """pflab ipo plan --name N --qty Q --price P --budget B [--group G]: facts and choices for an allotment; no prediction."""
+    import json as _js
+    from datetime import date as _date
+
+    from pflab.data import data_dir
+    from pflab.plan import ipo
+    from pflab.pm import store
+    r = ipo.strategy(store.connect(), data_dir(), _date.today(), a.name, a.qty, a.price, a.budget, a.group, store.pm_dir())
+    print(_js.dumps(r, indent=1, default=str))
     return 0
 
 

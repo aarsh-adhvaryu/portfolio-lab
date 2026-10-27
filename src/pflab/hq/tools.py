@@ -674,6 +674,17 @@ def record_hypothesis(ctx: Ctx, a: dict) -> dict:
             "note": "confirmed or refuted later; a refuted one leaves the graph"}
 
 
+def ipo_plan(ctx: Ctx, a: dict) -> dict:
+    """An IPO allotment and the money around it: the facts and the choices with their numbers (plan/ipo.py)."""
+    from pflab.plan import ipo
+    r = ipo.strategy(ctx.con, ctx.rt.data_root, ctx.asof, a["name"], int(a["shares"]), float(a["issue_price"]), float(a["budget"]),
+                     a.get("group"), ctx.rt.pm_dir)
+    r["how_to_use"] = ("Then web_search the public facts listed in to_look_up_with_web_search (never put his shares, amounts or "
+                       "holdings in the question; GMP is sentiment, name its date), connect them to the picture, and set out the "
+                       "choices with numbers. Do not call it up or down: say what is known and what is not.")
+    return r
+
+
 def picture_tool(ctx: Ctx, a: dict) -> dict:
     """Everything side by side, built by code: the first call of every pass."""
     from pflab.hq import picture
@@ -837,6 +848,12 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
          "correlation over 5 years, Engle-Granger cointegration (Benjamini-Hochberg adjusted), how often it held in "
          "rolling windows, the spread's half-life. A description: relations break (9% stayed cointegrated).",
          {"symbol": SYMBOL}, ("symbol",), comovement),
+    Tool("ipo_plan", "read", "An IPO allotment and the money around it: what the shares are worth at any listing price, how large IPOs "
+         "behaved (listing gain and the next 1-3 months), the overlap with the business group he already holds, tax on a sale, "
+         "and what the standard plan does with the rest. Facts and choices, not a prediction.",
+         {"name": _s("the company", 80), "shares": _i("shares allotted", 1, 1_000_000), "issue_price": _n("issue price in rupees", 1, 100_000),
+          "budget": _n("rupees he wants to invest in all, allotment included", 1_000, 1e8), "group": _s("his business group name, e.g. reliance", 40)},
+         ("name", "shares", "issue_price", "budget"), ipo_plan),
     Tool("picture", "read", "THE ONE PICTURE, built by code: the market's state and crash gauges, the news mood (and whether the news "
          "is current), the allocation against targets, every holding with its valuation, trend, news mood and warnings, the themes "
          "against their limits, cash and the dip reserve, what is on offer, what could hurt (scenarios), what changed, what waits "
