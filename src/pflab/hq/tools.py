@@ -674,6 +674,13 @@ def record_hypothesis(ctx: Ctx, a: dict) -> dict:
             "note": "confirmed or refuted later; a refuted one leaves the graph"}
 
 
+def picture_tool(ctx: Ctx, a: dict) -> dict:
+    """Everything side by side, built by code: the first call of every pass."""
+    from pflab.hq import picture
+    p = picture.cached(ctx.con, ctx.rt.data_root, ctx.asof, ctx.book(), ctx.rt.pm_dir)
+    return {**p, "source": "hq/picture.py: stored and computed facts with their dates, side by side; nothing in it is a forecast"}
+
+
 def scans_tool(ctx: Ctx, a: dict) -> dict:
     """The saved scans with their tested label and the hits of their last run."""
     from pflab.quant import scan
@@ -830,6 +837,10 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
          "correlation over 5 years, Engle-Granger cointegration (Benjamini-Hochberg adjusted), how often it held in "
          "rolling windows, the spread's half-life. A description: relations break (9% stayed cointegrated).",
          {"symbol": SYMBOL}, ("symbol",), comovement),
+    Tool("picture", "read", "THE ONE PICTURE, built by code: the market's state and crash gauges, the news mood (and whether the news "
+         "is current), the allocation against targets, every holding with its valuation, trend, news mood and warnings, the themes "
+         "against their limits, cash and the dip reserve, what is on offer, what could hurt (scenarios), what changed, what waits "
+         "for him, and what the system has learned. Call it FIRST in every pass; then dig into what it shows.", {}, (), picture_tool),
     Tool("scans", "read", "The saved scans (conditions from a closed set: moving averages, RSI, 52-week range, volume spike, P/E "
          "against its own median, alpha sign, futures build-up) with their last hits and whether the learner tested them.",
          {}, (), scans_tool),
