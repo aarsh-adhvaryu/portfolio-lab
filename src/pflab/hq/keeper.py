@@ -192,6 +192,11 @@ def run(con, now: datetime, root=None) -> dict:
             index = stocks.index_series(root)
         except Exception:                                    # no index file: suggestions wait (void after 10 days)
             index = None
-    return {"scored": score_due(con, now), "suggestions_scored": sg.score_due(con, now, index),
+    from pflab.kg import hypotheses as hy
+    try:
+        hyp = hy.check_due(con, root, now) if root is not None else {}
+    except Exception as e:                                   # a hypothesis check never stops the keeper
+        hyp = {"error": f"{type(e).__name__}: {str(e)[:100]}"}
+    return {"hypotheses": hyp, "scored": score_due(con, now), "suggestions_scored": sg.score_due(con, now, index),
             "notes_ended": tidy_notes(con, now), "outcomes_written": write_outcomes(con, now, fu),
             "decisions_followed": sum(1 for f in fu if f["since"]), "unknown_subjects": sum(1 for f in fu if f.get("unknown_subject"))}

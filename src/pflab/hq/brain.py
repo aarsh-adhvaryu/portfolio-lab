@@ -184,6 +184,10 @@ def events(con, since: datetime, now: datetime, held: Sequence[str], listed: Seq
             "SELECT msg_id, kind, text FROM outbox WHERE created_at >= ? AND kind IN ('guard','filing','forecast','watch',"
             "'plans','tradecheck') ORDER BY msg_id", [since]).fetchall():
         out.append({"key": f"alert:{mid}", "kind": f"alert ({kind})", "text": text[:400]})
+    for hid, subject, cause in con.execute("SELECT hyp_id, subject, cause FROM kg_hypotheses WHERE status='review' "
+                                           "ORDER BY hyp_id").fetchall():
+        out.append({"key": f"hypothesis:{hid}", "kind": "hypothesis to decide",
+                    "text": f"#{hid} {subject}: 'seems caused by {cause[:160]}' is due: decide it (hypotheses, decide_hypothesis)"})
     for cid, topic, at in con.execute(
             "SELECT call_id, topic, finished_at FROM api_calls WHERE status='done' AND note_doc IS NOT NULL AND finished_at >= ?",
             [since]).fetchall():

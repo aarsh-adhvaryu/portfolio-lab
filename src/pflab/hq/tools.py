@@ -643,6 +643,40 @@ def propose_pot_idea(ctx: Ctx, a: dict) -> dict:
             "note": "prices and amount by code; an idea for the investor, never an order"}
 
 
+def record_hypothesis(ctx: Ctx, a: dict) -> dict:
+    """The brain's "this seems the cause": kept with its evidence and a date to check by; the keeper tests it later."""
+    from pflab.agents import analyst as an
+    from pflab.kg import hypotheses as hy
+    cause, d1 = an.only_sourced_numbers(a["cause"], an.Request(ctx.source, "brain"))
+    effect, d2 = an.only_sourced_numbers(a["effect"], an.Request(ctx.source, "brain"))
+    if d1 or d2:
+        ctx.problems.append(f"hypothesis on {a['subject']}: {d1 + d2} sentence(s) dropped (numbers not read)")
+    if ctx.shadow:
+        return {"shadow": True, "note": "shadow pass: the hypothesis is not kept"}
+    check_by = date.fromisoformat(a["check_by"])
+    series = a.get("series")
+    sep = "\n\n("
+    hid = hy.record(ctx.con, ctx.pass_id, a["subject"], cause.split(sep)[0], effect.split(sep)[0],
+                    list(a.get("evidence", [])), check_by, None if series in (None, "none") else series, ctx.now)
+    return {"kept": hid, "checked": ("by code on " if series not in (None, "none") else "by you in a later pass on ") + str(check_by),
+            "note": "confirmed or refuted later; a refuted one leaves the graph"}
+
+
+def hypotheses(ctx: Ctx, a: dict) -> dict:
+    from pflab.kg import hypotheses as hy
+    return {"to_decide_now": hy.due_for_the_brain(ctx.con), "recent": hy.listing(ctx.con, a.get("status"), 15),
+            "source": "kg_hypotheses (the keeper tests macro causes by code; others wait for a decision in a pass)"}
+
+
+def decide_hypothesis(ctx: Ctx, a: dict) -> dict:
+    """Decide a hypothesis the keeper handed over (its cause is not a macro series): confirmed or refuted, with the reason."""
+    from pflab.kg import hypotheses as hy
+    if ctx.shadow:
+        return {"shadow": True}
+    hy.decide(ctx.con, int(a["hyp_id"]), a["verdict"], a["why"], ctx.now)
+    return {"decided": int(a["hyp_id"]), "verdict": a["verdict"]}
+
+
 SYMBOL = _s("NSE symbol of a held or listed stock", 20)
 DAYS = _i("days back", 1, 365)
 TOOLS: Dict[str, Tool] = {t.name: t for t in [
@@ -743,6 +777,19 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
          "correlation over 5 years, Engle-Granger cointegration (Benjamini-Hochberg adjusted), how often it held in "
          "rolling windows, the spread's half-life. A description: relations break (9% stayed cointegrated).",
          {"symbol": SYMBOL}, ("symbol",), comovement),
+    Tool("hypotheses", "read", "Your cause hypotheses: those the keeper handed over to decide now, and the recent ones with "
+         "their status.", {"status": _s("status", enum=["open", "review", "confirmed", "refuted", "expired"])}, (), hypotheses),
+    Tool("record_hypothesis", "journal", "Record 'this seems the cause' for a move: the subject (a symbol or a topic), the "
+         "cause, the effect, the evidence (tool names read), a date to check by within 90 days, and a macro series if the cause "
+         "is one (BRENT, USDINR, US_SP500), which the keeper then tests by code.",
+         {"subject": _s("a symbol or topic", 60), "cause": _s("the suspected cause", 300), "effect": _s("what it did", 300),
+          "evidence": {"type": "array", "items": {"type": "string"}, "description": "tool names or ids read"},
+          "check_by": _s("YYYY-MM-DD, within 90 days", 10),
+          "series": _s("macro series", enum=["BRENT", "USDINR", "US_SP500", "none"])},
+         ("subject", "cause", "effect", "check_by"), record_hypothesis),
+    Tool("decide_hypothesis", "journal", "Decide a hypothesis handed to you (hypotheses -> to_decide_now): confirmed or refuted "
+         "from the evidence, with the reason.", {"hyp_id": _i("the id", 1, 10 ** 9), "verdict": _s("verdict", enum=["confirmed", "refuted"]),
+                                                  "why": _s("the reason", 400)}, ("hyp_id", "verdict", "why"), decide_hypothesis),
     Tool("themes", "read", "Theme exposure (AI and IT, defence, EV and auto-tech) as a share of the portfolio with the limits he "
          "applied, pending proposals (limits, dip reserve, pot), and the opportunity pot with its ideas.", {}, (), themes_tool),
     Tool("propose_pot_idea", "journal", "Put a missed winner or a new listing into the opportunity pot: the reason in words; "
