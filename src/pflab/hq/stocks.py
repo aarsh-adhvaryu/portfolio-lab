@@ -283,6 +283,12 @@ def facts(con, root: Path, bk: Book, symbol: str, parts=("drift", "odds", "edge"
         out["capm"] = capm_part(root, isin, bk.asof)
     if "process" in parts:
         out["process"] = process_part(root, isin, c, bk.asof)
+    if "valuation" in parts:
+        from pflab.hq import valuation
+        try:
+            out["valuation"] = valuation.facts(con, root, isin, bk.symbols[isin], c, bk.asof)
+        except Exception as e:
+            out["valuation"] = {"error": f"{type(e).__name__}: {str(e)[:120]}"}
     if bk.notes:
         out["notes"] = bk.notes
     return out

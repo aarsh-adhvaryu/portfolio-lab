@@ -209,7 +209,7 @@ def stocks_overview(ctx: Ctx, a: dict) -> dict:
 
 def stock_facts(ctx: Ctx, a: dict) -> dict:
     from pflab.hq import stocks
-    return stocks.facts(ctx.con, ctx.rt.data_root, ctx.book(), a["symbol"], tuple(a.get("parts") or ("drift", "odds", "edge")))
+    return stocks.facts(ctx.con, ctx.rt.data_root, ctx.book(), a["symbol"], tuple(a.get("parts") or ("drift", "odds", "edge", "valuation")))
 
 
 def comovement(ctx: Ctx, a: dict) -> dict:
@@ -443,7 +443,7 @@ def record_suggestion(ctx: Ctx, a: dict) -> dict:
             raise ValueError(f"{sym} is neither held nor on the stock list")
         isin = ctx.syms[sym]
         bk = ctx.book()
-        facts = stocks.facts(ctx.con, ctx.rt.data_root, bk, sym, ("drift",))
+        facts = stocks.facts(ctx.con, ctx.rt.data_root, bk, sym, ("drift", "valuation"))
         s = keeper.closes(ctx.con, isin, ctx.asof, days=15)
         ref = (s.index[-1].date(), float(s.iloc[-1])) if len(s) else None
         qty = float(bk.qtys.get(isin, 0.0))
@@ -655,10 +655,11 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
          "(10% moves over 21/63 sessions, touch chances of 5/10/20% falls, the buy zone), edge (excess over the Nifty "
          "500 after costs, n, t; a description, never a signal); also on request capm (beta, alpha with t, the CAPM "
          "expected return) and process (does its price revert to a mean or walk at random: ADF, variance ratios, "
-         "half-life; descriptions, never signals).",
+         "half-life; descriptions, never signals); valuation (P/E now, against its own 5-year range and the "
+         "market's, what growth the price assumes, volatility against its norm, and the usual rules of thumb as flags).",
          {"symbol": SYMBOL, "parts": {"type": "array", "items": {"type": "string", "enum": ["drift", "odds", "edge", "capm",
-                                                                                          "process"]},
-                                      "description": "which parts (default drift, odds, edge)"}}, ("symbol",), stock_facts),
+                                                                                          "process", "valuation"]},
+                                      "description": "which parts (default drift, odds, edge, valuation)"}}, ("symbol",), stock_facts),
     Tool("tax_plan", "read", "Tax plan by code: per holding the FIFO ladder at today's price, long-term dates, what "
          "waiting saves, the 112A exemption left, loss sales.", {}, (), tax_plan),
     Tool("measure", "read", "A reviewed measure of a stock or index (NIFTY 50, NIFTY 500): drawdown, period_return, "
