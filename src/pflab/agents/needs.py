@@ -46,3 +46,25 @@ def check_company(con, root, isin: str, now: Optional[datetime] = None, symbol: 
     if n < MIN_QUARTERS:
         return ask_company_detail(con, isin, f"only {n} quarters of results, {MIN_QUARTERS} needed", now, symbol)
     return None
+
+
+CLOSING_KEY = "closing:bank-accounts"
+
+
+def closing_checklist(con, n_credit: int, n_default: int, kept: str, now: Optional[datetime] = None) -> Optional[int]:
+    """One question for the day he closes bank accounts the system has not seen: what to tell it, and what to check first (a
+    payout into a closed account is the failure that costs money). Asked once."""
+    text = (
+        "You will close two bank accounts I have not seen (the ones I know, " + kept + ", stay). Before you do, one reply covering "
+        "these is enough:\n"
+        "1. Their bank names (no numbers) and roughly what is in them, so their last transfer into your open accounts is recognised "
+        "as your own money moving, not guessed. If you can, drop each one's statement up to the closing day in Inbox and files.\n"
+        f"2. FD payouts: {n_credit} of your FDs say 'Credit to Account' and {n_default} say 'Default'; my FD file does not say which account "
+        "they pay into. Check each with the bank (or in net banking) that none pays into an account you are closing, and change it first. "
+        "Tell me when done.\n"
+        "3. US wallet: Zerodha takes netbanking only from HDFC, ICICI, IDFC FIRST, Axis or Kotak. HDFC is one you keep; SBI is not on "
+        "the list. Keep HDFC open for funding it.\n"
+        "4. Also move: the Zerodha payout account, dividend and demat mandates, SIPs, insurance and card auto-debits, and the income-tax "
+        "refund account (pre-validate the one you keep).\n"
+        "5. Note the interest each account earned this financial year: it is taxed even though the account is closed, and Quicko needs it.")
+    return questions.ask(con, AGENT, CLOSING_KEY, text, now or datetime.now())
