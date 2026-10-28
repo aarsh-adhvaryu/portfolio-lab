@@ -7,6 +7,10 @@ Microsoft Edge in app mode with its own profile (no tabs, no address bar); it op
 switches to the dashboard when the server answers. The system stops when the window has been closed for IDLE_STOP_S
 seconds, when Edge exits, or from the screen's power button; a running job gets up to JOB_GRACE_S to finish. A start-up
 failure is logged and shown in a message box (pythonw has no console). Log: PFLAB_PM_DIR\\app\\app.log.
+
+S65 (one desktop icon): an installed app takes the newest release tag before it starts (`pflab update` in a child process: the
+store backed up first, a self-test, undone on a failure), then starts again on it. Offline, no newer tag, or the store held by
+the tick: it starts as it is and tries at the next start.
 """
 from __future__ import annotations
 
@@ -25,6 +29,7 @@ IDLE_STOP_S, JOB_GRACE_S, START_TIMEOUT_S = 20, 60, 60
 UPDATE_EVERY_S, UPDATE_IDLE_S = 60, 30 * 60   # S58b: look for new code each minute; restart onto it after 30 min untouched
 RESTART = 3                                    # _serve's return code: start again onto the new code
 WINDOW_GONE_S = 10                             # no window connected this long, and Edge's process gone: stop
+UPDATE_TIMEOUT_S = 15 * 60                     # S65: the update at start (fetch, install, self-test)
 T0 = time.time()
 EDGE = [Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Microsoft/Edge/Application/msedge.exe",
         Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Microsoft/Edge/Application/msedge.exe"]
@@ -129,6 +134,26 @@ def end_children_with_me():
         return None
 
 
+def update_first(log, run=subprocess.run) -> Optional[str]:
+    """S65: an installed app takes the newest release before it starts. Returns the new tag, or None (the workshop, no newer tag,
+    offline, the store held by the tick, a failed update that undid itself: it starts as it is)."""
+    from pflab import release
+    before = release.load(release.ROOT)
+    if before is None:
+        return None
+    py = Path(sys.executable).with_name("python.exe")    # the console interpreter beside pythonw: pip and git run there
+    try:
+        p = run([str(py if py.exists() else sys.executable), "-m", "pflab.cli", "update"], cwd=str(release.ROOT), capture_output=True,
+                text=True, timeout=UPDATE_TIMEOUT_S, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.SubprocessError) as e:
+        log.warning("update at start skipped: %s", e)
+        return None
+    log.info("update at start (rc %s): %s", p.returncode, ((p.stdout or "") + (p.stderr or "")).strip()[-400:])
+    old = (before.get("app") or {}).get("tag")
+    new = ((release.load(release.ROOT) or {}).get("app") or {}).get("tag")
+    return new if new and new != old else None
+
+
 def _up(url: str) -> bool:
     try:
         with urllib.request.urlopen(url + "api/health", timeout=2) as r:
@@ -200,6 +225,15 @@ def _run(pm: Path, log) -> int:
     starting = pm / "app" / "starting.html"
     starting.write_text(STARTING % (url, url), encoding="utf-8")
     win = open_window(starting.as_uri(), profile)          # at once: the imports below take a few seconds
+    new = update_first(log)                                # S65: the one icon also updates
+    if new:
+        log.info("updated to %s at start: starting again on it", new)
+        if win is not None:
+            win.terminate()
+        close_window(profile)
+        lock.__exit__(None, None, None)
+        restart(log)
+        return 0
     try:
         rc = _serve(pm, log, url, port, win)
     except BaseException:

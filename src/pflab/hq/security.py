@@ -224,10 +224,42 @@ def grep(files: Iterable[Path], gate, money: List[str], syms: List[str], repo: P
     return out
 
 
+def terms_path() -> Path:
+    return Path.home() / ".pflab" / "privacy_terms.json"
+
+
+def export_terms(con, gate=None, path: Optional[Path] = None, now: Optional[datetime] = None) -> Path:
+    """S65: what the push check greps for (his ids, name and address words, ledger amounts, stock list), written by the APP beside
+    secrets.toml, outside every repo: the workshop holds no copy of his store and checks its pushes against this file."""
+    from pflab.hq import egress as eg
+    gate = gate or eg.load(con)
+    p = Path(path or terms_path())
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"ids": sorted(gate.ids), "names": gate.names, "address": gate.address, "amounts": amounts(con),
+                             "symbols": symbols(con), "written_at": str(now or datetime.now())[:19]}), encoding="utf-8")
+    return p
+
+
+def load_terms(path: Optional[Path] = None):
+    """(gate, amounts, symbols) from the app's terms file, or None when there is none."""
+    from pflab.hq import egress as eg
+    p = Path(path or terms_path())
+    if not p.exists():
+        return None
+    d = json.loads(p.read_text(encoding="utf-8"))
+    return eg.Gate(ids=set(d.get("ids", [])), names=d.get("names", []), address=d.get("address", [])), d.get("amounts", []), d.get("symbols", [])
+
+
 def privacy(rt, gate=None) -> dict:
+    from pflab import release
     from pflab.hq import egress as eg
     con, now = rt.cursor(), rt.clock()
     gate = gate or eg.load(con)
+    if gate.ids and release.load() is not None:              # the app keeps the workshop's push check current
+        try:
+            export_terms(con, gate, now=now)
+        except OSError:
+            pass
     found = grep(tracked(Path(rt.repo)), gate, amounts(con), symbols(con), Path(rt.repo))
     kinds = sorted({k for _, k in found})
     serious = [(p, k) for p, k in found if k != "his name"]   # the docs address him by name: S63 decides; low until then
@@ -390,20 +422,37 @@ def status(con, limit: int = 10) -> str:
 
 def push_check(repo: Path) -> int:
     """S63: the pre-push hook (`.githooks/pre-push`): the privacy grep over the tracked files; 1 blocks the push.
-    The ledger is read read-only; when it cannot be read (the dashboard holds it) the push is blocked too."""
+    S65: what to grep for comes from the app's terms file (`export_terms`) and from this checkout's ledger when it has one (read
+    read-only); with neither, nothing says what his data looks like, so the push is blocked."""
     import duckdb
     from pflab.hq import egress as eg
     from pflab.pm import store
-    try:
-        con = duckdb.connect(str(store.db_path()), read_only=True)
-    except Exception as e:
-        print(f"push blocked: the ledger could not be read for the privacy grep ({type(e).__name__}); close the "
-              "dashboard and push again")
+    t = load_terms()
+    gate, money, syms = t if t else (eg.Gate(), [], [])
+    gate = eg.Gate(ids=set(gate.ids), names=list(gate.names), address=list(gate.address))
+    money, syms = list(money), list(syms)
+    if store.db_path().exists():
+        try:
+            con = duckdb.connect(str(store.db_path()), read_only=True)
+            try:
+                g = eg.load(con)
+                gate.ids |= g.ids
+                gate.names += [n for n in g.names if n not in gate.names]
+                gate.address += [a for a in g.address if a not in gate.address]
+                money += [m for m in amounts(con) if m not in money]
+                syms += [s for s in symbols(con) if s not in syms]
+            finally:
+                con.close()
+        except Exception as e:
+            if t is None:
+                print(f"push blocked: the ledger could not be read for the privacy grep ({type(e).__name__}); close the "
+                      "dashboard and push again")
+                return 1
+    if not gate.ids and not money:
+        print(f"push blocked: no list of his data to check against ({terms_path()} is missing and this checkout has no ledger); "
+              "the app writes it with its daily privacy check, or now: python -m pflab.hq.security export (in the app's folder)")
         return 1
-    try:
-        found = grep(tracked(repo), eg.load(con), amounts(con), symbols(con), repo)
-    finally:
-        con.close()
+    found = grep(tracked(repo), gate, money, syms, repo)
     for p, k in found[:40]:
         print(f"  {p}: {k}")
     if found:
@@ -413,6 +462,19 @@ def push_check(repo: Path) -> int:
     return 0
 
 
+def export_now() -> int:
+    """`python -m pflab.hq.security export`, in the app's folder: write the terms file from the app's ledger (read-only)."""
+    import duckdb
+    from pflab.pm import store
+    con = duckdb.connect(str(store.db_path()), read_only=True)
+    try:
+        p = export_terms(con)
+    finally:
+        con.close()
+    print(f"written: {p} (the list itself is not printed)")
+    return 0
+
+
 if __name__ == "__main__":
     import sys
-    sys.exit(push_check(Path(__file__).resolve().parents[3]))
+    sys.exit(export_now() if sys.argv[1:] == ["export"] else push_check(Path(__file__).resolve().parents[3]))

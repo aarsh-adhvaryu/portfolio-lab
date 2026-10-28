@@ -9,8 +9,8 @@ what remains: `docs/PLAN.md`; rules for Claude Code: `CLAUDE.md`.
    `ollama pull nomic-embed-text` (about 9 GB, once; never delete them).
 2. **Install the app** into its own folder from the private GitHub repo at a release tag:
    `powershell -ExecutionPolicy Bypass -File tools\install_app.ps1 -DryRun` (look), then without `-DryRun` (3-6 minutes; "INSTALLED" at the end).
-   Default folder `D:\PortfolioLabApp` (needs 10 GB free). It makes `app\` (the clone and `.venv`), `data\`, `pm\`, `backups\`, `release.toml`, and two desktop
-   shortcuts: "Portfolio Lab" and "Portfolio Lab Update". From here every command runs in `<folder>\app` with `.venv\Scripts\python -m pflab.cli ...`.
+   Default folder `D:\PortfolioLabApp` (needs 10 GB free). It makes `app\` (the clone and `.venv`), `data\`, `pm\`, `backups\`, `release.toml`, and ONE desktop
+   shortcut, "Portfolio Lab" (nothing else). From here every command runs in `<folder>\app` with `.venv\Scripts\python -m pflab.cli ...`.
 3. **Keys:** `pflab setup secrets` (typed, never echoed: Kite API key and secret, Telegram token and chat id, Anthropic key; add `--only sec` for the SEC contact later).
    Statement passwords are asked for by the names Setup gives them. The file is `%USERPROFILE%\.pflab\secrets.toml`, outside the repo.
 4. **Market history** (each is resumable and longer than 5 minutes; start with the first two): `tools\backfill_bhavcopy.py --from 2012-01-01`,
@@ -37,7 +37,7 @@ what remains: `docs/PLAN.md`; rules for Claude Code: `CLAUDE.md`.
 ## Day to day
 Nothing: it wakes with the laptop, watches, researches, simulates, and writes to you only when it matters (plus 09:00 and 21:45 summaries). Tell it your monthly amount
 when the money comes ("I'm investing 50k this month"). Taxes: `pflab pm quicko --fy 2027` writes the Quicko inputs to `pm\reports\quicko`.
-**Update:** close the app, open "Portfolio Lab Update" (or `pflab update`): it backs the store up, installs the newest release tag, self-tests, and undoes itself on a
+**Update:** nothing to do: each start of "Portfolio Lab" takes the newest release first (or `pflab update` with the app closed): it backs the store up, installs the newest release tag, self-tests, and undoes itself on a
 failure; `pflab update --rollback` returns to the previous release. Your record is never wiped.
 
 ## The workshop (development; not the app)

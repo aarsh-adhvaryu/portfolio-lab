@@ -31,3 +31,25 @@ def test_children_end_with_the_system():
     pid = int(subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60).stdout.split()[0])
     out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True).stdout
     assert str(pid) not in out                               # the parent exited: its child was ended with it
+
+
+def test_the_one_icon_takes_a_new_release_at_start_and_only_in_the_app(monkeypatch):
+    """S65: no "Portfolio Lab Update" icon: the launcher runs `pflab update` first and starts again on a new tag."""
+    import logging
+    from types import SimpleNamespace
+    from pflab import release
+    log = logging.getLogger("t")
+    state = {"tag": "v2026.10.28.5"}
+    monkeypatch.setattr(release, "load", lambda root=None: {"app": {"tag": state["tag"]}})
+    calls = []
+
+    def run(cmd, **k):
+        calls.append(cmd[-2:])
+        state["tag"] = "v2026.10.28.6"
+        return SimpleNamespace(returncode=0, stdout="updated", stderr="")
+    assert la.update_first(log, run) == "v2026.10.28.6" and calls == [["pflab.cli", "update"]]
+    assert la.update_first(log, lambda cmd, **k: SimpleNamespace(returncode=1, stdout="refused: another process holds the store",
+                                                                 stderr="")) is None          # starts as it is
+    assert la.update_first(log, lambda cmd, **k: (_ for _ in ()).throw(OSError("offline"))) is None
+    monkeypatch.setattr(release, "load", lambda root=None: None)                            # the workshop never updates itself
+    assert la.update_first(log, lambda cmd, **k: 1 / 0) is None

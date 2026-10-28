@@ -7,7 +7,7 @@
   What it does, in order:  checks (folder empty, disk space, git, Python 3.13) -> sparse clone at the tag (only the files needed to
   run: no tests, no docs) -> .venv and `pip install -e .` -> data, pm and backups folders -> release.toml (channel stable; it
   sets this app's data and store folders and wins over any user-level PFLAB_DATA_DIR) -> the Docker sandbox image (if Docker is
-  there) -> a start-up check -> the desktop shortcuts "Portfolio Lab" and "Portfolio Lab Update".
+  there) -> a start-up check -> one desktop shortcut "Portfolio Lab" (it updates itself at start).
   The data is NOT copied here: tools\seed_app.ps1 does that once. The scheduled tick is registered only with -RegisterTick.
 
   Preview:   powershell -ExecutionPolicy Bypass -File tools\install_app.ps1 -DryRun
@@ -117,15 +117,10 @@ Act "python -m pflab.release show (the program starts and reads its release file
 Step "Shortcuts"
 if ($NoShortcut) { Write-Host "   skipped (-NoShortcut)" }
 else {
-  Act "desktop shortcuts 'Portfolio Lab' and 'Portfolio Lab Update' (they replace one of the same name)" {
+  Act "one desktop shortcut 'Portfolio Lab' (it replaces one of the same name; it also takes each new release at start)" {
     & powershell -ExecutionPolicy Bypass -File (Join-Path $app "tools\install_shortcut.ps1")
-    $sh = New-Object -ComObject WScript.Shell
-    $s = $sh.CreateShortcut((Join-Path ([Environment]::GetFolderPath("Desktop")) "Portfolio Lab Update.lnk"))
-    $s.TargetPath = "powershell.exe"
-    $s.Arguments = "-NoExit -ExecutionPolicy Bypass -Command `"& '$app\.venv\Scripts\python.exe' -m pflab.cli update`""
-    $s.WorkingDirectory = $app
-    $s.Description = "Portfolio Lab: update to the newest release (backs the store up first; close the app before)"
-    $s.Save()
+    $old = Join-Path ([Environment]::GetFolderPath("Desktop")) "Portfolio Lab Update.lnk"     # S65: no second icon any more
+    if (Test-Path $old) { Remove-Item $old }
   }
 }
 

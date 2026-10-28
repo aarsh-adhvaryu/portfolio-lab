@@ -6,7 +6,8 @@ itself. **Claude Code is for development only: the system runs, learns and asks 
 frame), `docs/BUILT.md` (what exists, jobs, tools, sources, tables, switches), `docs/STUDIES.md` (every test and verdict), and
 `README.md` (first run). Two installations: the **APP** (an install of a release tag in its own folder, runs his money) and the
 **WORKSHOP** (this checkout: the beta, where Claude Code develops; no `release.toml`). The workshop sends nothing outward and makes
-no paid call unless told (`pflab --live`, `pflab --paid`; `src/pflab/guard.py`).
+no paid call unless told (`pflab --live`, `pflab --paid`; `src/pflab/guard.py`). The workshop holds nothing personal (no statements,
+no copy of his store): it runs the beta on what the collectors bring; his record lives only in the app.
 
 ## Non-negotiables
 1. **Point-in-time.** A feature at date M uses only rows dated <= M. Announcements use the dissemination timestamp.
@@ -49,7 +50,8 @@ no paid call unless told (`pflab --live`, `pflab --paid`; `src/pflab/guard.py`).
   against `dev_monthly_cap_rupees` (default 0).
 - **Personal inputs go after calibration** (statements, PDFs, exports); statement passwords only in the secrets file `[passwords]`.
   No real data in git: grep the staged diff for amounts, names, ids (Indian grouping too) and test fixtures before every push;
-  `.venv\Scripts\python -m pflab.hq.security` must print "privacy grep: clean".
+  `.venv\Scripts\python -m pflab.hq.security` must print "privacy grep: clean" (it checks against `%USERPROFILE%\.pflab\privacy_terms.json`,
+  which the app's daily privacy check rewrites; `python -m pflab.hq.security export` in the app's folder writes it at once).
 - **The system asks only what only he can answer** (Needs from you); one brain with tools, no rivals; the knowledge graph and memory
   must update themselves. Tools and models are used to their full capability where they help, never as a demo.
 - **Only one process may hold the store:** close the dashboard and the bot before CLI work; back the store up before any migration or
@@ -60,8 +62,9 @@ no paid call unless told (`pflab --live`, `pflab --paid`; `src/pflab/guard.py`).
 - Never re-read a file already read in the session. Edit files with the file tools (UTF-8 is garbled by `Get-Content`/`Set-Content`
   without `-Encoding UTF8`).
 - **Tests:** `.venv\Scripts\python -m pytest -q --basetemp <a folder in your scratchpad>` (the default temp folder is denied on this PC);
-  about 4-8 minutes. Each session works on branch `pm/sN-<slug>`; at each stop update `docs/PLAN.md` "What remains" and `docs/BUILT.md`
-  if the system changed, then commit.
+  about 4-8 minutes. Each session works on branch `pm/sN-<slug>` (the beta); at each stop update `docs/PLAN.md` "What remains" and
+  `docs/BUILT.md` if the system changed, then commit. Only a beta confirmed bug free goes to `main`: merge, tag `vYYYY.MM.DD[.N]`, push;
+  the app takes the newest tag at its next start (one desktop icon; `launcher.update_first`).
 - The laptop GPU (RTX 5070 Ti Laptop) drops off the bus at top boost under sustained load: cap the clocks first from an Administrator
   PowerShell (`nvidia-smi -lgc 210,2100` and `nvidia-smi -lmc 405,9001`); after a loss use Restart, not Shut down.
 

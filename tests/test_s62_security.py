@@ -80,6 +80,24 @@ def test_privacy_grep_finds_his_data_in_tracked_files(con, tmp_path):
     assert sec.indian(1234567) == "12,34,567"
 
 
+def test_the_push_check_uses_the_apps_terms_file_and_blocks_without_any_list(con, tmp_path, monkeypatch, capsys):
+    """S65: the workshop holds no store: the app writes the list beside secrets.toml; with no list at all nothing is pushed."""
+    monkeypatch.setattr(sec, "terms_path", lambda: tmp_path / "home" / "privacy_terms.json")
+    monkeypatch.setattr(store, "db_path", lambda: tmp_path / "no-store" / "ledger.duckdb")
+    monkeypatch.setattr(sec, "symbols", lambda con=None: ["WIDGETCO"])
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.setattr(sec, "tracked", lambda r: [repo / "a.md"])
+    (repo / "a.md").write_text("nothing personal\n", encoding="utf-8")
+    assert sec.push_check(repo) == 1 and "no list of his data" in capsys.readouterr().out
+    sec.export_terms(con, _gate(con))
+    gate, money, syms = sec.load_terms()
+    assert "12081600" in gate.ids and syms == ["WIDGETCO"]
+    assert sec.push_check(repo) == 0 and "clean" in capsys.readouterr().out
+    (repo / "a.md").write_text("acct 12081600\n", encoding="utf-8")
+    assert sec.push_check(repo) == 1 and "push blocked" in capsys.readouterr().out
+
+
 def test_failed_tests_are_reported(con, tmp_path):
     rt = _desk(con, tmp_path)
     fake = lambda *a, **k: SimpleNamespace(returncode=1, stdout="FAILED tests/test_x.py::test_y - boom\n1 failed, 9 passed")  # noqa

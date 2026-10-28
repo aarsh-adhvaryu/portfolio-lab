@@ -11,7 +11,7 @@ the first run in `README.md`. The job, tool and source lists below were generate
 | `release.toml` | at the clone's root (gitignored): channel, tag, previous tag, backup, folder, data and pm paths; **wins over the environment** | none: that is what makes a checkout the workshop (channel `beta`) |
 | sends | Telegram and paid calls inside his Rs 2,500 monthly cap, by his Settings | nothing, unless `pflab --live` / `pflab --paid` (paid counts against `dev_monthly_cap_rupees`, default 0); no tick registration |
 | runs | the desktop shortcut, the scheduled tick, the overnight run | tests and the developer's commands |
-| update | `pflab update` (store backed up first, newest tag, self-test, undone on failure), `--rollback`, `--check` | merge to `main`, run the suite, tag `vYYYY.MM.DD` |
+| update | by itself at each start of the one desktop icon (`launcher.update_first` runs `pflab update`: store backed up first, newest tag, self-test, undone on failure); `--rollback`, `--check` | work on a branch (the beta); confirmed bug free: merge to `main`, run the suite, tag `vYYYY.MM.DD[.N]`, push |
 Libraries: the app installs `requirements.lock` (the exact versions the tests passed on; a test keeps it equal to the workshop's .venv). The monthly API cap is one for both installations (the app carried the workshop's month). Beta features are listed in `configs/features.toml` (start: `us_sleeve`): off in the app unless his Settings switch turns them on, on in
 the workshop; their data collection always runs. Code: `release.py`, `guard.py`, `features.py`, `update.py`; scripts `tools\install_app.ps1`,
 `tools\seed_app.ps1`.
@@ -25,7 +25,7 @@ the workshop; their data collection always runs. Code: `release.py`, `guard.py`,
 | `pm` | the store (DuckDB, schema v41), instruments, FDs (incl. `fd.entry`: a deposit from the Setup form, checked against the bank's maturity amount), bonds, gold, prices, today (net worth), `secrets` / `secrets_setup`, `reset` |
 | `portfolio`, `risk`, `plan` | `prefs` (his preferences changed by the AI only when he asks, one exact edit, his yes, a backup); tax-aware sell-down; exposure, Monte Carlo, CAPM, themes, scenarios, sleeve study; targets, deploy, guards, safety, buy zone, ready plans, pot, reserve, nudges, trader tickets, advisor, `twin` (the scoreboard: four paper books with the same money) |
 | `quant`, `fundamentals`, `monitor`, `signals`, `backtest`, `eval` | forecasts (price ranges, scored), Hawkes, options, scans, comove, process, event studies, `stress_hedge` (the stress gauge and forward test F5, paper only); BSE results, valuation; promoter/event monitors; the engine and its protected tests |
-| `kg`, `knowledge`, `readers` | time-aware knowledge graph, hypotheses, memory/documents, Haiku/local readers |
+| `kg` | time-aware knowledge graph, hypotheses, memory/documents (the readers live in `hq/readers.py`) |
 | `agents` | researcher, analyst (the only API doorbell), event, thesis, tradecheck, memory, questions, needs, inbox, workshop + sandbox (Docker, `network none`, read-only) |
 | `hq` | the brain (tool loop, governor, egress gate, journal), `picture` (the one picture), reception, board, phone (Telegram), watcher, messenger, security, replay, valuation, plain words, models (the slider) |
 | `learner` | sources, claims, templates, counter, rules, run, `forward` (live-only tests F1-F4, decided once at 24 months, `docs/protocols/s65_forward_protocol.md`): reads papers/blogs, registers tests, tests them, counts them |

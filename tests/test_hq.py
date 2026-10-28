@@ -291,8 +291,11 @@ def test_filing_attachment_read_by_page(con, tmp_path, monkeypatch):
     assert con.execute("SELECT text_status FROM kg_docs WHERE doc_id=?", [d]).fetchone()[0] == "fetch_error"
 
 
-def test_readers_read_held_first_and_keep_readings(con):
+def test_readers_read_held_first_and_keep_readings(con, tmp_path, monkeypatch):
     from pflab.kg import graph as g
+    (tmp_path / "api_budget.toml").write_text("[api]\nmonthly_cap_rupees = 2500\ndev_monthly_cap_rupees = 100\nask_above_rupees = 50\nadopted = true\n",
+                                              encoding="utf-8")
+    monkeypatch.setattr(store, "pm_dir", lambda: tmp_path)          # its own budget, not the workshop's store folder
     for k, (isin, kind, title) in enumerate([(BBB, "filing", "BBB: trading window closure"),
                                              (AAA, "filing", "AAA wins order worth Rs 500 crore"),
                                              (AAA, "article", "Weather today")]):
@@ -305,7 +308,7 @@ def test_readers_read_held_first_and_keep_readings(con):
                            {"name": "made up", "value": "42", "unit": "", "period": "", "quote": ""}]},
               {"material": "no", "why": "routine", "summary": "Trading window.", "figures": []}])
     rep = readers.run(con, NOW.date(), c, egress.Gate(), NOW, "economy", [AAA], [BBB], stock_list=[])
-    assert rep["read"] == 2 and rep["material"] == 1 and len(rep["material_held"]) == 1
+    assert rep["read"] == 2 and rep["material"] == 1 and len(rep["material_held"]) == 1, rep
     sent = c.messages.sent[0]
     assert sent["model"] == gv.HAIKU and sent["output_config"]["format"]["type"] == "json_schema"
     r = readers.recent(con, NOW - timedelta(days=1))
