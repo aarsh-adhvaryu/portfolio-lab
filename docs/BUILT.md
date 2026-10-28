@@ -12,7 +12,7 @@ the first run in `README.md`. The job, tool and source lists below were generate
 | sends | Telegram and paid calls inside his Rs 2,500 monthly cap, by his Settings | nothing, unless `pflab --live` / `pflab --paid` (paid counts against `dev_monthly_cap_rupees`, default 0); no tick registration |
 | runs | the desktop shortcut, the scheduled tick, the overnight run | tests and the developer's commands |
 | update | `pflab update` (store backed up first, newest tag, self-test, undone on failure), `--rollback`, `--check` | merge to `main`, run the suite, tag `vYYYY.MM.DD` |
-Beta features are listed in `configs/features.toml` (start: `us_sleeve`): off in the app unless his Settings switch turns them on, on in
+Libraries: the app installs `requirements.lock` (the exact versions the tests passed on; a test keeps it equal to the workshop's .venv). The monthly API cap is one for both installations (the app carried the workshop's month). Beta features are listed in `configs/features.toml` (start: `us_sleeve`): off in the app unless his Settings switch turns them on, on in
 the workshop; their data collection always runs. Code: `release.py`, `guard.py`, `features.py`, `update.py`; scripts `tools\install_app.ps1`,
 `tools\seed_app.ps1`.
 

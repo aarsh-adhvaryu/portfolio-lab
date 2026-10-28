@@ -24,7 +24,7 @@ param(
 # S65: only an installed app registers its tick. The workshop (a checkout with no release.toml) never does: two ticks on one
 # phone would answer twice (src\pflab\guard.py).
 if (-not (Test-Path (Join-Path $RepoRoot "release.toml"))) {
-  throw "no release.toml in $RepoRoot: this is the workshop. Scheduled tasks are registered only for the installed app (tools\install_app.ps1)."
+  throw "no release.toml in ${RepoRoot}: this is the workshop. Scheduled tasks are registered only for the installed app (tools\install_app.ps1)."
 }
 
 # pythonw: no console window flashing up every 15 minutes (S58b); the tick writes to PFLAB_PM_DIR\reports\tick.log.
@@ -37,7 +37,10 @@ $action = New-ScheduledTaskAction -Execute $py -Argument "-m pflab.cli service t
 
 $every15 = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
             -RepetitionInterval (New-TimeSpan -Minutes 15)
-$atLogon = New-ScheduledTaskTrigger -AtLogOn
+# S65: at HIS log-on, run as him without elevation (a log-on trigger for every user needs an Administrator: "Access is denied")
+$me = "$env:USERDOMAIN\$env:USERNAME"
+$atLogon = New-ScheduledTaskTrigger -AtLogOn -User $me
+$principal = New-ScheduledTaskPrincipal -UserId $me -LogonType Interactive -RunLevel Limited
 
 # Wake from sleep: the Power-Troubleshooter event 1 is written on resume.
 $cimClass = Get-CimClass -ClassName MSFT_TaskEventTrigger -Namespace Root/Microsoft/Windows/TaskScheduler
@@ -49,7 +52,11 @@ $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances 
               -ExecutionTimeLimit (New-TimeSpan -Hours 3) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 
 if ($PSCmdlet.ShouldProcess($TaskName, "Register scheduled task (runs pflab service tick)")) {
-  Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger @($every15, $atLogon, $onWake) `
-    -Settings $settings -Description "Portfolio Manager: run due jobs (collect, prices, NAV, filings, outbox, backup)" -Force | Out-Null
+  try {
+    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger @($every15, $atLogon, $onWake) -Principal $principal `
+      -Settings $settings -Description "Portfolio Manager: run due jobs (collect, prices, NAV, filings, outbox, backup)" -Force -ErrorAction Stop | Out-Null
+  } catch {
+    throw "could not register '$TaskName': $($_.Exception.Message)"
+  }
   Write-Host "Registered '$TaskName'. Check: pflab service status"
 }
