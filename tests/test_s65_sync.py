@@ -62,6 +62,6 @@ def test_built_md_lists_every_job_and_every_brain_tool():
     from pflab.service import jobs
     built = (ROOT / "docs" / "BUILT.md").read_text(encoding="utf-8")
     for j in jobs.REGISTRY:
-        assert f"| {j} " in built or j.replace("_", "_") in built, j
+        assert f"| {j} " in built or f"| {j} /" in built or f"/ {j} |" in built, j
     for t in tools.TOOLS:
         assert t in built, t

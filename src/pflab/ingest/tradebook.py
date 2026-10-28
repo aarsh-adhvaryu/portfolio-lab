@@ -34,22 +34,29 @@ def _cell(v) -> Optional[str]:
     return str(v)
 
 
+def name_sheets(raw: bytes) -> bytes:
+    """An .xlsx whose `xl/workbook.xml` names no sheet (some Console exports), with the names filled in, in memory; any other bytes unchanged."""
+    if raw[:2] != b"PK":
+        return raw
+    zin = zipfile.ZipFile(io.BytesIO(raw))
+    wb_xml = zin.read("xl/workbook.xml").decode("utf-8")
+    n = itertools.count(1)
+    fixed = re.sub(r"<sheet (?![^>]*\bname=)", lambda m: f'<sheet name="Sheet{next(n)}" ', wb_xml)
+    if fixed == wb_xml:
+        return raw
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            zout.writestr(item, fixed if item.filename == "xl/workbook.xml" else zin.read(item.filename))
+    return buf.getvalue()
+
+
 def _xlsx_frame(path: Path) -> pd.DataFrame:
     """Console .xlsx -> raw frame. The sheet has a preamble (Client ID, report title) above the header row,
     found by its Symbol and Trade ID cells. Some Console exports name no sheet in `xl/workbook.xml`, which
     openpyxl refuses; the missing name is filled in memory and the file on disk is untouched."""
     import openpyxl
-    raw = path.read_bytes()
-    zin = zipfile.ZipFile(io.BytesIO(raw))
-    wb_xml = zin.read("xl/workbook.xml").decode("utf-8")
-    n = itertools.count(1)
-    fixed = re.sub(r"<sheet (?![^>]*\bname=)", lambda m: f'<sheet name="Sheet{next(n)}" ', wb_xml)
-    if fixed != wb_xml:
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zout:
-            for item in zin.infolist():
-                zout.writestr(item, fixed if item.filename == "xl/workbook.xml" else zin.read(item.filename))
-        raw = buf.getvalue()
+    raw = name_sheets(path.read_bytes())
     ws = openpyxl.load_workbook(io.BytesIO(raw), data_only=True).worksheets[0]
     rows = [[_cell(c) for c in r] for r in ws.iter_rows(values_only=True)]
     head = next((i for i, r in enumerate(rows)

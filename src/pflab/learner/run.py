@@ -88,6 +88,11 @@ def cycle(rt, collect: bool = True, get=None) -> dict:
         out["forward"] = forward.cycle(con, rt.data_root, now)
     except Exception as e:
         out["forward"] = f"not run: {type(e).__name__}: {str(e)[:150]}"
+    try:                                     # S65: forward test F5, the stress-gauge hedge on paper (docs/protocols/s65_hedge_forward_protocol.md)
+        from pflab.quant import stress_hedge
+        out["hedge"] = stress_hedge.cycle(con, rt.data_root, now)
+    except Exception as e:
+        out["hedge"] = f"not run: {type(e).__name__}: {str(e)[:150]}"
     why = record.due(con, now)
     if why:
         out["record"] = record.run(con, now, proposal_draft(rt) if paid else None, why)

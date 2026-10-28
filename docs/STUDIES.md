@@ -2,7 +2,7 @@
 
 The rule (CLAUDE.md 10): a protocol is committed before the run, the rule is in code, the result is counted, and only what passes is wired in.
 A pass is a description of the history tested, not a forecast. The 2022-2025 period is spent; 2010-2017 is the development period and 2018-2021 the
-validation period of the learner's tests. The learner's counter holds **33 tests** (the next development bar is t >= 2.97: it rises with every test,
+validation period of the learner's tests. The learner's counter holds **38 tests** (33 before S65, the forward tests F1-F5 counted at registration) (the next development bar is t >= 3.02: it rises with every test,
 `learner/counter.py`; a fresh install starts from the same count, `counter.CARRIED`). Frozen protocols and results of the live tests are in
 `docs/protocols/` (never edited: a claim's protocol is hashed when it is registered).
 
@@ -38,6 +38,27 @@ build-up scans, other P/E cut-offs. They can only be tested on data the system h
 ## Forward tests (registered 2026-10-28, run by the system on live data as it accumulates)
 See `docs/protocols/s65_forward_protocol.md`: the leads above, tested forward only, with the counter's bar, evaluated by the learner as months complete.
 No result before the first complete months exist (about December 2026); none is read early.
+
+## F5: the stress-gauge hedge, forward on paper (registered 2026-10-28, `docs/protocols/s65_hedge_forward_protocol.md`)
+From the investor's Q_Alpha_Research (its one positive result). A cross-asset stress gauge (eight measures, causal, US data lagged a session) switches a paper
+short of Nifty futures worth half the book on after 5 sessions at 0.70 or more. Kept daily from 2026-10-29 (`quant/stress_hedge.py`); decided once after 24
+months and 2 completed episodes: pass if the worst fall is at least 5 points shallower and the yearly return no more than 1 point lower. On the history (not
+evidence here) the gauge was on in Oct 2008, Mar 2020 and Jun 2022 and on about 5% of sessions since 2010; it is coincident, never a forecast.
+
+## The scoreboard (not a test: a record, `plan/twin.py`)
+Your book, the brain's own suggestions on paper, the equal-weight Nifty 500 (the bar) and the Nifty 500, all given the same money on the same days. Values only
+until 60 sessions; afterwards the gaps are descriptions. It is how the companion's usefulness is seen over months, beside the suggestion ledger's per-suggestion scores.
+
+## Results from the investor's other projects (not re-run here; context, never a live feature by themselves)
+- **portfolio_system_archive** (the earlier research harness, shelved 2026-10-01): 13 strategy verdicts; one ADOPT, E1d (volatility-scaled 6+12-month momentum, the
+  Nifty 500 Momentum 50 index's own method), which is live here only as the Momentum 50 fund in his targets; E1, E1b, E1-P inconclusive; E1c, E2-A, E3-R and
+  others rejected.
+- **Q_Alpha** (an AI paper investor, 2026-09): trading less beat trading more net of cost and tax in every walk-forward period it tested; equal-weighting explained
+  most of the apparent edge over the cap-weighted index; rule-based selling to manage risk lost to the tax it realised. Its tax engine matched a Zerodha tax P&L
+  once; this system's matched a Console tax P&L for FY2027 to 3 paise on 4 stocks (2026-10-28).
+- **Q_Alpha_Research**: crash prediction by LPPLS found nothing on Indian large caps; an HMM sell-overlay trailed buy-and-hold because of the tax; QUBO (quantum)
+  selection lost to 1/N on a clean point-in-time universe (trailing-year means are too noisy); the futures hedge was positive and is F5 above.
+The common lesson, consistent with this system's own failed timing rules: in a taxable book, selling to time the market costs more than it saves; hedge, do not sell.
 
 ## The learner's protocol
 `docs/protocols/learner_protocol.md` (with Amendments 1-4: claims must quote their source and name what the template measures; absent-effect claims are

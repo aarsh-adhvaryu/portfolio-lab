@@ -144,3 +144,34 @@ def ask_needed(con, src: dict, now: Optional[datetime] = None) -> int:
         if questions.ask(con, AGENT, key, f"Drop this in Inbox and files: {text}.", now or datetime.now()):
             n += 1
     return n
+
+
+def infer(con, today: date) -> dict:
+    """S65: Setup from the files themselves. What the inbox read from each dropped file (its bank and last four digits, the name of the password
+    that opened it) becomes proposed answers: one bank account per distinct bank and last four digits, the Zerodha account, the start of the
+    current financial year. He presses once to accept (or edits); nothing is written here."""
+    import json
+    from collections import Counter
+    kinds: Counter = Counter()
+    banks: dict = {}
+    cas_pw = None
+    unread = 0
+    for kind, rj in con.execute("SELECT kind, result_json FROM inbox_items WHERE status <> 'removed'").fetchall():
+        info = (json.loads(rj or "{}").get("sniff") or {})
+        kinds[kind] += 1
+        if kind == "bank":
+            if not info.get("last4"):
+                unread += 1
+                continue
+            key = (info.get("bank") or "BANK", info["last4"])
+            banks.setdefault(key, info.get("password_name"))
+        elif kind == "cas" and info.get("password_name"):
+            cas_pw = info["password_name"]
+    fy = today.year if today.month >= 4 else today.year - 1
+    answers = {"start": date(fy, 4, 1).isoformat(), "broker": {"account": "ZER", "provider": "Zerodha"},
+               "banks": [{"name": f"{b}_{l4}", "bank": b, "last4": l4, **({"password_name": pw} if pw else {})}
+                         for (b, l4), pw in sorted(banks.items())]}
+    if cas_pw:
+        answers["cas_password_name"] = cas_pw
+    return {"answers": answers, "files": dict(kinds), "banks_unread": unread,
+            "note": "read from the files you dropped; the start is this financial year's first day: change it if your history starts earlier"}

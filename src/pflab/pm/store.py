@@ -554,6 +554,17 @@ MIGRATIONS = [
         PRIMARY KEY (claim, formed_on)
     );
     """),
+    # 2026-10-28: S65 the scoreboard (plan/twin.py, from the Q_Alpha twin idea): paper books given the same rupees on the same days
+    (40, "twin_s65", """
+    CREATE TABLE twin_days (
+        book VARCHAR NOT NULL, day DATE NOT NULL, value DOUBLE NOT NULL, cash DOUBLE NOT NULL, flows DOUBLE NOT NULL,
+        holdings_json VARCHAR, PRIMARY KEY (book, day)
+    );
+    CREATE TABLE twin_trades (
+        book VARCHAR NOT NULL, day DATE NOT NULL, isin VARCHAR NOT NULL, side VARCHAR NOT NULL, rupees DOUBLE NOT NULL,
+        units DOUBLE NOT NULL, charges DOUBLE NOT NULL, sug_id INTEGER, note VARCHAR
+    );
+    """),
 ]
 
 

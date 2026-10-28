@@ -51,6 +51,8 @@ universe includes every name that traded); taxes and costs are in the objective;
 - S64: the one picture (`hq/picture.py`) is the brain's first tool; option-implied probabilities, gauges, valuation in plain words, nudges, IPO planner, scanners, replay bench.
 - S65: the app/workshop split (`release.toml`, outward guard, `pflab update`, install and seed scripts); the system onboards him (Setup, secrets, content recognition,
   bank labels as questions, IPO and cost forms); the Quicko pack; the US sleeve as a beta feature flag; the learner's counter carried into a fresh install.
+- S65: the investor's three other repos (the research archive, Q_Alpha, Q_Alpha_Research) read on his instruction; ported: the twin-books scoreboard and the
+  stress-gauge hedge as forward test F5; their results recorded in STUDIES; the repos deleted after.
 - S65 amendment: frozen protocols and results of the live tests stay as files in `docs/protocols/` (a claim's protocol is hashed at registration); the other
   protocol and result files were folded into `docs/STUDIES.md`.
 
@@ -61,7 +63,9 @@ universe includes every name that traded); taxes and costs are in the objective;
    `companion` job once. Then the shortcut and the tick point at the app, the user-level `PFLAB_DATA_DIR` is removed, the workshop's scheduled tasks stop.
 2. **The forward ledger (S66).** So the app never needs his statements again: Kite captures each day's trades and holdings as they happen; the monthly CAS
    arrives by read-only Gmail and reconciles them; FD intake by form or certificate in Setup; statements only open the books once, then are deleted.
-3. **Forward tests (registered S65).** `docs/protocols/s65_forward_protocol.md`: the leads from the failed rule tests, tested only on live data as months complete.
+3. **Forward tests and the record (S65).** F1-F4 (`docs/protocols/s65_forward_protocol.md`: the passed avoid rule and the reversed leads) and F5 (the stress-gauge
+   hedge on paper, from the investor's Q_Alpha_Research) run by themselves on live data; decided once (F1-F4 at 24 months, F5 at 24 months and 2 episodes). The
+   scoreboard (`plan/twin.py`) records his book, the brain's suggestions on paper and the equal-weight bar from the app's first night. Nothing to do but wait and read.
 4. **US sleeve (January or February 2027).** A sync check first; the SEC contact (`[sec] user_agent` in secrets); the primary-source check of the foreign-tax rows
    (2027-01-01 or the first remittance); the GIFT City statement parser (opens with his first statement); the sleeve question (share and start month).
 5. **Filing time.** The 112A template's own header row and a possible column 1b; check the pack against Quicko's own summary (`pflab pm quicko --fy N --check export`).

@@ -422,7 +422,15 @@ function renderSetup(d) {
     <span class="small muted">Bank accounts: a name you choose, the bank, the LAST FOUR digits only, and a name for its file password (optional).</span>
     <div id="suBanks"></div><button class="btn" id="suAddBank">Add a bank account</button>
     <button class="btn primary" id="suSave" style="align-self:flex-start">Save the setup</button>`;
-  $('screen').innerHTML = `<div class="cols"><section class="panel" style="flex:1 1 520px"><span class="lbl">Setup · accounts and start date</span>${form}
+  const pr = !d.exists && d.proposal ? d.proposal : null;
+  const prop = pr && pr.answers.banks.length ? `<div class="panel" style="display:flex;flex-direction:column;gap:6px"><b>Found in the files you dropped</b>
+      <span class="small">${esc(Object.entries(pr.files).map(([k, n]) => n + ' ' + k).join(', '))}${pr.banks_unread ? ` · ${pr.banks_unread} bank file(s) could not be read (a password missing?)` : ''}</span>
+      <span class="small">Zerodha account ${esc(pr.answers.broker.account)}; bank accounts: ${pr.answers.banks.map((b) => esc(b.bank) + ' ending ' + esc(b.last4)).join(', ')}</span>
+      <label class="small">Start of your history <input id="prStart" class="inp" type="date" value="${esc(pr.answers.start)}" style="flex:0 0 150px"></label>
+      <span class="small muted">${esc(pr.note)}</span><button class="btn primary" id="prUse" style="align-self:flex-start">Use these accounts</button></div>`
+    : (!d.exists ? '<span class="small muted">Drop your statements in Inbox and files first: I will read the accounts from them and propose the setup here.</span>' : '');
+  const all = d.exists ? '<button class="btn primary" id="applyAll" style="align-self:flex-start">Add everything to the ledger</button><span class="small muted">One rebuild from every checked document; written only when every check passes.</span><div id="applyOut" class="small"></div>' : '';
+  $('screen').innerHTML = `<div class="cols"><section class="panel" style="flex:1 1 520px"><span class="lbl">Setup · accounts and start date</span>${prop}${all}${form}
       ${accts ? `<div class="scroll"><table><thead><tr><th>Name</th><th>Kind</th><th>Bank</th><th>Ends</th></tr></thead><tbody>${accts}</tbody></table></div>` : ''}</section>
     <section class="panel" style="flex:1 1 420px"><span class="lbl">Files still needed</span>${need}</section>
     <section class="panel" style="flex:1 1 100%"><span class="lbl">By hand · an IPO allotment, or a holding with no history here</span>
@@ -431,7 +439,23 @@ function renderSetup(d) {
         <button class="btn" data-ledger="ipo" data-write="0">Check IPO</button><button class="btn primary" data-ledger="ipo" data-write="1">Add IPO to the ledger</button></div>
       <div class="row wrapr" style="gap:6px" id="costF">${[['account', 'account name'], ['isin', 'ISIN'], ['cost_per_unit', 'cost per unit'], ['acquired', 'acquired on (date)'], ['basis', 'what the cost is based on']].map(([k, p]) => `<input class="inp" data-f="${k}" placeholder="${p}" style="flex:0 0 ${k === 'basis' ? 260 : 150}px">`).join('')}
         <button class="btn" data-ledger="opening-cost" data-write="0">Check cost</button><button class="btn primary" data-ledger="opening-cost" data-write="1">Add cost to the ledger</button></div>
+      <div class="row wrapr" style="gap:6px" id="fdF">${[['id', 'deposit no. LAST 4 digits'], ['bank', 'bank, e.g. SBI'], ['principal', 'amount'], ['rate_pct', 'rate % a year'], ['start', 'start date'], ['maturity', 'maturity date'], ['maturity_amount', 'maturity amount (as the bank shows)'], ['instruction', 'on maturity (optional)']].map(([k, p]) => `<input class="inp" data-f="${k}" placeholder="${p}" style="flex:0 0 ${k === 'maturity_amount' ? 230 : 150}px">`).join('')}
+        <button class="btn" data-fd="0">Check deposit</button><button class="btn primary" data-fd="1">Add deposit</button></div>
       <div id="ledgerOut" class="small"></div></section></div>`;
+  document.querySelectorAll('[data-fd]').forEach((b) => { b.onclick = async () => {
+    const fields = {}; $('fdF').querySelectorAll('[data-f]').forEach((i) => { fields[i.dataset.f] = i.value.trim(); });
+    try { const r = await post('/api/fd', { fields, write: b.dataset.fd === '1' }); $('ledgerOut').innerHTML = `<b class="up">${r.written ? 'Deposit added; ' + r.deposits + ' on file.' : 'The terms reproduce the bank\'s maturity amount.'}</b>`; }
+    catch (e) { $('ledgerOut').innerHTML = `<b class="down">${esc(e.message)}</b>`; }
+  }; });
+  if ($('prUse')) $('prUse').onclick = async () => { try { await post('/api/setup', { ...pr.answers, start: $('prStart').value }); load(true); } catch (e) { alert(e.message); } };
+  if ($('applyAll')) $('applyAll').onclick = async () => {
+    $('applyOut').textContent = 'Building the ledger from every document…';
+    try {
+      const r = await post('/api/inbox/apply-all', {});
+      $('applyOut').innerHTML = r.waiting_for ? `<b class="warn">Still waiting for:</b> ${esc(r.waiting_for.join('; '))}` : r.why ? esc(r.why)
+        : `<b class="${r.written ? 'up' : 'down'}">${r.written ? 'Written: ' + r.documents + ' document(s), ' + r.events + ' events.' : r.failed + ' check(s) failed: nothing written.'}</b><ul>${(r.checks || []).map((c) => `<li class="${c.ok ? 'up' : 'down'}">${c.ok ? 'PASS' : 'FAIL'} ${esc(c.name)}</li>`).join('')}</ul>`;
+    } catch (e) { $('applyOut').innerHTML = `<b class="down">${esc(e.message)}</b>`; }
+  };
   document.querySelectorAll('[data-ledger]').forEach((b) => { b.onclick = async () => {
     const box = b.closest('.row'); const fields = {}; box.querySelectorAll('[data-f]').forEach((i) => { fields[i.dataset.f] = i.value.trim(); });
     try {
@@ -1062,12 +1086,15 @@ function renderResearch(d) {
     <div id="bizBox"><span class="small muted">Gathering…</span></div></section>
   <section class="panel" style="display:flex;flex-direction:column;gap:8px"><span class="lbl">The maths · beta, process, who it moves with (tools only, descriptions)</span>
     <div id="mathsBox"><span class="small muted">Working it out…</span></div></section>
+  <section class="panel" style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Scoreboard · your book, the system's suggestions on paper, equal-weight Nifty 500, Nifty 500 (the same money on the same days)</span>
+    <div id="twinBox"><span class="small muted">Loading…</span></div></section>
   <section class="panel" style="display:flex;flex-direction:column;gap:8px"><span class="lbl">US sleeve · dollar trades and money sent abroad (entered by hand until a statement parser exists)</span>
     <div id="usBox"><span class="small muted">Loading…</span></div></section>
   <section class="panel" style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Scans · information, not evidence until tested</span>
     <div id="scanBox"><span class="small muted">Loading…</span></div></section>`;
   loadMaths(d.selected);
   loadBusiness(d.selected);
+  loadTwin();
   loadUs();
   loadScans();
   $('replan').onclick = async () => { const a = parseFloat($('amt').value.replace(/,/g, '')); if (!a) return; await post('/api/plan', { amount: a }); $('replan').textContent = 'Planning…'; };
@@ -1306,6 +1333,19 @@ function bizBlock(b) {
 async function loadBusiness(isin) {
   try { const b = await api('/api/business?isin=' + encodeURIComponent(isin)); if ($('bizBox')) $('bizBox').innerHTML = bizBlock(b); }
   catch (e) { if ($('bizBox')) $('bizBox').innerHTML = '<span class="small muted">Not available: ' + esc(e.message) + '</span>'; }
+}
+/* S65: the scoreboard (plan/twin.py): four books with the same money; values only until 60 sessions; gaps are descriptions, never an edge */
+async function loadTwin() {
+  const box = $('twinBox'); if (!box) return;
+  try {
+    const d = await api('/api/twin');
+    if (!d.started) { box.innerHTML = `<span class="small muted">${esc(d.note)}</span>`; return; }
+    const names = { REAL: 'Your book', SYSTEM: "The system's suggestions (paper)", EW: 'Equal-weight Nifty 500 (the bar)', N500: 'Nifty 500' };
+    const inr = (x) => Math.round(x).toLocaleString('en-IN');
+    box.innerHTML = `<div class="scroll"><table><thead><tr><th>Book</th><th>Started at</th><th>Now</th>${d.vs_equal_weight ? '<th>vs the bar</th>' : ''}</tr></thead><tbody>${
+      Object.entries(d.books).map(([b, v]) => `<tr><td>${esc(names[b] || b)}</td><td class="num">${inr(v.start)}</td><td class="num">${inr(v.value)}</td>${d.vs_equal_weight ? `<td class="num">${b === 'EW' ? '—' : inr(d.vs_equal_weight[b])}</td>` : ''}</tr>`).join('')}</tbody></table></div>
+      <span class="small muted">Since ${esc(d.since)}, ${d.sessions} session(s), money added Rs ${inr(d.money_added)}, ${d.system_trades} paper trade(s). ${esc(d.note)}</span>`;
+  } catch (e) { box.innerHTML = '<span class="small muted">Not available: ' + esc(e.message) + '</span>'; }
 }
 /* S64 Phase 6: the US sleeve (ledger/foreign.py): positions, the LRS year, and two small forms */
 async function loadUs() {

@@ -281,6 +281,41 @@ def from_toml(path: Union[str, Path]) -> List[FD]:
     return fds
 
 
+def entry(fd_id: str, bank: str, principal: float, rate_pct: float, start, maturity, maturity_amount: float, instruction: str = "",
+          purpose: str = "") -> dict:
+    """S65: a deposit entered on the Setup screen, validated: the last four digits of its number only, and its terms must reproduce the
+    bank's own maturity amount (`check`), so a typing slip is caught before anything is written."""
+    import re as _re
+    fd_id = str(fd_id or "").strip()
+    if not _re.fullmatch(r"\d{4}", fd_id):
+        raise FDError("give the LAST FOUR digits of the deposit number only")
+    start, maturity = (d if isinstance(d, date) else date.fromisoformat(str(d)) for d in (start, maturity))
+    if not (principal > 0 and 0 < rate_pct < 20 and maturity > start and maturity_amount >= principal):
+        raise FDError("amount above 0, a yearly rate between 0 and 20%, maturity after the start, and a maturity amount at least the amount")
+    e = {"id": fd_id, "bank": str(bank or "SBI").strip().upper(), "principal": float(principal), "rate_pct": float(rate_pct), "start": start,
+         "maturity": maturity, "maturity_amount": float(maturity_amount), "maturity_instruction": str(instruction or ""), "purpose": str(purpose or "")}
+    check(FD(fd_id=fd_id, principal=e["principal"], rate=e["rate_pct"] / 100, term_start=start, maturity=maturity,
+             maturity_amount=e["maturity_amount"], bank=e["bank"], instruction=e["maturity_instruction"], opened=start))
+    return e
+
+
+def add_to_file(path: Union[str, Path], e: dict) -> None:
+    """Append one [[fd]] to his deposit file (created if missing); a deposit id already there is refused, nothing in the file is rewritten."""
+    path = Path(path)
+    text = path.read_text(encoding="utf-8") if path.exists() else ("# His fixed deposits (PFLAB_PM_DIR, never in git). Entered on the Setup "
+                                                                  "screen or by hand; the last four digits of each number only.\n")
+    if path.exists() and any(f.fd_id == e["id"] for f in from_toml(path)):
+        raise FDError(f"deposit {e['id']} is already in the file")
+    q = lambda v: '"' + str(v).replace('"', "'") + '"'                                   # noqa: E731
+    block = (f"\n[[fd]]\nid = {q(e['id'])}\nbank = {q(e['bank'])}\nprincipal = {e['principal']!r}\nrate_pct = {e['rate_pct']!r}\n"
+             f"start = {e['start'].isoformat()}\nmaturity = {e['maturity'].isoformat()}\nmaturity_amount = {e['maturity_amount']!r}\n"
+             f"maturity_instruction = {q(e['maturity_instruction'])}\npurpose = {q(e['purpose'])}\n")
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(text + block, encoding="utf-8")
+    from_toml(tmp)                                                      # the whole file must still read and check before it replaces his
+    tmp.replace(path)
+
+
 _COLS = ("fd_id, bank, principal, rate, term_start, maturity, maturity_amount, payout, instruction, status, "
          "closed_on, closing_amount, prev_rate, anchor_date, anchor_value, opened, purpose")
 

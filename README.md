@@ -18,8 +18,10 @@ what remains: `docs/PLAN.md`; rules for Claude Code: `CLAUDE.md`.
    `tools\backfill_us.py`, `tools\backfill_deals.py --source deals`; then build the adjusted price panel once (about 5 minutes): `tools\collect_daily.py --sources corporate_actions,dividends,panel`. Daily data, and the panel, then arrive by itself (`collect` and the other jobs). If the workshop has the history,
    `tools\seed_app.ps1` copies its non-personal market data and news once (about 4 GB). The app starts with a fresh record: the store is not copied
    (`-WithStore` copies it too, only into an app with no store); the learner's test counter is carried by code.
-5. **Open "Portfolio Lab"** (starts the dashboard and every job in one process). **Setup** (Settings > Open Setup): the start date, your Zerodha account, banks (name, bank,
-   last four digits). It lists the files it needs; drop each in **Inbox and files** (any name: they are recognised by content), press "Add to the ledger" when its checks pass.
+5. **Open "Portfolio Lab"** (starts the dashboard and every job in one process). Drop your statements in **Inbox and files** (any names: Console tradebook, funds
+   ledger and contract notes, the depository CAS, bank statements, deposit interest certificates; they are recognised by what is inside). **Setup** (Settings > Open Setup)
+   then proposes the accounts it found (bank and last four digits, and which saved password opens each file): press "Use these accounts", then "Add everything to the
+   ledger" (one rebuild, written only when every check passes). Add each fixed deposit once in Setup's deposit form (checked against the bank's maturity amount).
    Answer what **Needs from you** asks (bank-label questions, IPO entries, FD certificates). Kite: the "Log in to Kite" button each trading morning (read-only).
 6. **Switch it on.** Settings: Telegram on (held alerts are then delivered), the brain on "economy", preset "full". Close the window, then register the tick (every
    15 minutes, at logon, at wake): `powershell -ExecutionPolicy Bypass -File tools\register_tasks.ps1` (preview with `-WhatIf`). After that it runs, learns and asks by itself.

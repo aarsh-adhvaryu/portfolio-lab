@@ -58,7 +58,8 @@ def gauges_block(root: Path, asof: date) -> dict:
     from pflab.quant import gauges
     out: dict = {}
     for name, fn in (("ipo_froth", lambda: gauges.ipo_froth(root, asof)), ("breadth", lambda: gauges.breadth(root, asof)),
-                     ("corrections", lambda: gauges.corrections(root, asof))):
+                     ("corrections", lambda: gauges.corrections(root, asof)),
+                     ("stress_hedge_paper", lambda: __import__("pflab.quant.stress_hedge", fromlist=["forward"]).forward(root, asof))):
         _try(name, fn, out)
     return out
 
@@ -259,6 +260,7 @@ def build(con, root: Path, asof: date, bk=None, pm_dir: Optional[Path] = None) -
         held = {i: s for i, s in bk.symbols.items() if i in bk.values or i in bk.on_list}
     _try("gauges", lambda: gauges_block(root, asof), out)
     _try("us_sleeve", lambda: us_sleeve(con, root, asof), out)
+    _try("scoreboard", lambda: __import__("pflab.plan.twin", fromlist=["status"]).status(con), out)   # S65: his book vs the system's suggestions on paper vs the bar
     _try("news_mood", lambda: news_mood(con, asof, held), out)
     _try("portfolio", lambda: portfolio(con, asof), out)
     mood = out["news_mood"] if "holdings" in out.get("news_mood", {}) else {"holdings": {}}

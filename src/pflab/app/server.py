@@ -276,6 +276,12 @@ def create_app(rt) -> FastAPI:
     def research(isin: str = ""):
         return json.loads(json.dumps(views.research(rt, isin or None), default=str))
 
+    @app.get("/api/twin")
+    def twin_api():
+        """S65: the scoreboard (plan/twin.py): four books, the same money on the same days; values until 60 sessions."""
+        from pflab.plan import twin
+        return json.loads(json.dumps(twin.status(rt.cursor()), default=str))
+
     @app.get("/api/release")
     def release_api():
         """S65: which release this is (read only; updating needs the store free, so it is done from the Update shortcut)."""
@@ -298,7 +304,8 @@ def create_app(rt) -> FastAPI:
         from pflab.ingest import sources as srcs
         p = rt.pm_dir / "sources.toml"
         if not p.exists():
-            return {"exists": False, "needed": ["Set up your accounts first (Setup): the start date and the accounts."]}
+            return {"exists": False, "needed": ["Set up your accounts first (Setup): the start date and the accounts."],
+                    "proposal": su.infer(rt.cursor(), rt.clock().date())}
         src = srcs.load(p)
         return {"exists": True, "start": str(src.get("start")), "accounts": src.get("accounts") or {}, "needed": su.needed(src)}
 
@@ -313,7 +320,46 @@ def create_app(rt) -> FastAPI:
         except su.SetupError as e:
             raise HTTPException(400, str(e))
         merged = srcs.load(p)
-        return {"needed": su.needed(merged), "asked": su.ask_needed(rt.cursor(), merged, rt.clock())}
+        from pflab.app import inbox as ib
+        waiting = ib.attach_waiting(rt)                      # S65: the files kept before Setup start their checks now
+        return {"needed": su.needed(merged), "asked": su.ask_needed(rt.cursor(), merged, rt.clock()), "files": waiting}
+
+    @app.get("/api/fd")
+    def fd_list():
+        """S65: the deposits on file (last four digits, bank, amount, rate, maturity)."""
+        from pflab.pm import fd as fdm
+        return {"deposits": [{"id": f.fd_id, "bank": f.bank, "principal": f.principal, "rate_pct": round(f.rate * 100, 3), "maturity": str(f.maturity),
+                              "status": f.status} for f in fdm.load(rt.cursor())]}
+
+    @app.post("/api/fd")
+    def fd_add(fields: dict = Body(...), write: bool = Body(False)):
+        """A deposit from the Setup form: checked against the bank's maturity amount; written to his deposit file and the store only with write."""
+        from pflab.pm import fd as fdm
+        try:
+            e = fdm.entry(fields.get("id"), fields.get("bank"), float(fields.get("principal") or 0), float(fields.get("rate_pct") or 0),
+                          fields.get("start"), fields.get("maturity"), float(fields.get("maturity_amount") or 0), fields.get("instruction") or "",
+                          fields.get("purpose") or "")
+        except (ValueError, TypeError) as err:
+            raise HTTPException(400, str(err))
+        if not write:
+            return {"ok": True, "written": False}
+        path = rt.pm_dir / "fd_holdings.toml"
+        try:
+            fdm.add_to_file(path, e)
+        except fdm.FDError as err:
+            raise HTTPException(400, str(err))
+        n = fdm.save(rt.cursor(), fdm.from_toml(path), str(path))
+        rt.bump("portfolio")
+        return {"ok": True, "written": True, "deposits": n}
+
+    @app.post("/api/inbox/apply-all")
+    def inbox_apply_all():
+        """His one press: every checked document into the ledger in one rebuild, written only when every check passes."""
+        from pflab.app import inbox as ib
+        try:
+            return json.loads(json.dumps(ib.apply_all(rt), default=str))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
 
     @app.post("/api/ledger/ipo")
     def ledger_ipo(fields: dict = Body(...), write: bool = Body(False)):

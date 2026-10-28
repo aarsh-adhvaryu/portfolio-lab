@@ -366,6 +366,15 @@ def _us_fx(ctx: Ctx) -> dict:
 register(Job("us_fx", Daily(7, 25, weekdays_only=False), _us_fx, "US sleeve: USDINR rates into the store"))
 
 
+def _twin(ctx: Ctx) -> dict:
+    """S65: the scoreboard (plan/twin.py): REAL, SYSTEM (the brain's suggestions on paper), equal-weight Nifty 500 and Nifty 500, same money."""
+    from pflab.plan import twin
+    return twin.run(ctx.con, ctx.data_root, ctx.now)
+
+
+register(Job("twin", Daily(20, 55), _twin, "the scoreboard: your book, the brain's suggestions on paper, equal-weight Nifty 500, Nifty 500 (same money, same days)"))
+
+
 def _companion(ctx: Ctx) -> dict:
     """S64: theme baskets, theme limits, the dip reserve and the pot proposed once and applied after his yes; applied
     limits held to; open pot ideas scored."""

@@ -191,7 +191,7 @@ def test_recording_a_decision_switches_the_agents(tmp_path, monkeypatch):
 
 def test_built_sets_match_the_registered_hashes():
     from pflab.data import data_dir
-    proto = (eval12.ROOT / "docs" / "llm" / "model_eval_12gb_protocol.md").read_text(encoding="utf-8")
+    proto = (eval12.ROOT / "docs" / "protocols" / "model_eval_12gb_protocol.md").read_text(encoding="utf-8")
     for name in ("extraction", "materiality"):
         p = data_dir() / "llm_eval" / f"{name}.json"
         if not p.exists():

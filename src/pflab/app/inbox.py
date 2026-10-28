@@ -29,7 +29,7 @@ IMAGE_DAYS = 7
 LEDGER_KINDS = ("tradebook", "contract_note", "funds_ledger", "cas", "bank")
 KIND_LABEL = {"tradebook": "Console tradebook", "contract_note": "contract notes", "funds_ledger": "Console funds ledger",
               "cas": "depository CAS", "bank": "bank statement", "screenshot": "screenshot", "market": "market-data export",
-              "gift_city": "GIFT City statement", "other": "other file"}
+              "gift_city": "GIFT City statement", "fd_certificate": "deposit interest certificate", "other": "other file"}
 _LOCK = threading.Lock()
 
 
@@ -64,7 +64,7 @@ def _accounts(rt) -> dict:
 
 
 def _store_dir(rt, kind: str) -> Path:
-    if kind in LEDGER_KINDS:
+    if kind in LEDGER_KINDS or kind == "fd_certificate":
         return rt.repo / "new"
     if kind == "screenshot":
         return rt.pm_dir / "inbox" / "screens"
@@ -74,6 +74,7 @@ def _store_dir(rt, kind: str) -> Path:
 
 
 def _steps(kind: str, done: int, failed: bool = False) -> List[dict]:
+    kind = "tradebook" if kind == "fd_certificate" else kind          # a certificate follows the ledger's steps (read, checked, your OK, stored)
     names = {"ledger": ["received", "recognised", "checked (dry run)", "your OK", "in the ledger"],
              "screenshot": ["received", "read on this PC", "summarised", "image deleted"],
              "graph": ["received", "recognised", "in the knowledge graph"]}
@@ -91,6 +92,7 @@ def receive(rt, name: str, data: bytes, hint: str = "", account: Optional[str] =
     if seen:
         return {"id": seen[0], "duplicate": True}
     kind = classify(safe, hint)
+    info: dict = {}
     if not hint:                                            # S65: the content decides, the name is only the fallback
         from pflab.ingest import sniff
         info = sniff.sniff(data, safe, sniff.passwords_from_secrets())
@@ -98,7 +100,8 @@ def receive(rt, name: str, data: bytes, hint: str = "", account: Optional[str] =
             kind = info["kind"]
         if kind == "bank" and not account:
             account = sniff.match_account(info, _accounts(rt))
-    if kind == "bank" and not account:
+    waiting = kind in LEDGER_KINDS and not (rt.pm_dir / "sources.toml").exists()    # S65: a first setup: keep it, Setup proposes the accounts
+    if kind == "bank" and not account and not waiting:
         if hint:                                            # he named the kind: the screen asks him for the account
             raise ValueError("which account is this bank statement for?")
         from pflab.agents import questions
@@ -118,13 +121,15 @@ def receive(rt, name: str, data: bytes, hint: str = "", account: Optional[str] =
     iid = next_id(con, "inbox_items", "item_id")
     con.execute("INSERT INTO inbox_items (item_id, name, kind, account, path, sha, status, steps_json, result_json, chat_id, "
                 "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                [iid, safe, kind, account, str(path), sha, "working", json.dumps(_steps(kind, 1)),
-                 json.dumps({"existed": True} if existed else {}), chat_id, now, now])
+                [iid, safe, kind, account, str(path), sha, "awaiting setup" if waiting else "working", json.dumps(_steps(kind, 1)),
+                 json.dumps({**({"existed": True} if existed else {}), "sniff": info}), chat_id, now, now])
     if chat_id and con.execute("SELECT 1 FROM chats WHERE chat_id=?", [chat_id]).fetchone():
         from pflab.app import chat
         chat._add(con, chat_id, "me", "ask", f"Attached {safe} ({KIND_LABEL[kind]})", "done", now)
         rt.bump("chat")
     rt.bump("inbox")
+    if waiting:
+        return {"id": iid, "kind": kind, "duplicate": False, "awaiting_setup": True}
     _start(rt, iid)
     return {"id": iid, "kind": kind, "duplicate": False}
 
@@ -184,6 +189,8 @@ def _process(rt, iid: int) -> None:
     try:
         if it["kind"] in LEDGER_KINDS:
             _dry_run(rt, it)
+        elif it["kind"] == "fd_certificate":
+            _fd_cert(rt, it)
         elif it["kind"] == "screenshot":
             _ocr(rt, it)
         else:
@@ -201,6 +208,31 @@ def _builder(rt):
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
     return m
+
+
+def _cert_password(it: dict) -> Optional[str]:
+    from pflab.ingest import sniff
+    name = ((it.get("result") or {}).get("sniff") or {}).get("password_name")
+    return dict(sniff.passwords_from_secrets()).get(name) if name else None
+
+
+def _fd_cert(rt, it: dict, write: bool = False) -> dict:
+    """S65: a deposit interest certificate: read and checked (its rows must add up to its TOTAL); stored only on his press (`apply`)."""
+    from pflab.ingest import sbi_interest_cert as cert
+    from pflab.pm import fd as fdm
+    fy, rows = cert.parse(it["path"], _cert_password(it))
+    fr = cert.fd_rows(rows)
+    res = {**it["result"], "fy": fy, "deposits": len(fr), "checks": [{"name": "the rows add up to the certificate's TOTAL", "ok": True, "detail": ""}],
+           "failed": 0}
+    if write:
+        fdm.save_interest(rt.cursor(), fy, fr, f"inbox: {it['name']}")
+        _update(rt, it["id"], status="in the store", steps_json=json.dumps(_steps("fd_certificate", 5)), result_json=json.dumps(res, default=str))
+        rt.bump("portfolio")
+    else:
+        _update(rt, it["id"], status="ready", steps_json=json.dumps(_steps("fd_certificate", 3)), result_json=json.dumps(res, default=str))
+        _to_chat(rt, it, f"{it['name']}: interest certificate for FY{fy - 1}-{str(fy)[2:]}, {len(fr)} deposit(s), its rows add up. Press 'Add to "
+                 "the ledger' in Inbox and files to keep it.", ["read on this PC", "checked"])
+    return res
 
 
 def _missing(merged: dict) -> List[str]:
@@ -244,6 +276,9 @@ def apply(rt, iid: int) -> dict:
     """The investor's OK: the document joins sources.app.toml and the ledger is rebuilt and written, all checks passing."""
     from pflab.ingest import sources as srcs
     it = _item(rt, iid)
+    if it["kind"] == "fd_certificate" and it["status"] == "ready":         # S65: certified interest, his press
+        _fd_cert(rt, it, write=True)
+        return {"events": 0, "certificate": True}
     if it["kind"] not in LEDGER_KINDS or it["status"] != "ready":
         raise ValueError("only a ledger document whose dry run passed can be added")
     with _LOCK:
@@ -306,6 +341,70 @@ def add_entry(rt, section: str, entry: dict, write: bool = False) -> dict:
             srcs.save_overlay(sources, over)
             res["written"] = True
             rt.bump("portfolio", "command", "watch")
+    return res
+
+
+def attach_waiting(rt) -> dict:
+    """S65: after Setup, the files kept while there was none: each bank statement gets its account by its bank and last four digits (one
+    that matches none goes to Needs from you), and every file starts its checks."""
+    from pflab.ingest import sniff
+    con = rt.cursor()
+    accounts = _accounts(rt)
+    started, unknown = [], []
+    for iid, kind, name, rj in con.execute("SELECT item_id, kind, name, result_json FROM inbox_items WHERE status='awaiting setup' "
+                                           "ORDER BY item_id").fetchall():
+        info = (json.loads(rj or "{}").get("sniff") or {})
+        acc = sniff.match_account(info, accounts) if kind == "bank" else None
+        if kind == "bank" and not acc:
+            from pflab.agents import questions
+            questions.ask(con, "inbox", f"inbox:account:item{iid}", f"Which of your bank accounts is the statement '{name}'? Reply with the "
+                          "account's name as in Setup, then drop the file again with that account chosen.", rt.clock())
+            unknown.append(name)
+            continue
+        _update(rt, iid, status="working", account=acc)
+        _start(rt, iid)
+        started.append(name)
+    rt.bump("inbox")
+    return {"started": started, "unknown": unknown}
+
+
+def apply_all(rt) -> dict:
+    """S65: every ledger document whose dry run passed or that was kept, added in ONE rebuild: written only when every check passes (his press)."""
+    from pflab.ingest import sources as srcs
+    con = rt.cursor()
+    items = [_item(rt, r[0]) for r in con.execute("SELECT item_id FROM inbox_items WHERE status IN ('ready', 'kept') ORDER BY item_id").fetchall()]
+    items = [it for it in items if it["kind"] in LEDGER_KINDS]
+    if not items:
+        return {"written": False, "why": "no documents waiting"}
+    with _LOCK:
+        sources = rt.pm_dir / "sources.toml"
+        over = srcs.load_overlay(sources)
+        for it in items:
+            over = srcs.with_document(over, it["kind"], _rel(rt, it["path"]), it["account"])
+        merged = srcs.merge(srcs.base(sources), over)
+        missing = _missing(merged)
+        if missing:
+            return {"written": False, "waiting_for": missing}
+        b = _builder(rt)
+        log, led, checks, notes, src = b.build(merged, rt.repo)
+        failed = [c for c in checks if not c[1]]
+        res = {"checks": [{"name": n, "ok": ok, "detail": d} for n, ok, d in checks], "notes": notes, "events": len(log), "failed": len(failed),
+               "documents": len(items), "written": False}
+        if failed:
+            return res
+        from pflab.pm.store import transaction
+        with transaction(con):
+            b.write(con, log, led, src)
+        srcs.save_overlay(sources, over)
+        for it in items:
+            _update(rt, it["id"], status="in the ledger", steps_json=json.dumps(_steps(it["kind"], 5)))
+        try:
+            from pflab.ingest import bank_labels
+            bank_labels.ask(con, src.get("_unlabelled") or [], rt.clock())
+        except Exception:
+            pass
+    rt.bump("portfolio", "command", "watch", "inbox")
+    res["written"] = True
     return res
 
 
