@@ -3,7 +3,7 @@ r"""Read-only Gmail: his statements arrive by themselves (S65; his decision 2026
     connect   once, his step: Google's sign-in page opens in the browser, he approves READ-ONLY access; the token is kept in
               %USERPROFILE%\.pflab\gmail_token.json (outside the repo, beside secrets.toml); the client file he downloads from Google Cloud is
               %USERPROFILE%\.pflab\gmail_client.json. With this permission the system cannot send, delete, label or mark anything.
-    fetch     every hour (job `mail`): messages with an attachment (PDF, Excel, CSV) from the last 40 days that were not seen before; each
+    fetch     once a day at 21:15 (job `mail`): messages with an attachment (PDF, Excel, CSV) from the last 40 days that were not seen before; each
               attachment is opened IN MEMORY and kept only if its content is a ledger document (a CAS, a Console tradebook / funds ledger /
               contract note, a bank statement, a deposit interest certificate, a GIFT City statement): anything else is dropped, never written.
     protected the passwords he saved under [passwords] are tried in memory; only the NAME of the one that opened a file is recorded. Protected

@@ -26,7 +26,7 @@ what remains: `docs/PLAN.md`; rules for Claude Code: `CLAUDE.md`.
    **Gmail (read-only, once; about 10 minutes):** at console.cloud.google.com create a project; APIs and Services > Library > enable "Gmail API"; OAuth consent
    screen > External, app name "Portfolio Lab", add your own address as a test user; Credentials > Create credentials > OAuth client ID > "Desktop app" > download
    the JSON (leave it in Downloads: Connect moves it to `%USERPROFILE%\.pflab\gmail_client.json`). Then Settings > Connect Gmail (or `pflab mail connect`):
-   Google's page opens; approve "Read your email" only. The first look reads a year of mail at once; after that, every hour from 07:00 to 23:00. Statement
+   Google's page opens; approve "Read your email" only. The first look reads a year of mail at once; after that, once a day at 21:15. Statement
    attachments (by content; everything else is dropped unread) come into the inbox like a file you drop; protected ones open with the passwords you saved (the file
    is stored as it came, still locked). Files none opens are asked about once per sender, with a slot named after it in Settings > Keys (NSDL, SBI ...); saving it
    tries again at once. Then Needs from you asks you to approve the accounts in Setup. Testing-mode tokens expire after 7 days: publish the consent screen

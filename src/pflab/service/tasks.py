@@ -379,7 +379,7 @@ def _mail(ctx: Ctx) -> dict:
     return gmail.fetch(desk.from_ctx(ctx))
 
 
-register(Job("mail", Interval(60, 7, 23, weekdays_only=False), _mail, "read-only Gmail: statements that arrived by email into the inbox (checked, then your press)"))
+register(Job("mail", Daily(21, 15, weekdays_only=False), _mail, "read-only Gmail, once a day: statements that arrived by email into the inbox (checked, then your press)"))
 
 
 def _twin(ctx: Ctx) -> dict:
