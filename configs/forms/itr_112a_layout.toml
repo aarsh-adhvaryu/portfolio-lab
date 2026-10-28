@@ -1,0 +1,76 @@
+# Schedule 112A upload CSV: the column layout of the Income Tax Department's ITR utility (S65, the Quicko pack).
+# Source: the department's own "Instructions for filling Schedule 112A/115AD(1)(b)(iii)(P)", the 'Need Help' page of the utility.
+# URL: https://static.incometax.gov.in/iec/foservices/assets/itr-shared/documents/112A_115AD_CSV_Instructions.pdf
+# Read in full on 2026-10-28 (a two-page PDF whose file date is 2026-05-25; it names no assessment year). Verification: primary for the
+# columns, their order and the rules below; NOT seen: the template file's own header row, so the headings are the instruction's wording.
+# Open point (a Needs-from-you item, `needs.deferred_items`-style, for filing time): forum reports say the AY 2025-26 template has a
+# further column "1b" (Share/Unit Transferred, BE before and AE on or after 23 July 2024). This instruction file does not mention it.
+# Our rules start with sales on 2024-07-23 (`tax/rules.py`), so every sale the system computes is "on or after 23 July 2024"; if the
+# template asks for 1b, the value is AE for every row. Quicko reads the broker's trades itself: this CSV is the cross-check or the
+# fallback, never the filing.
+
+[meta]
+source_url = "https://static.incometax.gov.in/iec/foservices/assets/itr-shared/documents/112A_115AD_CSV_Instructions.pdf"
+read_on = 2026-10-28
+verification = "primary"
+rounding = "columns 6, 11, 13 and 14 to the nearest unit; columns 4, 5, 8, 10, 12 up to 4 decimals"
+forbidden_characters = ", / - _ ( ) & @ \\ ' \" ; :"
+be_rule = "BE: acquired on or before 31 January 2018 (one row per holding); AE: acquired after it (one consolidated row)"
+ae_values = { isin = "INNOTREQUIRD", name = "CONSOLIDATED" }
+
+[[column]]
+no = "1a"
+key = "acquired"
+heading = "Share/Unit acquired"
+[[column]]
+no = "2"
+key = "isin"
+heading = "ISIN Code"
+[[column]]
+no = "3"
+key = "name"
+heading = "Name of the Share/Unit"
+[[column]]
+no = "4"
+key = "qty"
+heading = "No. of Shares/Units"
+[[column]]
+no = "5"
+key = "price"
+heading = "Sale-price per Share/Unit"
+[[column]]
+no = "6"
+key = "full_value"
+heading = "Full Value of Consideration (Total Sale Value)"
+[[column]]
+no = "7"
+key = "cost_without_indexation"
+heading = "Cost of acquisition without indexation"
+[[column]]
+no = "8"
+key = "cost"
+heading = "Cost of acquisition"
+[[column]]
+no = "9"
+key = "lower_of_11_and_6"
+heading = "If the long term capital asset was acquired before 01.02.2018, lower of 11 & 6"
+[[column]]
+no = "10"
+key = "fmv_per_unit"
+heading = "Fair Market Value per share/unit as on 31st January,2018"
+[[column]]
+no = "11"
+key = "fmv_total"
+heading = "Total Fair Market Value of capital asset as per section 55(2) (ac)"
+[[column]]
+no = "12"
+key = "expenditure"
+heading = "Expenditure wholly and exclusively in connection with transfer"
+[[column]]
+no = "13"
+key = "deductions"
+heading = "Total deductions (7+12)"
+[[column]]
+no = "14"
+key = "balance"
+heading = "Balance (6-13)"

@@ -51,6 +51,10 @@ def main(argv=None):
     pm = sub.add_parser("pm", help="Portfolio Manager store")
     pmsub = pm.add_subparsers(dest="pm_cmd", required=True)
     pmsub.add_parser("init", help="create or migrate the ledger database")
+    qp = pmsub.add_parser("quicko", help="S65: the Quicko pack for a financial year (112A CSV, gains by schedule, income, US rows); reconcile an export")
+    qp.add_argument("--fy", type=int, required=True, help="the year the FY ends, e.g. 2026 for April 2025 to March 2026")
+    qp.add_argument("--out", help="folder for the files (default PFLAB_PM_DIR/reports/quicko)")
+    qp.add_argument("--check", help="a Console or Quicko tax P&L export (.xlsx/.csv) to reconcile against the ledger")
     rs = pmsub.add_parser("reset", help="S65: move the whole PM folder aside (his record is moved, never deleted); lists it without --confirm")
     rs.add_argument("--confirm", default="", help="the word erase-my-record, to move it")
     i = pmsub.add_parser("instruments", help="instrument master summary")
@@ -938,6 +942,29 @@ def _conductor(a) -> int:
 
 def _pm(a) -> int:
     from pflab.pm import store
+    if a.pm_cmd == "quicko":
+        from pathlib import Path as _P
+
+        from pflab.data import data_dir
+        from pflab.tax import quicko as qk
+        con = store.connect(read_only=not a.check)
+        try:
+            pack = qk.build(con, a.fy, data_dir())
+        except RuntimeError as e:
+            print(f"cannot prepare the pack yet: {e}")
+            return 1
+        out = _P(a.out) if a.out else store.pm_dir() / "reports" / "quicko"
+        for p in qk.write_pack(pack, out):
+            print(f"wrote {p}")
+        print((out / f"summary_FY{a.fy}.txt").read_text(encoding="utf-8"))
+        if a.check:
+            data = _P(a.check).read_bytes()
+            rec = qk.reconcile(pack, data, _P(a.check).name)
+            print(f"reconciled {rec['matched']} ISIN(s); {len(rec['differences'])} difference(s) above Rs {rec['tolerance']:g}")
+            for r in rec["differences"]:
+                print(f"  {r['isin']} {r['name']}: ledger {r['ledger']:,.2f}, file {r['export']:,.2f}, unexplained {r['unexplained']:,.2f}")
+            print(f"{qk.ask_differences(con, rec)} new item(s) in Needs from you")
+        return 0
     if a.pm_cmd == "reset":
         from pflab.pm import reset as rsm
         try:
