@@ -55,7 +55,7 @@ the workshop; their data collection always runs. Code: `release.py`, `guard.py`,
 | summary_morning / summary_evening | 09:00 / 21:45 trading days | the two Telegram summaries |
 | watches / watches_close | every 15 min 09-16 / 16:00 | his price watches against the latest price |
 | idle_cash | 20:30 weekdays | Kite cash unused for a week |
-| mail | hourly 07-23, every day | read-only Gmail (`ingest/gmail.py`): new statement attachments into the inbox (checked, then your press); asks once to be connected; the workshop never reads mail |
+| mail | hourly 07-23, every day; at once on Connect and on a new statement password | read-only Gmail (`ingest/gmail.py`): new statement attachments into the inbox (checked, then your press); the first look reads a year (cold start); locked files asked once per sender (a password slot named after it); one item to approve the accounts in Setup; asks once to be connected; the workshop never reads mail |
 | twin | 20:55 weekdays | the scoreboard (`plan/twin.py`): your book, the brain's suggestions on paper, equal-weight Nifty 500 (the bar), Nifty 500; the same money on the same days; values only until 60 sessions |
 | companion | 21:10 daily | theme baskets and limits, dip reserve, opportunity pot (proposals wait for his yes); bank-label answers to rules; deferred US items |
 | scans | 20:40 weekdays | saved scans (information, labelled by what the learner tested) |

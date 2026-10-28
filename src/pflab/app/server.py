@@ -281,7 +281,7 @@ def create_app(rt) -> FastAPI:
         """S65: read-only Gmail: connected or not, what was fetched."""
         from pflab.ingest import gmail
         n = rt.cursor().execute("SELECT count(*), coalesce(sum(kept), 0), max(seen_at) FROM mail_seen").fetchone()
-        return {"connected": gmail.connected(), "client_file": gmail.client_path().exists(), "messages": n[0], "kept": int(n[1]),
+        return {"connected": gmail.connected(), "client_file": gmail.has_client(), "messages": n[0], "kept": int(n[1]),
                 "last": str(n[2]) if n[2] else None}
 
     @app.post("/api/mail/connect")
@@ -289,7 +289,9 @@ def create_app(rt) -> FastAPI:
         """Opens Google's read-only consent page in the browser on this PC; the token is saved when he approves."""
         from pflab.ingest import gmail
         try:
-            return {"connected": gmail.connect()}
+            who = gmail.connect()
+            rt.request_run("mail")                          # the first look starts now, not at the next hour
+            return {"connected": who}
         except gmail.MailError as e:
             raise HTTPException(400, str(e))
 
@@ -414,6 +416,8 @@ def create_app(rt) -> FastAPI:
             asked = ss.password_names(srcs.load(rt.pm_dir / "sources.toml"))
         except Exception:
             asked = []
+        from pflab.ingest import gmail
+        asked = sorted(set(asked) | set(gmail.passwords_wanted(rt.cursor())))       # S65: senders whose emailed files are locked
         return {"status": ss.status(), "passwords_asked": asked, "fields": {s: [[k, what] for k, what, _ in fs] for s, fs in ss.FIELDS.items()}}
 
     @app.post("/api/secrets")
@@ -424,6 +428,9 @@ def create_app(rt) -> FastAPI:
             done = ss.set_values({(section, key): value})
         except ss.SetupError as e:
             raise HTTPException(400, str(e))
+        from pflab.ingest import gmail
+        if section == "passwords" and gmail.connected():
+            rt.request_run("mail")                          # a new statement password: the locked mail is tried again at once
         return {"set": done}
 
     @app.get("/api/us")

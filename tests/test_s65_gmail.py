@@ -105,16 +105,48 @@ def test_statements_come_in_through_the_inbox_and_nothing_else_is_kept(rt):
     assert again["messages"] == 0                                                         # nothing fetched twice
 
 
-def test_a_protected_file_no_saved_password_opens_is_asked_about_once_and_retried(rt, monkeypatch):
+def test_protected_files_are_asked_about_once_per_sender_retried_and_closed_when_a_password_opens_them(rt, monkeypatch):
+    opens = {"pw": False}
     monkeypatch.setattr(sniff, "is_encrypted", lambda data, name: True)
-    monkeypatch.setattr(sniff, "sniff", lambda data, name, pw: {"kind": "other", "why": "no text read (a password, or a scan)"})
-    g = FakeGmail({"m1": (("NSDL", "Mon, 10 Nov 2026"), [("eCAS.pdf", b"%PDF-1.7 locked", False)])})
+    monkeypatch.setattr(sniff, "sniff", lambda data, name, pw: {"kind": "cas", "password_name": "NSDL"} if opens["pw"]
+                        else {"kind": "other", "why": "no text read (a password, or a scan)"})
+    g = FakeGmail({f"m{k}": (("NSDL e-CAS <cas@nsdl.co.in>", "Mon, 10 Nov 2026"), [(f"eCAS{k}.pdf", b"%PDF-1.7 locked " + bytes([48 + k]), False)])
+                   for k in range(3)})
     out = gmail.fetch(rt, g, now=NOW)
-    assert out["locked"] == 1
+    assert out["locked"] == 3
     q = questions.open_questions(rt.cursor())
-    assert len(q) == 1 and "eCAS.pdf" in q[0][2] and "Keys and passwords" in q[0][2] and "locked" not in q[0][2]
-    assert gmail.fetch(rt, g, now=NOW)["messages"] == 1                                   # not marked seen: tried again
+    assert len(q) == 1 and "eCAS0.pdf" in q[0][2] and "'NSDL'" in q[0][2] and "Keys and passwords" in q[0][2]   # one item, not three
+    assert gmail.passwords_wanted(rt.cursor()) == ["NSDL"]                                # the slot in Settings > Keys
+    assert gmail.fetch(rt, g, now=NOW)["messages"] == 3                                   # not marked seen: tried again
     assert len(questions.open_questions(rt.cursor())) == 1                                # but asked once
+    opens["pw"] = True                                                                    # he saved the password
+    out = gmail.fetch(rt, g, now=NOW)
+    assert out["kept"] == 3 and gmail.passwords_wanted(rt.cursor()) == []                 # opened: the item closed itself
+    texts = [t for _, _, t in questions.open_questions(rt.cursor())]
+    assert len(texts) == 1 and "Use these accounts" in texts[0]                           # a cold start: approve in Setup
+    assert gmail.fetch(rt, g, now=NOW)["messages"] == 0
+
+
+def test_the_first_look_reads_a_year_and_later_looks_the_last_weeks(rt):
+    queries = []
+    g = FakeGmail({"m1": (("x", "Mon"), [])})
+    real = gmail.message_ids
+    gmail.message_ids = lambda sess, q, limit=300: (queries.append((q, limit)), real(sess, q, limit))[1]
+    try:
+        gmail.fetch(rt, g, now=NOW)
+        g.messages["m2"] = (("y", "Tue"), [])
+        gmail.fetch(rt, g, now=NOW)
+    finally:
+        gmail.message_ids = real
+    assert "newer_than:400d" in queries[0][0] and queries[0][1] == gmail.FIRST_LIMIT
+    assert "newer_than:40d" in queries[1][0] and queries[1][1] == 300
+
+
+def test_sender_names_are_the_password_slot_names():
+    assert gmail.sender_name("NSDL e-CAS <nsdl-cas@nsdl.co.in>") == "NSDL"
+    assert gmail.sender_name("SBI <cbssbi.info@alerts.sbi.co.in>") == "SBI"
+    assert gmail.sender_name("Kotak <statements@email.kotak.com>") == "KOTAK"
+    assert gmail.sender_name("someone") == "EMAIL"
 
 
 def test_the_workshop_never_reads_his_mail(rt, monkeypatch):
@@ -127,16 +159,19 @@ def test_the_workshop_never_reads_his_mail(rt, monkeypatch):
 
 def test_connect_saves_a_read_only_token_and_refuses_anything_more(tmp_path, monkeypatch):
     monkeypatch.setattr(gmail, "home", lambda: tmp_path / ".pflab")
+    monkeypatch.setattr(gmail.Path, "home", lambda: tmp_path)
     with pytest.raises(gmail.MailError, match="client file"):
         gmail.connect()
-    (tmp_path / ".pflab").mkdir()
-    (tmp_path / ".pflab" / "gmail_client.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "Downloads").mkdir()
+    (tmp_path / "Downloads" / "client_secret_123-abc.apps.googleusercontent.com.json").write_text("{}", encoding="utf-8")
+    assert gmail.has_client()                                                             # found where Google's download lands
 
     def flow(scopes):
         creds = SimpleNamespace(scopes=scopes, to_json=lambda: json.dumps({"scopes": scopes}))
         return lambda path, s: SimpleNamespace(run_local_server=lambda **k: creds)
     monkeypatch.setattr(gmail, "session", lambda: FakeGmail({}))
     assert gmail.connect(flow_factory=flow(gmail.SCOPES)) == "someone@example.com"
+    assert (tmp_path / ".pflab" / "gmail_client.json").exists()                           # moved beside secrets.toml
     assert json.loads((tmp_path / ".pflab" / "gmail_token.json").read_text(encoding="utf-8"))["scopes"] == gmail.SCOPES
     (tmp_path / ".pflab" / "gmail_token.json").unlink()
     with pytest.raises(gmail.MailError, match="more than read-only"):

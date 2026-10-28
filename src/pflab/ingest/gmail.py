@@ -6,8 +6,11 @@ r"""Read-only Gmail: his statements arrive by themselves (S65; his decision 2026
     fetch     every hour (job `mail`): messages with an attachment (PDF, Excel, CSV) from the last 40 days that were not seen before; each
               attachment is opened IN MEMORY and kept only if its content is a ledger document (a CAS, a Console tradebook / funds ledger /
               contract note, a bank statement, a deposit interest certificate, a GIFT City statement): anything else is dropped, never written.
-    protected the passwords he saved under [passwords] are tried in memory; only the NAME of the one that opened a file is recorded. A protected
-              attachment none opens becomes one Needs-from-you item (its sender, date and file name; never its content).
+    protected the passwords he saved under [passwords] are tried in memory; only the NAME of the one that opened a file is recorded. Protected
+              attachments none opens become ONE Needs-from-you item per sender, with a password slot named after it (NSDL, SBI ...) in
+              Settings > Keys; saving a password fetches again at once; the item closes itself when the files open.
+    cold start the first look (nothing seen yet) reads a year of mail, so Setup can propose his accounts from it: then one item asks him to
+              approve them in Setup ("Use these accounts", "Add everything to the ledger"); nothing is written before his press.
     storage   a kept file goes through the inbox exactly like one he drops (`app/inbox.receive`): saved as it arrived, still encrypted, in the app's
               private `new/` folder; checked by a dry run; written to the ledger only on his press. Decrypted only in memory, at a build.
 
@@ -16,7 +19,8 @@ Nothing read here is sent to any model or API. The workshop (beta) never reads h
 from __future__ import annotations
 
 import base64
-import json
+import re
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
@@ -27,6 +31,8 @@ QUERY = "has:attachment newer_than:{days}d (filename:pdf OR filename:xlsx OR fil
 KEEP = ("cas", "bank", "tradebook", "contract_note", "funds_ledger", "fd_certificate", "gift_city")
 EXTS = (".pdf", ".xlsx", ".xls", ".csv")
 AGENT = "mail"
+FIRST_DAYS, FIRST_LIMIT = 400, 1500          # the first look (a cold start): a year of statements, so Setup and the tax year have their history
+MAIL_WORDS = {"co", "in", "com", "net", "org", "gov", "mail", "mails", "email", "mailer", "mailers", "alerts", "alert", "info", "noreply"}
 
 
 class MailError(RuntimeError):
@@ -49,9 +55,22 @@ def connected() -> bool:
     return token_path().exists()
 
 
+def downloaded_client() -> Optional[Path]:
+    """The client file as Google names it in Downloads (client_secret_*.json), newest first, when it was not moved yet."""
+    found = sorted((Path.home() / "Downloads").glob("client_secret_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    return found[0] if found else None
+
+
+def has_client() -> bool:
+    return client_path().exists() or downloaded_client() is not None
+
+
 def connect(client_file: Optional[Path] = None, flow_factory=None) -> str:
     """His one step: the browser opens Google's page for READ-ONLY access; the token is saved. Returns the address connected."""
     from google_auth_oauthlib.flow import InstalledAppFlow
+    if client_file is None and not client_path().exists() and downloaded_client():
+        home().mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(downloaded_client(), client_path())         # moved beside secrets.toml, out of Downloads' reach
     client_file = Path(client_file or client_path())
     if not client_file.exists():
         raise MailError(f"no Google client file at {client_file}: download it from Google Cloud (Credentials, OAuth client, Desktop app)")
@@ -128,6 +147,19 @@ def _seen(con, mid: str) -> bool:
     return bool(con.execute("SELECT 1 FROM mail_seen WHERE msg_id=?", [mid]).fetchone())
 
 
+def sender_name(sender: str) -> str:
+    """'NSDL e-CAS <cas@nsdl.co.in>' -> 'NSDL': the name the password for that sender's files is saved under."""
+    m = re.search(r"@([A-Za-z0-9.-]+)", sender or "")
+    parts = [p for p in (m.group(1) if m else "").lower().split(".") if p and p not in MAIL_WORDS]
+    return re.sub(r"[^A-Z0-9_]", "_", parts[-1].upper())[:24] if parts else "EMAIL"
+
+
+def passwords_wanted(con) -> List[str]:
+    """Password names the locked mail asks for (Settings > Keys shows a slot for each)."""
+    return [k.split(":", 2)[2] for (k,) in con.execute("SELECT subject_key FROM questions WHERE status='open' AND subject_key LIKE 'mail:locked:%' "
+                                                       "ORDER BY q_id").fetchall()]
+
+
 def fetch(rt, sess=None, days: int = 40, now: Optional[datetime] = None) -> dict:
     """Bring new statement attachments into the inbox. Returns counts; never raises for one bad message."""
     from pflab import guard
@@ -140,7 +172,9 @@ def fetch(rt, sess=None, days: int = 40, now: Optional[datetime] = None) -> dict
     con, now = rt.cursor(), now or rt.clock()
     pw = sniff.passwords_from_secrets()
     out = {"messages": 0, "files": 0, "kept": 0, "duplicates": 0, "locked": 0, "dropped": 0, "errors": 0}
-    for mid in message_ids(sess, QUERY.format(days=days)):
+    first = not con.execute("SELECT 1 FROM mail_seen LIMIT 1").fetchone()
+    locked_by: dict = {}
+    for mid in message_ids(sess, QUERY.format(days=FIRST_DAYS if first else days), FIRST_LIMIT if first else 300):
         if _seen(con, mid):
             continue
         out["messages"] += 1
@@ -162,14 +196,29 @@ def fetch(rt, sess=None, days: int = 40, now: Optional[datetime] = None) -> dict
                     out["kept"] += 1
             elif sniff.is_encrypted(data, name) and not info.get("password_name"):
                 out["locked"] += 1
-                questions.ask(con, AGENT, f"mail:locked:{mid}:{name}",
-                              f"A password-protected file came by email ({name}, from {meta['from'][:80]}, {meta['date'][:31]}) and none of your saved "
-                              "passwords opens it. If it is a statement, add its password in Settings > Keys and passwords; I will try again.", now)
+                locked_by.setdefault(sender_name(meta["from"]), (meta, name))
                 locked = True
             else:
                 out["dropped"] += 1
         if not locked:                                       # a message with a locked file is not marked seen: tried again once a password is added
             con.execute("INSERT OR REPLACE INTO mail_seen VALUES (?,?,?,?)", [mid, now, len(files), kept])
+    for pname, (meta, name) in locked_by.items():           # one item per sender, however many of its files are locked
+        questions.ask(con, AGENT, f"mail:locked:{pname}",
+                      f"Password-protected files came by email from {meta['from'][:80]} (for example {name}, {meta['date'][:16]}) and none of "
+                      f"your saved passwords opens them. If they are statements, type the password in Settings > Keys and passwords under "
+                      f"'{pname}' (the email itself usually says what it is); I try again at once.", now)
+    for k in passwords_wanted(con):                          # opened now (a password was added): the item closes itself
+        if k not in locked_by:
+            questions.drop(con, f"mail:locked:{k}", now)
+    waiting = con.execute("SELECT count(*) FROM inbox_items WHERE status='awaiting setup'").fetchone()[0]
+    if waiting:
+        questions.ask(con, AGENT, "mail:setup",
+                      f"Your statements are here ({waiting} file(s), most of them from your email). Open Setup (Settings > Open Setup): I read your "
+                      "accounts from them; check them, press 'Use these accounts', then 'Add everything to the ledger'. Nothing is written before "
+                      "your press, and Setup lists any file email did not bring.", now)
+    elif (rt.pm_dir / "sources.toml").exists():
+        questions.drop(con, "mail:setup", now)
+    rt.bump("inbox")
     return out
 
 
@@ -177,4 +226,5 @@ def ask_to_connect(con, now: datetime) -> Optional[int]:
     from pflab.agents import questions
     return questions.ask(con, AGENT, "mail:connect",
                          "Connect Gmail so your statements arrive by themselves (read-only: I can never send, delete or change anything). "
-                         "Settings > Connect Gmail, or `pflab mail connect`; the one-time Google steps are in README.", now)
+                         "Then I read a year of your statement emails, ask for any file password I need, and propose your accounts in Setup "
+                         "for your yes. Settings > Connect Gmail, or `pflab mail connect`; the one-time Google steps are in README.", now)

@@ -482,9 +482,13 @@ async function renderMail() {
   let d; try { d = await api('/api/mail'); } catch (e) { el.innerHTML = `<span class="lbl">Gmail (read-only)</span><span class="small warn">${esc(e.message)}</span>`; return; }
   el.innerHTML = `<span class="lbl">Gmail (read-only)</span>` + (d.connected
     ? `<span class="small up">Connected. ${d.messages} message(s) looked at, ${d.kept} statement file(s) brought in${d.last ? ', last ' + esc(d.last.slice(0, 16)) : ''}. It can never send, delete or change mail.</span>`
-    : `<span class="small muted">${d.client_file ? 'Ready: press Connect, approve read-only access in the browser.' : 'First the one-time Google step in README (the client file goes to %USERPROFILE%\.pflab\gmail_client.json).'}</span>`
+    : `<span class="small muted">${d.client_file ? 'Ready: press Connect, approve read-only access in the browser.' : 'First the one-time Google step in README (the downloaded client_secret file is picked up from Downloads).'}</span>`
       + (d.client_file ? '<button class="btn primary" id="mailGo" style="align-self:flex-start">Connect Gmail</button>' : ''));
-  if ($('mailGo')) $('mailGo').onclick = async () => { try { const r = await post('/api/mail/connect', {}); alert('Connected: ' + r.connected); renderMail(); } catch (e) { alert(e.message); } };
+  if ($('mailGo')) $('mailGo').onclick = async () => {
+    $('mailGo').textContent = 'Waiting for your approval in the browser…';
+    try { await post('/api/mail/connect', {}); alert('Connected (read-only). I am reading a year of your statement emails now; what I need from you will appear in Needs from you.'); renderMail(); }
+    catch (e) { alert(e.message); renderMail(); }
+  };
 }
 /* S65: keys and passwords go to %USERPROFILE%\.pflab\secrets.toml; the form is write-only (a value is never shown or sent back) */
 async function renderSecrets() {
