@@ -53,3 +53,14 @@ def test_the_one_icon_takes_a_new_release_at_start_and_only_in_the_app(monkeypat
     assert la.update_first(log, lambda cmd, **k: (_ for _ in ()).throw(OSError("offline"))) is None
     monkeypatch.setattr(release, "load", lambda root=None: None)                            # the workshop never updates itself
     assert la.update_first(log, lambda cmd, **k: 1 / 0) is None
+
+
+def test_the_icon_waits_for_a_background_run_to_let_go_of_the_record(tmp_path):
+    """S66: a double-click while the tick holds the record waits (the window says "starting"), then starts; it gives up after the limit."""
+    import logging
+    log, held = logging.getLogger("t"), [True, True, False]
+    slept = []
+    assert la.wait_for_store(tmp_path, log, free=lambda: not held.pop(0), sleep=slept.append) is True and slept == [5, 5]
+    assert la.wait_for_store(tmp_path, log, free=lambda: True, sleep=slept.append) is True
+    slept.clear()
+    assert la.wait_for_store(tmp_path, log, free=lambda: False, sleep=slept.append, limit_s=15) is False and len(slept) == 3

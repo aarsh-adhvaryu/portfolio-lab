@@ -68,7 +68,7 @@ universe includes every name that traded); taxes and costs are in the objective;
    the readers read. Tried on the real local model with four invented emails (a trade, a deposit, a dividend, an OTP: all read right; 8-14 s an email; a first look
    stops after 25 minutes and continues next run). Not yet seen on his real mail.
    **One icon (v2026.10.28.7):** only "Portfolio Lab" on the desktop; each start takes the newest release first (`launcher.update_first`: backup, self-test,
-   undone on a failure), then starts on it. The "Portfolio Lab Update" icon is gone.
+   undone on a failure), then starts on it; a double-click while a background run holds the record waits for it (up to 20 min, v2026.10.28.10). The "Portfolio Lab Update" icon is gone.
    **The workshop holds nothing personal (2026-10-28):** its statements (`new\`), its store and his settings files (`pm\`), the old store copies and the
    pre-rewrite history bundle (`data\backups`) and his tax-P&L parquets (`data\inbox`) were moved to `D:\PortfolioLabApp\backups\workshop_personal_2026-10-28`
    (nothing deleted; 27 of its 44 files exist nowhere else). The workshop keeps the collected market data and news (duplicated in the app; fine) and runs the

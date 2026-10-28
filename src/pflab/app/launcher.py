@@ -30,6 +30,7 @@ UPDATE_EVERY_S, UPDATE_IDLE_S = 60, 30 * 60   # S58b: look for new code each min
 RESTART = 3                                    # _serve's return code: start again onto the new code
 WINDOW_GONE_S = 10                             # no window connected this long, and Edge's process gone: stop
 UPDATE_TIMEOUT_S = 15 * 60                     # S65: the update at start (fetch, install, self-test)
+WAIT_STORE_S = 20 * 60                         # S66: how long the icon waits for a background run to let go of the record
 T0 = time.time()
 EDGE = [Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Microsoft/Edge/Application/msedge.exe",
         Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Microsoft/Edge/Application/msedge.exe"]
@@ -134,6 +135,23 @@ def end_children_with_me():
         return None
 
 
+def wait_for_store(pm: Path, log, free=None, sleep=time.sleep, limit_s: int = WAIT_STORE_S) -> bool:
+    """S66: the 15-minute tick holds the record while it works (minutes, on a catch-up day): the icon waits for it (the window shows
+    "starting") instead of failing. True when the record is free, False after `limit_s` (the start then says why)."""
+    if free is None:
+        from pflab.pm import reset
+        free = lambda: not reset.holds_store(pm)               # noqa: E731
+    waited = 0
+    while not free():
+        if waited >= limit_s:
+            return False
+        if waited == 0:
+            log.info("the record is held by a background run: waiting for it to finish")
+        sleep(5)
+        waited += 5
+    return True
+
+
 def update_first(log, run=subprocess.run) -> Optional[str]:
     """S65: an installed app takes the newest release before it starts. Returns the new tag, or None (the workshop, no newer tag,
     offline, the store held by the tick, a failed update that undid itself: it starts as it is)."""
@@ -225,6 +243,7 @@ def _run(pm: Path, log) -> int:
     starting = pm / "app" / "starting.html"
     starting.write_text(STARTING % (url, url), encoding="utf-8")
     win = open_window(starting.as_uri(), profile)          # at once: the imports below take a few seconds
+    wait_for_store(pm, log)                                # S66: a background run finishes first (else the start says why)
     new = update_first(log)                                # S65: the one icon also updates
     if new:
         log.info("updated to %s at start: starting again on it", new)
