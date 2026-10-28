@@ -1,4 +1,4 @@
-"""Harness texts adopted by S47 pass 3's registered rule (docs/llm/harness_s47_pass3_results.md, 2026-10-22).
+"""Harness texts adopted by S47 pass 3's registered rule (docs/STUDIES.md, 2026-10-22).
 
 The text is appended to the prompt exactly as it was evaluated: straight after the question, no separator. Generated
 from data/llm_eval/harness/research.json ("final"); tests/test_harness.py pins its hash. Writing was not adopted.

@@ -22,13 +22,13 @@ the workshop; their data collection always runs. Code: `release.py`, `guard.py`,
 | `data` | collectors and loaders: NSE/BSE bhavcopy, corporate actions, dividends, surveillance, indices, VIX, BSE announcements/shareholding/insider, GDELT, deals, FPI, macro, F&O (`fo_daily`), US prices (`us_prices`), SEC (`sec_edgar`), panel and calendar |
 | `ledger`, `ingest` | event-sourced ledger (FIFO lots, income, fees), `foreign` (US dollar ledger); parsers: Console tradebook/ledger, contract notes, CAS, bank statements, SBI interest certificates, Kite (read-only); `sniff` (files by content), `setup_sources`, `bank_labels`, `sources` (+ overlay) |
 | `tax` | rules (dated, sourced tables in `configs/tax/`), gains by schedule, income (both regimes), proposed sales, `foreign`, `quicko` (the pack: 112A CSV in the department's layout, reconcile) |
-| `pm` | the store (DuckDB, schema v38), instruments, FDs, bonds, gold, prices, today (net worth), `secrets` / `secrets_setup`, `reset` |
+| `pm` | the store (DuckDB, schema v39), instruments, FDs, bonds, gold, prices, today (net worth), `secrets` / `secrets_setup`, `reset` |
 | `portfolio`, `risk`, `plan` | tax-aware sell-down; exposure, Monte Carlo, CAPM, themes, scenarios, sleeve study; targets, deploy, guards, safety, buy zone, ready plans, pot, reserve, nudges, trader tickets, advisor |
 | `quant`, `fundamentals`, `monitor`, `signals`, `backtest`, `eval` | forecasts (price ranges, scored), Hawkes, options, scans, comove, process, event studies; BSE results, valuation; promoter/event monitors; the engine and its protected tests |
 | `kg`, `knowledge`, `readers` | time-aware knowledge graph, hypotheses, memory/documents, Haiku/local readers |
 | `agents` | researcher, analyst (the only API doorbell), event, thesis, tradecheck, memory, questions, needs, inbox, workshop + sandbox (Docker, `network none`, read-only) |
 | `hq` | the brain (tool loop, governor, egress gate, journal), `picture` (the one picture), reception, board, phone (Telegram), watcher, messenger, security, replay, valuation, plain words, models (the slider) |
-| `learner` | sources, claims, templates, counter, rules, run: reads papers/blogs, registers tests, tests them, counts them |
+| `learner` | sources, claims, templates, counter, rules, run, `forward` (live-only tests F1-F4, decided once at 24 months, `docs/protocols/s65_forward_protocol.md`): reads papers/blogs, registers tests, tests them, counts them |
 | `service`, `conductor` | jobs and the tick, Telegram outbox and bot, summaries, backup, health; the conductor (sync check, asks, closing notes; last in every tick) |
 | `app` | the dashboard (FastAPI on 127.0.0.1): launcher, runtime, views, server, inbox, chat, research, sims, graph, settings, `static/` |
 | `llm` | local model client and registry, the guard, evaluation sets and adopted harness texts |
@@ -72,9 +72,37 @@ The `us_open` brain pass (20 minutes after the New York open, once per US tradin
 It never trades, moves money or changes targets and limits. Spend is governed by `hq/governor.py` (slider modes off / economy / normal); what may
 leave the PC is decided by `hq/egress.py`.
 
+## Agents and models (generated from `hq/roster.py` and the slider `hq/models.py`; the Settings slider can change any model below)
+**19 agents on the board** (`hq/roster.py`; ask any by name on the AI centre, in Telegram as `/name`, or let the receptionist route). The dashboard's AI centre also lists
+the 17 job-level agents (collector, filings monitor, portfolio keeper, risk manager, simulator, forecaster, researcher, watch list, analyst, knowledge graph, trade check,
+conductor, workshop, outbox, backup, learner, security) with their last runs; under both sit the code modules in `agents/`, `plan/`, `quant/`.
+| agent | model (measured default) | does |
+|---|---|---|
+| receptionist | rules, no model | routes what he says or drops |
+| ask centre | local qwen3 8B (guard-checked); then agents; then Sonnet or Opus | answers questions; his own data never leaves the PC |
+| web | Opus 5.5 + web search | public questions, cited pages only |
+| research | Sonnet 5.5 (the doorbell) | deep research on a company from public documents |
+| file analyst | local model, then research | reads files he provides |
+| calculation | reviewed measures first; Sonnet 5.5 writes code, Opus 5.5 writes it again independently; both must agree | new calculations, run in the Docker sandbox |
+| simulation, quant, memory, cleanup, graph, messenger, watcher | code | Monte Carlo and stress; pre-registered studies; decisions and scoring; graph tidying; reminders; the drop folder |
+| portfolio | code; the local model words it | the portfolio today |
+| readers | Haiku 5.5 | read every public document: materiality, figures, summary |
+| cited-page reader | Sonnet 5.5 + web fetch | reads a page the system already cites |
+| brain | Opus 5.5 with tools (Sonnet 5.5 as its journal-only rival) | looks, decides what matters, asks and tells him; never trades |
+| learner | local qwen3 8B reads (Haiku 5.5 if its reply does not parse); Sonnet 5.5 words proposals | papers and blogs to tested claims |
+| security | code; Sonnet 5.5 reviews new code weekly | what left the PC, flows, privacy, tests |
+Other jobs on the slider: routing, materiality, extraction, gatekeeper (Haiku 5.5), notes (Sonnet 5.5, batched), brain_web (Sonnet 5.5), learner_proposals, review.
+
+**The local model** is `qwen3:8b-q8_0` through Ollama (`llm/registry.chosen("general")`, never deleted) and `nomic-embed-text` for embeddings. It is used, always with the guard
+(`llm/guard.py`: a draft with a number it cannot find in the facts is dropped and the facts are shown instead), by: the ask centre (guarded answers on his own data; routing is
+Haiku by default), the portfolio agent's wording, the nightly company briefs (`agents/brief.py`), the inbox agent and "Read it" summaries of screenshots and files, the file analyst,
+the learner's screening and reading of papers, the workshop as its labelled fallback writer, and `analyst_compare`'s local prompt; `nomic-embed-text` serves memory retrieval
+(`memory find`, hybrid with word matching). It never produces a number and never sees anything outside this PC. Everything paid goes through `hq/llm.py` or the doorbell
+`agents/analyst.py`, priced first, behind `hq/egress.py`.
+
 ## Data sources and how to build their history (all long runs are his)
-Daily, by the `collect` job or `python tools\collect_daily.py [--days N] [--sources ...]`: bhavcopy, corporate_actions, bse_bhavcopy, surveillance,
-indices, vix, gkg, dividends, bse, gdelt, insider, deals, fpi, macro, holders, fo, us_prices, sec_filings.
+Daily, by the `collect` job or `python tools\collect_daily.py [--days N] [--sources ...]` (`panel` keeps `panel\prices.parquet`, the adjusted prices every long-history reader uses, current by itself: new sessions appended, rebuilt whole in about 4 minutes when corporate actions or a late dividend change the adjustment, or monthly): bhavcopy, corporate_actions, bse_bhavcopy, surveillance,
+indices, vix, gkg, dividends, panel, bse, gdelt, insider, deals, fpi, macro, holders, fo, us_prices, sec_filings.
 Backfills, in `tools\` (each is resumable; every one takes more than 5 minutes): `backfill_bhavcopy.py` (NSE from 2004; `--from` for a slice),
 `backfill_bse.py START END LOG` (announcements), `backfill_shareholding.py` (2010 on), `backfill_consolidated.py` (integrated filings of the list),
 `backfill_fo.py --start 2024-01-01` (futures and options, participant OI), `backfill_us.py` (13 US funds, S&P 500 members, his US names),
@@ -82,13 +110,13 @@ Backfills, in `tools\` (each is resumable; every one takes more than 5 minutes):
 BigQuery free sandbox), `backfill_deals.py --source deals|institutions` (deals and institutional holdings). Kite each trading morning: `python tools\kite_login.py`
 or the dashboard button (read-only).
 
-## Store (`PFLAB_PM_DIR\ledger.duckdb`, schema v38; migrates itself)
+## Store (`PFLAB_PM_DIR\ledger.duckdb`, schema v39; migrates itself)
 Ledger and tax: accounts, events, lots, cash_ledger, income, fees, carry_forward, tax_years, instruments, prices, navs, gold_rates, fds, fd_interest, bonds,
 sgb_series, fund_holdings, ipo_applications, targets, us_trades, us_remittances, fx_rates, instrument_alias. Kite and checks: kite_snapshots, kite_trades,
 live_quotes, recon_breaks, job_runs. Agents and the brain: questions, memory, decisions, briefs, theses, proposals, watches, ready_plans, scans, research_flags,
 outbox, alerts_sent, api_calls, llm_runs, hq_passes, hq_tool_calls, hq_tasks, hq_predictions, hq_suggestions, hq_readings, hq_reminders, limit_proposals,
 theme_baskets, pot_ideas, forecasts (renamed from tfm_forecasts in v36). Graph: kg_nodes, kg_edges, kg_docs, kg_aliases, kg_hypotheses. Learner: learn_sources,
-learn_claims, learn_tests (the counter), learn_proposals, learned. Dashboard: chats, chat_messages, app_notes, inbox_items. Take ids with `store.next_id`.
+learn_claims, learn_tests (the counter), learn_proposals, learned, forward_months (the forward tests). Dashboard: chats, chat_messages, app_notes, inbox_items. Take ids with `store.next_id`.
 
 ## Settings (Settings screen; `PFLAB_PM_DIR\app\settings.json`)
 theme, privacy (hides rupee amounts), telegram_send (off until switch-on: held alerts stay held), scheduler, live_prices (Kite quotes in market hours),

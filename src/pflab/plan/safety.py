@@ -1,6 +1,6 @@
 """Safety checks before any direct-stock buy (S34: the 'Fsafe' filters, applied live).
 
-The four tests are the ones the dip-rule study validated (docs/research/dip_rule_results.md):
+The four tests are the ones the dip-rule study validated (docs/STUDIES.md):
     F1 profitable        trailing four quarters' net profit > 0
     F2 no collapse       trailing net profit at least half of the trailing net profit a year earlier
     F3 can pay interest  trailing (PBT + finance costs) / finance costs >= 2, or no finance costs

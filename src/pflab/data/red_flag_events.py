@@ -15,7 +15,7 @@ source, not the collector -- which is why the fallback exists. Over 222,419
 announcements in the 2016-2022 overlap where both exist, the two differ by a
 median of 5.1 seconds and only 0.009% cross a session boundary, so the
 substitution misdates about one announcement in 11,000 by one session
-(`docs/data/insider_finding.md` §3). E2-A §6's window now starts in 2017, so
+(`docs/BUILT.md` §3). E2-A §6's window now starts in 2017, so
 on that window the fallback never fires; it stays because the table is built
 over the whole feed and because E2-A's §8a reports 2010-2016.
 

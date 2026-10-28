@@ -1,4 +1,4 @@
-"""The registered baselines the live system keeps (S64 Phase 3; from the S52 study, docs/research/timesfm2_results.md):
+"""The registered baselines the live system keeps (S64 Phase 3; from the S52 study, docs/STUDIES.md):
 tools only, no model. Turnover (trader tickets' size check) and results (ranges before results) are served by these,
 exactly as they were when they were the baseline beside TimesFM; and the EWMA the volatility chance uses.
 

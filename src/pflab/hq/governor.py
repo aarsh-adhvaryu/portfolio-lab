@@ -1,4 +1,4 @@
-"""The spend governor (S59, docs/BRAIN.md "cost control comes first"; PLAN A16).
+"""The spend governor (S59, docs/BUILT.md "cost control comes first"; PLAN A16).
 
 Every paid HQ call is priced before it is made (count_tokens for the input, the worst case for the output) and checked
 against, in order:

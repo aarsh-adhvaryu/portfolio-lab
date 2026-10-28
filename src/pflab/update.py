@@ -1,4 +1,4 @@
-r"""`pflab update` and `pflab update --rollback`: the app updates like an app (S65, docs/S65_PLAN.md section 3).
+r"""`pflab update` and `pflab update --rollback`: the app updates like an app (S65, docs/PLAN.md section 3).
 
 The app is a clone of the private GitHub repo checked out at a release tag (`vYYYY.MM.DD`, or `vYYYY.MM.DD.N`), with a
 `release.toml` (src/pflab/release.py). An update, in order:

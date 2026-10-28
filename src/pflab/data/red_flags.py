@@ -1,7 +1,7 @@
 """Firm-level red-flag classifier for BSE announcements (E2-A).
 
 Revised 2026-09-16 against a 41,128-announcement sample (see
-docs/data/red_flag_sample.md), then frozen for the E2-A charter.
+docs/BUILT.md), then frozen for the E2-A charter.
 
 Two structural choices, both from that review:
 

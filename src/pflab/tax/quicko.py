@@ -229,7 +229,10 @@ def write_pack(pack: dict, out_dir: Path) -> List[Path]:
 # --- reconcile a Console or Quicko tax P&L export ------------------------------------------------------------------------------
 
 PROFIT_NAMES = ("taxable profit", "realised profit", "realized profit", "profit", "capital gain", "gain", "p&l", "pnl")
-CHARGE_NAMES = ("brokerage", "charges", "total charges")
+# The charges a tax P&L lists beside its profit (Console: Brokerage, Exchange Transaction Charges, IPFT, SEBI Charges, CGST, SGST, IGST, Stamp Duty).
+# STT is left out on purpose: it is not deductible from capital gains, and the ledger does not treat it as cost (checked on a real Console file:
+# the ledger's gain differs from the file's profit by exactly these charges).
+CHARGE_NAMES = ("brokerage", "charges", "total charges", "exchange transaction charges", "ipft", "sebi charges", "cgst", "sgst", "igst", "stamp duty")
 
 
 def _table(data: bytes, name: str, passwords=()) -> pd.DataFrame:
@@ -261,7 +264,7 @@ def reconcile(pack: dict, data: bytes, name: str, tol: float = 1.0) -> dict:
     low = {c.lower(): c for c in df.columns}
     isin_c = low["isin"]
     profit_c = next(low[p] for p in PROFIT_NAMES if p in low)
-    charge_cs = [low[c] for c in CHARGE_NAMES if c in low][:1]
+    charge_cs = [low[c] for c in CHARGE_NAMES if c in low]
     exit_c = next((low[c] for c in ("exit date", "sell date", "sale date", "date of sale") if c in low), None)
     if exit_c:
         text = df[exit_c].astype(str).str.strip().str[:10]
@@ -270,7 +273,8 @@ def reconcile(pack: dict, data: bytes, name: str, tol: float = 1.0) -> dict:
         df = df[(d >= pd.Timestamp(date(pack["fy"] - 1, 4, 1))) & (d <= pd.Timestamp(date(pack["fy"], 3, 31)))]
     df = df[df[isin_c].astype(str).str.match(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$", na=False)]
     theirs = df.assign(_p=df[profit_c].map(_num)).groupby(isin_c)["_p"].sum()
-    charges = df.assign(_c=df[charge_cs[0]].map(_num)).groupby(isin_c)["_c"].sum() if charge_cs else pd.Series(dtype=float)
+    charges = (df.assign(_c=sum(df[c].map(_num).fillna(0.0) for c in charge_cs)).groupby(isin_c)["_c"].sum()
+               if charge_cs else pd.Series(dtype=float))
     ours: Dict[str, float] = {}
     for s in pack["sales"]:
         ours[s["isin"]] = ours.get(s["isin"], 0.0) + s["gain"]

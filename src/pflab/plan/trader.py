@@ -1,7 +1,7 @@
 """The trader planner (S45, PLAN A7): how to place each proposed buy. It writes tickets for the investor to enter in Kite
 himself; it has no order path (GTTs are orders: the system only prints their fields).
 
-The plan follows the pre-registered split / limit study (docs/research/split_study_protocol.md,
+The plan follows the pre-registered split / limit study (docs/STUDIES.md,
 data/research/split_study.json): if a plan was adopted it is used; otherwise, and before the study has run, the
 advice is to buy at once with a limit at the last price. A measured impact note (S41 depth recordings) is added
 when there is one, and a size check against the turnover expected over the next 5 sessions (S52 Q5, an ESTIMATE).

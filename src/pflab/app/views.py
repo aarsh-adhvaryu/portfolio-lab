@@ -280,24 +280,24 @@ def command(rt, now: Optional[datetime] = None) -> dict:
 # PLAN A9's roster: agent, its jobs (None: runs inside the app or on demand), model, autonomy, what checks it, duty
 ROSTER = [
     ("Collector", ["collect", "prices", "nav", "global"], "none", "acts", "sync check", "prices, actions, dividends, NAVs, gold, world markets, news"),
-    ("Filings monitor", ["filings"], "local tagger", "acts (alerts)", "red-flag rules, S47", "BSE filings for held and list names"),
+    ("Filings monitor", ["filings"], "code (red-flag rules); {materiality} reads what it finds", "acts (alerts)", "red-flag rules, S47", "BSE filings for held and list names"),
     ("Portfolio keeper", None, "none", "acts", "maths audit (S43)", "live values every minute in market hours (Kite), the rest at the close"),
     ("Risk manager", ["guards"], "none", "acts (alerts)", "S34, S40, S51", "guards, market state, surveillance, dip and FD alerts"),
     ("Simulator", None, "none", "acts", "closed forms (S43)", "Monte Carlo of the current mix, refreshed daily"),
     ("Forecaster", ["forecast"], "statistics", "acts", "live coverage score", "price ranges, turnover for tickets, results before the result"),
-    ("Researcher", ["research"], "Opus notes for what changed (batch); local guarded brief", "acts", "S42, S47",
-     "what changed per company; Opus researches it overnight, the brief cites the note"),
+    ("Researcher", ["research"], "{notes} writes the notes for what changed (batch); the local model words the guarded brief", "acts", "S42, S47",
+     "what changed per company; the notes are written overnight, the brief cites the note"),
     ("Watch list", None, "none", "acts (nudges)", "buy-zone v1 (an estimate)", "buy zones, yes / wait / no, price watches"),
-    ("Analyst (Opus)", ["analyst"], "Opus", "acts within the cap", "adopted comparison", "deep notes and web search on public data"),
+    ("Analyst", ["analyst"], "{research} (the doorbell); {web} for web search", "acts within the cap", "adopted comparison", "deep notes and web search on public data"),
     ("Knowledge graph", ["kg"], "none", "acts", "point-in-time links", "filings, results, news, notes linked and dated"),
     ("Trade check", ["tradecheck"], "none", "asks", "reconciliation", "Kite trades and holdings against the ledger"),
     ("Conductor", ["conductor"], "none", "acts", "sync check", "runs and catches up jobs, asks for files, notes"),
-    ("Workshop", None, "Opus writes code", "proposes", "acceptance 10/10", "new calculations as code, run on this PC"),
+    ("Workshop", None, "{workshop} writes the code, {workshop_check} writes it again independently", "proposes", "acceptance 10/10", "new calculations as code, run on this PC"),
     ("Telegram outbox", ["outbox"], "none", "acts", "held until switch-on", "delivers messages (text only)"),
     ("Backup", ["backup"], "none", "acts", "verify after copy", "copies the ledger (needs a target)"),
-    ("Learner", ["learner"], "local, then Haiku; Sonnet words proposals", "acts by rule, asks the rest",
+    ("Learner", ["learner"], "{learner_reading} reads papers (Haiku 5.5 if its reply does not parse); {learner_proposals} words proposals", "acts by rule, asks the rest",
      "registered tests (learner_protocol.md)", "papers and blogs -> tested claims; the system's record -> proposals"),
-    ("Security", ["security"], "code; Sonnet code review weekly", "reports only", "never changes code or data",
+    ("Security", ["security"], "code; {review} reviews new code weekly", "reports only", "never changes code or data",
      "what left the PC, data flows, repo privacy, the tests"),
 ]
 
@@ -313,8 +313,11 @@ def ai(rt, chat_id: Optional[int] = None, now: Optional[datetime] = None) -> dic
     last = {j: (s, str(t)[:16], (d or "")[:160]) for j, s, t, d in con.execute(
         "SELECT job, status, started_at, detail FROM (SELECT *, row_number() OVER (PARTITION BY job ORDER BY started_at DESC) rn "
         "FROM job_runs) WHERE rn = 1").fetchall()}
+    from pflab.hq import models as _models
+    words = _models.labels(getattr(rt, "settings", None))
     agents = []
     for name, js, model, autonomy, check, duty in ROSTER:
+        model = model.format(**words)                            # the slider's current choices (S65), never a stale name
         runs = [(j, *last[j]) for j in (js or []) if j in last]
         latest = max(runs, key=lambda r: r[2]) if runs else None
         state = "running" if rt.busy and any(j in (rt.busy or "") for j in (js or [])) else \

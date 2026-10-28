@@ -1,4 +1,4 @@
-# Beta features (S65, docs/S65_PLAN.md section 3). A feature marked beta is built and tested but not yet trusted with money.
+# Beta features (S65, docs/PLAN.md section 3). A feature marked beta is built and tested but not yet trusted with money.
 # On the stable channel (the app) it is OFF unless Settings turns it on; on the beta channel (the workshop, PFLAB_CHANNEL=beta)
 # it is ON. Data collection for a beta feature always runs, so its history builds while the screens and the brain's use stay off.
 # Add a feature here and test it in tests/test_features.py; never hide a feature in code without listing it.

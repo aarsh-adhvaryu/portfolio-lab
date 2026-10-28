@@ -490,7 +490,7 @@ async function renderModels(redraw) {
   if (!el) return;
   let rows;
   try { rows = await (await fetch('/api/models')).json(); } catch (e) { el.innerHTML = `<span class="lbl">Models</span><span class="small warn">${esc(e.message)}</span>`; return; }
-  el.innerHTML = `<span class="lbl">Models: one per job</span><span class="tiny muted">Cheaper models where a pre-registered test found them as good (docs/llm/s61_slider_protocol.md); every paid call is still priced and capped.</span>`
+  el.innerHTML = `<span class="lbl">Models: one per job</span><span class="tiny muted">Cheaper models where a pre-registered test found them as good (docs/STUDIES.md); every paid call is still priced and capped.</span>`
     + rows.map((r) => `<div class="setting"><div style="flex:1;display:flex;flex-direction:column;gap:2px"><span>${esc(r.job)}</span><span class="small muted">${esc(r.about)} · default ${esc(MODEL_NAMES[r.default] || r.default)} (${esc(r.basis)})</span></div>
       ${r.choices.map((c) => `<button class="btn ${r.chosen === c ? 'primary' : ''}" data-mjob="${esc(r.job)}" data-m="${esc(c)}">${esc(MODEL_NAMES[c] || c)}${c === r.default ? ' ·' : ''}</button>`).join('')}
       ${r.yours ? `<button class="btn" data-mjob="${esc(r.job)}" data-m="default">use the default</button>` : ''}</div>`).join('');

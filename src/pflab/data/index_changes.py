@@ -15,7 +15,7 @@ Across all 98 of them, 2006-2026:
     Nifty 100 sections:  10   (2006-2008 only)
 
 Nifty 200 and Nifty 500 have no derivatives, so their reconstitutions are
-never announced there. See docs/data/index_membership_finding.md.
+never announced there. See docs/BUILT.md
 
 The real source
 ---------------

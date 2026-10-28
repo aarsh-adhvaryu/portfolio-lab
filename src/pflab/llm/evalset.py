@@ -1,4 +1,4 @@
-"""The fixed drafting task set for the research-model pick (docs/llm/model_pick_protocol.md, registered
+"""The fixed drafting task set for the research-model pick (docs/STUDIES.md, registered
 2026-10-06 before any evaluation). Tasks are generated from a seed, never tuned; the metric is the first-
 attempt pass rate of `guard.check_all`. `evaluate` refuses to run a role/model that was not registered
 before the run."""

@@ -15,8 +15,9 @@ what remains: `docs/PLAN.md`; rules for Claude Code: `CLAUDE.md`.
    Statement passwords are asked for by the names Setup gives them. The file is `%USERPROFILE%\.pflab\secrets.toml`, outside the repo.
 4. **Market history** (each is resumable and longer than 5 minutes; start with the first two): `tools\backfill_bhavcopy.py --from 2012-01-01`,
    `tools\build_index_membership.py --all`, `tools\backfill_bse.py 2018-01-01 <today> bse.log`, `tools\backfill_shareholding.py`, `tools\backfill_fo.py --start 2024-01-01`,
-   `tools\backfill_us.py`, `tools\backfill_deals.py --source deals`. Daily data then arrives by itself (`collect` and the other jobs). If the workshop has the history,
-   `tools\seed_app.ps1` copies its market data once (never the store of an app that already has one).
+   `tools\backfill_us.py`, `tools\backfill_deals.py --source deals`; then build the adjusted price panel once (about 5 minutes): `tools\collect_daily.py --sources corporate_actions,dividends,panel`. Daily data, and the panel, then arrive by itself (`collect` and the other jobs). If the workshop has the history,
+   `tools\seed_app.ps1` copies its non-personal market data and news once (about 4 GB). The app starts with a fresh record: the store is not copied
+   (`-WithStore` copies it too, only into an app with no store); the learner's test counter is carried by code.
 5. **Open "Portfolio Lab"** (starts the dashboard and every job in one process). **Setup** (Settings > Open Setup): the start date, your Zerodha account, banks (name, bank,
    last four digits). It lists the files it needs; drop each in **Inbox and files** (any name: they are recognised by content), press "Add to the ledger" when its checks pass.
    Answer what **Needs from you** asks (bank-label questions, IPO entries, FD certificates). Kite: the "Log in to Kite" button each trading morning (read-only).

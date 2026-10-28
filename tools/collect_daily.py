@@ -111,6 +111,13 @@ def _dividends(start, end, root):
     return {"rows": len(d)}
 
 
+def _panel(start, end, root):
+    """S65: the adjusted price panel every long-history reader uses, kept current by the system (not built by hand): new sessions
+    appended nightly, rebuilt whole when corporate actions or late dividends change the adjustment (about 4 minutes); not critical."""
+    from pflab.data import panel
+    return panel.refresh(root)
+
+
 def _bse(start, end, root):
     from pflab.data import bse_announcements
     return bse_announcements.collect(start, end, root)
@@ -227,6 +234,7 @@ SOURCES = {
     "vix": _vix,
     "gkg": _gkg,
     "dividends": _dividends,
+    "panel": _panel,
     "bse": _bse,
     "gdelt": _gdelt,
     "insider": _insider,

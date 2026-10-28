@@ -16,7 +16,7 @@ separate pre-registered study, PLAN A9). Three parts, each shown with its workin
                  realistic chance of being touched, so valuation is a separate check, not the zone)
     rich         the price assumes more than RICH_GAP a year above the company's own (clipped) TTM growth
     verdict      NO (a guard fails or blocks); ABOVE ZONE (a description: the pre-registered study of 2026-10-23,
-                 docs/research/buyzone_wait_results.md, found that waiting for the zone cost money, so the zone never
+                 docs/STUDIES.md, found that waiting for the zone cost money, so the zone never
                  says "wait"); RICH (in it, but the price assumes more growth than the company's own: a caution, not
                  tested); IN ZONE (at or
                  under the zone's top and not rich); too little history (fewer than 250 sessions) -> no zone, said so

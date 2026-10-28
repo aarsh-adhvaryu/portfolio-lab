@@ -1,7 +1,7 @@
 """The model slider (S61, PLAN A19): one model setting per job of the system.
 
     default    measured: `configs/models.toml [defaults]` (written by the S61 scoring tool, retired in S63, from the registered
-               protocol `docs/llm/s61_slider_protocol.md`), else the job's default below (step 1, S59, S60)
+               protocol `docs/STUDIES.md`), else the job's default below (step 1, S59, S60)
     setting    the investor's choice on the Settings screen (`settings.json` "models"), which wins over the default
     road       every Claude model goes through `hq/llm.py` (egress list, priced, governed, logged); the local model
                through `llm.client` on this PC. A job whose model fails or is refused falls to the next of its chain.
@@ -121,6 +121,26 @@ def model_id(job: str, settings: Optional[dict] = None) -> str:
         from pflab.llm import registry
         return registry.chosen("general") or LOCAL_DEFAULT
     return IDS[c]
+
+
+NAMES = {"local": "local qwen3 8B", "cascade": "local qwen3 8B, then Haiku 5.5 when the guard rejects its draft",
+         "haiku": "Haiku 5.5", "sonnet": "Sonnet 5.5", "opus": "Opus 5.5"}
+
+
+def label(job: str, settings: Optional[dict] = None) -> str:
+    """The model words for a job as it is NOW (his setting, the learner's, the measured default): what the agent lists show, so
+    the text can never drift from what runs (S65)."""
+    return NAMES[choice(job, settings)]
+
+
+def labels(settings: Optional[dict] = None) -> Dict[str, str]:
+    """`{job}` -> words for every job, plus `{brain_rival}` (the brain's journal-only rival is the other of Opus and Sonnet) and
+    `{workshop_check}` (the workshop's independent second writing is always the other model)."""
+    out = {j: label(j, settings) for j in JOBS}
+    other = lambda c: NAMES["sonnet" if c == "opus" else "opus"]            # noqa: E731
+    out["brain_rival"] = other(choice("brain", settings))
+    out["workshop_check"] = other(choice("workshop", settings))
+    return out
 
 
 def listing(settings: Optional[dict] = None) -> List[dict]:

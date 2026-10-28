@@ -1,5 +1,5 @@
 """Acceptance cases for the 2026-09-27 audit, Deliverable 1, defects 1-4
-(`docs/reviews/portfolio_system_audit.md`; E1 §15 measurement corrections of
+(`docs/BUILT.md`; E1 §15 measurement corrections of
 the same date). `tools/audit/verify_accounting.py` reproduced each defect;
 these assert the corrected outcome."""
 from __future__ import annotations

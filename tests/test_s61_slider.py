@@ -1,5 +1,5 @@
 """S61 the model slider (PLAN A19): one model per job, measured defaults, his settings win; the ask centre's chain;
-the scoring rules of docs/llm/s61_slider_protocol.md on synthetic results."""
+the scoring rules of docs/STUDIES.md on synthetic results."""
 from __future__ import annotations
 
 import importlib.util

@@ -1,5 +1,5 @@
 """The pre-registered local-vs-API comparison that decides whether the analyst is adopted
-(docs/research/analyst_comparison_protocol.md). Same public question, same public documents, two answers:
+(docs/STUDIES.md). Same public question, same public documents, two answers:
 the local model (through the guard) and the API analyst (trial call). The investor rates them blind.
 
     prepare   writes the question set to PFLAB_PM_DIR/analyst_compare/questions.json (list companies' names stay

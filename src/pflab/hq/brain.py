@@ -1,4 +1,4 @@
-"""The brain (S59; S60 tool loop and acting, PLAN A18; docs/BRAIN.md; protocol docs/research/brain_shadow_protocol.md).
+"""The brain (S59; S60 tool loop and acting, PLAN A18; docs/BUILT.md; protocol docs/STUDIES.md).
 
 It is not a loop that runs all the time. Code watches for free (`events`); when something new has happened, a Haiku
 gatekeeper (about Rs 0.01) says whether it deserves a pass; a morning review on trading days and a weekly reflection are

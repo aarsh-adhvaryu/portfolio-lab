@@ -187,7 +187,7 @@ PLAN_NOTE = "Your plan does not change: regular monthly tranches continue"
 
 def cluster_text(cl: Dict[str, object], dip: Optional[Dict[str, object]] = None) -> str:
     """One plain message: the market state, what it means, and what the plan does (dip rule unchanged: the
-    wait-for-calm test failed, docs/research/hawkes_results.md)."""
+    wait-for-calm test failed, docs/STUDIES.md)."""
     what = {"calm": "big falls are not clustering", "elevated": "big falls are clustering",
             "high": "big falls are clustering strongly (crash-like)"}[cl["state"]]
     txt = (f"Market state {cl['state'].upper()} on {cl['date']}" + (f" (was {cl['previous']})" if cl.get("previous") else "")

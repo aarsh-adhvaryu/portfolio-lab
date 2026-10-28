@@ -1,4 +1,4 @@
-# Frozen market Hawkes fit (S40, docs/research/hawkes_results.md). Written by the S40 study tool (retired in S63; results in docs/research/hawkes_results.md)
+# Frozen market Hawkes fit (S40, docs/STUDIES.md). Written by the S40 study tool (retired in S63; results in docs/STUDIES.md)
 # --write-frozen only because the market series passed the registered rule. Do not edit the fit by hand.
 [market]
 threshold = -0.02

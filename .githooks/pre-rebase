@@ -1,5 +1,0 @@
-#!/bin/sh
-# Blocks rebasing onto research-archive (same rule as pre-merge-commit).
-case "$1" in research-archive|origin/research-archive|refs/heads/research-archive|refs/remotes/origin/research-archive)
-  echo "BLOCKED: research-archive is never rebased onto this branch until the investor says so in writing." >&2; exit 1;; esac
-exit 0

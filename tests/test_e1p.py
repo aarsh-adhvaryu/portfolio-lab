@@ -42,7 +42,7 @@ def test_defer_respects_the_rank_ceiling():
 
 def test_defer_uses_the_oldest_lot():
     """FIFO sells the oldest lot first, so that is the lot whose tax
-    treatment is at stake. Declared in docs/notes/E1P-readiness.md."""
+    treatment is at stake. Declared in docs/BUILT.md"""
     d = hk.patience_defer()
     m = date(2016, 6, 30)
     old = (m - (m - relativedelta(months=10))).days      # in the window

@@ -1,4 +1,4 @@
-# Model defaults, measured (S61, docs/llm/s61_slider_protocol.md). Written by the S61 scoring tool (retired in S63; results in docs/llm/s61_slider_results.md).
+# Model defaults, measured (S61, docs/STUDIES.md). Written by the S61 scoring tool (retired in S63; results in docs/STUDIES.md).
 # 2026-10-25 14:14. The investor's choices on the Settings screen win over these.
 [defaults]
 answers = "local"   # checked of 38: {'local': 22, 'haiku': 12, 'sonnet': 3, 'cascade': 23}; best 23, margin 2

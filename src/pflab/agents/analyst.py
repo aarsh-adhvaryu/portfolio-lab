@@ -13,7 +13,7 @@ The local agents answer first. The doorbell rings the API only for deep research
     5. send     his own questions go live; everything else waits for the overnight batch (half price)
     6. keep     every answer is stored as a dated, cited note (knowledge graph doc + memory row) for the local model
 Off until `adopted = true` in PFLAB_PM_DIR/api_budget.toml, which is set only after the pre-registered local-vs-API
-comparison (docs/research/analyst_comparison_protocol.md) shows a clear gain; trial calls for that comparison are
+comparison (docs/STUDIES.md) shows a clear gain; trial calls for that comparison are
 the exception. Prices are Anthropic's list prices (cached 2026-10-06); rupee costs are estimates at `usd_inr`.
 """
 from __future__ import annotations
@@ -490,7 +490,7 @@ def ring(con, req: Request, client, *, now: Optional[datetime] = None, approved:
     return Outcome("done", text, cid, inr, warn)
 
 
-# --- the Sonnet comparison (docs/llm/sonnet_vs_opus_protocol.md) --------------------------------------------------------
+# --- the Sonnet comparison (docs/STUDIES.md) --------------------------------------------------------
 
 def trial_note(con, req: Request, client, model: str, *, now: Optional[datetime] = None, cfg: Optional[dict] = None,
                pv: Optional[Private] = None) -> dict:
@@ -517,7 +517,7 @@ def trial_note(con, req: Request, client, model: str, *, now: Optional[datetime]
             "raw": raw, "kept": kept, "cost_inr": inr, "call_id": cid}
 
 
-# --- S47 pass 3: the harness editor (docs/llm/harness_s47_pass3_protocol.md) ----------------------------------------
+# --- S47 pass 3: the harness editor (docs/STUDIES.md) ----------------------------------------
 
 HARNESS_CHARS = 1500
 HARNESS_SYSTEM = (

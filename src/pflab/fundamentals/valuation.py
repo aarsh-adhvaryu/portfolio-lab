@@ -25,7 +25,7 @@ announcement (after 15:30: next day); unmatched, quarter end + 90 days. The
 match is the first announcement from the day after the quarter end to 15
 days after the next quarter end, in BSE's category Result / Financial
 Results, or with a headline naming results and the quarter's month
-(`docs/data/bse_results_finding.md` §3; the probe's query).
+(`docs/BUILT.md` §3; the probe's query).
 
 Build readings (declared in the meta and §14): TTM = the latest quarter
 usable at M and the three before it, each usable at M and each with the

@@ -77,7 +77,7 @@ def run(tf, neutralised=False):
 # rounded fixture (`tick=0.01`) from 8dea146's code in a detached worktree:
 # the unrounded fixture's digest moved with the last bit of np.exp, which is
 # why the audit's Linux run disagreed on all three (a 1-ULP change to 30% of
-# panel prices changes the digest; see docs/reviews/accounting-correction-2.md).
+# panel prices changes the digest; see docs/BUILT.md).
 GOLDEN_BEFORE_ACCOUNTING = {
     "sma10": "32cbcab4992cccbc79fd80481383f81eb307e1bf56c348f1c9c4448b86c0f28d",
     "sell_to_cash": "4a0128fe71d55481bc02e545d0ca142b31f500c38176bb113a90c487b92c19fb",

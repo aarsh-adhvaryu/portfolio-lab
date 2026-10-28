@@ -543,6 +543,17 @@ MIGRATIONS = [
         bank VARCHAR, source VARCHAR NOT NULL, entered_at TIMESTAMP NOT NULL, note VARCHAR
     );
     """),
+    # 2026-10-28: S65 forward tests (docs/protocols/s65_forward_protocol.md): one row per claim per formation month-end. The group and
+    # the universe are frozen at formation (before the outcome month exists); the outcome fills in when the next month-end is in.
+    (39, "forward_s65", """
+    CREATE TABLE forward_months (
+        claim VARCHAR NOT NULL, formed_on DATE NOT NULL, status VARCHAR NOT NULL,        -- formed | settled | thin | late
+        group_json VARCHAR, universe_json VARCHAR, group_n INTEGER, universe_n INTEGER,
+        outcome_on DATE, group_ret DOUBLE, universe_ret DOUBLE, excess DOUBLE,
+        formed_at TIMESTAMP NOT NULL, settled_at TIMESTAMP,
+        PRIMARY KEY (claim, formed_on)
+    );
+    """),
 ]
 
 

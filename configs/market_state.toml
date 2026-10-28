@@ -1,4 +1,4 @@
-# Market state (S51, amendment 3; docs/research/market_state_vol_results.md). Written by
+# Market state (S51, amendment 3; docs/STUDIES.md). Written by
 # the S51 study tool (retired in S63) --calibrate only because plain volatility won its registered test.
 # Chance of another -2% Nifty 500 TRI session within 10 sessions = 1 / (1 + exp(-(a + b ln EWMA))),
 # EWMA of r^2 with lambda 0.94 (22-session warm-up), fitted on 2005-2014 and frozen. Do not edit by hand.

@@ -129,3 +129,22 @@ def test_an_export_without_the_columns_is_refused_with_a_reason(con):
     p = qk.build(con, 2026, fmv_2018=FMV.get)
     with pytest.raises(ValueError, match="ISIN column and a profit column"):
         qk.reconcile(p, b"a,b\n1,2\n", "x.csv")
+
+
+CONSOLE = ("Symbol", "ISIN", "Entry Date", "Exit Date", "Quantity", "Buy Value", "Sell Value", "Profit", "Period of Holding", "Fair Market Value",
+           "Taxable Profit", "Turnover", "Brokerage", "Exchange Transaction Charges", "IPFT", "SEBI Charges", "CGST", "SGST", "IGST", "Stamp Duty", "STT")
+
+
+def test_the_console_layout_counts_its_own_charges_but_not_stt(con):
+    """Checked on a real Console file: the ledger's gain differs from the file's profit by exactly Brokerage + Exchange charges + IPFT + SEBI +
+    GST + Stamp Duty; STT (not deductible from capital gains) is in the file but not in the ledger's cost."""
+    p = qk.build(con, 2026, fmv_2018=FMV.get)
+    ours = {s["isin"]: s["gain"] for s in p["sales"]}
+    # NEWCO: the file's profit 3,000 less 50 of deductible charges = our 2,950; its STT of 80 must not be subtracted again
+    row = ["NEWCO", NEW, "2024-01-05", "2025-09-01", 10, 5000, 8000, 3000, 600, 0, 3000, 0, 10, 20, 0, 5, 0, 0, 10, 5, 80]
+    exp = export([row, ["OLDCO", OLD, "2017-06-01", "2025-10-01", 50, 5000, 15000, 5000, 3000, 0, 5000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                  ["STCO", ST, "2025-05-02", "2026-02-10", 100, 5000, 6000, 1000, 100, 0, 1000, 0, 10, 0, 0, 0, 0, 0, 0, 0, 0]], header=CONSOLE)
+    r = qk.reconcile(p, exp, "taxpnl.csv")
+    assert r["differences"] == [] and r["matched"] == 3 and ours[NEW] == pytest.approx(2950.0)
+    new = next(x for x in r["rows"] if x["isin"] == NEW)
+    assert new["export_charges"] == 50.0 and new["unexplained"] == pytest.approx(0.0)

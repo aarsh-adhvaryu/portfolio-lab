@@ -83,6 +83,11 @@ def cycle(rt, collect: bool = True, get=None) -> dict:
         except Exception as e:                               # kept registered; the reason shown
             tested[cid] = f"not run: {type(e).__name__}: {str(e)[:150]}"
     out["tested"] = tested
+    try:                                     # S65: the forward tests (docs/protocols/s65_forward_protocol.md): form, settle, decide
+        from pflab.learner import forward
+        out["forward"] = forward.cycle(con, rt.data_root, now)
+    except Exception as e:
+        out["forward"] = f"not run: {type(e).__name__}: {str(e)[:150]}"
     why = record.due(con, now)
     if why:
         out["record"] = record.run(con, now, proposal_draft(rt) if paid else None, why)
@@ -107,6 +112,13 @@ def status(con, limit: int = 8) -> str:
     for r in claims.table(con, limit):
         lines.append(f"#{r['id']} [{r['status']}] {r['claim'][:140]}" + (f" -> {r['why'][:160]}" if r["why"] else ""))
     lines.append(counter.line(con))
+    try:                                     # S65: forward tests: counts only until the decision month (never a running result)
+        from pflab.learner import forward
+        lines.append("Forward tests (live data only; decided once at 24 months): " + "; ".join(
+            f"{f['id']} {f['settled']}/{f['needs']}" + (" " + ("passed" if f["verdict"]["passed"] else "did not hold") if f["verdict"] else "")
+            for f in forward.status(con)))
+    except Exception:
+        pass
     lines.append(live.brain_text(con))
     pend = con.execute("SELECT prop_id, kind, text FROM learn_proposals WHERE status='to_investor' ORDER BY prop_id").fetchall()
     if pend:

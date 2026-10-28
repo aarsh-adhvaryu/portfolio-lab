@@ -174,7 +174,7 @@ try {
         PfCli "S47 tuning: research" 300 $false "llm tune research"
     }
     if ($Phases -contains "memory") { PfCli "S49 memory retrieval: words vs embeddings (pre-registered)" 120 $false "memory compare" }
-    # S47 pass 2 training data (docs/llm/qlora_s47_pass2_protocol.md): opt-in; runs until every task is done (limit
+    # S47 pass 2 training data (docs/STUDIES.md): opt-in; runs until every task is done (limit
     # -QloraHours, default 24: in practice none; about 23 s a task); a stopped run resumes where it stopped
     if ($QloraData) { PfCli "S47 pass 2: training data (rejection sampling, resumes)" ($QloraHours * 60) $false "llm qlora data" }
 

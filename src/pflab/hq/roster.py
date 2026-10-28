@@ -305,15 +305,15 @@ def _receptionist(rt, t: dict) -> Reply:
 ROSTER: Dict[str, Agent] = {a.name: a for a in [
     Agent("receptionist", "Receptionist", "rules (no model)", "routes what the investor says or drops to the right agent",
           "his words", "the board", _receptionist),
-    Agent("ask", "Ask centre", "local qwen3 8B, then the agents, then Opus", "answers questions: local first, then escalates",
+    Agent("ask", "Ask centre", "{answers}; then the agents; then {research} or {web} for company and web questions", "answers questions: local first, then escalates",
           "the ledger, tools, notes", "chats", _chat("auto")),
-    Agent("web", "Web search", "Opus 5.5 + web search", "searches the web for public questions, cited pages only",
+    Agent("web", "Web search", "{web} + web search", "searches the web for public questions, cited pages only",
           "the web", "a cited note in the graph", _chat("web")),
-    Agent("research", "Research analyst", "Opus 5.5 (doorbell)", "deep research on a company from public documents",
+    Agent("research", "Research analyst", "{research} (the doorbell)", "deep research on a company from public documents",
           "filings, results, news, exports", "a cited note in the graph", _research),
     Agent("analysis", "File analyst", "local model; then research", "reads what the investor provides: files, Tijori exports, PDFs, sheets",
           "the inbox", "the graph, the research agent", _analysis),
-    Agent("calc", "Calculation", "reviewed measures; Opus writes, Sonnet checks", "maths only: measures and new calculations as code",
+    Agent("calc", "Calculation", "reviewed measures first; {workshop} writes the code, {workshop_check} writes it again independently; both must agree", "maths only: measures and new calculations as code",
           "prices, the ledger, datasets", "kept calculations", _chat("calc")),
     Agent("sim", "Simulation", "code (Monte Carlo, calibrated statistics)", "Monte Carlo, stress and crash episodes, forecasts",
           "returns history, the mix", "the simulation cache", _sim),
@@ -330,17 +330,17 @@ ROSTER: Dict[str, Agent] = {a.name: a for a in [
           _watcher),
     Agent("portfolio", "Portfolio", "code; local model words it", "the portfolio today (statements, then Kite)",
           "the ledger, Kite snapshots", "nothing", _portfolio),
-    Agent("reader", "Readers", "Haiku 5.5", "read every public document: materiality, figures, summary",
+    Agent("reader", "Readers", "{materiality}", "read every public document: materiality, figures, summary",
           "filings, results, news, exports", "readings in the graph", _reader),
-    Agent("fetch", "Cited-page reader", "Sonnet 5.5 + web fetch", "reads a page or filing the system already cites",
+    Agent("fetch", "Cited-page reader", "{fetch} + web fetch", "reads a page or filing the system already cites",
           "one cited URL", "a note in the graph", _fetch),
-    Agent("brain", "Brain", "Opus 5.5 with tools (Sonnet 5.5 as rival)", "looks with tools, decides what matters and "
+    Agent("brain", "Brain", "{brain} with tools ({brain_rival} as its journal-only rival)", "looks with tools, decides what matters and "
           "what next; asks and tells you, orders research; never trades", "the tools: portfolio, every stock's drift / odds / edge, notes, memory",
           "the journal, predictions, suggestions", _brain),
-    Agent("learner", "Learner", "local model, then Haiku; Sonnet words proposals", "reads papers and blogs for testable "
+    Agent("learner", "Learner", "{learner_reading} reads (Haiku 5.5 when its reply does not parse); {learner_proposals} words proposals", "reads papers and blogs for testable "
           "claims, registers and tests them; reads the system's record and proposes changes", "arXiv, OpenAlex, blogs, "
           "drop\\learn, the record", "findings, lessons, proposals", _learner),
-    Agent("security", "Security", "code; Sonnet reviews new code weekly", "re-checks what left the PC, data flows, the "
+    Agent("security", "Security", "code; {review} reviews new code weekly", "re-checks what left the PC, data flows, the "
           "repo's privacy, the tests; never changes code or data", "requests sent, jobs, the repo", "Needs from you",
           _security),
 ]}
@@ -350,11 +350,20 @@ def runners() -> Dict[str, Callable]:
     return {n: a.run for n, a in ROSTER.items()}
 
 
-def listing() -> list:
-    return [{"name": a.name, "title": a.title, "model": a.model, "does": a.does, "reads": a.reads, "writes": a.writes}
+def model_text(a: Agent, settings=None) -> str:
+    """The agent's model words with the slider's current choices filled in."""
+    from pflab.hq import models
+    try:
+        return a.model.format(**models.labels(settings))
+    except (KeyError, IndexError):
+        return a.model
+
+
+def listing(settings=None) -> list:
+    return [{"name": a.name, "title": a.title, "model": model_text(a, settings), "does": a.does, "reads": a.reads, "writes": a.writes}
             for a in ROSTER.values()]
 
 
 def title(name: str) -> Tuple[str, str]:
     a = ROSTER.get(name)
-    return (a.title, a.model) if a else (name, "")
+    return (a.title, model_text(a)) if a else (name, "")

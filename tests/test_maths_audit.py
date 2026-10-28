@@ -1,7 +1,7 @@
 """S43 maths audit (PLAN A7): every number-producing agent recomputed by a second, independent method on fixed
 SYNTHETIC cases. Monte Carlo against closed forms and a deterministic drawdown chain; the allocator and deploy
 against hand-worked portfolios; risk stats against textbook formulas; Hawkes against numerical integration.
-Findings and their fixes: docs/research/maths_audit_s43.md."""
+Findings and their fixes: docs/STUDIES.md"""
 from datetime import date
 
 import numpy as np

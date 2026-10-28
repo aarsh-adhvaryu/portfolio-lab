@@ -202,7 +202,7 @@ def test_cli_pm_init_and_instruments(monkeypatch, tmp_path, capsys):
     from pflab import cli
     monkeypatch.setenv("PFLAB_PM_DIR", str(tmp_path))
     assert cli.main(["pm", "init"]) == 0
-    assert "schema v38" in capsys.readouterr().out
+    assert "schema v39" in capsys.readouterr().out
     assert cli.main(["pm", "instruments"]) == 0
     assert "amfi schemes: 0" in capsys.readouterr().out
 

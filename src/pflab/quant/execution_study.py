@@ -1,4 +1,4 @@
-"""Split or limit-below-market vs buying at once (S45; docs/research/split_study_protocol.md).
+"""Split or limit-below-market vs buying at once (S45; docs/STUDIES.md).
 
 For each month's first session t and each point-in-time Nifty 500 member, the price paid by each plan against the
 benchmark A (all at the close of t), in basis points saved. Pure functions over a panel slice; `tools/split_study.py`

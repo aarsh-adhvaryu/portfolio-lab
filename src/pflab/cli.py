@@ -180,16 +180,16 @@ def main(argv=None):
     lmsub.add_parser("models", help="models installed in Ollama and the registered picks")
     sm = lmsub.add_parser("smoke", help="one fixed prompt; logs the run")
     sm.add_argument("--model", required=True)
-    ev = lmsub.add_parser("evaluate", help="the pre-registered 40-task drafting evaluation (docs/llm/model_pick_protocol.md); LONG")
+    ev = lmsub.add_parser("evaluate", help="the pre-registered 40-task drafting evaluation (docs/STUDIES.md); LONG")
     ev.add_argument("--role", required=True, choices=["classify", "research"])
     ev.add_argument("--model", required=True)
     ev.add_argument("--tasks", type=int, default=40)
-    e12 = lmsub.add_parser("eval12", help="the pre-registered 12 GB GPU evaluation of one model (docs/llm/model_eval_12gb_protocol.md); LONG")
+    e12 = lmsub.add_parser("eval12", help="the pre-registered 12 GB GPU evaluation of one model (docs/STUDIES.md); LONG")
     e12.add_argument("--model", required=True)
     e12.add_argument("--only", nargs="*", choices=["routing", "answers", "extraction", "materiality"])
     e12.add_argument("--round", type=int, choices=[1, 2, 3], default=1,
                      help="2 = the round-2 registration (new sets); 3 = answers with the production guard")
-    tu = lmsub.add_parser("tune", help="S47 prompt tuning by measurement (docs/llm/tuning_s47_protocol.md); LONG")
+    tu = lmsub.add_parser("tune", help="S47 prompt tuning by measurement (docs/STUDIES.md); LONG")
     tu.add_argument("task", choices=["materiality", "routing", "writing", "research", "report"])
     d12 = lmsub.add_parser("decide12", help="apply the registered decision rule to the eval12 results on disk")
     d12.add_argument("--record", action="store_true", help="write the decision into configs/llm_models.toml")
@@ -685,7 +685,7 @@ def _agents_cli(a) -> int:
                 names = {s["symbol"]: (con.execute("SELECT name FROM instruments WHERE isin=? LIMIT 1", [s["isin"]])
                                        .fetchone() or [s["symbol"]])[0] for s in lst}
                 p = ac.prepare(lst, names)
-                print(f"{p}\nSHA-256 {ac.sha(p)}: record it in docs/research/analyst_comparison_protocol.md before 'run'")
+                print(f"{p}\nSHA-256 {ac.sha(p)}: record it in docs/STUDIES.md before 'run'")
             elif stage == "run":
                 print(ac.run(con, a.asof, br.chosen_llm(), an.make_client(sec.load())))
             elif stage == "run-local":

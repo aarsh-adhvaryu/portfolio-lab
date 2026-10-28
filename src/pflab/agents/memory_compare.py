@@ -1,4 +1,4 @@
-"""S49: memory retrieval, ours (word matching) vs local embeddings vs a hybrid (docs/research/memory_compare_protocol.md).
+"""S49: memory retrieval, ours (word matching) vs local embeddings vs a hybrid (docs/STUDIES.md).
 
 Everything runs on this PC: the corpus is the PM store, the questions are written by the local model, the
 embeddings come from Ollama (`nomic-embed-text`, pulled once). Results: data/llm_eval/memory_compare.json.

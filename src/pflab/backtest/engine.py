@@ -791,7 +791,7 @@ def _decide_rebalance(m, mom_w, uni_pre, close_w, positions, risk_off,
     is "effective the last trading day of June and December", which this
     engine cannot place -- E1 §7 fills at the NEXT session's open. The
     difference is one session, twice a year, and it is flagged in
-    docs/notes/E1c-readiness.md rather than resolved here.
+    docs/BUILT.md rather than resolved here.
     """
     from pflab.portfolio.construct import score_tilted_weights
 

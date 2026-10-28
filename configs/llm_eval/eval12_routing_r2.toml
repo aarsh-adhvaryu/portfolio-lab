@@ -1,4 +1,4 @@
-# S42 round 2 routing task (docs/llm/model_eval_12gb_round2.md): 60 NEW questions, written 2026-10-17 after the
+# S42 round 2 routing task (docs/STUDIES.md): 60 NEW questions, written 2026-10-17 after the
 # round-1 failures were diagnosed and before any round-2 run. Correct when every needed tool is picked and at most
 # one more. Tools: networth guards fds plan risk tax context.
 

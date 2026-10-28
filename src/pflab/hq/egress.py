@@ -1,4 +1,4 @@
-"""What may leave the PC in a paid HQ call (The investor 2026-10-24, docs/BRAIN.md decision 1).
+"""What may leave the PC in a paid HQ call (The investor 2026-10-24, docs/BUILT.md decision 1).
 
 May go: his portfolio (holdings, amounts, weights, gains, lots, cash, goals and limits) and public documents.
 Never: his identity and banking details: PAN, account, folio, client and DP numbers, bank account details (IFSC, UPI,

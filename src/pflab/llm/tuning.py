@@ -1,4 +1,4 @@
-"""S47 model tuning, first pass: prompt tuning by measurement (docs/llm/tuning_s47_protocol.md).
+"""S47 model tuning, first pass: prompt tuning by measurement (docs/STUDIES.md).
 
 Each task has prompt variants fixed in the protocol before any run, a TRAIN set to choose the variant on and a TEST
 set it is judged on once. Nothing here changes what the agents use: the results file is read, and the winning
@@ -106,7 +106,7 @@ def run_research(con, llm: Callable[[str], str], tasks: Sequence[dict], suffix: 
     return ok / n if n else 0.0
 
 
-# ---- adopted variants (wired in by hand after the rule passed; docs/llm/tuning_s47_results.md) ----------------------
+# ---- adopted variants (wired in by hand after the rule passed; docs/STUDIES.md) ----------------------
 
 ADOPTED = {"materiality": "v2"}           # 2026-10-18: test 0.945 vs v0 0.785, threshold 0.90 (pass 1 of 2026-10-17)
 

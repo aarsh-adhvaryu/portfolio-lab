@@ -5,7 +5,7 @@ tests assert what NSE actually publishes, not what we hoped it publishes.
 
 The headline result: PREVCLOSE is NOT adjusted on ex-dates, so the charter
 section 9 method cannot recover a single factor. See
-docs/data/adjustment_method_finding.md.
+docs/BUILT.md
 """
 from datetime import date
 

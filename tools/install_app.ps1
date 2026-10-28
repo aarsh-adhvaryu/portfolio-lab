@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Installs the Portfolio Lab APP from the private GitHub repo at a release tag, into its own folder (S65, docs/S65_PLAN.md
+  Installs the Portfolio Lab APP from the private GitHub repo at a release tag, into its own folder (S65, docs/PLAN.md
   section 3). It never installs over an existing folder and never touches the workshop (D:\portfolio_lab).
 
 .DESCRIPTION

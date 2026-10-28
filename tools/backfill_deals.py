@@ -1,4 +1,4 @@
-"""S48 data for arms 2 and 4 (docs/research/s48_who_is_buying_protocol.md): institutional holding per company and
+"""S48 data for arms 2 and 4 (docs/STUDIES.md): institutional holding per company and
 quarter (BSE) and bulk / block deals per day (NSE), for the study windows only. Resumable; online.
 
     .venv\\Scripts\\python tools\\s48_collect.py --source deals          # ~1 h

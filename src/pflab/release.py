@@ -1,4 +1,4 @@
-r"""The app and the workshop (S65, docs/S65_PLAN.md section 3).
+r"""The app and the workshop (S65, docs/PLAN.md section 3).
 
 The APP is an install of a release tag in its own folder; it carries a `release.toml` at the root of its clone (written by
 `tools/install_app.ps1`, never in git):

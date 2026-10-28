@@ -3,7 +3,7 @@
     1 local     the ask centre: read-only tools and the local model through the guard. A checked answer about the investor's
                 own portfolio ends here. His own data never goes further: a portfolio question that the local model
                 cannot word is answered with the facts themselves.
-    2 agents    a calculation goes to the workshop (Opus writes code from the data layout, it runs on this PC on the
+    2 agents    a calculation goes to the workshop (the slider's writer, Sonnet by default, writes code from the data layout, it runs on this PC on the
                 real rows, a second method must agree); a company question first looks for an analyst note on the same
                 topic from the last 14 days (free, reused).
     3 Opus      company and market questions go through the doorbell (public documents only, the egress gate, priced

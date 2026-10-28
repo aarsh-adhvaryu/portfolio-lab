@@ -2,7 +2,7 @@
 
 Charter section 15, 2026-09-16: this supersedes the PREVCLOSE method of
 section 9, which failed its mandated verification (NSE does not publish an
-adjusted PREVCLOSE -- see docs/data/adjustment_method_finding.md).
+adjusted PREVCLOSE -- see docs/BUILT.md).
 
 Source: https://www.nseindia.com/api/corporates-corporateActions
         ?index=equities&from_date=DD-MM-YYYY&to_date=DD-MM-YYYY

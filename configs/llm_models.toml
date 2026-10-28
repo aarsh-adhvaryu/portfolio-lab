@@ -8,7 +8,7 @@ role = "classify"
 model = "qwen3.5-9b-16k"
 registered_at = 2026-10-06T17:18:20
 base = "qwen3.5:9b (Q4_K_M, Ollama digest c1b119d707b9...)"
-basis = "the A1 label-reading baseline, already scored (docs/llm/A1-reader-scores.md); GPU-resident on the 12 GB card"
+basis = "the A1 label-reading baseline, already scored (docs/STUDIES.md); GPU-resident on the 12 GB card"
 evaluated_at = ""
 decision = ""
 
@@ -18,19 +18,19 @@ model = "qwen3.5:27b"
 registered_at = 2026-10-06T17:18:20
 base = "Ollama qwen3.5:27b, 17 GB (Q4), 256K context, tools and thinking"
 basis = "same family as the 9B baseline so prompts and the guard transfer; 17 GB fits the 31 GB RAM with CPU offload beside the 12 GB GPU; the 27B tag is the largest dense Qwen3.5 under the 32B ceiling set in PLAN §0"
-protocol = "docs/llm/model_pick_protocol.md"
+protocol = "docs/STUDIES.md"
 evaluated_at = ""
 decision = ""
 
 # The research pick above was withdrawn by PLAN A6 (2026-10-15) without being evaluated; it stays unchanged here.
 # S42 (PLAN A6): candidates for the 12 GB GPU, registered before any was downloaded. One protocol for all:
-# docs/llm/model_eval_12gb_protocol.md. size_gb is the Ollama library download size read on 2026-10-16.
+# docs/STUDIES.md size_gb is the Ollama library download size read on 2026-10-16.
 [[pick]]
 role = "eval12"
 model = "qwen3.5:9b-q4_K_M"
 registered_at = 2026-10-16T17:05:00
 size_gb = 6.6
-protocol = "docs/llm/model_eval_12gb_protocol.md"
+protocol = "docs/STUDIES.md"
 evaluated_at = 2026-10-17T12:14:02
 decision = "not chosen"
 
@@ -39,7 +39,7 @@ role = "eval12"
 model = "qwen3.5:9b-q8_0"
 registered_at = 2026-10-16T17:05:00
 size_gb = 10.0
-protocol = "docs/llm/model_eval_12gb_protocol.md"
+protocol = "docs/STUDIES.md"
 evaluated_at = 2026-10-17T12:14:02
 decision = "not chosen"
 
@@ -48,7 +48,7 @@ role = "eval12"
 model = "qwen3:8b-q4_K_M"
 registered_at = 2026-10-16T17:05:00
 size_gb = 5.2
-protocol = "docs/llm/model_eval_12gb_protocol.md"
+protocol = "docs/STUDIES.md"
 evaluated_at = 2026-10-17T12:14:02
 decision = "not chosen"
 
@@ -57,7 +57,7 @@ role = "eval12"
 model = "qwen3:8b-q8_0"
 registered_at = 2026-10-16T17:05:00
 size_gb = 8.9
-protocol = "docs/llm/model_eval_12gb_protocol.md"
+protocol = "docs/STUDIES.md"
 evaluated_at = 2026-10-17T12:14:02
 decision = "not chosen"
 
@@ -66,7 +66,7 @@ role = "eval12"
 model = "qwen3:14b-q4_K_M"
 registered_at = 2026-10-16T17:05:00
 size_gb = 9.3
-protocol = "docs/llm/model_eval_12gb_protocol.md"
+protocol = "docs/STUDIES.md"
 evaluated_at = 2026-10-17T12:14:02
 decision = "not chosen"
 
@@ -75,7 +75,7 @@ role = "eval12"
 model = "gemma3:12b-it-q4_K_M"
 registered_at = 2026-10-16T17:05:00
 size_gb = 8.2
-protocol = "docs/llm/model_eval_12gb_protocol.md"
+protocol = "docs/STUDIES.md"
 evaluated_at = 2026-10-17T12:14:02
 decision = "not chosen"
 
@@ -84,19 +84,19 @@ role = "eval12-decision"
 model = "laya"
 registered_at = 2026-10-16T17:05:00
 size_gb = 0.4
-protocol = "docs/llm/model_eval_12gb_protocol.md"
+protocol = "docs/STUDIES.md"
 note = "421M decision model (Convai Innovations, ModernBERT-large); routing and materiality only, if Ollama can serve it through /api/chat"
 evaluated_at = 2026-10-17T12:14:02
 decision = "not chosen"
 
-# S42 round 2 (docs/llm/model_eval_12gb_round2.md): round 1 chose no model; the two best are re-tested on new,
+# S42 round 2 (docs/STUDIES.md): round 1 chose no model; the two best are re-tested on new,
 # unseen sets after the tool menu was fixed. Registered before any round-2 run.
 [[pick]]
 role = "eval12-r2"
 model = "qwen3:8b-q4_K_M"
 registered_at = 2026-10-17T12:12:00
 size_gb = 5.2
-protocol = "docs/llm/model_eval_12gb_round2.md"
+protocol = "docs/STUDIES.md"
 evaluated_at = 2026-10-17T14:38:50
 decision = "not chosen"
 
@@ -105,11 +105,11 @@ role = "eval12-r2"
 model = "qwen3:8b-q8_0"
 registered_at = 2026-10-17T12:12:00
 size_gb = 8.9
-protocol = "docs/llm/model_eval_12gb_round2.md"
+protocol = "docs/STUDIES.md"
 evaluated_at = 2026-10-17T14:38:50
 decision = "not chosen"
 
-# Amendment 2026-10-17 (The investor delegated the choice; docs/llm/model_decision_2026-10-17.md): q8 adopted for routing
+# Amendment 2026-10-17 (The investor delegated the choice; docs/STUDIES.md): q8 adopted for routing
 # and guarded answers; a draft the guard rejects falls back to facts. Round 3 re-measures answers with the
 # production guard; below 90% final, written answers are switched off again (routing stays).
 [[pick]]
@@ -117,7 +117,7 @@ role = "amendment-2026-10-17"
 model = "qwen3:8b-q8_0"
 registered_at = 2026-10-17T15:25:19
 size_gb = 8.9
-protocol = "docs/llm/model_decision_2026-10-17.md"
+protocol = "docs/STUDIES.md"
 evaluated_at = 2026-10-17T15:25:19
 decision = "chosen general+routing"
 
@@ -126,6 +126,6 @@ role = "eval12-r3"
 model = "qwen3:8b-q8_0"
 registered_at = 2026-10-17T15:25:19
 size_gb = 8.9
-protocol = "docs/llm/model_decision_2026-10-17.md"
+protocol = "docs/STUDIES.md"
 evaluated_at = 2026-10-17T17:15:39
 decision = "chosen general+routing (round 3: answers 100% with the production guard; kept as adopted)"

@@ -1,4 +1,4 @@
-"""NSE bulk and block deals, day by day (S48 arm 4; docs/research/s48_who_is_buying_protocol.md).
+"""NSE bulk and block deals, day by day (S48 arm 4; docs/STUDIES.md).
 
 Endpoint (probed 2026-10-20): `api/historicalOR/bulk-block-short-deals?optionType=bulk_deals|block_deals&from=&to=`
 (dates dd-mm-yyyy). It answers at most 70 rows whatever the window, silently, so the collector asks one day at a

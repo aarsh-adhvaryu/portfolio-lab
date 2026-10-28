@@ -1,4 +1,4 @@
-"""Run the pre-registered split / limit study (docs/research/split_study_protocol.md) on the real panel.
+"""Run the pre-registered split / limit study (docs/STUDIES.md) on the real panel.
 
     python tools/split_study.py            # writes data/research/split_study.json and prints the decision
 
@@ -39,7 +39,7 @@ def main() -> int:
         print(f"{name}: {len(sv):,} stock-months; " + "; ".join(f"{k} {v['mean_bps']:+.1f} bps (t {v['t']:.1f})"
                                                                 for k, v in out[name].items()), flush=True)
     d = es.decide(out["development"], out["validation"])
-    res = {"protocol": "docs/research/split_study_protocol.md", "periods": PERIODS, "results": out, "decision": d,
+    res = {"protocol": "docs/STUDIES.md", "periods": PERIODS, "results": out, "decision": d,
            "minutes": round((time.time() - t0) / 60, 1)}
     p = root / "research" / "split_study.json"
     p.parent.mkdir(parents=True, exist_ok=True)

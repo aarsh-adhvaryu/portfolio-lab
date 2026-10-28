@@ -84,7 +84,7 @@ def build(root: Optional[Path] = None, start: Optional[date] = None,
 
     `factors` is the corporate-action table (isin, ex_date, factor). Phase 1
     task 1.2 is unresolved -- the charter section 9 PREVCLOSE method fails its
-    verification (docs/data/adjustment_method_finding.md) -- so when it is None
+    verification (docs/BUILT.md) -- so when it is None
     every adj_factor is 1.0 and the report says the panel is UNADJUSTED. The
     engine must refuse an unadjusted panel; a missed 1:1 bonus is a fabricated
     -50% in the section 3 momentum signal.
@@ -295,3 +295,80 @@ def wide(panel: pd.DataFrame, field: str, start: Optional[date] = None,
 def load(root: Optional[Path] = None) -> pd.DataFrame:
     root = root or data_dir()
     return pd.read_parquet(root / "panel" / "prices.parquet")
+
+
+# -- keeping it current (S65) -----------------------------------------------
+def _sig(df: Optional[pd.DataFrame]) -> str:
+    """A short fingerprint of a table's rows (order does not matter)."""
+    import hashlib
+    if df is None or len(df) == 0:
+        return "empty"
+    h = pd.util.hash_pandas_object(df.reset_index(drop=True).astype(str), index=False).sort_values().to_numpy()
+    return hashlib.sha256(h.tobytes()).hexdigest()[:16]
+
+
+def _last_date(path: Path) -> Optional[date]:
+    import pyarrow.parquet as pq
+    if not path.exists():
+        return None
+    d = pq.read_table(path, columns=["date"]).column("date").to_pandas()
+    return pd.to_datetime(d).max().date()
+
+
+def refresh(root: Optional[Path] = None, max_age_days: int = 30, today: Optional[date] = None, build_fn=None) -> dict:
+    """Keep `panel/prices.parquet` current without anyone building it by hand (the collector calls this nightly).
+
+    Prices are back-adjusted to today's share basis, so a new split or bonus rewrites every earlier row of that name: the panel is
+    rebuilt WHOLE (about 4 minutes) when the corporate-action factors changed, when a dividend with an ex-date inside the panel's
+    range arrived late, when there is no panel yet, or every `max_age_days`. Otherwise only the new sessions are built and appended
+    (seconds). The file is replaced atomically, so a reader never sees half of it. A record of what it was built from is kept in
+    `panel/build_state.json`."""
+    import json
+    root = root or data_dir()
+    today = today or date.today()
+    build_fn = build_fn or build
+    path = root / "panel" / "prices.parquet"
+    state_path = root / "panel" / "build_state.json"
+    fpath, dpath = root / "corporate_actions" / "factors.parquet", root / "dividends" / "dividends.parquet"
+    factors = pd.read_parquet(fpath) if fpath.exists() else None
+    divs = pd.read_parquet(dpath) if dpath.exists() else None
+    last = _last_date(path)
+    state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {}
+
+    def divs_to(d: Optional[date]) -> Optional[pd.DataFrame]:
+        if divs is None or d is None or "ex_date" not in divs:
+            return divs
+        return divs[pd.to_datetime(divs["ex_date"]).dt.date <= d]
+
+    reason = None
+    if last is None:
+        reason = "no panel yet"
+    elif not state:
+        reason = "no build record"
+    elif state.get("factors") != _sig(factors):
+        reason = "corporate actions changed"
+    elif state.get("dividends") != _sig(divs_to(last)):
+        reason = "a dividend inside the panel's range arrived late"
+    elif (today - date.fromisoformat(state["built_on"])).days > max_age_days:
+        reason = f"older than {max_age_days} days"
+
+    if reason:
+        p, rep = build_fn(root, factors=factors, dividends=divs, write=False)
+        mode = "full"
+    else:
+        p, rep = build_fn(root, start=last + pd.Timedelta(days=1).to_pytimedelta(), factors=factors, dividends=divs, write=False)
+        mode = "append"
+        if len(p) == 0:
+            return {"mode": "current", "last": str(last)}
+        old = pd.read_parquet(path)
+        old["date"] = pd.to_datetime(old["date"]).dt.date
+        p = pd.concat([old, p[p["date"] > last]], ignore_index=True).sort_values(["isin", "date"], kind="mergesort").reset_index(drop=True)
+    new_last = pd.to_datetime(p["date"]).max().date()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name("prices.parquet.tmp")
+    p.to_parquet(tmp, index=False)
+    tmp.replace(path)
+    state = {"factors": _sig(factors), "dividends": _sig(divs_to(new_last)), "last_date": str(new_last),
+             "built_on": today.isoformat() if mode == "full" else state["built_on"]}
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    return {"mode": mode, "why": reason, "rows": int(len(p)), "last": str(new_last)}

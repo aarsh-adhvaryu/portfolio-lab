@@ -1,6 +1,6 @@
 """Declared ETF unit splits and ISIN successions the panel does not carry.
 
-Found 2026-09-27 (`docs/notes/E3-readiness.md` §2). On 2019-12-19 NIFTYBEES
+Found 2026-09-27 (`docs/BUILT.md` §2). On 2019-12-19 NIFTYBEES
 split its units 1:10 and GOLDBEES 1:100, and on 2019-12-20 both moved to
 new ISINs (the AMC's scheme transfer to a new sponsor). The panel's adjustment
 factors come from NSE's *equity* corporate-actions feed, which carries

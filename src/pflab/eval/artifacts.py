@@ -207,7 +207,7 @@ def adv_skip_report(result) -> dict:
 
 def extras_report(result, config=None, membership=None,
                   overlap_index="NIFTY200_MOMENTUM30") -> dict:
-    """The four extras requested in docs/reviews/E1-development.md.
+    """The four extras requested in docs/BUILT.md
 
     Reporting only: every number here is read off a completed run. No decision
     is recomputed and nothing feeds back into the strategy.
@@ -347,7 +347,7 @@ def _flag_lead_time(exit_keys) -> dict:
 def equity_sleeve_return(result) -> dict:
     """What the INVESTED rupee earned, with the cash sleeve taken out.
 
-    Requested in docs/reviews/E1b-development.md. The base row held a mean
+    Requested in docs/BUILT.md The base row held a mean
     22.4% in cash at 6% while the momentum index compounded at 13.5%, so the
     headline CAGR mixes two different things: what the signal picked and what
     the seat belt cost. This separates them.

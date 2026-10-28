@@ -1,4 +1,4 @@
-# S42 routing task (docs/llm/model_eval_12gb_protocol.md): 60 questions, each labelled with the agent tools it
+# S42 routing task (docs/STUDIES.md): 60 questions, each labelled with the agent tools it
 # NEEDS. Written 2026-10-16 before any candidate model was downloaded. A routing is correct when every needed
 # tool is picked and at most one tool more. Tools: networth guards fds plan risk tax context.
 

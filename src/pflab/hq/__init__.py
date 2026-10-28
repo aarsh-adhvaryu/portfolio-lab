@@ -1,4 +1,4 @@
-"""S59 the agent HQ (PLAN A16, docs/BRAIN.md): a team of agents with a brain over them.
+"""S59 the agent HQ (PLAN A16, docs/BUILT.md): a team of agents with a brain over them.
 
     egress     what may leave the PC (identity and banking never), checked in code before every paid call
     governor   every paid call priced first against tokens, passes and rupees a day, the layer's month, the cap
