@@ -218,6 +218,15 @@ def fetch(rt, sess=None, days: int = 40, now: Optional[datetime] = None) -> dict
                       "your press, and Setup lists any file email did not bring.", now)
     elif (rt.pm_dir / "sources.toml").exists():
         questions.drop(con, "mail:setup", now)
+    ready = con.execute("SELECT count(*), max(item_id) FROM inbox_items WHERE status='ready' AND kind IN ('cas', 'bank', 'tradebook', "
+                        "'contract_note', 'funds_ledger')").fetchone()
+    for (k,) in con.execute("SELECT subject_key FROM questions WHERE status='open' AND subject_key LIKE 'mail:ready:%'").fetchall():
+        if not ready[0] or k != f"mail:ready:{ready[1]}":   # added, or a newer batch replaces it
+            questions.drop(con, k, now)
+    if ready[0]:                                             # after Setup: new statements wait, checked, for his press
+        questions.ask(con, AGENT, f"mail:ready:{ready[1]}",
+                      f"{ready[0]} new statement(s) are checked and ready (see Inbox and files). Press 'Add everything to the ledger' in "
+                      "Setup to add them; nothing is written before your press.", now)
     rt.bump("inbox")
     return out
 

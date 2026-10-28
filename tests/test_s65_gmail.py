@@ -127,6 +127,20 @@ def test_protected_files_are_asked_about_once_per_sender_retried_and_closed_when
     assert gmail.fetch(rt, g, now=NOW)["messages"] == 0
 
 
+def test_after_setup_checked_statements_ask_for_his_press_once_per_batch(rt):
+    (rt.pm_dir / "sources.toml").write_text("", encoding="utf-8")
+    g = FakeGmail({"m1": (("Console", "Mon"), [("tb.csv", TRADEBOOK, False)])})
+    gmail.fetch(rt, g, now=NOW)
+    con = rt.cursor()
+    con.execute("UPDATE inbox_items SET status='ready'")                                  # its dry run passed (started in the background)
+    gmail.fetch(rt, g, now=NOW)
+    texts = [t for _, _, t in questions.open_questions(con)]
+    assert len(texts) == 1 and "Add everything to the ledger" in texts[0]
+    con.execute("UPDATE inbox_items SET status='in the ledger'")                          # his press
+    gmail.fetch(rt, g, now=NOW)
+    assert questions.open_questions(con) == []
+
+
 def test_the_first_look_reads_a_year_and_later_looks_the_last_weeks(rt):
     queries = []
     g = FakeGmail({"m1": (("x", "Mon"), [])})
