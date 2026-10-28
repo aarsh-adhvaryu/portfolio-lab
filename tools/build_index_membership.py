@@ -20,7 +20,7 @@ What it writes
     name_map.parquet              company name -> symbol -> ISIN
     NIFTY*.parquet                the membership tables
     manifests.json                provenance, including the carry-back span
-    docs/data/index_name_unresolved.md   names for the investor to verify by hand
+    PFLAB_DATA_DIR/index_membership/unresolved.md   names for the investor to verify by hand
 
 The count check
 ---------------
@@ -251,7 +251,7 @@ def _write_unresolved_doc(u: pd.DataFrame, root: Path) -> None:
     else:
         lines.append("None: every name in every change resolved to a single "
                      "security.")
-    doc = Path("docs/data/index_name_unresolved.md")
+    doc = data_dir() / "index_membership" / "unresolved.md"
     doc.parent.mkdir(parents=True, exist_ok=True)
     doc.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"wrote {doc} ({len(u)} names)")

@@ -1,4 +1,4 @@
-"""S64: the rule_filter template (docs/research/s64_rules_protocol.md): point-in-time P/E, the seven rules, the series."""
+"""S64: the rule_filter template (docs/protocols/s64_rules_protocol.md): point-in-time P/E, the seven rules, the series."""
 from datetime import date
 
 import numpy as np

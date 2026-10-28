@@ -538,7 +538,7 @@ def _learner(a) -> int:
         print(counter.line(con))
         return 0
     if a.action == "register-s64":
-        url = "docs/research/s64_reversion_protocol.md"
+        url = "docs/protocols/s64_reversion_protocol.md"
         ids = {
             "sector_reversion": claims.register_study(
                 con, "sector_reversion", {"direction": "low"},

@@ -1,4 +1,4 @@
-"""From reading to a tested claim (S62, PLAN A22; protocol docs/research/learner_protocol.md).
+"""From reading to a tested claim (S62, PLAN A22; protocol docs/protocols/learner_protocol.md).
 
     screen     the local model reads a source's title and abstract: does it state a claim about stock returns that
                daily Indian prices, exchange filings or index levels could check? (free)
@@ -120,7 +120,7 @@ NAMES = {
     "block_buy": r"block deals?|block purchase\w*", "block_sell": r"block deals?|block sale\w*",
     "promoter_up": r"promoter\w*", "promoter_down": r"promoter\w*",
     "pledge_up": r"pledg\w*|encumb\w*",
-    # S64: rules (docs/research/s64_rules_protocol.md)
+    # S64: rules (docs/protocols/s64_rules_protocol.md)
     "pe_above_50": r"p/?e\b|price[- ]to[- ]earnings|times (their |its )?(trailing )?earnings|earnings multiple|expensive|overvalu\w*",
     "pe_below_15": r"p/?e\b|price[- ]to[- ]earnings|times (their |its )?(trailing )?earnings|earnings multiple|cheap|undervalu\w*|value stocks?",
     "near_52w_low_5": r"52[- ]week low|year'?s low|annual low|near (their |its )?lows?",
@@ -265,7 +265,7 @@ def register(con, claim_id: int, proto_dir: Path, now: datetime) -> str:
              "tests_run_at_registration": counter.n_tests(con),
              "dev_bar_if_tested_now": round(counter.t_needed(counter.n_tests(con) + 1), 3),
              "code": "src/pflab/learner/templates.py", "code_sha256": code_sha(),
-             "protocol": "docs/research/learner_protocol.md"}
+             "protocol": "docs/protocols/learner_protocol.md"}
     proto_dir.mkdir(parents=True, exist_ok=True)
     p = proto_dir / f"claim_{claim_id}.json"
     body = json.dumps(proto, indent=1, sort_keys=True)

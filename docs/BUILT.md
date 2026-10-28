@@ -1,0 +1,114 @@
+# BUILT: what exists (as of the S65 release; the single reference for the system as built)
+
+Rules and working style are in `CLAUDE.md`; intent and frame in `docs/PLAN.md`; every test and verdict in `docs/STUDIES.md`;
+the first run in `README.md`. The job, tool and source lists below were generated from the code at the release.
+
+## Two installations
+| | APP (runs his money) | WORKSHOP (beta, development) |
+|---|---|---|
+| folder | its own (default `D:\PortfolioLabApp`: `app\` the clone, `data\`, `pm\`, `backups\`) | the repo checkout (`D:\portfolio_lab`) |
+| code | a sparse clone at a release tag `vYYYY.MM.DD` (no `tests\`, no `docs\`) | any branch |
+| `release.toml` | at the clone's root (gitignored): channel, tag, previous tag, backup, folder, data and pm paths; **wins over the environment** | none: that is what makes a checkout the workshop (channel `beta`) |
+| sends | Telegram and paid calls inside his Rs 2,500 monthly cap, by his Settings | nothing, unless `pflab --live` / `pflab --paid` (paid counts against `dev_monthly_cap_rupees`, default 0); no tick registration |
+| runs | the desktop shortcut, the scheduled tick, the overnight run | tests and the developer's commands |
+| update | `pflab update` (store backed up first, newest tag, self-test, undone on failure), `--rollback`, `--check` | merge to `main`, run the suite, tag `vYYYY.MM.DD` |
+Beta features are listed in `configs/features.toml` (start: `us_sleeve`): off in the app unless his Settings switch turns them on, on in
+the workshop; their data collection always runs. Code: `release.py`, `guard.py`, `features.py`, `update.py`; scripts `tools\install_app.ps1`,
+`tools\seed_app.ps1`.
+
+## Packages (`src/pflab/`)
+| package | role |
+|---|---|
+| `data` | collectors and loaders: NSE/BSE bhavcopy, corporate actions, dividends, surveillance, indices, VIX, BSE announcements/shareholding/insider, GDELT, deals, FPI, macro, F&O (`fo_daily`), US prices (`us_prices`), SEC (`sec_edgar`), panel and calendar |
+| `ledger`, `ingest` | event-sourced ledger (FIFO lots, income, fees), `foreign` (US dollar ledger); parsers: Console tradebook/ledger, contract notes, CAS, bank statements, SBI interest certificates, Kite (read-only); `sniff` (files by content), `setup_sources`, `bank_labels`, `sources` (+ overlay) |
+| `tax` | rules (dated, sourced tables in `configs/tax/`), gains by schedule, income (both regimes), proposed sales, `foreign`, `quicko` (the pack: 112A CSV in the department's layout, reconcile) |
+| `pm` | the store (DuckDB, schema v38), instruments, FDs, bonds, gold, prices, today (net worth), `secrets` / `secrets_setup`, `reset` |
+| `portfolio`, `risk`, `plan` | tax-aware sell-down; exposure, Monte Carlo, CAPM, themes, scenarios, sleeve study; targets, deploy, guards, safety, buy zone, ready plans, pot, reserve, nudges, trader tickets, advisor |
+| `quant`, `fundamentals`, `monitor`, `signals`, `backtest`, `eval` | forecasts (price ranges, scored), Hawkes, options, scans, comove, process, event studies; BSE results, valuation; promoter/event monitors; the engine and its protected tests |
+| `kg`, `knowledge`, `readers` | time-aware knowledge graph, hypotheses, memory/documents, Haiku/local readers |
+| `agents` | researcher, analyst (the only API doorbell), event, thesis, tradecheck, memory, questions, needs, inbox, workshop + sandbox (Docker, `network none`, read-only) |
+| `hq` | the brain (tool loop, governor, egress gate, journal), `picture` (the one picture), reception, board, phone (Telegram), watcher, messenger, security, replay, valuation, plain words, models (the slider) |
+| `learner` | sources, claims, templates, counter, rules, run: reads papers/blogs, registers tests, tests them, counts them |
+| `service`, `conductor` | jobs and the tick, Telegram outbox and bot, summaries, backup, health; the conductor (sync check, asks, closing notes; last in every tick) |
+| `app` | the dashboard (FastAPI on 127.0.0.1): launcher, runtime, views, server, inbox, chat, research, sims, graph, settings, `static/` |
+| `llm` | local model client and registry, the guard, evaluation sets and adopted harness texts |
+
+## Jobs (the tick runs what is due; the dashboard window runs them while open)
+| job | when | what |
+|---|---|---|
+| collect | 19:30 weekdays | NSE bhavcopy, corporate actions, dividends |
+| prices | 20:15 weekdays | collected bhavcopy into the store |
+| nav | 22:45 weekdays | AMFI NAVs, IBJA gold |
+| filings | every 15 min 08-22 weekdays | BSE filings for held and watched names; alerts |
+| plans | 21:30 weekdays | ready plans for the next money (FD tranches, the monthly amount) |
+| forecast | 21:00 weekdays | price ranges, turnover for tickets, results; scored when due |
+| kg | 23:00 weekdays | knowledge graph: portfolio, filings, results, guards, GKG news, article text |
+| analyst | 01:00 daily | API analyst: collect last night's batch, submit today's queue |
+| research | 23:30 weekdays | material changes, briefs, digest |
+| tradecheck | every 15 min 08-22 | Kite holdings, funds, today's trades: differences from the ledger asked |
+| guards | 20:45 weekdays | surveillance and safety checks on the stock list; dip and FD alerts |
+| outbox | every 15 min weekdays | deliver queued Telegram messages (held until he switches Telegram on) |
+| backup | 23:30 daily | copy and verify the ledger |
+| global | 07:30 daily | world markets, US VIX, commodities, dollar |
+| us_fx | 07:25 daily | USDINR into the store (US sleeve) |
+| comove | 10:00 daily (weekly work) | correlation and cointegration with peers and sectors |
+| summary_morning / summary_evening | 09:00 / 21:45 trading days | the two Telegram summaries |
+| watches / watches_close | every 15 min 09-16 / 16:00 | his price watches against the latest price |
+| idle_cash | 20:30 weekdays | Kite cash unused for a week |
+| companion | 21:10 daily | theme baskets and limits, dip reserve, opportunity pot (proposals wait for his yes); bank-label answers to rules; deferred US items |
+| scans | 20:40 weekdays | saved scans (information, labelled by what the learner tested) |
+| learner | 22:00 daily | papers and blogs to registered tests; three tests a night |
+| security | 21:15 daily | what left the PC, flows, privacy grep, tests; weekly code review |
+| hq | every 15 min | orders, drop folder, reminders, readers, the brain, memory keeper |
+| conductor | every 15 min (last) | sync check, asks, wake and closing notes, fact sheet |
+The `us_open` brain pass (20 minutes after the New York open, once per US trading day) runs only with the `us_sleeve` flag on and US holdings.
+
+## The brain's tools (`hq/tools.py`; read = by code, journal = records, action = capped a day and journaled)
+- **read:** picture (called first every pass), portfolio, stocks_overview, stock_facts, tax_plan, measure, simulation, forecasts, readings,
+  graph_timeline, notes, memory_recall, journal, ready_plans, research_flags, price_history, quant, who_is_buying, market_context, growth,
+  findings (what the learner tested), comovement, ipo_plan, scans, scenario, hypotheses, themes.
+- **journal:** record_prediction, record_suggestion, save_state, make_scan, record_hypothesis, decide_hypothesis, propose_pot_idea.
+- **action:** ask_investor, tell_investor, order_research, order_calculation, prepare_plan, correct_memory, fetch_cited, web_search.
+It never trades, moves money or changes targets and limits. Spend is governed by `hq/governor.py` (slider modes off / economy / normal); what may
+leave the PC is decided by `hq/egress.py`.
+
+## Data sources and how to build their history (all long runs are his)
+Daily, by the `collect` job or `python tools\collect_daily.py [--days N] [--sources ...]`: bhavcopy, corporate_actions, bse_bhavcopy, surveillance,
+indices, vix, gkg, dividends, bse, gdelt, insider, deals, fpi, macro, holders, fo, us_prices, sec_filings.
+Backfills, in `tools\` (each is resumable; every one takes more than 5 minutes): `backfill_bhavcopy.py` (NSE from 2004; `--from` for a slice),
+`backfill_bse.py START END LOG` (announcements), `backfill_shareholding.py` (2010 on), `backfill_consolidated.py` (integrated filings of the list),
+`backfill_fo.py --start 2024-01-01` (futures and options, participant OI), `backfill_us.py` (13 US funds, S&P 500 members, his US names),
+`build_index_membership.py --all` (point-in-time Nifty membership), `ingest_gdelt_backfill.py` and the `gdelt_*_bigquery.sql` queries (news history,
+BigQuery free sandbox), `backfill_deals.py --source deals|institutions` (deals and institutional holdings). Kite each trading morning: `python tools\kite_login.py`
+or the dashboard button (read-only).
+
+## Store (`PFLAB_PM_DIR\ledger.duckdb`, schema v38; migrates itself)
+Ledger and tax: accounts, events, lots, cash_ledger, income, fees, carry_forward, tax_years, instruments, prices, navs, gold_rates, fds, fd_interest, bonds,
+sgb_series, fund_holdings, ipo_applications, targets, us_trades, us_remittances, fx_rates, instrument_alias. Kite and checks: kite_snapshots, kite_trades,
+live_quotes, recon_breaks, job_runs. Agents and the brain: questions, memory, decisions, briefs, theses, proposals, watches, ready_plans, scans, research_flags,
+outbox, alerts_sent, api_calls, llm_runs, hq_passes, hq_tool_calls, hq_tasks, hq_predictions, hq_suggestions, hq_readings, hq_reminders, limit_proposals,
+theme_baskets, pot_ideas, forecasts (renamed from tfm_forecasts in v36). Graph: kg_nodes, kg_edges, kg_docs, kg_aliases, kg_hypotheses. Learner: learn_sources,
+learn_claims, learn_tests (the counter), learn_proposals, learned. Dashboard: chats, chat_messages, app_notes, inbox_items. Take ids with `store.next_id`.
+
+## Settings (Settings screen; `PFLAB_PM_DIR\app\settings.json`)
+theme, privacy (hides rupee amounts), telegram_send (off until switch-on: held alerts stay held), scheduler, live_prices (Kite quotes in market hours),
+preset (off / light / full / marathon), sims_hour, brain (off / economy / normal), drop_watch, models (the slider: job to model), features (beta switches),
+plus the keys form (write-only) and Setup (accounts and start date).
+
+## Costs
+Local models are free. API spend is priced before every call and refused above his monthly cap (Rs 2,500, `api_budget.toml`; the workshop has its own
+`dev_monthly_cap_rupees`, default 0). A brain pass costs about Rs 10; deep research and web search are the dear items.
+
+## Facts the code relies on
+- **Adjustment.** NSE's bhavcopy `PREVCLOSE` is NOT adjusted on ex-dates (450 of 451 large down-gaps 2012-2020), so split and bonus factors come from
+  the corporate-actions feed and are verified on known events (`tests/test_adjustment_known_events.py`); `adj_close` in the panel uses them.
+- **Index membership is point-in-time or not used.** NSE's circular series covers Nifty 200 and 500 only in 2006-2008; membership tables are built
+  from archived factsheet/change PDFs (`build_index_membership.py`); names it cannot resolve are written to `PFLAB_DATA_DIR\index_membership\unresolved.md`
+  for him to check. Never use today's list over a past period (survivorship).
+- **BSE results** come from the integrated XBRL filings (standalone and consolidated) dated by filing time; shareholding by filing date, never the quarter end.
+- **Tax rules** are dated, sourced rows (`configs/tax/*.toml`); coverage of capital gains starts at transfer date 2024-07-23 and a lookup with no row raises
+  (`RuleGap`), never a default. Foreign-tax rows are all `secondary` (official wording seen in search results) until a primary check (due 2027-01-01 or the
+  first remittance). The new-regime slab table for the year ending 2026-03-31 is not read: regime tax raises for that year; the Quicko pack does not need it.
+- **Schedule 112A layout** is the department's CSV instruction (`configs/forms/itr_112a_layout.toml`, read 2026-10-28); the template's own header row and a
+  possible column 1b are checked at filing time. Quicko files his return; the system prepares and reconciles, it files nothing.
+- **Small-numbers rule:** results under 20 observations carry their count and no conclusion; probabilities are shown with their error.

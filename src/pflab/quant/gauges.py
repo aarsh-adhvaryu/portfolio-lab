@@ -10,7 +10,7 @@ heuristics, so only the descriptions are taken, never their thresholds or "risk 
                   and back to the old peak, in sessions), against how far into a fall the index is now
 
 They describe; none of them is a signal. The one tested fact near them: names below their 200-day average earned less in 2010-2021
-(`docs/research/s64_rules_results.md`), so a low breadth is a fact about many names being in that group, not a forecast.
+(`docs/protocols/s64_rules_results.md`), so a low breadth is a fact about many names being in that group, not a forecast.
 """
 from __future__ import annotations
 

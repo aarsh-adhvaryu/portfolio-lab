@@ -183,7 +183,7 @@ def test_register_study_makes_one_claim_per_test_and_the_fit_check_passes(con, t
     now = datetime(2026, 10, 26, 10, 0)
     args = ("sector_reversion", {"direction": "low"},
             "A stock cheap relative to a sector index it is cointegrated with earns more than the sector next month.",
-            "The bottom quintile of the spread's z.", "S64 study", "docs/research/s64_reversion_protocol.md", now)
+            "The bottom quintile of the spread's z.", "S64 study", "docs/protocols/s64_reversion_protocol.md", now)
     cid = claims.register_study(con, *args)
     assert claims.register_study(con, *args) == cid                    # asked twice: one claim
     assert claims.fits(args[2], args[3], "sector_reversion", {"direction": "low"})
@@ -194,7 +194,7 @@ def test_register_study_makes_one_claim_per_test_and_the_fit_check_passes(con, t
     # the reversal claim reuses the existing cross-section test; asked after the first, it is a separate claim
     c2 = claims.register_study(con, "cross_section", {"signal": "reversal_1m", "direction": "low", "months": 1},
                                "Last month's losers outperform next month: short-term reversal.", "The lowest quintile.",
-                               "S64 study 2", "docs/research/s64_reversion_protocol.md", now)
+                               "S64 study 2", "docs/protocols/s64_reversion_protocol.md", now)
     assert c2 != cid and claims.fits("Last month's losers outperform next month: short-term reversal.", "", "cross_section",
                                      {"signal": "reversal_1m"})
 
@@ -209,4 +209,4 @@ def test_the_bar_for_the_reversion_test_counts_it(con, tmp_path):
     claims.test(con, cid, tmp_path, now, run=lambda *a: {"decision": "fail", "why": "dev t 0.4",
                                                          "development": {"t": 0.4, "n": 80}, "validation": {"t": 0.1, "n": 40}})
     row = con.execute("SELECT origin, threshold_dev FROM learn_tests WHERE claim_id=?", [cid]).fetchone()
-    assert row[0] == "learner" and row[1] == pytest.approx(counter.t_needed(len(counter.SEED) + 1))
+    assert row[0] == "learner" and row[1] == pytest.approx(counter.t_needed(len(counter.SEED) + len(counter.CARRIED) + 1))

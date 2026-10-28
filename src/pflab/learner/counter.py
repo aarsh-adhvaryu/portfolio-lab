@@ -114,6 +114,25 @@ SEED = (
     ("memory_compare:hybrid_retrieval", "memory_compare", True, None, None, "hybrid retrieval vs words, test recall@5"),
 )
 
+# S65: the tests run after the first seed (learner claims and S64 studies), kept in code so that a fresh install starts with the same
+# count and the same bar as the system that ran them (a reset must not let past tests be forgotten: the bar rises with N).
+# (note key, the note an already-recorded copy carries, template or family, claim id, t dev, t val, passed, what). The values are those
+# stored when each ran (docs/STUDIES.md). A copy already in the store, under either key, is not added again.
+CARRIED = (
+    ("carried:claim13", "claim:13", "cross_section", 13, -1.6257, -1.7254, False, "learner claim 13: a cross-section signal, claimed direction not found"),
+    ("carried:ranges_ewma_vs_plain", "ranges_ewma_vs_plain", "ranges", None, 0.1224, -4.2355, False, "S64 ranges: EWMA-scaled bootstrap vs plain (pinball, DM)"),
+    ("carried:claim16", "claim:16", "sector_reversion", 16, 1.4669, 0.7367, False, "sector reversion (cointegrated, cheap vs its sector)"),
+    ("carried:claim17", "claim:17", "cross_section", 17, -2.0687, -0.2543, False, "short-term reversal, reversed sign"),
+    ("carried:claim18", "claim:18", "rule_filter", 18, -2.8576, 0.3970, False, "rule: P/E above 50"),
+    ("carried:claim19", "claim:19", "rule_filter", 19, 1.5628, -0.5515, False, "rule: P/E below 15"),
+    ("carried:claim20", "claim:20", "rule_filter", 20, -3.3706, -0.5082, False, "rule: within 5% of the 52-week low"),
+    ("carried:claim21", "claim:21", "rule_filter", 21, -3.6358, -2.6484, True, "rule: below the 200-day average earns less (an avoid rule)"),
+    ("carried:claim22", "claim:22", "rule_filter", 22, -2.9128, -2.5181, False, "rule: volume spike"),
+    ("carried:claim23", "claim:23", "rule_filter", 23, -2.4138, -1.5265, False, "rule: 40% below the high"),
+    ("carried:claim24", "claim:24", "rule_filter", 24, -0.2474, 1.7516, False, "rule: RSI below 30"),
+    ("carried:peg", "peg_multibagger", "peg_multibagger", None, None, None, False, "PEG below 1 as a multibagger rule (A beat B 6 of 7 years; ratio 1.22 under 1.5)"),
+)
+
 
 def seed(con, now: Optional[datetime] = None) -> int:
     """Insert the past studies' primary tests and the learner's already-decided claims; returns rows added. A row whose
@@ -121,6 +140,12 @@ def seed(con, now: Optional[datetime] = None) -> int:
     now = now or datetime.now()
     have = {r[0] for r in con.execute("SELECT note FROM learn_tests WHERE origin='seed'").fetchall()}
     added = 0
+    every = {r[0] for r in con.execute("SELECT note FROM learn_tests").fetchall()}
+    for key, alt, family, cid, t_dev, t_val, ok, what in CARRIED:
+        if key in every or alt in every:
+            continue
+        record(con, now, "seed", family, {"key": key, "what": what}, claim_id=None, t_dev=t_dev, t_val=t_val, passed=ok, note=key)
+        added += 1
     for key, study, ok, t_dev, t_val, what in SEED:
         if f"{key}" in have:
             continue

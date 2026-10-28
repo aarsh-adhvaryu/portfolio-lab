@@ -1,4 +1,4 @@
-"""The rule tests registered and read back (S64; docs/research/s64_rules_protocol.md).
+"""The rule tests registered and read back (S64; docs/protocols/s64_rules_protocol.md).
 
 `register_all` turns each rule of thumb the system shows into a pre-registered claim for the learner (origin `study`) and links
 the starter scans to their claim. The learner's cycle then tests them like any claim (templates.rule_filter), and everything
@@ -15,7 +15,7 @@ from typing import Dict, List, Optional
 from pflab.learner import claims
 from pflab.learner import templates as tp
 
-PROTOCOL = "docs/research/s64_rules_protocol.md"
+PROTOCOL = "docs/protocols/s64_rules_protocol.md"
 # (rule, direction, the claim in words that name what the test measures, the protocol's description of the test)
 RULE_CLAIMS = [
     ("pe_above_50", "under", "Stocks priced above 50 times their trailing earnings earn less over the next month than the other "

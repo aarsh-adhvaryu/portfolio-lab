@@ -358,7 +358,7 @@ def build(index: str = "NIFTY200", changes=None,
             f"{unresolved_year_tolerance:.0%} unresolved-name tolerance "
             f"(E1b §3, amended 2026-09-17): "
             + ", ".join(f"{y} {v['unresolved']}/{v['changes']}" for y, v in worst)
-            + ". Verify them in docs/data/index_name_unresolved.md and extend "
+            + ". Verify them in PFLAB_DATA_DIR/index_membership/unresolved.md and extend "
               "the name map; do not lower the tolerance.")
 
     history_start = min((c["effective"] for c in changes), default=None)

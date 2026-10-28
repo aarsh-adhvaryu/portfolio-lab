@@ -67,9 +67,22 @@ def test_seed_is_idempotent_and_includes_decided_claims(con, tmp_path):
     n_learner = counter.n_tests(con)
     assert n_learner == 1                                                  # the learner's own run is counted
     added = counter.seed(con, NOW)
-    assert added == len(counter.SEED) + 1                                  # the studies, plus the claim as a seed row
+    assert added == len(counter.SEED) + len(counter.CARRIED) + 1           # the studies, the carried tests, plus the claim as a seed row
     assert counter.seed(con, NOW) == 0                                     # run again: nothing new
     assert counter.n_tests(con) == n_learner + added
+
+
+def test_a_fresh_install_starts_with_the_same_count_and_bar_as_the_system_that_ran_the_tests(con):
+    assert counter.seed(con, NOW) == len(counter.SEED) + len(counter.CARRIED) == 33
+    assert counter.n_tests(con) == 33 and round(counter.t_needed(34), 2) == 2.97          # the next development bar the old system had
+    assert sum(1 for *_, passed, _w in counter.CARRIED if passed) == 1                    # the one rule that passed (below the 200-day average)
+
+
+def test_a_test_already_in_the_store_is_not_counted_twice(con):
+    for k in ("claim:16", "ranges_ewma_vs_plain", "claim:21"):
+        counter.record(con, NOW, "learner" if k.startswith("claim") else "study", "x", note=k)
+    counter.seed(con, NOW)
+    assert counter.n_tests(con) == 3 + len(counter.SEED) + len(counter.CARRIED) - 3       # those three are already there under another key
 
 
 def test_test_records_its_n_and_bar_and_the_bar_rises(con, tmp_path):

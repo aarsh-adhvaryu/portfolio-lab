@@ -6,7 +6,7 @@
                block bootstrap (mean block 10 sessions) of its own last 750 daily log returns; the centre is the CAPM
                expected return (risk/capm.py), never momentum; method `stats_plain` as drawn, `stats_ewma` rescaled by
                EWMA volatility (lambda 0.94) over sample volatility. Which serves is decided by the registered
-               calibration test (docs/research/s64_ranges_protocol.md; quant/ranges_eval.py): until it has run the ranges
+               calibration test (docs/protocols/s64_ranges_protocol.md; quant/ranges_eval.py): until it has run the ranges
                say "not tested yet"; if neither method covers, "not calibrated: covered x% in testing".
     scored     every stored forecast when due; price ranges by inside/outside and pinball loss; the rolling coverage of
                the last 60 scored ranges is shown with the range
@@ -236,7 +236,7 @@ def serving_method(root: Optional[Path] = None) -> Tuple[str, str]:
     from pflab.data import data_dir
     p = Path(root or data_dir()).joinpath(*RESULT_FILE)
     if not p.exists():
-        return "stats_plain", "not tested yet: the calibration test (docs/research/s64_ranges_protocol.md) has not run"
+        return "stats_plain", "not tested yet: the calibration test (docs/protocols/s64_ranges_protocol.md) has not run"
     try:
         r = json.loads(p.read_text(encoding="utf-8"))
         return r["serve"], r["label"]

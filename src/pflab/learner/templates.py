@@ -1,4 +1,4 @@
-"""The learner's tests (S62, PLAN A22; protocol docs/research/learner_protocol.md): a claim from outside reading is
+"""The learner's tests (S62, PLAN A22; protocol docs/protocols/learner_protocol.md): a claim from outside reading is
 tested only through one of these templates, with parameters from closed lists; the decision rule is fixed here, in
 code, before any claim is run. A claim that fits no template is recorded as untestable on this system's data.
 
@@ -11,9 +11,9 @@ code, before any claim is run. A claim that fits no template is recorded as unte
                     the month): returns on the effect's days against the other days
     holder_event    S63 (amendment 3): who buys and sells: insider / SAST disclosures, bulk and block deals by side, a
                     quarter's promoter holding up or down, pledges up; the market-adjusted move after each
-    sector_reversion S64 (docs/research/s64_reversion_protocol.md): a stock cointegrated with its sector index and cheap
+    sector_reversion S64 (docs/protocols/s64_reversion_protocol.md): a stock cointegrated with its sector index and cheap
                     against it (bottom quintile of the spread's z) against the sector's next-month return, long only
-    rule_filter     S64 (docs/research/s64_rules_protocol.md): a yes/no rule (P/E above 50, near the 52-week low, below the
+    rule_filter     S64 (docs/protocols/s64_rules_protocol.md): a yes/no rule (P/E above 50, near the 52-week low, below the
                     200-day average, ...): the group that meets it against all members the next month
 
 Periods (as every study here; 2022-2025 are spent, CLAUDE.md 2): development 2010-2017 and validation 2018-2021 (filings:
@@ -471,7 +471,7 @@ def sector_reversion(root: Path, direction: str, round_trip_pct: float, periods=
     return {"decision": d, "why": why, **res}
 
 
-# --- rule_filter (S64, docs/research/s64_rules_protocol.md): a yes/no rule on a stock against the other members -----------------
+# --- rule_filter (S64, docs/protocols/s64_rules_protocol.md): a yes/no rule on a stock against the other members -----------------
 
 RULES = ("pe_above_50", "pe_below_15", "near_52w_low_5", "below_sma200", "volume_spike_2", "ath_fall_40", "rsi_below_30")
 RULE_TEXT = {

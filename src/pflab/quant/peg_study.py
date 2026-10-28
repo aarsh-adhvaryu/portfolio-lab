@@ -1,4 +1,4 @@
-"""PEG and the multibagger claim (docs/research/s64_peg_protocol.md, committed before this code ran).
+"""PEG and the multibagger claim (docs/protocols/s64_peg_protocol.md, committed before this code ran).
 
 "A stock bought at a PEG below 1 is a multibagger": the share of PEG-below-1 names that reach 3x total return within five years,
 against all other names with a defined PEG, by formation year from 2010 to 2016, with a fixed decision rule.

@@ -1,7 +1,7 @@
 """S42: the pre-registered model evaluation for the 12 GB GPU (docs/llm/model_eval_12gb_protocol.md).
 
 Four tasks, each with labels that come from this system or the exchanges, never from a model:
-    routing      60 questions labelled with the agent tools they need (docs/llm/eval12_routing.toml)
+    routing      60 questions labelled with the agent tools they need (configs/llm_eval/eval12_routing.toml)
     answers      50 guarded drafting tasks (llm.evalset, seed 20261006) through the draft-check-revise loop
     extraction   100 NSE corporate-action texts; gold fields from the tested parsers (dividend per share, bonus
                  ratio, split face values, or "other")
@@ -26,16 +26,16 @@ import numpy as np
 from pflab import _toml
 
 ROOT = Path(__file__).resolve().parents[3]
-ROUTING = ROOT / "docs" / "llm" / "eval12_routing.toml"
+ROUTING = ROOT / "configs" / "llm_eval" / "eval12_routing.toml"
 SEED = 20261016
 THRESHOLDS = {"routing": 0.95, "answers_final": 0.98, "extraction_f1": 0.95, "materiality": 0.90, "latency_p90_s": 20.0}
 # Round 2 (docs/llm/model_eval_12gb_round2.md): new routing questions, new materiality headlines (2023, unseen),
 # new drafting seed; extraction unchanged (every candidate passed it, nothing was tuned on it). Same thresholds.
 ROUNDS = {1: {"routing": ROUTING, "materiality": "materiality.json", "answers_seed": 20261006, "results": "results"},
-          2: {"routing": ROOT / "docs" / "llm" / "eval12_routing_r2.toml", "materiality": "materiality_r2.json",
+          2: {"routing": ROOT / "configs" / "llm_eval" / "eval12_routing_r2.toml", "materiality": "materiality_r2.json",
               "answers_seed": 20261017, "results": "results_r2"},
           # Round 3 (docs/llm/model_decision_2026-10-17.md): answers only, new seed, the production guard
-          3: {"routing": ROOT / "docs" / "llm" / "eval12_routing_r2.toml", "materiality": "materiality_r2.json",
+          3: {"routing": ROOT / "configs" / "llm_eval" / "eval12_routing_r2.toml", "materiality": "materiality_r2.json",
               "answers_seed": 20261018, "results": "results_r3", "production_guard": True}}
 
 MATERIAL = ("Financial Results", "Credit Rating", "Acquisition", "Award of Order / Receipt of Order", "Dividend",

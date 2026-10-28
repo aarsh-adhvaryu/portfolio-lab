@@ -1,41 +1,36 @@
-# Portfolio Manager (`pflab`)
+# Portfolio Lab (`pflab`)
 
-Personal, tax-aware portfolio bookkeeping for NSE equities owned by the investor:
-FIFO tax lots, corporate-action adjustment, BSE results and announcements,
-a price and NAV panel, and the loaders that feed them. Built session by
-session from `docs/PLAN.md`. Not investment advice.
+The investor's companion for NSE equities (a small US sleeve in beta): it collects data, keeps a tax-aware ledger, researches, forecasts, simulates, tests its own ideas
+and tells him what matters. It never places an order. Not investment advice. What exists: `docs/BUILT.md`; every test and verdict: `docs/STUDIES.md`; intent and
+what remains: `docs/PLAN.md`; rules for Claude Code: `CLAUDE.md`.
 
-The earlier research project is kept only on GitHub (`origin/research-archive`,
-tag `shelved/2026-10-01`). Files copied out of it are logged in
-`docs/MIGRATED.md`.
+## First run, from a fresh clone (Windows 11, PowerShell; his steps in this order)
+1. **Install** Python 3.13, git, [Ollama](https://ollama.com) and, if you want contained calculations, Docker Desktop. Then `ollama pull qwen3:8b-q8_0` and
+   `ollama pull nomic-embed-text` (about 9 GB, once; never delete them).
+2. **Install the app** into its own folder from the private GitHub repo at a release tag:
+   `powershell -ExecutionPolicy Bypass -File tools\install_app.ps1 -DryRun` (look), then without `-DryRun` (3-6 minutes; "INSTALLED" at the end).
+   Default folder `D:\PortfolioLabApp` (needs 10 GB free). It makes `app\` (the clone and `.venv`), `data\`, `pm\`, `backups\`, `release.toml`, and two desktop
+   shortcuts: "Portfolio Lab" and "Portfolio Lab Update". From here every command runs in `<folder>\app` with `.venv\Scripts\python -m pflab.cli ...`.
+3. **Keys:** `pflab setup secrets` (typed, never echoed: Kite API key and secret, Telegram token and chat id, Anthropic key; add `--only sec` for the SEC contact later).
+   Statement passwords are asked for by the names Setup gives them. The file is `%USERPROFILE%\.pflab\secrets.toml`, outside the repo.
+4. **Market history** (each is resumable and longer than 5 minutes; start with the first two): `tools\backfill_bhavcopy.py --from 2012-01-01`,
+   `tools\build_index_membership.py --all`, `tools\backfill_bse.py 2018-01-01 <today> bse.log`, `tools\backfill_shareholding.py`, `tools\backfill_fo.py --start 2024-01-01`,
+   `tools\backfill_us.py`, `tools\backfill_deals.py --source deals`. Daily data then arrives by itself (`collect` and the other jobs). If the workshop has the history,
+   `tools\seed_app.ps1` copies its market data once (never the store of an app that already has one).
+5. **Open "Portfolio Lab"** (starts the dashboard and every job in one process). **Setup** (Settings > Open Setup): the start date, your Zerodha account, banks (name, bank,
+   last four digits). It lists the files it needs; drop each in **Inbox and files** (any name: they are recognised by content), press "Add to the ledger" when its checks pass.
+   Answer what **Needs from you** asks (bank-label questions, IPO entries, FD certificates). Kite: the "Log in to Kite" button each trading morning (read-only).
+6. **Switch it on.** Settings: Telegram on (held alerts are then delivered), the brain on "economy", preset "full". Close the window, then register the tick (every
+   15 minutes, at logon, at wake): `powershell -ExecutionPolicy Bypass -File tools\register_tasks.ps1` (preview with `-WhatIf`). After that it runs, learns and asks by itself.
 
-```
-python -m venv .venv && .venv\Scripts\pip install -e ".[dev]"
-setx PFLAB_DATA_DIR D:\portfolio_lab\data
-.venv\Scripts\python -m pytest -q
-```
+## Day to day
+Nothing: it wakes with the laptop, watches, researches, simulates, and writes to you only when it matters (plus 09:00 and 21:45 summaries). Tell it your monthly amount
+when the money comes ("I'm investing 50k this month"). Taxes: `pflab pm quicko --fy 2027` writes the Quicko inputs to `pm\reports\quicko`.
+**Update:** close the app, open "Portfolio Lab Update" (or `pflab update`): it backs the store up, installs the newest release tag, self-tests, and undoes itself on a
+failure; `pflab update --rollback` returns to the previous release. Your record is never wiped.
 
-## Modules (`src/pflab/`)
-
-| area | modules |
-|---|---|
-| tax / lots | `tax/india_lots` (FIFO lots, STCG/LTCG, FY), `portfolio/selldown` (tax-aware sell order) |
-| costs | `execution/costs` (+ stubs `execution/paper`, `execution/kite`) |
-| corporate actions | `data/corporate_actions`, `data/nse_corporate_actions`, `data/repairs`, `data/dividends`, `data/etf_events` |
-| BSE | `data/bse_announcements`, `bse_scrip_isin`, `bse_shareholding`, `bse_insider`, `red_flags`, `red_flag_events` |
-| price / NAV panel | `data/bhavcopy`, `panel`, `calendar`, `indices`, `instruments`, `universe` |
-| ISIN / series | `data/symbol_isin`, `name_map`, `sector_map` |
-| index membership | `data/index_changes`, `index_captures`, `index_membership` |
-| other loaders | `data/nse_insider`, `positioning`, `india_vix`, `macro`, `fpi_flows`, `global_markets`, `gdelt` |
-| engine (library) | `backtest/engine`, `hooks`; `eval/periods`, `metrics`, `artifacts`; `portfolio/construct`, `crash_rule`; `signals/momentum`, `vol_scaled`, `regime` |
-| migrated in S0 | `risk/shock_betas`, `monitor/` (event reaction, promoter), `fundamentals/valuation`, `ledger/checks` |
-| plumbing | `cli` (`pflab collect`), `_toml`, `_lock`, `_store_consts` |
-
-`tools/`: collectors and backfills (`collect_daily`, `backfill_*`, `s48_collect`,
-`build_index_membership`, `ingest_gdelt_*` with the `gdelt_*.sql` queries), the
-live runners (`build_pm_ledger`, `kite_login`, `tfm_live_forecast`, `ocr.ps1`) and
-the install scripts. (S64 rewrites this README as the first-run guide.)
-`tests/`: 498 tests; the engine tests (`test_engine_*`, `test_lookahead`,
-`test_negative_control`, `test_measurement_fixes`, `test_accounting_audit`)
-are unchanged. `data/` is gitignored. Labelled event data and data findings are
-in `docs/data/`.
+## The workshop (development; not the app)
+A checkout of this repo without `release.toml` is the beta: `python -m venv .venv`, `.venv\Scripts\pip install -e ".[dev]"`, tests with
+`.venv\Scripts\python -m pytest -q --basetemp <folder>`. It sends nothing outward and makes no paid call unless run as `pflab --live ...` or `pflab --paid ...`
+(paid calls count against `dev_monthly_cap_rupees` in `api_budget.toml`, default 0); it never registers a scheduled task. Releases: merge to `main`, run the suite and the
+privacy grep (`python -m pflab.hq.security`), tag `vYYYY.MM.DD`, push. `data/` and `pm/` are gitignored and are never in a release.

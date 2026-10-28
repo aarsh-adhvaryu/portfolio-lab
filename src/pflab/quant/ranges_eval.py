@@ -1,4 +1,4 @@
-"""The registered calibration test of the price ranges (S64 Phase 3c; docs/research/s64_ranges_protocol.md). Layer: tool.
+"""The registered calibration test of the price ranges (S64 Phase 3c; docs/protocols/s64_ranges_protocol.md). Layer: tool.
 
 Monthly origins on point-in-time Nifty 500 members; for each origin a seeded sample of 100 names with 750 sessions and a
 60-month CAPM fit; both methods (`stats_plain`, `stats_ewma`) from the same block-bootstrap draws, at 21 and 63 sessions;
