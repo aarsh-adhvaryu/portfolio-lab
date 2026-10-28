@@ -276,6 +276,23 @@ def create_app(rt) -> FastAPI:
     def research(isin: str = ""):
         return json.loads(json.dumps(views.research(rt, isin or None), default=str))
 
+    @app.get("/api/mail")
+    def mail_status():
+        """S65: read-only Gmail: connected or not, what was fetched."""
+        from pflab.ingest import gmail
+        n = rt.cursor().execute("SELECT count(*), coalesce(sum(kept), 0), max(seen_at) FROM mail_seen").fetchone()
+        return {"connected": gmail.connected(), "client_file": gmail.client_path().exists(), "messages": n[0], "kept": int(n[1]),
+                "last": str(n[2]) if n[2] else None}
+
+    @app.post("/api/mail/connect")
+    def mail_connect():
+        """Opens Google's read-only consent page in the browser on this PC; the token is saved when he approves."""
+        from pflab.ingest import gmail
+        try:
+            return {"connected": gmail.connect()}
+        except gmail.MailError as e:
+            raise HTTPException(400, str(e))
+
     @app.get("/api/twin")
     def twin_api():
         """S65: the scoreboard (plan/twin.py): four books, the same money on the same days; values until 60 sessions."""

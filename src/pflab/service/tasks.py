@@ -366,6 +366,22 @@ def _us_fx(ctx: Ctx) -> dict:
 register(Job("us_fx", Daily(7, 25, weekdays_only=False), _us_fx, "US sleeve: USDINR rates into the store"))
 
 
+def _mail(ctx: Ctx) -> dict:
+    """S65: read-only Gmail: new statement attachments into the inbox (ingest/gmail.py); asks once to be connected."""
+    from pflab import guard
+    from pflab.hq import desk
+    from pflab.ingest import gmail
+    if guard.blocked("mail"):
+        return {"skipped": "the workshop does not read his mail"}
+    if not gmail.connected():
+        gmail.ask_to_connect(ctx.con, ctx.now)
+        return {"skipped": "Gmail not connected (asked once in Needs from you)"}
+    return gmail.fetch(desk.from_ctx(ctx))
+
+
+register(Job("mail", Interval(60, 7, 23, weekdays_only=False), _mail, "read-only Gmail: statements that arrived by email into the inbox (checked, then your press)"))
+
+
 def _twin(ctx: Ctx) -> dict:
     """S65: the scoreboard (plan/twin.py): REAL, SYSTEM (the brain's suggestions on paper), equal-weight Nifty 500 and Nifty 500, same money."""
     from pflab.plan import twin

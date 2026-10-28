@@ -241,6 +241,10 @@ def main(argv=None):
     thp.add_argument("--asof", type=_d, default=date.today())
     sub.add_parser("drift", help="re-test every adopted rule on the data since it was fixed (S46)")
     sub.add_parser("inbox", help="read every file dropped into PFLAB_PM_DIR/inbox into the knowledge graph")
+    mlp = sub.add_parser("mail", help="S65: read-only Gmail: connect once (browser), fetch statements now, status")
+    mlp.add_argument("action", choices=["connect", "fetch", "status"])
+    mlp.add_argument("--client", help="the Google client file (default: gmail_client.json in the .pflab folder of your user folder)")
+    mlp.add_argument("--days", type=int, default=40, help="fetch: how far back to look")
     upp = sub.add_parser("update", help="S65: the installed app updates to the newest release tag (store backed up first), or --rollback")
     upp.add_argument("--rollback", action="store_true", help="return to the previous release and the store from before the update")
     upp.add_argument("--check", action="store_true", help="only say whether a newer release exists")
@@ -265,6 +269,8 @@ def main(argv=None):
         return _setup(a)
     if a.cmd == "update":
         return _update(a)
+    if a.cmd == "mail":
+        return _mail(a)
     if a.cmd == "learner":
         return _learner(a)
     if a.cmd == "forecast":
@@ -473,6 +479,33 @@ def _llm(a) -> int:
         print(r)
         return 0 if r["passed"] else 1
     return 0
+
+
+def _mail(a) -> int:
+    """pflab mail connect|fetch|status: read-only Gmail (ingest/gmail.py). connect opens Google's page in the browser once."""
+    from pflab import release
+    from pflab.data import data_dir
+    from pflab.hq.desk import Desk
+    from pflab.ingest import gmail
+    from pflab.pm import store
+    try:
+        if a.action == "connect":
+            print(f"connected {gmail.connect(a.client)} (read-only: nothing can be sent, deleted or changed)")
+            return 0
+        if a.action == "status":
+            con = store.connect(read_only=True)
+            try:
+                n = con.execute("SELECT count(*), coalesce(sum(kept), 0), max(seen_at) FROM mail_seen").fetchone()
+            except Exception:                           # a store not yet migrated to v41 (a read-only open does not migrate)
+                n = (0, 0, None)
+            print(f"Gmail {'connected' if gmail.connected() else 'NOT connected'}; {n[0]} message(s) looked at, {n[1]} file(s) kept, last {n[2]}")
+            return 0
+        rt = Desk(store.connect(), store.pm_dir(), data_dir(), release.ROOT)
+        print(gmail.fetch(rt, days=a.days))
+        return 0
+    except (gmail.MailError, __import__("pflab.guard", fromlist=["OutwardBlocked"]).OutwardBlocked) as e:
+        print(f"refused: {e}")
+        return 1
 
 
 def _update(a) -> int:

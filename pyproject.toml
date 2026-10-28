@@ -12,6 +12,7 @@ dependencies = [
   "numpy>=1.24",
   "pyarrow>=14",
   "duckdb>=0.10",
+  "google-auth-oauthlib==1.5.0",
   "requests>=2.31",
   "python-dateutil>=2.8",
   "yfinance>=0.2",

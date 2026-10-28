@@ -16,7 +16,8 @@ no paid call unless told (`pflab --live`, `pflab --paid`; `src/pflab/guard.py`).
 4. **Prefer maintained libraries over hand-written code.** Pinned: pandas, pyarrow, duckdb, numpy, requests, python-dateutil,
    pypdf, openpyxl 3.1.5, kiteconnect 5.2.2 (read-only wrapper `ingest/kite.py`), casparser 1.4.1, PyYAML 6.0.3, langgraph 1.2.13,
    langchain-ollama 1.1.0 / langchain-core 1.6.6, msoffcrypto-tool 5.4.2, xlrd 2.0.1, trafilatura 2.0.0, statsmodels 0.14.6,
-   anthropic 1.15.0 (only in `agents/analyst.py`, behind the egress gate and his cap), fastapi 0.159.1, uvicorn 0.54.0. No
+   anthropic 1.15.0 (only in `agents/analyst.py`, behind the egress gate and his cap), fastapi 0.159.1, uvicorn 0.54.0,
+   google-auth 2.62.0 / google-auth-oauthlib 1.5.0 (read-only Gmail, `ingest/gmail.py`). No
    backtesting frameworks, no lightgbm, no torch or forecasting models (TimesFM was tested, failed, removed).
 5. **Data lives under `PFLAB_DATA_DIR`, the store under `PFLAB_PM_DIR`** (gitignored). An installed app's `release.toml` sets both
    and wins over the environment. Secrets: `%USERPROFILE%\.pflab\secrets.toml` (never print or echo them; `pflab setup secrets`).

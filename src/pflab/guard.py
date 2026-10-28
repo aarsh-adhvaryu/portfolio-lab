@@ -21,10 +21,11 @@ class OutwardBlocked(RuntimeError):
     pass
 
 
-FLAGS = {"telegram": "PFLAB_LIVE", "paid": "PFLAB_PAID"}
+FLAGS = {"telegram": "PFLAB_LIVE", "paid": "PFLAB_PAID", "mail": "PFLAB_LIVE"}
 HOW = {"telegram": "run it with the global --live flag (pflab --live ...) to send from the workshop",
        "paid": "run it with the global --paid flag (pflab --paid ...); it counts against dev_monthly_cap_rupees in api_budget.toml",
-       "register": "scheduled tasks and shortcuts belong to the installed app (tools/install_app.ps1)"}
+       "register": "scheduled tasks and shortcuts belong to the installed app (tools/install_app.ps1)",
+       "mail": "his mail is read only by the installed app (the workshop would duplicate his files); pflab --live to test"}
 
 
 def blocked(kind: str) -> Optional[str]:

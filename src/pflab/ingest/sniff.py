@@ -142,6 +142,21 @@ def sniff(data: bytes, name: str, passwords=()) -> Dict[str, Optional[str]]:
     return {"kind": "other", "bank": None, "last4": None, "dp_ids": None}
 
 
+def is_encrypted(data: bytes, name: str) -> bool:
+    """A password-protected PDF or Office file (its content is not read)."""
+    try:
+        if data[:5] == b"%PDF-":
+            from pypdf import PdfReader
+            return bool(PdfReader(io.BytesIO(data)).is_encrypted)
+        from pflab.ingest import bank
+        if data[:8] == bank.OLE_MAGIC:
+            import msoffcrypto
+            return bool(msoffcrypto.OfficeFile(io.BytesIO(data)).is_encrypted())
+    except Exception:
+        return False
+    return False
+
+
 def match_account(info: Dict[str, Optional[str]], accounts: Dict[str, dict]) -> Optional[str]:
     """The set-up bank account whose bank and last four digits this statement shows; None when none or two fit."""
     if info.get("kind") != "bank" or not info.get("last4"):

@@ -565,6 +565,12 @@ MIGRATIONS = [
         units DOUBLE NOT NULL, charges DOUBLE NOT NULL, sug_id INTEGER, note VARCHAR
     );
     """),
+    # 2026-10-28: S65 read-only Gmail (ingest/gmail.py): the messages already looked at, so none is fetched twice
+    (41, "mail_s65", """
+    CREATE TABLE mail_seen (
+        msg_id VARCHAR PRIMARY KEY, seen_at TIMESTAMP NOT NULL, files INTEGER NOT NULL, kept INTEGER NOT NULL
+    );
+    """),
 ]
 
 

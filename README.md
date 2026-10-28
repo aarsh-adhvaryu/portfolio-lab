@@ -23,6 +23,12 @@ what remains: `docs/PLAN.md`; rules for Claude Code: `CLAUDE.md`.
    then proposes the accounts it found (bank and last four digits, and which saved password opens each file): press "Use these accounts", then "Add everything to the
    ledger" (one rebuild, written only when every check passes). Add each fixed deposit once in Setup's deposit form (checked against the bank's maturity amount).
    Answer what **Needs from you** asks (bank-label questions, IPO entries, FD certificates). Kite: the "Log in to Kite" button each trading morning (read-only).
+   **Gmail (read-only, once; about 10 minutes):** at console.cloud.google.com create a project; APIs and Services > Library > enable "Gmail API"; OAuth consent
+   screen > External, app name "Portfolio Lab", add your own address as a test user; Credentials > Create credentials > OAuth client ID > "Desktop app" > download
+   the JSON and save it as `%USERPROFILE%\.pflab\gmail_client.json`. Then Settings > Connect Gmail (or `pflab mail connect`): Google's page opens; approve
+   "Read your email" only. From then on, every hour from 07:00 to 23:00, statement attachments (by content; everything else is dropped unread) come into the inbox
+   like a file you drop; password-protected ones open with the passwords you saved (the file is stored as it came, still locked); one that none opens is asked about
+   once. Testing-mode tokens expire after 7 days: publish the consent screen ("In production", unverified is fine for yourself) to keep it connected.
 6. **Switch it on.** Settings: Telegram on (held alerts are then delivered), the brain on "economy", preset "full". Close the window, then register the tick (every
    15 minutes, at logon, at wake): `powershell -ExecutionPolicy Bypass -File tools\register_tasks.ps1` (preview with `-WhatIf`). After that it runs, learns and asks by itself.
 

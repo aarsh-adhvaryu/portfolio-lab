@@ -382,6 +382,7 @@ function renderSettings(s) {
       <a class="btn primary" href="#/setup" style="align-self:flex-start">Open Setup</a></section>
     <section class="panel" style="flex:1 1 420px" id="releaseP"><span class="lbl">This release</span><span class="small muted">loading…</span></section>
     <section class="panel" style="flex:1 1 420px" id="featuresP"><span class="lbl">Beta features</span><span class="small muted">loading…</span></section>
+    <section class="panel" style="flex:1 1 420px" id="mailP"><span class="lbl">Gmail (read-only)</span><span class="small muted">loading…</span></section>
     <section class="panel" style="flex:1 1 420px" id="secretsP"><span class="lbl">Keys and passwords</span><span class="small muted">loading…</span></section>
     <section class="panel" style="flex:1 1 640px" id="modelsP"><span class="lbl">Models: one per job</span><span class="small muted">loading…</span></section>
     <section class="panel" style="flex:1 1 420px"><span class="lbl">Never, whatever the settings</span>
@@ -398,6 +399,7 @@ function renderSettings(s) {
   renderRelease();
   renderFeatures(redraw);
   renderSecrets();
+  renderMail();
   renderModels(redraw);
 }
 /* S65: which release this is; updating needs the store free, so it is done from the "Portfolio Lab Update" shortcut (pflab update) */
@@ -473,6 +475,16 @@ function renderSetup(d) {
     const banks = [...document.querySelectorAll('#suBanks .row')].map((r) => ({ name: r.querySelector('.bn').value, bank: r.querySelector('.bb').value, last4: r.querySelector('.bl').value, password_name: r.querySelector('.bp').value })).filter((b) => b.name || b.last4);
     try { await post('/api/setup', { start: $('suStart').value, broker: { account: $('suBroker').value, cas_dp: $('suDp').value }, banks }); load(true); } catch (e) { alert(e.message); }
   };
+}
+/* S65: read-only Gmail (ingest/gmail.py): statements that arrive by email go to the inbox by themselves */
+async function renderMail() {
+  const el = $('mailP'); if (!el) return;
+  let d; try { d = await api('/api/mail'); } catch (e) { el.innerHTML = `<span class="lbl">Gmail (read-only)</span><span class="small warn">${esc(e.message)}</span>`; return; }
+  el.innerHTML = `<span class="lbl">Gmail (read-only)</span>` + (d.connected
+    ? `<span class="small up">Connected. ${d.messages} message(s) looked at, ${d.kept} statement file(s) brought in${d.last ? ', last ' + esc(d.last.slice(0, 16)) : ''}. It can never send, delete or change mail.</span>`
+    : `<span class="small muted">${d.client_file ? 'Ready: press Connect, approve read-only access in the browser.' : 'First the one-time Google step in README (the client file goes to %USERPROFILE%\.pflab\gmail_client.json).'}</span>`
+      + (d.client_file ? '<button class="btn primary" id="mailGo" style="align-self:flex-start">Connect Gmail</button>' : ''));
+  if ($('mailGo')) $('mailGo').onclick = async () => { try { const r = await post('/api/mail/connect', {}); alert('Connected: ' + r.connected); renderMail(); } catch (e) { alert(e.message); } };
 }
 /* S65: keys and passwords go to %USERPROFILE%\.pflab\secrets.toml; the form is write-only (a value is never shown or sent back) */
 async function renderSecrets() {
