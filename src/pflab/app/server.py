@@ -276,20 +276,37 @@ def create_app(rt) -> FastAPI:
     def research(isin: str = ""):
         return json.loads(json.dumps(views.research(rt, isin or None), default=str))
 
+    @app.get("/api/features")
+    def features_api():
+        """S65: the beta features, with his switch and the channel's default."""
+        from pflab import features
+        return {"channel": features.channel(), "features": features.listing(rt.settings)}
+
     @app.get("/api/us")
     def us_api():
+        from pflab import features
         from pflab.ledger import foreign as lf
         from pflab.tax import foreign as tf
+        if not features.enabled("us_sleeve", rt.settings):
+            return {"enabled": False, "note": "BETA: the US sleeve is off. Turn it on in Settings when you want it."}
+        from pflab.risk import sleeve
         con, today = rt.cursor(), rt.clock().date()
         rem = lf.remitted_in_fy(con, today)
-        return json.loads(json.dumps({"positions": lf.positions(con, today), "lrs": {**rem, "room_usd": tf.lrs_room(rem["usd"])},
+        try:
+            plan = sleeve.plan_now(con, today)
+        except Exception:
+            plan = None
+        return json.loads(json.dumps({"enabled": True, "sleeve_plan": plan,"positions": lf.positions(con, today), "lrs": {**rem, "room_usd": tf.lrs_room(rem["usd"])},
                                       "fx": lf.fx_on(con, today), "fx_label": lf.FX_LABEL}, default=str))
 
     @app.post("/api/us/trade")
     def us_trade(date: str = Body(...), symbol: str = Body(...), side: str = Body(...), qty: float = Body(...), price: float = Body(...),
                  charges: float = Body(0.0), cik: int = Body(0), etf: bool = Body(False)):
         from datetime import date as _d
+        from pflab import features
         from pflab.ledger import foreign as lf
+        if not features.enabled("us_sleeve", rt.settings):
+            raise HTTPException(403, "the US sleeve is a beta feature and is off (Settings)")
         con = rt.cursor()
         key = lf.pseudo_isin(cik) if cik else f"US:{symbol.strip().upper()}"
         try:
@@ -303,8 +320,11 @@ def create_app(rt) -> FastAPI:
     @app.post("/api/us/remit")
     def us_remit(date: str = Body(...), usd: float = Body(...), inr: float = Body(...), tcs: float = Body(None), bank: str = Body("")):
         from datetime import date as _d
+        from pflab import features
         from pflab.ledger import foreign as lf
         from pflab.tax import foreign as tf
+        if not features.enabled("us_sleeve", rt.settings):
+            raise HTTPException(403, "the US sleeve is a beta feature and is off (Settings)")
         con = rt.cursor()
         d = _d.fromisoformat(date)
         t = tcs if tcs is not None else tf.tcs(lf.remitted_in_fy(con, d)["inr"], inr)["tcs_rs"]

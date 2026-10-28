@@ -20,6 +20,7 @@ DEFAULTS: Dict[str, Any] = {
     "brain": "economy",           # S59: off | economy | normal: how often the brain may think (hq/governor.py)
     "drop_watch": True,           # S59: files placed in the drop folder reach the inbox by themselves
     "models": {},                 # S61: the slider, job -> model; a job not set takes its measured default (hq/models.py)
+    "features": {},               # S65: his switch per beta feature (configs/features.toml); none set = the channel's default
 }
 CHOICES = {"theme": ("dark", "light", "system"), "preset": ("off", "light", "full", "marathon"),
            "brain": ("off", "economy", "normal")}
@@ -81,6 +82,10 @@ def _save(pm_dir: Path, changes: Dict[str, Any], current: Optional[Dict[str, Any
             from pflab.hq import models
             m = {**cur.get("models", {}), **models.valid(v)}
             cur["models"] = {j: c for j, c in m.items() if v.get(j) != "default"}     # "default": back to the measured one
+        elif k == "features" and isinstance(v, dict):           # S65: only listed features, only true or false
+            from pflab import features
+            known = features.load()
+            cur["features"] = {**cur.get("features", {}), **{f: b for f, b in v.items() if f in known and isinstance(b, bool)}}
         elif k in DEFAULTS and type(v) is type(DEFAULTS[k]) and v in CHOICES.get(k, (v,)):
             cur[k] = v
     p = path(pm_dir)

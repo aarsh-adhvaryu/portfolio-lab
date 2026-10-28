@@ -42,7 +42,9 @@ def test_mode_through_a_session_that_crosses_midnight_in_ist():
     assert uc.us_session(datetime(2026, 10, 27, 19, 5), CAL) == "open"
 
 
-def test_the_brain_has_a_us_pass_once_a_day_20_minutes_into_the_session_only_with_us_holdings(tmp_path):
+def test_the_brain_has_a_us_pass_once_a_day_20_minutes_into_the_session_only_with_us_holdings(tmp_path, monkeypatch):
+    monkeypatch.setenv("PFLAB_PM_DIR", str(tmp_path / "pm"))
+    monkeypatch.setenv("PFLAB_CHANNEL", "beta")                           # S65: the US sleeve is a beta feature, on in the workshop
     import duckdb
     from pflab.hq import brain
     from pflab.ledger import foreign as lf

@@ -378,6 +378,7 @@ function renderSettings(s) {
       ${toggleRow('drop_watch', 'Take files from the drop folder', 'files placed in D:\\portfolio_lab\\drop go to the inbox by themselves', s.drop_watch)}
       <div class="setting"><div style="flex:1;display:flex;flex-direction:column;gap:2px"><label for="simsHour">Nightly simulation after</label><span class="small muted">Full: 10,000 paths; Marathon: 100,000</span></div><select id="simsHour" class="inp" style="flex:0 0 auto">${[18, 19, 20, 21, 22, 23].map((h) => `<option value="${h}" ${s.sims_hour === h ? 'selected' : ''}>${h}:00</option>`).join('')}</select></div>
     </section>
+    <section class="panel" style="flex:1 1 420px" id="featuresP"><span class="lbl">Beta features</span><span class="small muted">loading…</span></section>
     <section class="panel" style="flex:1 1 640px" id="modelsP"><span class="lbl">Models: one per job</span><span class="small muted">loading…</span></section>
     <section class="panel" style="flex:1 1 420px"><span class="lbl">Never, whatever the settings</span>
       ${['Place an order or a GTT', 'Change targets, limits or the stock list', 'Move money', 'Send personal data out of this PC'].map((t) => `<div class="setting small soft"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg> ${esc(t)}</div>`).join('')}
@@ -390,7 +391,21 @@ function renderSettings(s) {
   document.querySelectorAll('[data-spreset]').forEach((b) => { b.onclick = async () => { S.settings = await post('/api/settings', { preset: b.dataset.spreset }); redraw(); }; });
   document.querySelectorAll('[data-sbrain]').forEach((b) => { b.onclick = async () => { S.settings = await post('/api/settings', { brain: b.dataset.sbrain }); redraw(); }; });
   $('simsHour').onchange = async () => { S.settings = await post('/api/settings', { sims_hour: Number($('simsHour').value) }); redraw(); };
+  renderFeatures(redraw);
   renderModels(redraw);
+}
+/* S65: beta features (configs/features.toml): built and tested, not yet trusted with money; his switch wins over the channel's default */
+async function renderFeatures(redraw) {
+  const el = $('featuresP'); if (!el) return;
+  let d;
+  try { d = await api('/api/features'); } catch (e) { el.innerHTML = `<span class="lbl">Beta features</span><span class="small warn">${esc(e.message)}</span>`; return; }
+  el.innerHTML = `<span class="lbl">Beta features · channel ${esc(d.channel)}</span>` + d.features.map((f) =>
+    `<div class="setting"><div style="flex:1;display:flex;flex-direction:column;gap:2px"><span>${esc(f.title)}${f.beta ? ' <b class="warn">BETA</b>' : ''}</span><span class="small muted">${esc(f.about)}</span></div>
+     <button class="toggle ${f.on ? 'on' : ''}" role="switch" aria-checked="${f.on}" aria-label="${esc(f.title)}" data-feat="${esc(f.name)}"><i></i></button></div>`).join('');
+  el.querySelectorAll('[data-feat]').forEach((b) => { b.onclick = async () => {
+    const f = d.features.find((x) => x.name === b.dataset.feat);
+    if (!f.on && !confirm('Turn on ' + f.title + '? It is a beta feature.')) return;
+    S.settings = await post('/api/settings', { features: { [f.name]: !f.on } }); redraw(); }; });
 }
 /* S61: the model slider. Each job's measured default is marked; a choice of yours wins until you take the default back. */
 const MODEL_NAMES = { local: 'Local', cascade: 'Local, then Haiku', haiku: 'Haiku', sonnet: 'Sonnet', opus: 'Opus' };
@@ -1220,9 +1235,12 @@ async function loadBusiness(isin) {
 async function loadUs() {
   const box = $('usBox'); if (!box) return;
   try {
-    const d = await api('/api/us'); const fx = d.fx ? d.fx[0] : null;
+    const d = await api('/api/us');
+    if (d.enabled === false) { box.innerHTML = `<span class="small muted">${esc(d.note)}</span>`; return; }
+    const fx = d.fx ? d.fx[0] : null;
     const inr = (x) => Math.round(x).toLocaleString('en-IN');
     box.innerHTML = `<span class="small">Sent abroad this financial year (${esc(d.lrs.fy)}): USD ${inr(d.lrs.usd)} (Rs ${inr(d.lrs.inr)}), TCS Rs ${inr(d.lrs.tcs_inr)}; room under the USD 250,000 limit: USD ${inr(d.lrs.room_usd)}.${fx ? ' Rate ' + fx.toFixed(2) + ' (' + esc(d.fx_label) + ').' : ' No exchange rate stored yet.'}</span>
+      ${d.sleeve_plan ? `<span class="small">Your sleeve: ${(d.sleeve_plan.share * 100).toFixed(1)}% from ${esc(d.sleeve_plan.start)}, about Rs ${inr(d.sleeve_plan.amount_inr)}. To keep TCS low, send ${d.sleeve_plan.by_financial_year.map((r) => 'Rs ' + inr(r.amount_inr) + ' in ' + esc(r.fy)).join(', then ')} (one lump would carry Rs ${inr(d.sleeve_plan.tcs_if_one_lump_inr)} TCS, a credit when you file; estimate).</span>` : ''}
       ${d.positions.length ? `<div class="scroll"><table><thead><tr><th>Name</th><th>Shares</th><th>Cost USD</th></tr></thead><tbody>${d.positions.map((p) => `<tr><td>${esc(p.symbol)}</td><td class="num">${p.qty}</td><td class="num">${inr(p.cost_usd)}</td></tr>`).join('')}</tbody></table></div>` : '<span class="small muted">No US holdings recorded.</span>'}
       <div class="row wrapr" style="gap:6px"><input id="usD" class="inp" type="date" style="flex:0 0 150px"><input id="usS" class="inp" placeholder="symbol" style="flex:0 0 90px">
         <select id="usSide" class="inp" style="flex:0 0 80px"><option>buy</option><option>sell</option></select><input id="usQ" class="inp" placeholder="shares" style="flex:0 0 90px">

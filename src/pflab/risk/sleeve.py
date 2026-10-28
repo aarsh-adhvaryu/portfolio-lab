@@ -13,6 +13,8 @@ and a proposal; the share is his yes, and `targets.toml` is his to edit (the sys
 """
 from __future__ import annotations
 
+import json
+import re
 from datetime import date
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
@@ -147,6 +149,81 @@ def propose(con, root: Path, asof: date, now, investable: float, years: int = 5,
                      + (f"; TCS Rs {r['setup']['tcs_inr']:,.0f} in one year, Rs {r['setup']['tcs_if_split_over_two_financial_years_inr']:,.0f} "
                         "if funded over two financial years" if r.get("setup") else ""))
     lines.append(f"The US alone: {res['us_alone']['rupee_return_a_year']:.1%} a year in rupees against {res['us_alone']['nifty500_return_a_year']:.1%} "
-                 f"for the Nifty 500; correlation {res['us_alone']['correlation_with_nifty500']}. {CAVEAT} Which share, if any: yes with a number "
-                 "(for example 'yes 10') sets it; then you add [bucket.intl_equity] to targets.toml yourself.")
+                 f"for the Nifty 500; correlation {res['us_alone']['correlation_with_nifty500']}. {CAVEAT} Which share, if any, and from "
+                 "which month: 'yes 10 from February 2027' (the month is optional). I then show how to spread the money over financial "
+                 "years to keep TCS low; you add [bucket.intl_equity] to targets.toml yourself.")
     return themes.propose(con, "us_sleeve", "share", None, res, "\n".join(lines), now)
+
+
+# --- his answer: a share and a start month; then the funding split --------------------------------------------------------
+
+_MONTHS = ("january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december")
+_MONTH_RE = re.compile(r"\b(" + "|".join(m + "|" + m[:3] for m in _MONTHS) + r")\b\.?(?:\s+(20\d\d))?")
+_ISO_RE = re.compile(r"\b(20\d\d)-(0[1-9]|1[0-2])\b")
+MAX_SHARE = 0.5                          # a share above half the portfolio is read as a mistake, not an instruction
+
+
+def parse_answer(text: Optional[str], today: date) -> tuple:
+    """(share as a fraction or None, first day of the start month or None) from 'yes 10', '10% from feb 2027', 'yes 12 2027-03'.
+    A number is a percent. Without a year the next such month is meant."""
+    t = (text or "").lower()
+    start = None
+    m = _ISO_RE.search(t)
+    if m:
+        start, t = date(int(m[1]), int(m[2]), 1), t[:m.start()] + " " + t[m.end():]
+    else:
+        m = _MONTH_RE.search(t)
+        if m:
+            mon = next(i for i, name in enumerate(_MONTHS, 1) if m[1] in (name, name[:3]))
+            year = int(m[2]) if m[2] else (today.year if mon >= today.month else today.year + 1)
+            start, t = date(year, mon, 1), t[:m.start()] + " " + t[m.end():]
+    n = re.search(r"(?<![\d.])(\d+(?:\.\d+)?)", re.sub(r"\b20\d\d\b", " ", t))
+    share = float(n[1]) / 100 if n else None
+    return (share if share is not None and 0 < share <= MAX_SHARE else None), start
+
+
+def funding_plan(amount_inr: float, start: date, remitted_before_inr: float = 0.0, max_years: int = 6) -> dict:
+    """Spread `amount_inr` over financial years so that no year's remittances pass the TCS threshold, starting with what is left
+    of the start year's room. ESTIMATE from configs/tax/foreign.toml; TCS is a credit when he files, so a lump costs cash for a
+    while, not a loss."""
+    from pflab.ledger import foreign as lf
+    from pflab.tax import foreign as tf
+    th = tf.tcs(0.0, 0.0)["threshold_rs"]
+    fy, left, rows, room = lf.fy_of(start), float(amount_inr), [], max(0.0, th - remitted_before_inr)
+    for _ in range(max_years):
+        take = min(left, room)
+        if take > 0:
+            rows.append({"fy": f"{fy}-{fy + 1}", "amount_inr": round(take)})
+            left -= take
+        if left <= 0:
+            break
+        fy, room = fy + 1, th
+    lumped = tf.tcs(remitted_before_inr, amount_inr)
+    return {"amount_inr": round(amount_inr), "start": start.isoformat(), "by_financial_year": rows, "unplaced_inr": round(max(left, 0.0)),
+            "tcs_if_split_inr": 0.0, "tcs_if_one_lump_inr": lumped["tcs_rs"], "label": lumped["label"],
+            "note": "each year's room is the TCS threshold less what already went abroad that year; also inside the LRS limit"}
+
+
+def current_plan(con, asof: date, investable: float) -> Optional[dict]:
+    """The approved share and start month with today's funding split, or None while no share is approved."""
+    from pflab.ledger import foreign as lf
+    from pflab.risk import themes
+    share = themes.applied(con, "us_sleeve", "share")
+    if share is None:
+        return None
+    row = con.execute("SELECT evidence_json FROM limit_proposals WHERE kind='us_sleeve' AND key='share' AND status='applied' "
+                      "ORDER BY prop_id DESC LIMIT 1").fetchone()
+    s = (json.loads(row[0] or "{}").get("start") if row else None)
+    start = date.fromisoformat(s) if s else asof
+    start = max(start, date(asof.year, asof.month, 1))
+    before = lf.remitted_in_fy(con, start)["inr"]
+    return {"share": share, **funding_plan(share * investable, start, before)}
+
+
+def plan_now(con, asof: date) -> Optional[dict]:
+    """current_plan with today's investable amount; None (and no work) while no share is approved."""
+    from pflab.plan import companion
+    from pflab.risk import themes
+    if themes.applied(con, "us_sleeve", "share") is None:
+        return None
+    return current_plan(con, asof, companion.positions(con, asof)["investable"])

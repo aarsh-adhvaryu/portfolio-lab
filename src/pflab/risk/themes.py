@@ -237,12 +237,29 @@ def resolve(con, now: datetime) -> dict:
         st, ans = con.execute("SELECT status, answer FROM questions WHERE q_id=?", [qid]).fetchone() or ("dropped", None)
         word = (ans or "").strip().lower().rstrip(".! ")
         first = re.split(r"[^a-z']+", word)[0] if word else ""
-        if st == "dropped" or (st == "answered" and (first in NO or word in NO)):
+        share = start = None
+        if kind == "us_sleeve" and st == "answered":         # S65: his answer carries the share and an optional start month
+            from pflab.risk import sleeve
+            share, start = sleeve.parse_answer(ans, now.date())
+        said_no = first in NO or word in NO
+        if st == "dropped" or (st == "answered" and said_no):
             new = "declined"
-        elif st == "answered" and (first in YES or word in YES):
+        elif st == "answered" and (first in YES or word in YES or (share is not None and not said_no)):
             new = "applied"
         else:
             continue
+        if kind == "us_sleeve" and new == "applied":
+            if share is None:                                # a yes without a share cannot be applied: ask once more
+                from pflab.agents import questions
+                nq = questions.ask(con, "limits", f"limit:us_sleeve:share:{pid}:{qid}",
+                                   "You said yes to the US sleeve but gave no share. Reply with a number, for example '10' or "
+                                   "'10 from February 2027'.", now)
+                if nq:
+                    con.execute("UPDATE limit_proposals SET q_id=? WHERE prop_id=?", [nq, pid])
+                continue
+            e = json.loads(ev or "{}")
+            e["start"] = start.isoformat() if start else None
+            con.execute("UPDATE limit_proposals SET value=?, evidence_json=? WHERE prop_id=?", [str(share), json.dumps(e), pid])
         _apply_side_effects(con, kind, key, json.loads(ev or "{}"), now, new == "applied")
         if new == "applied":                                 # a newer approved value replaces the older one
             con.execute("UPDATE limit_proposals SET status='superseded', decided_at=? WHERE kind=? AND key=? AND status='applied'",

@@ -65,9 +65,12 @@ def gauges_block(root: Path, asof: date) -> dict:
 
 def us_sleeve(con, root: Path, asof: date) -> dict:
     """The US sleeve: positions in dollars and rupees, the LRS year so far, whether the US market is open, and the pending study."""
+    from pflab import features
     from pflab.conductor import us_calendar as uc
     from pflab.ledger import foreign as lf
     from pflab.tax import foreign as tf
+    if not features.enabled("us_sleeve"):
+        return {"beta_off": "the US sleeve is a beta feature and is switched off (Settings); say nothing about US holdings"}
     out: dict = {}
     pos = lf.positions(con, asof)
     cal = uc.load()
@@ -85,6 +88,13 @@ def us_sleeve(con, root: Path, asof: date) -> dict:
     pend = con.execute("SELECT prop_id FROM limit_proposals WHERE kind='us_sleeve' AND status='pending'").fetchone()
     if pend:
         out["study_waiting_for_his_answer"] = True
+    try:
+        from pflab.risk import sleeve
+        plan = sleeve.plan_now(con, asof)
+        if plan:
+            out["approved_share_and_funding_split"] = plan
+    except Exception as e:
+        out["funding_split_error"] = f"{type(e).__name__}: {str(e)[:100]}"
     return out
 
 

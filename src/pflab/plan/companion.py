@@ -49,6 +49,11 @@ def run(con, root, asof: date, now: datetime, index=None) -> dict:
             out["us_sleeve_proposed"] = sleeve.propose(con, root, asof, now, p["investable"]) is not None
     except Exception as e:
         out["us_sleeve_error"] = f"{type(e).__name__}: {str(e)[:100]}"
+    try:                                    # S65: deferred US items open on their date or event (agents/needs.py)
+        from pflab.agents import needs
+        out["deferred_asked"] = [k for k, v in needs.deferred_items(con, now).items() if v]
+    except Exception as e:
+        out["deferred_error"] = f"{type(e).__name__}: {str(e)[:100]}"
     alerts = 0
     try:
         ex = themes.exposure_of(con, root, asof)

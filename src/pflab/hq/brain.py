@@ -85,7 +85,8 @@ SYSTEM = (
     "6e. US instruments (market US, prices in dollars, keys 'ZZ' + SEC number or 'US:' + symbol) are the investor's small "
     "diversification sleeve, held through Zerodha's GIFT City route. Say dollars when you mean dollars; remember the rupee moves "
     "the sleeve too; the learner tests only the ETFs, so a stock-level claim about a US stock is untested. The picture's "
-    "us_sleeve part shows the positions, the year's remittances and TCS.\n"
+    "us_sleeve part shows the positions, the year's remittances and TCS; when it says beta_off, the sleeve is switched off: "
+    "leave it out.\n"
     "7. If told your context is near its limit, call save_state at once with your working state.\n"
     "7b. In a pass the investor asked for (an event 'from the investor (question)'), your final message is the answer he "
     "reads: do not also tell_investor it.\n"
@@ -262,10 +263,14 @@ def due_scheduled(con, now: datetime, cal=None) -> Optional[str]:
 
 
 def _us_open_due(con, now: datetime) -> bool:
-    """S64 Phase 6: once per US trading day, 20 minutes after the New York open (on his clock), and only while he holds US shares."""
+    """S64 Phase 6: once per US trading day, 20 minutes after the New York open (on his clock), only while he holds US shares
+    and the beta flag `us_sleeve` is on (S65)."""
     try:
+        from pflab import features
         from pflab.conductor import us_calendar as uc
         from pflab.ledger import foreign as lf
+        if not features.enabled("us_sleeve"):
+            return False
         pt = uc.load().pass_time_ist(now.date())
         if pt is None or now < pt or not lf.positions(con, now.date()):
             return False
