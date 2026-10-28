@@ -79,6 +79,8 @@ def from_text(text: str) -> Dict[str, Optional[str]]:
         out["bank"] = "SBI" if "state bank" in t else None
     elif "gift city" in t or "ifsc unit" in t or "international financial services centre" in t and "zerodha" in t:
         out["kind"] = "gift_city"
+    elif "transaction with holding statement" in t or "statement of transaction" in t:
+        out["kind"] = "other"                                   # a broker DP's own statement, not a CAS the ledger can read
     elif "consolidated account statement" in t and ("nsdl" in t or "cdsl" in t or "depository" in t):
         out["kind"] = "cas"
         out["dp_ids"] = ",".join(sorted(set(re.findall(r"dp\s*id\s*[:\-]?\s*([a-z0-9]{8})", t)))) or None

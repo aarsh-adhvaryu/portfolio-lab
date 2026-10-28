@@ -121,3 +121,18 @@ def test_the_name_of_the_password_that_opened_a_file_is_kept_never_the_value(tmp
         pytest.skip("this msoffcrypto cannot encrypt")
     got = sniff.sniff(enc.getvalue(), "s.xlsx", [("OTHER_PW", "nope"), ("SBI_PW", "secret-pw-123")])
     assert got["kind"] == "bank" and got["password_name"] == "SBI_PW" and "secret-pw-123" not in repr(got)
+
+
+def test_the_cas_depositories_become_the_broker_dp_and_a_read_only_demat(rt):
+    import json as _json
+    con = rt.cursor()
+    for k, (kind, info) in enumerate((("cas", {"kind": "cas", "dp_ids": "12081699,in309999", "password_name": "PAN_PW"}),
+                                      ("bank", {"kind": "bank", "bank": "SBI", "last4": "5678"})), start=1):
+        con.execute("INSERT INTO inbox_items (item_id, name, kind, sha, status, result_json, created_at, updated_at) VALUES (?, 'f', ?, ?, "
+                    "'awaiting setup', ?, ?, ?)", [k, kind, str(k), _json.dumps({"sniff": info}), NOW, NOW])
+    a = su.infer(con, NOW.date())["answers"]
+    assert a["broker"]["cas_dp"] == "12081699" and a["cas_password_name"] == "PAN_PW"
+    assert a["demats"] == [{"name": "DEMAT_IN309999", "provider": "a demat held outside Zerodha (holdings from the CAS only)", "cas_dp": "IN309999",
+                            "read_only": True}]
+    src = su.normalise(a)
+    assert src["accounts"]["DEMAT_IN309999"]["read_only"] is True and src["accounts"]["ZER"]["cas_dp"] == "12081699"

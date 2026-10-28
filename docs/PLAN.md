@@ -57,10 +57,10 @@ universe includes every name that traded); taxes and costs are in the objective;
   protocol and result files were folded into `docs/STUDIES.md`.
 
 ## What remains (dated; update at each stop)
-1. **Switch-over (S65 Phase 9).** Merge to `main`, tag `v2026.10.28`, clean-room install test in a throwaway folder from README alone, install the app, seed its
-   MARKET data (not the store: he asked for a complete reset, so the app starts a fresh record; the learner's counter is carried by code), run Setup, drop his
-   documents into Inbox, answer the questions, then self-test, an overnight dry run, one real brain pass (about Rs 10), the two Telegram summaries, the
-   `companion` job once. Then the shortcut and the tick point at the app, the user-level `PFLAB_DATA_DIR` is removed, the workshop's scheduled tasks stop.
+1. **Switch-over (S65 Phase 9, his yes 2026-10-28).** The app starts a fresh RECORD (the ledger rebuilt by the system from his statement files; empty journal,
+   memory, suggestions; the learner's counter carried by code) and keeps his PREFERENCES (targets, stock list, theme baskets, groups, API cap, FD list), which the AI
+   may change when he asks, with his yes (`plan/prefs.py`). Rehearsed 2026-10-28 from his real files: Setup proposed from the files, 13 of 13 checks, 1,383 events,
+   no hand-made bank rules (10 label questions asked instead).
 2. **The forward ledger (S66).** So the app never needs his statements again: Kite captures each day's trades and holdings as they happen; the monthly CAS
    arrives by read-only Gmail and reconciles them; FD intake by form or certificate in Setup; statements only open the books once, then are deleted.
 3. **Forward tests and the record (S65).** F1-F4 (`docs/protocols/s65_forward_protocol.md`: the passed avoid rule and the reversed leads) and F5 (the stress-gauge

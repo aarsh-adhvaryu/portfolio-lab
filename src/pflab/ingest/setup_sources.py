@@ -21,6 +21,7 @@ from typing import List, Optional
 from pflab.agents import questions
 
 NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,31}$")
+ZERODHA_DP_PREFIX = "120816"            # the six digits Zerodha Broking's CDSL depository participant ids start with
 AGENT = "setup"
 
 
@@ -154,6 +155,7 @@ def infer(con, today: date) -> dict:
     from collections import Counter
     kinds: Counter = Counter()
     banks: dict = {}
+    dps: Counter = Counter()
     cas_pw = None
     unread = 0
     for kind, rj in con.execute("SELECT kind, result_json FROM inbox_items WHERE status <> 'removed'").fetchall():
@@ -165,10 +167,14 @@ def infer(con, today: date) -> dict:
                 continue
             key = (info.get("bank") or "BANK", info["last4"])
             banks.setdefault(key, info.get("password_name"))
-        elif kind == "cas" and info.get("password_name"):
-            cas_pw = info["password_name"]
+        elif kind == "cas":
+            cas_pw = info.get("password_name") or cas_pw
+            dps.update({d.strip().upper() for d in (info.get("dp_ids") or "").split(",") if d.strip()})
     fy = today.year if today.month >= 4 else today.year - 1
-    answers = {"start": date(fy, 4, 1).isoformat(), "broker": {"account": "ZER", "provider": "Zerodha"},
+    zer = sorted((d for d in dps if d.startswith(ZERODHA_DP_PREFIX)), key=lambda d: (-dps[d], d))     # the one most CAS files show
+    answers = {"start": date(fy, 4, 1).isoformat(), "broker": {"account": "ZER", "provider": "Zerodha", **({"cas_dp": zer[0]} if zer else {})},
+               "demats": [{"name": f"DEMAT_{d}", "provider": "a demat held outside Zerodha (holdings from the CAS only)", "cas_dp": d,
+                           "read_only": True} for d in sorted(set(dps) - set(zer))],
                "banks": [{"name": f"{b}_{l4}", "bank": b, "last4": l4, **({"password_name": pw} if pw else {})}
                          for (b, l4), pw in sorted(banks.items())]}
     if cas_pw:

@@ -23,7 +23,7 @@ the workshop; their data collection always runs. Code: `release.py`, `guard.py`,
 | `ledger`, `ingest` | event-sourced ledger (FIFO lots, income, fees), `foreign` (US dollar ledger); parsers: Console tradebook/ledger, contract notes, CAS, bank statements, SBI interest certificates, Kite (read-only); `sniff` (files by content, incl. deposit interest certificates and which saved password opened a file), `setup_sources` (incl. `infer`: Setup proposed from the dropped files), `bank_labels`, `sources` (+ overlay); the inbox keeps files dropped before Setup and builds the ledger from all of them in one press (`inbox.apply_all`) |
 | `tax` | rules (dated, sourced tables in `configs/tax/`), gains by schedule, income (both regimes), proposed sales, `foreign`, `quicko` (the pack: 112A CSV in the department's layout, reconcile) |
 | `pm` | the store (DuckDB, schema v40), instruments, FDs (incl. `fd.entry`: a deposit from the Setup form, checked against the bank's maturity amount), bonds, gold, prices, today (net worth), `secrets` / `secrets_setup`, `reset` |
-| `portfolio`, `risk`, `plan` | tax-aware sell-down; exposure, Monte Carlo, CAPM, themes, scenarios, sleeve study; targets, deploy, guards, safety, buy zone, ready plans, pot, reserve, nudges, trader tickets, advisor, `twin` (the scoreboard: four paper books with the same money) |
+| `portfolio`, `risk`, `plan` | `prefs` (his preferences changed by the AI only when he asks, one exact edit, his yes, a backup); tax-aware sell-down; exposure, Monte Carlo, CAPM, themes, scenarios, sleeve study; targets, deploy, guards, safety, buy zone, ready plans, pot, reserve, nudges, trader tickets, advisor, `twin` (the scoreboard: four paper books with the same money) |
 | `quant`, `fundamentals`, `monitor`, `signals`, `backtest`, `eval` | forecasts (price ranges, scored), Hawkes, options, scans, comove, process, event studies, `stress_hedge` (the stress gauge and forward test F5, paper only); BSE results, valuation; promoter/event monitors; the engine and its protected tests |
 | `kg`, `knowledge`, `readers` | time-aware knowledge graph, hypotheses, memory/documents, Haiku/local readers |
 | `agents` | researcher, analyst (the only API doorbell), event, thesis, tradecheck, memory, questions, needs, inbox, workshop + sandbox (Docker, `network none`, read-only) |
@@ -69,7 +69,8 @@ The `us_open` brain pass (20 minutes after the New York open, once per US tradin
   graph_timeline, notes, memory_recall, journal, ready_plans, research_flags, price_history, quant, who_is_buying, market_context, growth,
   findings (what the learner tested), comovement, ipo_plan, scans, scenario, hypotheses, themes.
 - **journal:** record_prediction, record_suggestion, save_state, make_scan, record_hypothesis, decide_hypothesis, propose_pot_idea.
-- **action:** ask_investor, tell_investor, order_research, order_calculation, prepare_plan, correct_memory, fetch_cited, web_search.
+- **action:** ask_investor, tell_investor, order_research, order_calculation, prepare_plan, correct_memory, fetch_cited, web_search, change_preference
+  (only when he asks: his targets, stock list or API cap, put to him as one exact edit; his yes applies it to his file after a backup, `plan/prefs.py`).
 It never trades, moves money or changes targets and limits. Spend is governed by `hq/governor.py` (slider modes off / economy / normal); what may
 leave the PC is decided by `hq/egress.py`.
 

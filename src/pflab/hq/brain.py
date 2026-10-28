@@ -87,6 +87,8 @@ SYSTEM = (
     "the sleeve too; the learner tests only the ETFs, so a stock-level claim about a US stock is untested. The picture's "
     "us_sleeve part shows the positions, the year's remittances and TCS; when it says beta_off, the sleeve is switched off: "
     "leave it out.\n"
+    "6f. change_preference only when the investor himself asks to change a target, his stock list or his API cap: put the exact change "
+    "to him; his yes makes it. Never change them on your own judgement.\n"
     "7. If told your context is near its limit, call save_state at once with your working state.\n"
     "7b. In a pass the investor asked for (an event 'from the investor (question)'), your final message is the answer he "
     "reads: do not also tell_investor it.\n"

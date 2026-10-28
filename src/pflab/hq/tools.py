@@ -504,7 +504,7 @@ def _checked(ctx: Ctx, text: str) -> str:
 # Actions carried out a day at most (The investor 2026-10-25: minimum of him; a noisy day never floods him or the cap).
 # Beyond it the decision is kept in the journal ("held") and the brain is told. S62: the learner may propose a change,
 # applied only with the investor's yes (`learned` daily_cap); web_search is paid, so few.
-DAILY = {"tell_investor": 3, "ask_investor": 2, "order_research": 3, "order_calculation": 3, "fetch_cited": 5, "web_search": 3}
+DAILY = {"tell_investor": 3, "ask_investor": 2, "change_preference": 3, "order_research": 3, "order_calculation": 3, "fetch_cited": 5, "web_search": 3}
 
 
 def daily_cap(con, tool: str) -> Optional[int]:
@@ -565,6 +565,18 @@ def order_calculation(ctx: Ctx, a: dict) -> dict:
     q = a["question"]
     return _act(ctx, _decision("investigate", "calc", "", q, _checked(ctx, a.get("why", ""))),
                 lambda: board.post(ctx.con, "calc", q, ctx.now, frm="brain"), "order_calculation")
+
+
+def change_preference(ctx: Ctx, a: dict) -> dict:
+    """S65: a change HE asked for, put to him as one exact edit (plan/prefs.py); his yes applies it."""
+    from pflab.plan import prefs
+    try:
+        words = prefs.check(a["kind"], a["key"], a["value"])
+    except (prefs.PrefError, ValueError) as e:
+        return {"recorded": False, "carried_out": False, "why": f"not a change I can put to him: {e}"}
+    return _act(ctx, _decision("ask", "", a["kind"], f"change: {words}", _checked(ctx, a["why"])),
+                lambda: f"proposal #{prefs.propose(ctx.con, a['kind'], a['key'], a['value'], a['why'], ctx.now)}: waiting for his yes",
+                "change_preference")
 
 
 def prepare_plan(ctx: Ctx, a: dict) -> dict:
@@ -892,6 +904,12 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
     Tool("propose_pot_idea", "journal", "Put a missed winner or a new listing into the opportunity pot: the reason in words; "
          "buy price, exit, stop and amount are computed by code. Needs the pot's limit applied by the investor.",
          {"symbol": SYMBOL, "reason": _s("why it belongs in the pot", 600)}, ("symbol", "reason"), propose_pot_idea),
+    Tool("change_preference", "action", "ONLY when the investor himself asks to change a preference: put the exact change to him for his yes "
+         "(targets as {bucket: weight} for every bucket that changes, the stock list add/remove a symbol, the monthly API cap in rupees). "
+         "Never on your own judgement; nothing changes until he says yes.",
+         {"kind": {"type": "string", "enum": ["targets", "stock_list", "api_cap"]}, "key": _s("targets: 'weights'; stock_list: add or remove; api_cap: monthly", 20),
+          "value": _s("targets: JSON of the new weights; stock_list: the symbol; api_cap: rupees", 300),
+          "why": _s("what he asked, in his words", 300)}, ("kind", "key", "value", "why"), change_preference),
 ]}
 TOOLS["record_suggestion"].params["rested_on"]["items"]["enum"] = [n for n, t in TOOLS.items() if t.kind == "read"]
 

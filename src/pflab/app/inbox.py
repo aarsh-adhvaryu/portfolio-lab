@@ -193,6 +193,9 @@ def _process(rt, iid: int) -> None:
             _fd_cert(rt, it)
         elif it["kind"] == "screenshot":
             _ocr(rt, it)
+        elif ((it.get("result") or {}).get("sniff") or {}).get("password_name") and Path(it["path"]).suffix.lower() == ".pdf":
+            _update(rt, iid, status="kept", result_json=json.dumps({**it["result"], "note": "password-protected and not a ledger document: kept, "
+                                                                     "not read into the graph"}))
         else:
             _graph(rt, it)
     except Exception as e:
@@ -386,7 +389,11 @@ def apply_all(rt) -> dict:
         if missing:
             return {"written": False, "waiting_for": missing}
         b = _builder(rt)
-        log, led, checks, notes, src = b.build(merged, rt.repo)
+        try:
+            log, led, checks, notes, src = b.build(merged, rt.repo)
+        except Exception as e:                              # a document the build cannot read: said, nothing written
+            return {"written": False, "failed": 1, "documents": len(items), "error": f"{type(e).__name__}: {str(e)[:300]}",
+                    "checks": [{"name": "every document can be read", "ok": False, "detail": f"{type(e).__name__}: {str(e)[:200]}"}]}
         failed = [c for c in checks if not c[1]]
         res = {"checks": [{"name": n, "ok": ok, "detail": d} for n, ok, d in checks], "notes": notes, "events": len(log), "failed": len(failed),
                "documents": len(items), "written": False}
@@ -403,8 +410,11 @@ def apply_all(rt) -> dict:
             bank_labels.ask(con, src.get("_unlabelled") or [], rt.clock())
         except Exception:
             pass
+    certs = [_item(rt, r[0]) for r in con.execute("SELECT item_id FROM inbox_items WHERE kind='fd_certificate' AND status='ready'").fetchall()]
+    for it in certs:                                        # the deposit interest certificates go in with the same press
+        _fd_cert(rt, it, write=True)
     rt.bump("portfolio", "command", "watch", "inbox")
-    res["written"] = True
+    res.update(written=True, certificates=len(certs))
     return res
 
 

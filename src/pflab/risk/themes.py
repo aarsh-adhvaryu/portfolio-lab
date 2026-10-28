@@ -30,7 +30,7 @@ WINDOW = 252                     # sessions: "12 months"
 MIN_SESSIONS = 250
 DRIFT_POINTS = 0.05
 REVISE_AT = 0.20                 # an approved limit is re-proposed when new history moves it by more than this (relative)
-KINDS = ("theme_limit", "theme_basket", "theme_member", "dip_reserve", "pot_limit", "us_sleeve")
+KINDS = ("theme_limit", "theme_basket", "theme_member", "dip_reserve", "pot_limit", "us_sleeve", "preference")
 YES = ("yes", "y", "ok", "okay", "approve", "approved", "apply", "go ahead", "sure")
 NO = ("no", "n", "decline", "declined", "reject", "not now", "don't", "dont")
 
@@ -260,6 +260,17 @@ def resolve(con, now: datetime) -> dict:
             e = json.loads(ev or "{}")
             e["start"] = start.isoformat() if start else None
             con.execute("UPDATE limit_proposals SET value=?, evidence_json=? WHERE prop_id=?", [str(share), json.dumps(e), pid])
+        if kind == "preference" and new == "applied":           # S65: his yes makes the change in his own file (plan/prefs.py)
+            from pflab.plan import prefs
+            val = con.execute("SELECT value FROM limit_proposals WHERE prop_id=?", [pid]).fetchone()[0]
+            try:
+                done = prefs.apply(con, *key.split(":", 1), val, now)
+            except prefs.PrefError as e:
+                new, done = "declined", f"not made: {e}"
+            e2 = json.loads(ev or "{}")
+            e2["result"] = done
+            con.execute("UPDATE limit_proposals SET evidence_json=? WHERE prop_id=?", [json.dumps(e2), pid])
+            ev = json.dumps(e2)
         _apply_side_effects(con, kind, key, json.loads(ev or "{}"), now, new == "applied")
         if new == "applied":                                 # a newer approved value replaces the older one
             con.execute("UPDATE limit_proposals SET status='superseded', decided_at=? WHERE kind=? AND key=? AND status='applied'",
