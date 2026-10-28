@@ -85,7 +85,9 @@ Act "create .venv and install the requirements" {
     $exe, $arg = $pyCmd -split " ", 2
     if ($arg) { & $exe $arg -m venv .venv } else { & $exe -m venv .venv }
     & .\.venv\Scripts\python.exe -m pip install --quiet --upgrade pip
-    & .\.venv\Scripts\python.exe -m pip install --quiet -e .
+    & .\.venv\Scripts\python.exe -m pip install --quiet -r requirements.lock     # the exact versions the tests passed on
+    if ($LASTEXITCODE) { Fail "pip install of requirements.lock failed" }
+    & .\.venv\Scripts\python.exe -m pip install --quiet --no-deps -e .
     if ($LASTEXITCODE) { Fail "pip install failed" }
   } finally { Pop-Location }
 }

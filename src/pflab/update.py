@@ -48,7 +48,14 @@ def _python(root: Path) -> str:
 
 
 def default_install(root: Path, run: Run = run_cmd) -> None:
-    rc, out = run([_python(root), "-m", "pip", "install", "-e", ".", "--quiet"], root)
+    """The exact library versions the release's tests passed on (requirements.lock), then the program itself without dependencies."""
+    lock = Path(root) / "requirements.lock"
+    if lock.exists():
+        rc, out = run([_python(root), "-m", "pip", "install", "--quiet", "-r", "requirements.lock"], root)
+        if rc:
+            raise UpdateError(f"installing requirements.lock failed: {out[-300:]}")
+    rc, out = run([_python(root), "-m", "pip", "install", "--quiet", "--no-deps", "-e", "."] if lock.exists()
+                  else [_python(root), "-m", "pip", "install", "-e", ".", "--quiet"], root)
     if rc:
         raise UpdateError(f"installing the requirements failed: {out[-300:]}")
 

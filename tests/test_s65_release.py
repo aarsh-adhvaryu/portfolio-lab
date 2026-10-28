@@ -161,3 +161,13 @@ def test_every_source_file_is_in_git():
         pytest.skip("not a git checkout")
     on_disk = {p.relative_to(root).as_posix() for d in ("src", "tools") for p in (root / d).rglob("*.py") if "__pycache__" not in p.parts}
     assert sorted(on_disk - tracked) == []
+
+
+def test_the_lock_file_is_what_the_tests_run_on():
+    """The app once got DuckDB 2.0 while the tests ran on 1.5 (found in the switch-over): the app installs requirements.lock, which must
+    match the libraries this suite is running with."""
+    from importlib import metadata
+    root = Path(__file__).resolve().parents[1]
+    pins = dict(l.split("==", 1) for l in (root / "requirements.lock").read_text(encoding="utf-8").splitlines() if "==" in l and not l.startswith("#"))
+    for name in ("duckdb", "pandas", "numpy", "pyarrow", "fastapi", "anthropic", "statsmodels", "openpyxl", "pypdf", "langchain-core"):
+        assert pins.get(name) == metadata.version(name), name
