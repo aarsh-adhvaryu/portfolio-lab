@@ -56,6 +56,19 @@ universe includes every name that traded); taxes and costs are in the objective;
 - S65 amendment: frozen protocols and results of the live tests stay as files in `docs/protocols/` (a claim's protocol is hashed at registration); the other
   protocol and result files were folded into `docs/STUDIES.md`.
 
+## Handoff to the cloud Claude Code session (2026-10-28, end of the local S66 work)
+State: `main` = tag `v2026.10.28.11`, suite green (2076), nothing uncommitted. The app on his PC takes the newest tag at each start of its one icon.
+**The cloud session cannot see:** his installed app, its store, `%USERPROFILE%\.pflab` (secrets, the Gmail token, `privacy_terms.json`), Ollama or Docker on his PC.
+So: no real-data checks; the tests are synthetic and run anywhere (`pip install -r requirements.lock`, `pip install -e ".[dev]"`, `pytest -q`); the pre-push privacy
+check (`.githooks`, `python -m pflab.hq.security`) blocks without `privacy_terms.json` and is not installed in a fresh clone, so grep the staged diff by hand for amounts,
+names and ids before every push (CLAUDE.md). Work on a branch `pm/sN-<slug>`, merge to `main` only when the suite passes and the change is confirmed, tag `vYYYY.MM.DD[.N]`.
+**Pending his word:** a true empty start (move the record aside, restore only targets and stock list, let Gmail and Kite rebuild it) or keep the record rebuilt on 2026-10-28.
+**Pending him:** the one-time Google step (README step 5) then Settings > Connect Gmail; the 10 bank-label questions; the companion's proposals.
+**Next, in order:** (1) the first real Gmail run: expect small fixes in `ingest/gmail.py` and `ingest/mail_read.py` (built and tested on a fake mailbox and four invented emails only);
+(2) the tick installs a waiting update by itself when it ends (today an update is refused while the tick or the window holds the record);
+(3) the `plans` job (13.6 min cold) and the news step of `collect`; (4) the other screens (Agent HQ, Portfolio, Schedule) in the style of the new Command centre;
+(5) route simple local questions in the chat to `system_status` and `mail_facts` (the brain already has them).
+
 ## What remains (dated; update at each stop)
 0. **DONE 2026-10-28: the app runs his money.** `D:\PortfolioLabApp` (release `v2026.10.28.x` from GitHub; clean-room install and a real update and rollback tested), market data and news seeded (3.9 GB), his preferences carried, the RECORD rebuilt by the system itself from his files (13 of 13 checks, 1,383 events, 14 FDs), the desktop shortcuts and the scheduled tick point at it, the user-level PFLAB_DATA_DIR removed. Live checks: two Telegram summaries delivered; one brain pass (Opus, Sonnet rival) Rs 13.07; October's spend Rs 1,420 of 2,500 (the workshop's carried). Found and fixed on the way: a hidden source file, untested library versions (now `requirements.lock`), a long-path limit, the tick needing his user.
    **Read-only Gmail (v2026.10.28.5-.6):** built and tested on a fake Gmail (`ingest/gmail.py`, job `mail`); Connect fetches at once; a cold start reads a
