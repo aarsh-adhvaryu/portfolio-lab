@@ -29,3 +29,6 @@ logs/
 
 # S59 drive watcher: files the investor drops for the inbox (his, never in git)
 /drop/
+
+# S65: the installed app's release file (written by tools/install_app.ps1; per install, never in git)
+/release.toml

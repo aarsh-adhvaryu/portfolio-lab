@@ -61,6 +61,9 @@ def poll_once(rt, timeout: int = 0, transport=None) -> int:
     from pflab.service import telegram as tgm
     if not (rt.settings.get("telegram_send") and configured(rt)):
         return 0
+    from pflab import guard
+    if transport is None and guard.blocked("telegram"):          # S65: the workshop does not poll
+        return 0
     token, chat_id = rt.secrets.get("telegram", "token"), rt.secrets.get("telegram", "chat_id")
     ups = bot.get_updates(token, bot.next_offset(rt.cursor()), transport or bot.poll_transport, timeout)
     if not ups:

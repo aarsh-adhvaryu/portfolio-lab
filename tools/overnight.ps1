@@ -27,6 +27,17 @@ $Phases = @($Phases | ForEach-Object { $_ -split "," } | ForEach-Object { $_.Tri
 Set-Location (Split-Path $PSScriptRoot -Parent)
 $env:PYTHONIOENCODING = "utf-8"
 $py = (Resolve-Path ".venv\Scripts\python.exe").Path
+# S65: an installed app has release.toml at its root: it sets the data and store folders and wins over the environment
+# (a user-level PFLAB_DATA_DIR may still point at the workshop). Without it this is the workshop, where outward sends and paid
+# calls are blocked by src\pflab\guard.py.
+$rel = Join-Path (Get-Location) "release.toml"
+$isApp = Test-Path $rel
+if ($isApp) {
+    foreach ($kv in @(@("data", "PFLAB_DATA_DIR"), @("pm", "PFLAB_PM_DIR"))) {
+        $m = Select-String -Path $rel -Pattern ("^" + $kv[0] + " = '(.+)'\s*$") | Select-Object -First 1
+        if ($m) { Set-Item -Path ("Env:" + $kv[1]) -Value $m.Matches[0].Groups[1].Value }
+    }
+}
 $pm = if ($env:PFLAB_PM_DIR) { $env:PFLAB_PM_DIR } else { "D:\portfolio_lab\pm" }
 $day = Get-Date -Format "yyyy-MM-dd"
 New-Item -ItemType Directory -Force "$pm\reports" | Out-Null

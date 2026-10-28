@@ -39,6 +39,8 @@ Transport = Callable[[str, Dict], Tuple[int, dict]]
 
 
 def poll_transport(url: str, payload: Dict) -> Tuple[int, dict]:
+    from pflab import guard
+    guard.require("telegram")                       # S65: the workshop never polls the investor's bot (it would answer twice)
     import requests
     r = requests.post(url, json=payload, timeout=POLL_TIMEOUT + 15)
     try:

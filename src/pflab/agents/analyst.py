@@ -106,7 +106,10 @@ def config(path: Optional[Path] = None) -> dict:
     from pflab.pm import store
     p = path or store.pm_dir() / "api_budget.toml"
     c = (_toml.load(p).get("api", {}) if p.exists() else {})
-    return {"model": c.get("model", MODEL), "cap": float(c.get("monthly_cap_rupees", 0.0)),
+    from pflab import release
+    # S65: the Rs 2,500 cap belongs to the app; the workshop counts against its own development line (default 0, raised only by him)
+    cap = float(c.get("dev_monthly_cap_rupees", 0.0)) if release.channel() == "beta" else float(c.get("monthly_cap_rupees", 0.0))
+    return {"model": c.get("model", MODEL), "cap": cap,
             "ask_above": float(c.get("ask_above_rupees", 0.0)), "usd_inr": float(c.get("usd_inr", 90.0)),
             "adopted": bool(c.get("adopted", False)),
             # the investor 2026-10-23: Tijori exports are public company data, not his; they go to the analyst (set false to stop)
@@ -596,6 +599,8 @@ def write_calculation(con, prompt: str, system: str, client, *, now: Optional[da
 def make_client(secrets=None):
     """The SDK client: the key from secrets.toml [anthropic] api_key if present, else the SDK's own resolution
     (ANTHROPIC_API_KEY or an `ant auth login` profile). Only this module talks to the API."""
+    from pflab import guard
+    guard.require("paid")                       # S65: the workshop makes no paid call unless run with --paid
     import anthropic
     headers = {}
     if secrets is not None and secrets.has("anthropic", "workspace_id"):

@@ -380,6 +380,7 @@ function renderSettings(s) {
     </section>
     <section class="panel" style="flex:1 1 420px"><span class="lbl">Setup</span><span class="small muted">your accounts, the start date and the files the ledger still needs</span>
       <a class="btn primary" href="#/setup" style="align-self:flex-start">Open Setup</a></section>
+    <section class="panel" style="flex:1 1 420px" id="releaseP"><span class="lbl">This release</span><span class="small muted">loading…</span></section>
     <section class="panel" style="flex:1 1 420px" id="featuresP"><span class="lbl">Beta features</span><span class="small muted">loading…</span></section>
     <section class="panel" style="flex:1 1 420px" id="secretsP"><span class="lbl">Keys and passwords</span><span class="small muted">loading…</span></section>
     <section class="panel" style="flex:1 1 640px" id="modelsP"><span class="lbl">Models: one per job</span><span class="small muted">loading…</span></section>
@@ -394,9 +395,20 @@ function renderSettings(s) {
   document.querySelectorAll('[data-spreset]').forEach((b) => { b.onclick = async () => { S.settings = await post('/api/settings', { preset: b.dataset.spreset }); redraw(); }; });
   document.querySelectorAll('[data-sbrain]').forEach((b) => { b.onclick = async () => { S.settings = await post('/api/settings', { brain: b.dataset.sbrain }); redraw(); }; });
   $('simsHour').onchange = async () => { S.settings = await post('/api/settings', { sims_hour: Number($('simsHour').value) }); redraw(); };
+  renderRelease();
   renderFeatures(redraw);
   renderSecrets();
   renderModels(redraw);
+}
+/* S65: which release this is; updating needs the store free, so it is done from the "Portfolio Lab Update" shortcut (pflab update) */
+async function renderRelease() {
+  const el = $('releaseP'); if (!el) return;
+  let d;
+  try { d = await api('/api/release'); } catch (e) { el.innerHTML = `<span class="lbl">This release</span><span class="small warn">${esc(e.message)}</span>`; return; }
+  el.innerHTML = d.is_app
+    ? `<span class="lbl">This release · ${esc(d.channel)}</span><div class="setting"><div style="flex:1;display:flex;flex-direction:column;gap:2px"><span>${esc(d.tag)} <span class="small muted">installed ${esc(d.installed_on)}</span></span>
+       <span class="small muted">To update: close this window, then open the "Portfolio Lab Update" shortcut (it backs the store up first; your record is never wiped). ${d.previous_tag ? 'To undo the last update: pflab update --rollback (previous: ' + esc(d.previous_tag) + ').' : ''}</span></div></div>`
+    : `<span class="lbl">This release · ${esc(d.channel)}</span><span class="small muted">This is the workshop (beta): it develops releases and does not update itself; it sends nothing outward unless told.</span>`;
 }
 /* S65: Setup (ingest/setup_sources.py): the accounts and the start date write sources.toml; the files still needed are listed */
 function renderSetup(d) {

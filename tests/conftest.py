@@ -14,6 +14,15 @@ from pflab.execution.costs import CostModel
 from pflab.tax.india_lots import TaxPolicy
 
 @pytest.fixture(autouse=True)
+def _stable_channel(monkeypatch):
+    """The suite runs as the installed app would (S65): a checkout without release.toml is the workshop and blocks outward sends and
+    paid calls; the tests of that guard set the channel themselves."""
+    monkeypatch.setenv("PFLAB_CHANNEL", "stable")
+    monkeypatch.delenv("PFLAB_PAID", raising=False)
+    monkeypatch.delenv("PFLAB_LIVE", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _no_backup_decision(monkeypatch):
     """Tests never read the investor's own backup decision in configs/service.toml (S58b); a test that needs one sets it."""
     from pflab.service import backup

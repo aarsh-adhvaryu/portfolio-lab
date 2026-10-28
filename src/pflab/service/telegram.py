@@ -49,6 +49,8 @@ def split_message(text: str, limit: int = MAX_LEN) -> List[str]:
 
 
 def requests_transport(url: str, payload: Dict) -> Tuple[int, dict]:
+    from pflab import guard
+    guard.require("telegram")                       # S65: the workshop never sends outward unless run with --live
     import requests
     r = requests.post(url, json=payload, timeout=15)
     try:
@@ -66,6 +68,13 @@ def make_sender(secrets, transport: Optional[Transport] = None, sleep: Callable[
         def unconfigured(text: str) -> None:
             raise TelegramNotConfigured("telegram token and chat_id are not in the secrets file")
         return unconfigured
+    if transport is None:                           # S65: the real network path: blocked in the workshop, everything stays pending
+        from pflab import guard
+        why = guard.blocked("telegram")
+        if why:
+            def workshop(text: str) -> None:
+                raise TelegramNotConfigured(why)
+            return workshop
     token, chat = secrets.get("telegram", "token"), secrets.get("telegram", "chat_id")
     transport = transport or requests_transport
     url = f"https://api.telegram.org/bot{token}/sendMessage"

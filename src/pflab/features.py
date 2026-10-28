@@ -17,8 +17,9 @@ CHANNELS = ("stable", "beta")
 
 
 def channel() -> str:
-    c = os.environ.get("PFLAB_CHANNEL", "stable").strip().lower()
-    return c if c in CHANNELS else "stable"
+    """release.toml's channel in an installed app; else PFLAB_CHANNEL; else beta (a checkout with no release file: the workshop)."""
+    from pflab import release
+    return release.channel()
 
 
 def load(path: Optional[Path] = None) -> Dict[str, dict]:

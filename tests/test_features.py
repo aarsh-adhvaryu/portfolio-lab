@@ -16,13 +16,13 @@ NOW = datetime(2026, 10, 22, 11, 30)
 
 
 def test_the_channel_sets_the_default_and_his_switch_wins(monkeypatch):
-    monkeypatch.delenv("PFLAB_CHANNEL", raising=False)
+    monkeypatch.setenv("PFLAB_CHANNEL", "stable")
     assert features.channel() == "stable" and not features.enabled("us_sleeve", {})
     monkeypatch.setenv("PFLAB_CHANNEL", "beta")
     assert features.enabled("us_sleeve", {})
     assert not features.enabled("us_sleeve", {"features": {"us_sleeve": False}})          # his off beats the beta default
-    monkeypatch.setenv("PFLAB_CHANNEL", "bogus")
-    assert features.channel() == "stable"
+    assert features.enabled("us_sleeve", {"features": {"us_sleeve": True}}) and features.channel() == "beta"
+    monkeypatch.setenv("PFLAB_CHANNEL", "stable")
     assert features.enabled("us_sleeve", {"features": {"us_sleeve": True}})               # his on beats the stable default
     assert not features.enabled("no_such_feature", {"features": {"no_such_feature": True}})
 
@@ -30,7 +30,7 @@ def test_the_channel_sets_the_default_and_his_switch_wins(monkeypatch):
 def test_a_feature_not_marked_beta_is_on_by_default(tmp_path, monkeypatch):
     cfg = tmp_path / "f.toml"
     cfg.write_text('[plain]\ntitle = "Plain"\n[risky]\nbeta = true\ntitle = "Risky"\n', encoding="utf-8")
-    monkeypatch.delenv("PFLAB_CHANNEL", raising=False)
+    monkeypatch.setenv("PFLAB_CHANNEL", "stable")
     assert features.enabled("plain", {}, cfg) and not features.enabled("risky", {}, cfg)
     assert [(f["name"], f["beta"], f["on"]) for f in features.listing({}, cfg)] == [("plain", False, True), ("risky", True, False)]
 
@@ -45,7 +45,7 @@ def test_settings_keep_only_listed_features_with_true_or_false(tmp_path):
 
 
 def test_the_picture_leaves_the_sleeve_out_while_it_is_off(monkeypatch):
-    monkeypatch.delenv("PFLAB_CHANNEL", raising=False)
+    monkeypatch.setenv("PFLAB_CHANNEL", "stable")
     monkeypatch.setenv("PFLAB_PM_DIR", "Z:/no/such/pm")
     out = picture.us_sleeve(None, None, date(2026, 10, 28))                               # returns before touching the store
     assert "beta_off" in out and "positions" not in out
@@ -66,7 +66,7 @@ def test_the_us_open_pass_needs_the_flag_and_holdings(monkeypatch):
     monkeypatch.setattr(uc.UsCalendar, "pass_time_ist", lambda self, d: datetime(2026, 10, 28, 19, 20))
     now = datetime(2026, 10, 28, 21, 0)
     monkeypatch.setenv("PFLAB_PM_DIR", "Z:/no/such/pm")
-    monkeypatch.delenv("PFLAB_CHANNEL", raising=False)
+    monkeypatch.setenv("PFLAB_CHANNEL", "stable")
     assert not brain._us_open_due(_Con(), now)                                            # holdings, flag off
     monkeypatch.setenv("PFLAB_CHANNEL", "beta")
     assert brain._us_open_due(_Con(), now)                                                # holdings, flag on
@@ -86,7 +86,7 @@ def app(tmp_path, monkeypatch):
 
 
 def test_the_dashboard_hides_and_shows_the_us_panel_and_forms(app, monkeypatch):
-    monkeypatch.delenv("PFLAB_CHANNEL", raising=False)
+    monkeypatch.setenv("PFLAB_CHANNEL", "stable")
     rt, c = app
     assert c.get("/api/us").json()["enabled"] is False
     assert c.post("/api/us/trade", json={"date": "2026-10-20", "symbol": "SPY", "side": "buy", "qty": 1, "price": 100}).status_code == 403

@@ -276,6 +276,15 @@ def create_app(rt) -> FastAPI:
     def research(isin: str = ""):
         return json.loads(json.dumps(views.research(rt, isin or None), default=str))
 
+    @app.get("/api/release")
+    def release_api():
+        """S65: which release this is (read only; updating needs the store free, so it is done from the Update shortcut)."""
+        from pflab import release
+        r = release.load() or {}
+        a = r.get("app") or {}
+        return {"is_app": bool(r), "channel": release.channel(), "tag": a.get("tag", ""), "previous_tag": a.get("previous_tag", ""),
+                "installed_on": str(a.get("installed_on", ""))}
+
     @app.get("/api/features")
     def features_api():
         """S65: the beta features, with his switch and the channel's default."""

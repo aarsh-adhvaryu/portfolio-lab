@@ -13,6 +13,8 @@ def _d(s: str) -> date:
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog="pflab")
+    p.add_argument("--paid", action="store_true", help="workshop only: allow paid API calls (against dev_monthly_cap_rupees); put it before the command")
+    p.add_argument("--live", action="store_true", help="workshop only: allow sending Telegram messages; put it before the command")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     c = sub.add_parser("collect", help="run a data collector")
@@ -239,6 +241,9 @@ def main(argv=None):
     thp.add_argument("--asof", type=_d, default=date.today())
     sub.add_parser("drift", help="re-test every adopted rule on the data since it was fixed (S46)")
     sub.add_parser("inbox", help="read every file dropped into PFLAB_PM_DIR/inbox into the knowledge graph")
+    upp = sub.add_parser("update", help="S65: the installed app updates to the newest release tag (store backed up first), or --rollback")
+    upp.add_argument("--rollback", action="store_true", help="return to the previous release and the store from before the update")
+    upp.add_argument("--check", action="store_true", help="only say whether a newer release exists")
     sup = sub.add_parser("setup", help="S65: secrets (typed, never echoed or printed) and which are set")
     sup.add_argument("action", choices=["secrets", "status"])
     sup.add_argument("--only", nargs="*", choices=["kite", "telegram", "anthropic", "sec"], help="just these sections")
@@ -254,8 +259,12 @@ def main(argv=None):
     lp.add_argument("--claim", type=int, help="claim id (test)")
 
     a = p.parse_args(argv)
+    from pflab import guard
+    guard.set_flags(a.paid, a.live)
     if a.cmd == "setup":
         return _setup(a)
+    if a.cmd == "update":
+        return _update(a)
     if a.cmd == "learner":
         return _learner(a)
     if a.cmd == "forecast":
@@ -463,6 +472,25 @@ def _llm(a) -> int:
         r = smoke.run(store.connect(), a.model)
         print(r)
         return 0 if r["passed"] else 1
+    return 0
+
+
+def _update(a) -> int:
+    """pflab update [--check] | --rollback: only in the installed app; refuses while the dashboard or a job holds the store."""
+    from pflab import release, update as upd
+    from pflab.pm import store
+    try:
+        if a.rollback:
+            r = upd.rollback(release.ROOT, store.pm_dir())
+        else:
+            r = upd.update(release.ROOT, store.pm_dir(), check_only=a.check)
+    except upd.UpdateError as e:
+        print(f"refused: {e}")
+        return 1
+    print(r["note"])
+    if r.get("error"):
+        print(f"why: {r['error']}")
+        return 1
     return 0
 
 

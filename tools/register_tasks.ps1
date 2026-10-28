@@ -21,6 +21,12 @@ param(
   [string]$TaskName = "PFLab Tick"
 )
 
+# S65: only an installed app registers its tick. The workshop (a checkout with no release.toml) never does: two ticks on one
+# phone would answer twice (src\pflab\guard.py).
+if (-not (Test-Path (Join-Path $RepoRoot "release.toml"))) {
+  throw "no release.toml in $RepoRoot: this is the workshop. Scheduled tasks are registered only for the installed app (tools\install_app.ps1)."
+}
+
 # pythonw: no console window flashing up every 15 minutes (S58b); the tick writes to PFLAB_PM_DIR\reports\tick.log.
 # While the dashboard is open the tick stands aside (the dashboard runs the jobs); its Settings decide the preset and
 # whether held messages are sent, for the tick too.
