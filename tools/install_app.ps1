@@ -45,6 +45,10 @@ if ((Test-Path $Folder) -and (Get-ChildItem $Folder -Force -ErrorAction Silently
 $free = [math]::Round((Get-PSDrive ($Folder.Substring(0, 1))).Free / 1GB, 1)
 Write-Host "   free space on $($Folder.Substring(0, 2)): $free GB (needs $MinFreeGB GB: about 5 GB of data and the store come later)"
 if ($free -lt $MinFreeGB) { Fail "less than $MinFreeGB GB free on $($Folder.Substring(0, 2))" }
+$longPaths = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name LongPathsEnabled -ErrorAction SilentlyContinue).LongPathsEnabled
+if ($Folder.Length -gt 60 -and $longPaths -ne 1) {
+  Fail "the folder path is $($Folder.Length) characters: Python packages nest deep and Windows stops at 260 without long paths. Choose a short folder (like D:\PortfolioLabApp) or enable long paths."
+}
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) { Fail "git is not installed" }
 $pyCmd = $null
 foreach ($c in @("py -3.13", "python")) {
