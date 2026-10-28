@@ -835,6 +835,7 @@ def _service(a) -> int:
             print("the preset in Settings is Off: no jobs run")
             return 0
         ctx = runner.make_ctx()
+        jobs.reap_at_start(ctx.con, ctx.now)    # S66: a run that died with an earlier process does not hold its slot
         for r in runner.tick_and_notify(ctx, only):
             print(f"{r.job:<10} {r.status:<8} {r.detail[:200]}")
         return 0

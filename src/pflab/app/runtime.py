@@ -82,6 +82,8 @@ class Runtime:
 
     # --- threads --------------------------------------------------------------------------------------------------------
     def start(self) -> None:
+        from pflab.service import jobs
+        jobs.reap_at_start(self.cursor(), self.clock())     # S66: runs left "running" by a stopped process are due again
         for name, fn in (("scheduler", self._scheduler_loop), ("live", self._live_loop), ("mc", self._mc_loop),
                          ("research", self._research_loop), ("hq", self._hq_loop), ("phone", self._phone_loop)):
             t = threading.Thread(target=self._guard(fn), name=name, daemon=True)

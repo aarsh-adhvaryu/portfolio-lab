@@ -203,3 +203,16 @@ def test_body_check_stops_his_name_anywhere_in_a_request(con):
     with pytest.raises(egress.EgressBlocked, match="account"):
         llm.body_check({"messages": [{"role": "assistant", "content": "SB12345678 holds it"}]}, g)
     llm.body_check({"system": "You answer the investor's questions", "messages": [{"content": "year 1208"}]}, g)
+
+
+def test_the_app_does_not_run_the_suite_and_closes_an_old_false_alert(con, tmp_path, monkeypatch):
+    """S66: in the installed app pytest ran no tests and raised a high "the test suite failed" alert; the app skips the run and closes it."""
+    from pflab import release
+    rt = _desk(con, tmp_path)
+    fake = lambda *a, **k: SimpleNamespace(returncode=5, stdout="1 warning in 0.03s")   # noqa: E731
+    assert sec.tests(rt, run=fake)["ok"] is False                                        # the workshop still reports it
+    assert con.execute("SELECT count(*) FROM questions WHERE status='open' AND subject_key LIKE 'security:tests:%'").fetchone()[0] == 1
+    monkeypatch.setattr(release, "load", lambda root=None: {"app": {"tag": "v2026.10.28.1"}})
+    out = sec.tests(rt, run=lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not run")))
+    assert out["ok"] and out["skipped"]
+    assert con.execute("SELECT count(*) FROM questions WHERE status='open' AND subject_key LIKE 'security:tests:%'").fetchone()[0] == 0

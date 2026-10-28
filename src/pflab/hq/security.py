@@ -284,6 +284,14 @@ def python_of(repo: Path) -> str:
 
 def tests(rt, run=subprocess.run) -> dict:
     con, now = rt.cursor(), rt.clock()
+    from pflab import release
+    if release.load() is not None:        # S66: the app does not run the suite (it ran no tests there and raised a false "high" alert):
+        from pflab.agents import questions as qs      # each release passed the suite in the workshop before it was tagged
+        for (key,) in con.execute("SELECT subject_key FROM questions WHERE status='open' AND subject_key LIKE 'security:tests:%'").fetchall():
+            qs.drop(con, key, now)
+        line = "not run in the app: each release passed the whole suite in the workshop before it was tagged"
+        _run(con, "tests", "ok", None, {"summary": line}, now)
+        return {"ok": True, "skipped": True, "summary": line}
     out = ""
     try:
         r = run([python_of(Path(rt.repo)), "-m", "pytest", "-q", "-p", "no:cacheprovider"], cwd=rt.repo, capture_output=True,

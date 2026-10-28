@@ -87,6 +87,17 @@ def reap_abandoned(con, now: datetime) -> int:
     return len(rows)
 
 
+def reap_at_start(con, now: datetime) -> int:
+    """S66: a process that has just taken the store (the dashboard, the tick) is the only one: any `running` row is a run that died with
+    the process before it (found when a stopped window left `collect` "running" and blocked its slot). Marked failed at once, so the
+    job is due again, instead of waiting out ABANDON_AFTER."""
+    rows = con.execute("SELECT run_id FROM job_runs WHERE status='running'").fetchall()
+    for (rid,) in rows:
+        con.execute("UPDATE job_runs SET status='failed', finished_at=?, detail='abandoned: the process stopped before it finished' "
+                    "WHERE run_id=?", [now, rid])
+    return len(rows)
+
+
 def is_due(ctx: Ctx, job: Job) -> Tuple[bool, str]:
     if job.enabled_fn is not None:
         ok, why = job.enabled_fn(ctx)
@@ -100,7 +111,8 @@ def is_due(ctx: Ctx, job: Job) -> Tuple[bool, str]:
     if done:
         return False, f"done for slot {slot:%Y-%m-%d %H:%M}"
     cool = ctx.con.execute("SELECT max(started_at) FROM job_runs WHERE job=? AND status IN ('failed','running') "
-                           "AND started_at >= ?", [job.name, slot]).fetchone()[0]
+                           "AND detail IS DISTINCT FROM 'abandoned: the process stopped before it finished' AND started_at >= ?",
+                           [job.name, slot]).fetchone()[0]
     if cool is not None and ctx.now - cool < timedelta(minutes=job.cooldown_minutes):
         return False, f"cooling down after a failed or running attempt at {cool:%H:%M}"
     return True, f"due for slot {slot:%Y-%m-%d %H:%M}"

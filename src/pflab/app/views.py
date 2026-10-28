@@ -147,7 +147,7 @@ def notifications(con, now: datetime, limit: int = 8) -> List[dict]:
     for sym, happened, kind, detail in con.execute(
             "SELECT symbol, happened_at, kind, detail FROM research_flags WHERE detected_at >= ? ORDER BY happened_at DESC "
             "LIMIT 6", [now - timedelta(days=3)]).fetchall():
-        out.append({"kind": kind, "text": f"{sym or ''} {detail}".strip(), "meta": f"research · {kind}", "at": str(happened)[:16]})
+        out.append({"kind": kind, "text": (detail if sym and detail.upper().startswith(sym.upper()) else f"{sym or ''} {detail}").strip(), "meta": f"research · {kind}", "at": str(happened)[:16]})
     for sym, kind, level, hit in con.execute(
             "SELECT symbol, kind, level, last_hit_at FROM watches WHERE last_hit_at >= ? ORDER BY last_hit_at DESC LIMIT 4",
             [now - timedelta(days=1)]).fetchall():

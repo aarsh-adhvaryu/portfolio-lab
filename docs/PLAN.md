@@ -67,6 +67,12 @@ universe includes every name that traded); taxes and costs are in the objective;
    disagreeing trade, IPO allotment or deposit is asked (nothing is written to the record from an email); research that names no id of his becomes a graph document
    the readers read. Tried on the real local model with four invented emails (a trade, a deposit, a dividend, an OTP: all read right; 8-14 s an email; a first look
    stops after 25 minutes and continues next run). Not yet seen on his real mail.
+   **The dashboard reworked (S66, v2026.10.28.11):** the Command centre now opens on the system itself (`app/system.py`): a verdict line, the connectors (Kite, Gmail, Telegram, the local model,
+   the Claude API against his cap, the sandbox, the release), then Needs you (grouped), The system at work (in plain words, not JSON) and Is it in sync? (each source's latest
+   data against the last session), with the portfolio below. The AI centre is a full-height chat beside a live "what the assistant can reach" panel; the assistant has
+   `system_status` and `mail_facts` as tools, so it answers "is everything working?" from the same facts. Found on the way and fixed: Bank Nifty read a file collected
+   once (35 days old; now in the daily step), a stopped window left `collect` "running" and blocked its slot (released at the next start), the header said "agents idle"
+   while a job ran, a false high "test suite failed" alert (the sparse app clone has no `tests\`), a duplicated symbol in research flags.
    **One icon (v2026.10.28.7):** only "Portfolio Lab" on the desktop; each start takes the newest release first (`launcher.update_first`: backup, self-test,
    undone on a failure), then starts on it; a double-click while a background run holds the record waits for it (up to 20 min, v2026.10.28.10). The "Portfolio Lab Update" icon is gone.
    **The workshop holds nothing personal (2026-10-28):** its statements (`new\`), its store and his settings files (`pm\`), the old store copies and the

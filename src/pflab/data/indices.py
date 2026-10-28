@@ -212,7 +212,8 @@ def load(key: str, root: Optional[Path] = None) -> pd.DataFrame:
     return pd.read_parquet(root / "indices" / f"{key}.parquet")
 
 
-DAILY_KEYS = ("NIFTY50_TRI", "NIFTY500_TRI", "NIFTY500_MOMENTUM50_TRI", "NIFTY200_MOMENTUM30_TRI", "NIFTY50_PRICE")
+# S66: SECTOR_BANK_PRICE too: the dashboard's Bank Nifty ticker read a file collected once (2026-09-22) and was a month old
+DAILY_KEYS = ("NIFTY50_TRI", "NIFTY500_TRI", "NIFTY500_MOMENTUM50_TRI", "NIFTY200_MOMENTUM30_TRI", "NIFTY50_PRICE", "SECTOR_BANK_PRICE")
 
 
 def update(key: str, end: Optional[date] = None, root: Optional[Path] = None, overlap_days: int = 7) -> dict:

@@ -709,6 +709,26 @@ def picture_tool(ctx: Ctx, a: dict) -> dict:
     return {**p, "source": "hq/picture.py: stored and computed facts with their dates, side by side; nothing in it is a forecast"}
 
 
+def system_status(ctx: Ctx, a: dict) -> dict:
+    """The system's own state, built by code (app/system.py): the same picture the Command centre shows."""
+    from pflab.app import system
+    p = system.picture(ctx.rt, ctx.now)
+    return {"verdict": p["verdict"], "connectors": [{k: c[k] for k in ("name", "state", "line")} for c in p["connectors"]],
+            "data_freshness": [{k: f[k] for k in ("name", "latest", "state", "line")} for f in p["freshness"]],
+            "running_now": p["work"]["running"], "recently_done": [w["says"] + " (" + w["at"] + ")" for w in p["work"]["recent"][:6]],
+            "failed_last_day": p["work"]["failed_24h"], "needs_from_him": [n["title"] for n in p["needs"]["items"]],
+            "tools": p["tools"], "source": "app/system.py: read from the store, the data folder and this machine; states: ok, warn (late or "
+            "waiting on him), down, off"}
+
+
+def mail_facts(ctx: Ctx, a: dict) -> dict:
+    """What his money emails said (local model, guarded) and how each fact checked against Kite and the record."""
+    from pflab.ingest import mail_read
+    s = mail_read.summary(ctx.con, 15)
+    return {**s, "source": "ingest/mail_read.py: facts the local model read from his emails (a number or date kept only when the email states it), "
+            "checked by code: matched = in his record or Kite; pending = should still arrive; new = missing after the wait; conflict = differs"}
+
+
 def scans_tool(ctx: Ctx, a: dict) -> dict:
     """The saved scans with their tested label and the hits of their last run."""
     from pflab.quant import scan
@@ -904,6 +924,11 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
     Tool("propose_pot_idea", "journal", "Put a missed winner or a new listing into the opportunity pot: the reason in words; "
          "buy price, exit, stop and amount are computed by code. Needs the pot's limit applied by the investor.",
          {"symbol": SYMBOL, "reason": _s("why it belongs in the pot", 600)}, ("symbol", "reason"), propose_pot_idea),
+    Tool("system_status", "read", "Whether the system itself is working and in sync: connectors (Kite, Gmail, Telegram, the local model, the "
+         "Claude API spend against his cap, the sandbox), how fresh each data source is, what is running, what failed, what needs him.",
+         {}, (), system_status),
+    Tool("mail_facts", "read", "What his money emails said (trades, deposits, dividends, IPO allotments, bank alerts, corporate actions, "
+         "research) and whether his record or Kite has each: matched, pending, new, conflict.", {}, (), mail_facts),
     Tool("change_preference", "action", "ONLY when the investor himself asks to change a preference: put the exact change to him for his yes "
          "(targets as {bucket: weight} for every bucket that changes, the stock list add/remove a symbol, the monthly API cap in rupees). "
          "Never on your own judgement; nothing changes until he says yes.",

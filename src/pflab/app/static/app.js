@@ -89,7 +89,8 @@ function renderStatus(d) {
     ${m && m.state ? `<span class="chip">Market state <b class="${m.state === 'calm' ? 'up' : 'warn'}">${esc(m.state)}</b></span>` : ''}
     ${kiteBtn}
     ${d && d.update_ready ? '<button class="btn warnb" id="updateBtn" title="New code is on disk; it also restarts by itself after 30 minutes untouched with nothing running">Update ready: restart</button>' : ''}
-    <span class="chip">${d && d.activity && d.activity[0] && d.activity[0].status === 'running' ? 'working: ' + esc(d.activity[0].job) : 'agents idle'}</span>
+    ${(() => { const s = (d && d.system) || S.sys; if (!s) return ''; const r = s.work.running;
+      return `<a href="#/command" class="chip" style="display:flex;gap:6px;align-items:center" title="${esc(s.verdict)}">${sdot(s.state)}${r.length ? 'working: ' + esc(r.map((x) => x.job.replace(/_/g, ' ')).join(', ')) : esc(s.state === 'ok' ? 'in sync' : s.state === 'down' ? 'needs attention' : 'working, see Command centre')}</a>`; })()}
     <button class="btn" id="power" aria-label="Stop the system" title="Stop the system">${POWER}</button>`;
   const kb = $('kiteLogin'); if (kb) kb.onclick = kiteLogin;
   const ub = $('updateBtn'); if (ub) ub.onclick = async () => {
@@ -114,9 +115,11 @@ async function stopSystem() {
 
 /* ---------- Command centre ---------- */
 function tickerStrip(ts) {
-  return `<div class="tickers">${ts.map((t) => `<div class="panel tick"><span class="lbl">${esc(t.name)}</span>
+  const newest = ts.map((t) => t.date).filter((x) => x && x !== 'live').sort().pop();       /* S66: a ticker older than the rest says so */
+  const behind = (t) => t.date && t.date !== 'live' && newest && (new Date(newest) - new Date(t.date)) > 4 * 86400000;
+  return `<div class="tickers">${ts.map((t) => `<div class="panel tick" ${behind(t) ? 'style="border-color:var(--warn-line)"' : ''}><span class="lbl">${esc(t.name)}${behind(t) ? ' <span class="warn">· old</span>' : ''}</span>
     <div class="row" style="justify-content:space-between;gap:8px"><span class="num" style="font-size:16px;font-weight:600">${num(t.value, t.value > 1000 ? 2 : 2)}</span>
-    <span class="num small ${ud(t.change)}">${pct(t.change, 2, true)}</span></div><span class="tiny muted">${t.date === 'live' ? 'live' : 'close ' + esc(t.date)}</span></div>`).join('')}</div>`;
+    <span class="num small ${ud(t.change)}">${pct(t.change, 2, true)}</span></div><span class="tiny ${behind(t) ? 'warn' : 'muted'}">${t.date === 'live' ? 'live' : 'close ' + esc(t.date)}</span></div>`).join('')}</div>`;
 }
 function mixPanel(mx, h) {
   if (mx.error) return `<div class="panel"><span class="lbl">Mix against targets</span><p class="small warn">${esc(mx.error)}</p></div>`;
@@ -156,11 +159,74 @@ function taxPlanPanel(t) {
     <div class="bar" style="height:6px"><i style="width:${(used * 100).toFixed(1)}%"></i></div>
     ${(t.lines || []).slice(1).map((l) => `<span class="small">${esc(maskRs(l))}</span>`).join('')}</div>`;
 }
+/* S66: the system as one picture (app/system.py): is it working, in sync, and what does it need from you */
+const SDOT = { ok: 'var(--up)', warn: 'var(--warn)', down: 'var(--down)', off: 'var(--muted)' };
+const sdot = (st) => `<span class="conn" style="background:${SDOT[st] || SDOT.off};flex:0 0 auto"></span>`;
+const GOTO = { kite: 'kite', gmail: 'gmail', settings: '#/settings', inbox: '#/inbox' };
+function systemHero(s) {
+  if (!s) return '<div class="panel"><span class="small muted">Reading the system…</span></div>';
+  const run = s.work.running.length ? `<span class="chip warn pulse">working: ${esc(s.work.running.map((r) => r.job.replace(/_/g, ' ')).join(', '))}</span>` : '<span class="chip muted">idle: nothing is due</span>';
+  return `<div class="panel" style="display:flex;flex-direction:column;gap:12px;border-color:${s.state === 'ok' ? 'var(--line)' : s.state === 'down' ? 'var(--down)' : 'var(--warn-line)'}">
+    <div class="row wrapr" style="gap:12px;justify-content:space-between"><div class="row" style="gap:10px">${sdot(s.state)}<b style="font-size:16px">The system: ${esc(s.verdict)}</b></div>${run}</div>
+    <div class="row wrapr" style="gap:8px">${s.connectors.map((c) => `<span class="chip" title="${esc(c.line)}" style="display:flex;gap:6px;align-items:center">${sdot(c.state)}<b>${esc(c.name)}</b><span class="muted">${esc(c.line.length > 56 ? c.line.slice(0, 54) + '…' : c.line)}</span>${c.action ? `<a href="#" data-sysgo="${esc(c.action)}" class="small">${c.action === 'kite' ? 'Log in' : c.action === 'gmail' ? 'Connect' : 'Open'}</a>` : ''}</span>`).join('')}</div>
+  </div>`;
+}
+function needsCard(s) {
+  if (!s) return '';
+  const n = s.needs;
+  return `<section class="panel" style="flex:1 1 380px;display:flex;flex-direction:column;gap:6px">
+    <div class="row" style="justify-content:space-between"><span class="lbl">Needs you</span><span class="small ${n.total ? 'warn' : 'up'}">${n.total ? n.total + ' open' : 'nothing'}</span></div>
+    ${n.items.length ? n.items.map((i) => `<div class="item"><span class="dot" style="background:var(--warn)"></span><div style="min-width:0;flex:1"><div style="font-size:13px;line-height:1.4">${esc(i.title)}</div>
+      <div class="tiny muted">${esc(i.agent)} · ${esc(i.at)} · <a href="${i.go === 'settings' ? '#/settings' : '#/inbox'}">open</a></div></div></div>`).join('')
+      + (n.total > n.items.reduce((a, i) => a + i.count, 0) ? `<span class="tiny muted">and ${n.total - n.items.reduce((a, i) => a + i.count, 0)} more in Inbox and files</span>` : '')
+      : '<span class="small muted">Nothing is waiting on you.</span>'}
+  </section>`;
+}
+function workCard(s) {
+  if (!s) return '';
+  const w = s.work;
+  return `<section class="panel" style="flex:1 1 380px;display:flex;flex-direction:column;gap:6px">
+    <div class="row" style="justify-content:space-between"><span class="lbl">The system at work</span><a href="#/schedule" class="small">Schedule</a></div>
+    ${w.running.map((r) => `<div class="item"><span class="dot pulse" style="background:var(--warn)"></span><div style="font-size:13px"><b>${esc(r.job.replace(/_/g, ' '))}</b> is running${r.since ? ' since ' + esc(r.since) : ''}</div></div>`).join('')}
+    ${w.recent.map((r) => `<div class="item"><span class="dot" style="background:${r.ok ? 'var(--up)' : 'var(--down)'}"></span><div style="min-width:0"><div style="font-size:13px;line-height:1.4">${esc(r.says)}</div><div class="tiny muted">${esc(r.at)}</div></div></div>`).join('') || '<span class="small muted">Nothing has run yet.</span>'}
+    ${w.failed_24h ? `<span class="tiny down">${w.failed_24h} run(s) failed in the last day (Schedule shows which)</span>` : ''}
+  </section>`;
+}
+function syncCard(s) {
+  if (!s) return '';
+  const late = s.freshness.filter((f) => f.state !== 'ok').length;
+  return `<section class="panel" style="flex:1 1 380px;display:flex;flex-direction:column;gap:2px">
+    <div class="row" style="justify-content:space-between"><span class="lbl">Is it in sync?</span><span class="small ${late ? 'warn' : 'up'}">${late ? late + ' behind' : 'all current'}</span></div>
+    ${s.freshness.map((f) => `<div class="row" style="gap:8px;padding:4px 0;border-bottom:1px solid var(--line2)" title="${esc(f.line)}">${sdot(f.state)}<span style="flex:1;font-size:13px">${esc(f.name)}</span>
+      <span class="num small ${f.state === 'ok' ? 'muted' : f.state === 'warn' ? 'warn' : 'down'}">${esc(f.latest || 'none')}</span></div>`).join('')}
+  </section>`;
+}
+function askCard(s) {
+  const t = s ? s.tools : null;
+  const asks = ['Is everything working and in sync?', 'What needs me today?', 'What did my emails say?', 'How is my portfolio against my targets?'];
+  return `<section class="panel" style="flex:1 1 520px;display:flex;flex-direction:column;gap:10px">
+    <div class="row" style="justify-content:space-between"><span class="lbl">Ask the system</span><a href="#/ai" class="small">AI centre</a></div>
+    <div class="row"><label for="quickAsk" style="position:absolute;left:-9999px">Question</label><input id="quickAsk" class="inp" placeholder="Ask about your portfolio, a company, a plan, or the system itself…"><button class="btn primary" id="quickSend">Ask</button></div>
+    <div class="row wrapr" style="gap:6px">${asks.map((a) => `<button class="btn" data-ask="${esc(a)}" style="font-size:12px;padding:5px 10px">${esc(a)}</button>`).join('')}</div>
+    <span class="tiny muted">${t ? `One assistant with ${t.total} tools (${t.read || 0} read-only, the rest journal or ask you first); it reads Kite, your record, Gmail's facts, filings and the system's own state, and can never place an order. ` : ''}Local first; nothing leaves the PC unless a question needs the API and fits your cap.</span>
+  </section>`;
+}
+function wireSystem() {
+  document.querySelectorAll('[data-sysgo]').forEach((a) => { a.onclick = async (e) => {
+    e.preventDefault(); const g = a.dataset.sysgo;
+    if (g === 'kite') return kiteLogin();
+    if (g === 'gmail') { a.textContent = 'waiting for Google…'; try { await post('/api/mail/connect', {}); alert('Connected (read-only). I am reading a year of your statement emails now; what I need appears in Needs you.'); } catch (er) { alert(er.message); } S.sys = null; return load(true); }
+    location.hash = GOTO[g] || '#/settings'; }; });
+  document.querySelectorAll('[data-ask]').forEach((b) => { b.onclick = () => { $('quickAsk').value = b.dataset.ask; $('quickSend').click(); }; });
+}
 function renderCommand(d) {
   const h = d.holdings, mc = d.montecarlo || {}, m = d.market || {};
+  const heads = (d.notifications || []).filter((n) => n.kind !== 'question');        /* questions are in "Needs you" */
   const dayPct = h.investable ? h.day_change / (h.investable - h.day_change) : null;
   const rows = h.rows.slice(0, 14);
   $('screen').innerHTML = `
+  ${systemHero(d.system)}
+  <div class="cols">${needsCard(d.system)}${workCard(d.system)}${syncCard(d.system)}</div>
   ${tickerStrip(d.tickers || [])}
   ${freshBanner(h.today, d.kite)}
   <div class="cols">
@@ -198,30 +264,21 @@ function renderCommand(d) {
         ${(d.nudges || []).map((w) => `<div class="item">${vbadge(w.verdict)}<span class="small" style="min-width:0"><b>${esc(w.symbol)}</b> ${esc(w.text)}${w.price ? ` · now ${num(w.price)}` : ''}</span></div>`).join('') || '<span class="small muted">Being studied: zones appear after the first refresh.</span>'}
       </div>
       <div class="panel" style="display:flex;flex-direction:column;gap:4px">
-        <div class="row" style="justify-content:space-between"><span class="lbl">Notifications</span><span class="small muted">${d.notifications.length}</span></div>
-        ${d.notifications.length ? d.notifications.map((n) => `<div class="item"><span class="dot" style="background:${n.kind === 'question' ? 'var(--warn)' : n.kind === 'held' ? 'var(--muted)' : 'var(--accent)'}"></span>
-          <div style="min-width:0"><div style="font-size:13px;line-height:1.4">${esc(n.text)}</div><div class="tiny muted">${esc(n.meta)} · ${esc(n.at)}</div></div></div>`).join('') : '<span class="small muted">Nothing new.</span>'}
-      </div>
-      <div class="panel" style="display:flex;flex-direction:column;gap:4px">
-        <div class="row" style="justify-content:space-between"><span class="lbl">The system at work</span><a href="#/schedule" class="small">Schedule</a></div>
-        ${d.activity.map((a) => `<div class="item"><span class="num tiny muted" style="width:92px;flex:0 0 auto;padding-top:2px">${esc(a.at)}</span>
-          <div style="min-width:0;flex:1"><div style="font-size:13px"><b>${esc(a.job)}</b> <span class="${a.status === 'ok' ? 'up' : a.status === 'running' ? 'warn' : a.status === 'failed' ? 'down' : 'muted'}">${esc(a.status)}</span> <span class="tiny muted">${esc(a.took || '')}</span></div>
-          <div class="tiny muted" style="word-break:break-word">${esc(brief(a.detail))}</div></div></div>`).join('')}
+        <div class="row" style="justify-content:space-between"><span class="lbl">Worth a look</span><span class="small muted">${heads.length}</span></div>
+        ${heads.length ? heads.map((n) => `<div class="item"><span class="dot" style="background:${n.kind === 'held' ? 'var(--muted)' : 'var(--accent)'}"></span>
+          <div style="min-width:0"><div style="font-size:13px;line-height:1.4">${esc(n.text)}</div><div class="tiny muted">${esc(n.meta)} · ${esc(n.at)}</div></div></div>`).join('') : '<span class="small muted">Nothing new: no research flags, watch hits, plans or held messages.</span>'}
       </div>
     </section>
   </div>
   <div class="cols">
-    <section class="panel" style="flex:1 1 480px;display:flex;flex-direction:column;gap:10px">
+    ${askCard(d.system)}
+    <section class="panel" style="flex:1 1 380px;display:flex;flex-direction:column;gap:10px">
       <div class="row" style="justify-content:space-between"><span class="lbl">Your notes for the system</span><a href="#/schedule" class="small">Schedule</a></div>
       <div class="row wrapr" style="gap:8px">${d.notes.length ? d.notes.map((n) => `<div class="note ${n.done ? 'done' : ''}"><button aria-label="Mark done" data-toggle="${n.id}">${n.done ? '✓' : '○'}</button><span>${esc(n.text)}</span><button aria-label="Remove note" data-del="${n.id}">×</button></div>`).join('') : '<span class="small muted">No notes. Add one: a company to research, a question to look at.</span>'}</div>
       <div class="row"><label for="noteIn" class="small muted" style="white-space:nowrap">Add a note</label><input id="noteIn" class="inp" placeholder="e.g. Research a company before its results"><button class="btn" id="noteAdd">Add</button></div>
     </section>
-    <section class="panel" style="flex:1 1 440px;display:flex;flex-direction:column;gap:10px">
-      <div class="row" style="justify-content:space-between"><span class="lbl">Ask the system</span><a href="#/ai" class="small">AI centre</a></div>
-      <div class="row"><label for="quickAsk" style="position:absolute;left:-9999px">Question</label><input id="quickAsk" class="inp" placeholder="Ask about your portfolio, a company, a plan…"><button class="btn primary" id="quickSend">Ask</button></div>
-      <span class="tiny muted">Starts a chat in the AI centre (local, nothing leaves the PC); switch to web search, deep research or calculate there.</span>
-    </section>
   </div>`;
+  wireSystem();
   $('mcRun').onclick = async () => { await post('/api/montecarlo/run'); $('mcRun').textContent = 'Running… (a minute or two)'; };
   const k2 = $('kiteLogin2'); if (k2) k2.onclick = kiteLogin;
   $('noteAdd').onclick = addNote; $('noteIn').onkeydown = (e) => { if (e.key === 'Enter') addNote(); };
@@ -821,9 +878,12 @@ function renderAI(d) {
   let prevQ = null;
   const msgs = d.messages.map((m) => { const h = msgHtml(m, prevQ); if (m.role === 'me') prevQ = m.text; return h; }).join('');
   const sel = d.agents[S.agent || 0] || d.agents[0];
+  const sy = S.sys, qs = S.allq ? d.questions : d.questions.slice(0, 4);
+  const asks = ['Is everything working and in sync?', 'What needs me today?', 'What did my emails say?', 'How is my portfolio against my targets?', 'What changed since yesterday?'];
   $('screen').innerHTML = `
-  <section class="panel" style="display:flex;flex-wrap:wrap;padding:0;overflow:hidden">
-    <aside style="flex:0 1 260px;min-width:210px;border-right:1px solid var(--line);padding:12px;display:flex;flex-direction:column;gap:8px;background:var(--panel2)">
+  <div class="cols" style="align-items:stretch">
+  <section class="panel" style="flex:3 1 760px;display:flex;flex-wrap:wrap;padding:0;overflow:hidden">
+    <aside style="flex:0 1 240px;min-width:200px;border-right:1px solid var(--line);padding:12px;display:flex;flex-direction:column;gap:8px;background:var(--panel2)">
       <button class="btn primary" id="newChat">+ New chat</button>
       <span class="lbl" style="margin-top:6px">Chats</span>
       ${d.chats.map((c) => `<div class="row" style="gap:4px;border-radius:8px;background:${c.id === d.chat_id ? 'var(--panel)' : 'transparent'}">
@@ -832,7 +892,8 @@ function renderAI(d) {
       <span class="tiny muted" style="margin-top:auto;border-top:1px solid var(--line);padding-top:8px;line-height:1.5">Each question stands on its own for the local model. Chats untouched for 30 days are summarised into the system's memory and removed.</span>
     </aside>
     <div style="flex:1 1 640px;min-width:0;display:flex;flex-direction:column;gap:12px;padding:14px 16px">
-      <div id="msgs" style="display:flex;flex-direction:column;gap:14px;height:520px;overflow-y:auto;padding-right:6px">${msgs || '<span class="muted" style="margin:auto">Ask anything about your portfolio, a company, a plan or a calculation.</span>'}</div>
+      <div id="msgs" style="display:flex;flex-direction:column;gap:14px;height:max(460px, calc(100vh - 340px));overflow-y:auto;padding-right:6px">${msgs || `<div style="margin:auto;display:flex;flex-direction:column;gap:12px;align-items:center;max-width:520px;text-align:center"><span class="muted">Ask anything about your portfolio, a company, a plan, a calculation, or the system itself.</span>
+        <div class="row wrapr" style="gap:6px;justify-content:center">${asks.map((a) => `<button class="btn" data-sugg="${esc(a)}" style="font-size:12px;padding:5px 10px">${esc(a)}</button>`).join('')}</div></div>`}</div>
       <div style="display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:12px">
         <div class="row wrapr" style="gap:6px">${MODES.map(([id, label]) => `<button class="btn ${S.mode === id ? 'primary' : ''}" data-mode="${id}">${label}</button>`).join('')}
           <span class="small muted" style="margin-left:6px">${esc(mode[2])}</span></div>
@@ -845,6 +906,26 @@ function renderAI(d) {
       </div>
     </div>
   </section>
+  <section class="stack" style="flex:1 1 360px">
+    <div class="panel" style="display:flex;flex-direction:column;gap:6px">
+      <span class="lbl">What the assistant can reach</span>
+      ${sy ? sy.connectors.map((c) => `<div class="row" style="gap:8px;align-items:flex-start">${sdot(c.state)}<b class="small" style="flex:0 0 auto">${esc(c.name)}</b><span class="tiny muted" style="flex:1;text-align:right">${esc(c.line)}</span></div>`).join('')
+        + `<span class="tiny muted" style="border-top:1px solid var(--line2);padding-top:6px">${sy.tools.total} tools: ${sy.tools.read || 0} read-only (portfolio, Kite, filings, forecasts, Gmail facts, the system's own state), ${sy.tools.journal || 0} that write its journal, ${sy.tools.action || 0} that ask you first. No tool places an order. ${sy.verdict.charAt(0).toUpperCase() + sy.verdict.slice(1)}.</span>` : '<span class="small muted">Reading the system…</span>'}
+    </div>
+    <div class="panel" style="display:flex;flex-direction:column;gap:10px">
+      <div class="row" style="justify-content:space-between"><span class="lbl">The system asks you</span><span class="small warn">${d.questions.length} open</span></div>
+      ${qs.map((q) => `<div style="background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:13px;line-height:1.45">${esc(q.text.length > 280 ? q.text.slice(0, 278) + '…' : q.text)}</span><span class="tiny muted">${esc(q.agent)} · ${esc(q.at)}</span>
+        <div class="row"><input class="inp" id="qa${q.id}" placeholder="Your answer"><button class="btn" data-answer="${q.id}">Answer</button></div></div>`).join('') || '<span class="small muted">Nothing to answer.</span>'}
+      ${d.questions.length > 4 ? `<button class="btn" id="allq" style="align-self:flex-start">${S.allq ? 'Show fewer' : 'Show all ' + d.questions.length}</button>` : ''}
+    </div>
+    <div class="panel" style="display:flex;flex-direction:column;gap:8px">
+      <span class="lbl">API spend this month</span>
+      <div class="bar"><i style="width:${Math.min(100, d.spend.month / d.spend.cap * 100).toFixed(1)}%"></i></div>
+      <span class="small num">₹${num(d.spend.month, 0)} of ₹${groupIN(d.spend.cap)} · warns at 80%, stops at 100%${d.spend.adopted ? '' : ' · analyst OFF'}</span>
+    </div>
+  </section>
+  </div>
   <div class="cols">
     <section class="panel" style="flex:2 1 560px;display:flex;flex-direction:column;gap:10px">
       <span class="lbl">Agents</span>
@@ -858,17 +939,6 @@ function renderAI(d) {
         ${sel.detail ? `<span class="tiny muted">last result: ${esc(brief(sel.detail))}</span>` : ''}</div>` : ''}
     </section>
     <section class="stack" style="flex:1 1 380px">
-      <div class="panel" style="display:flex;flex-direction:column;gap:10px">
-        <div class="row" style="justify-content:space-between"><span class="lbl">The system asks you</span><span class="small warn">${d.questions.length} open</span></div>
-        ${d.questions.map((q) => `<div style="background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px">
-          <span style="font-size:13px;line-height:1.45">${esc(q.text)}</span><span class="tiny muted">${esc(q.agent)} · ${esc(q.at)}</span>
-          <div class="row"><input class="inp" id="qa${q.id}" placeholder="Your answer"><button class="btn" data-answer="${q.id}">Answer</button></div></div>`).join('') || '<span class="small muted">Nothing to answer.</span>'}
-      </div>
-      <div class="panel" style="display:flex;flex-direction:column;gap:8px">
-        <span class="lbl">API spend this month</span>
-        <div class="bar"><i style="width:${Math.min(100, d.spend.month / d.spend.cap * 100).toFixed(1)}%"></i></div>
-        <span class="small num">₹${num(d.spend.month, 0)} of ₹${groupIN(d.spend.cap)} · warns at 80%, stops at 100%${d.spend.adopted ? '' : ' · analyst OFF'}</span>
-      </div>
       <div class="panel" style="display:flex;flex-direction:column;gap:8px">
         <span class="lbl">Calculations (reused before any is written again)</span>
         ${(d.calcs || []).map((c) => `<div style="background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:4px">
@@ -891,6 +961,8 @@ function renderAI(d) {
   $('newChat').onclick = async () => { const r = await post('/api/chats'); S.chat = r.id; load(true); };
   document.querySelectorAll('[data-chat]').forEach((b) => { b.onclick = () => { S.chat = Number(b.dataset.chat); load(true); }; });
   document.querySelectorAll('[data-delchat]').forEach((b) => { b.onclick = async () => { if (!confirm('Delete this chat?')) return; await api(`/api/chats/${b.dataset.delchat}`, { method: 'DELETE' }); if (S.chat === Number(b.dataset.delchat)) S.chat = null; load(true); }; });
+  document.querySelectorAll('[data-sugg]').forEach((b) => { b.onclick = () => sendChat(b.dataset.sugg); });
+  if ($('allq')) $('allq').onclick = () => { S.allq = !S.allq; renderAI(d); };
   document.querySelectorAll('[data-mode]').forEach((b) => { b.onclick = () => { S.mode = b.dataset.mode; renderAI(d); }; });
   document.querySelectorAll('[data-agent]').forEach((b) => { b.onclick = () => { S.agent = Number(b.dataset.agent); renderAI(d); }; });
   document.querySelectorAll('[data-report]').forEach((b) => { b.onclick = () => openReport(b.dataset.report); });
@@ -1528,9 +1600,13 @@ async function load(force = false) {
   const showing = () => S.screen === screen;
   const fresh = () => showing() && gen > (S.drawn || 0) && ((S.drawn = gen), true);
   try {
-    if (screen === 'command') { const d = await api('/api/command'); if (!fresh()) return; S.settings = { ...S.settings, ...d.settings }; applyTheme(); renderStatus(d); keepInputs(() => renderCommand(d)); S.data.command = d; }
+    if (screen === 'command') {
+      const [d, sy] = await Promise.all([api('/api/command'), api('/api/system').catch(() => S.sys || null)]);
+      if (!fresh()) return; d.system = sy; S.sys = sy; S.sysAt = Date.now();
+      S.settings = { ...S.settings, ...d.settings }; applyTheme(); renderStatus(d); keepInputs(() => renderCommand(d)); S.data.command = d; }
     else {
       if (!S.data.command) { const c = await api('/api/command'); if (!showing()) return; S.data.command = c; }
+      if (!S.sys || Date.now() - (S.sysAt || 0) > 60000) { try { S.sys = await api('/api/system'); S.sysAt = Date.now(); } catch (e) { /* the chip is simply left out */ } }
       S.settings = { ...S.settings, ...S.data.command.settings }; applyTheme();   // privacy and theme on every screen
       renderStatus(S.data.command);
       if (screen === 'portfolio') { const d = await api('/api/portfolio' + (S.selected ? '?isin=' + encodeURIComponent(S.selected) : '')); if (fresh()) renderPortfolio(d); }

@@ -30,7 +30,7 @@ the workshop; their data collection always runs. Code: `release.py`, `guard.py`,
 | `hq` | the brain (tool loop, governor, egress gate, journal), `picture` (the one picture), reception, board, phone (Telegram), watcher, messenger, security, replay, valuation, plain words, models (the slider) |
 | `learner` | sources, claims, templates, counter, rules, run, `forward` (live-only tests F1-F4, decided once at 24 months, `docs/protocols/s65_forward_protocol.md`): reads papers/blogs, registers tests, tests them, counts them |
 | `service`, `conductor` | jobs and the tick, Telegram outbox and bot, summaries, backup, health; the conductor (sync check, asks, closing notes; last in every tick) |
-| `app` | the dashboard (FastAPI on 127.0.0.1): launcher, runtime, views, server, inbox, chat, research, sims, graph, settings, `static/` |
+| `app` | the dashboard (FastAPI on 127.0.0.1): launcher, runtime, views, server, inbox, chat, research, sims, graph, settings, `static/`; `system` (the one picture: connectors, data freshness against the last session, work in plain words, needs grouped; `/api/system`, the assistant's `system_status` tool, the Command centre's top row) |
 | `llm` | local model client and registry, the guard, evaluation sets and adopted harness texts |
 
 ## Jobs (the tick runs what is due; the dashboard window runs them while open)

@@ -276,6 +276,12 @@ def create_app(rt) -> FastAPI:
     def research(isin: str = ""):
         return json.loads(json.dumps(views.research(rt, isin or None), default=str))
 
+    @app.get("/api/system")
+    def system_api():
+        """S66: the system as one picture: connectors, data freshness, work in progress, what needs you (app/system.py)."""
+        from pflab.app import system
+        return json.loads(json.dumps(system.picture(rt), default=str))
+
     @app.get("/api/mail")
     def mail_status():
         """S65: read-only Gmail: connected or not, what was fetched."""
