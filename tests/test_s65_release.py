@@ -149,3 +149,15 @@ def test_the_phone_does_not_poll_from_the_workshop(beta, tmp_path):
     from pflab.hq import phone
     rt = type("RT", (), {"settings": {"telegram_send": True}, "secrets": Sec()})()
     assert phone.poll_once(rt) == 0
+
+
+def test_every_source_file_is_in_git():
+    """The clean-room install found src/pflab/pm/secrets_setup.py hidden by a `secrets*` ignore rule: every .py the code imports must be tracked."""
+    import subprocess
+    root = Path(__file__).resolve().parents[1]
+    try:
+        tracked = set(subprocess.run(["git", "ls-files", "src", "tools"], cwd=root, capture_output=True, text=True, check=True).stdout.split())
+    except Exception:
+        pytest.skip("not a git checkout")
+    on_disk = {p.relative_to(root).as_posix() for d in ("src", "tools") for p in (root / d).rglob("*.py") if "__pycache__" not in p.parts}
+    assert sorted(on_disk - tracked) == []

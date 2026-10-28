@@ -7,9 +7,11 @@ __pycache__/
 /experiments/
 research/journal.jsonl
 configs/*.local.toml
-secrets*
-# the loader is code, not a secret: `secrets*` hid it from git until 2026-10-20 (a fresh clone could not start)
-!src/pflab/pm/secrets.py
+# secret FILES only: the old `secrets*` hid the code src/pflab/pm/secrets.py (until 2026-10-20) and secrets_setup.py (found by the
+# S65 clean-room install; a fresh clone could not run `pflab setup`)
+secrets*.toml
+secrets*.json
+.secrets*
 .env
 *.egg-info/
 

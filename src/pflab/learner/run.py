@@ -60,6 +60,11 @@ def cycle(rt, collect: bool = True, get=None) -> dict:
     lim = sources.config().get("limits", {})
     text_dir, proto_dir = folders(rt)
     out: dict = {"answers": record.answers(con, now)}
+    try:                                     # S65: a fresh install starts with the past tests counted (idempotent; counter.CARRIED)
+        from pflab.learner import counter
+        out["seeded"] = counter.seed(con, now)
+    except Exception as e:
+        out["seeded"] = f"not run: {type(e).__name__}"
     paid = service.paid_allowed(rt)
     if collect:
         out["collected"] = sources.collect(con, now, rt.repo, text_dir, **({"get": get} if get else {}))
