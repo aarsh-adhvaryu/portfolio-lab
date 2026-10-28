@@ -29,7 +29,7 @@ IMAGE_DAYS = 7
 LEDGER_KINDS = ("tradebook", "contract_note", "funds_ledger", "cas", "bank")
 KIND_LABEL = {"tradebook": "Console tradebook", "contract_note": "contract notes", "funds_ledger": "Console funds ledger",
               "cas": "depository CAS", "bank": "bank statement", "screenshot": "screenshot", "market": "market-data export",
-              "other": "other file"}
+              "gift_city": "GIFT City statement", "other": "other file"}
 _LOCK = threading.Lock()
 
 
@@ -52,6 +52,15 @@ def classify(name: str, hint: str = "") -> str:
     if "tijori" in n or "screener" in n:
         return "market"
     return "other"
+
+
+def _accounts(rt) -> dict:
+    """The accounts of his sources.toml (name -> kind, bank, last4 ...), or none before Setup."""
+    from pflab.ingest import sources as srcs
+    try:
+        return srcs.load(rt.pm_dir / "sources.toml").get("accounts") or {}
+    except Exception:
+        return {}
 
 
 def _store_dir(rt, kind: str) -> Path:
@@ -82,8 +91,21 @@ def receive(rt, name: str, data: bytes, hint: str = "", account: Optional[str] =
     if seen:
         return {"id": seen[0], "duplicate": True}
     kind = classify(safe, hint)
+    if not hint:                                            # S65: the content decides, the name is only the fallback
+        from pflab.ingest import sniff
+        info = sniff.sniff(data, safe, sniff.passwords_from_secrets())
+        if info["kind"] in KIND_LABEL and info["kind"] != "other":
+            kind = info["kind"]
+        if kind == "bank" and not account:
+            account = sniff.match_account(info, _accounts(rt))
     if kind == "bank" and not account:
-        raise ValueError("which account is this bank statement for?")
+        if hint:                                            # he named the kind: the screen asks him for the account
+            raise ValueError("which account is this bank statement for?")
+        from pflab.agents import questions
+        questions.ask(con, "inbox", f"inbox:account:{sha[:12]}",
+                      f"Which of your bank accounts is the statement '{safe}'? Reply with the account's name as in Setup, then drop the "
+                      "file again with that account chosen.", rt.clock())
+        raise ValueError("which account is this bank statement for? It is in Needs from you.")
     d = _store_dir(rt, kind)
     d.mkdir(parents=True, exist_ok=True)
     path = d / safe
@@ -181,6 +203,13 @@ def _builder(rt):
     return m
 
 
+def _missing(merged: dict) -> List[str]:
+    """Documents the ledger build still lacks. Only a first setup (an empty document list) can be incomplete: a file that already
+    has its tradebooks, ledger, CAS and bank files is built as before."""
+    from pflab.ingest import setup_sources
+    return setup_sources.needed(merged, optional=False)
+
+
 def _rel(rt, path: str) -> str:
     return Path(path).resolve().relative_to(rt.repo.resolve()).as_posix()
 
@@ -190,7 +219,16 @@ def _dry_run(rt, it: dict) -> None:
     with _LOCK:
         sources = rt.pm_dir / "sources.toml"
         over = srcs.with_document(srcs.load_overlay(sources), it["kind"], _rel(rt, it["path"]), it["account"])
-        log, led, checks, notes, _ = _builder(rt).build(srcs.merge(srcs.base(sources), over), rt.repo)
+        merged = srcs.merge(srcs.base(sources), over)
+        missing = _missing(merged)
+        if missing:                                         # S65: a first setup fills up file by file; nothing to build yet
+            _update(rt, it["id"], status="ready", result_json=json.dumps({**it["result"], "incomplete": missing, "checks": [],
+                    "notes": ["still waiting for: " + "; ".join(missing)], "events": 0, "failed": 0}, default=str),
+                    steps_json=json.dumps(_steps(it["kind"], 3)))
+            _to_chat(rt, it, f"{it['name']} ({KIND_LABEL[it['kind']]}) is recognised. The ledger cannot be built until the rest arrive: "
+                     + "; ".join(missing) + ". Press 'Add to the ledger' to keep it.", ["read on this PC"])
+            return
+        log, led, checks, notes, _ = _builder(rt).build(merged, rt.repo)
     failed = [c for c in checks if not c[1]]
     res = {**it["result"], "checks": [{"name": n, "ok": ok, "detail": d} for n, ok, d in checks], "notes": notes,
            "events": len(log), "failed": len(failed)}
@@ -211,8 +249,15 @@ def apply(rt, iid: int) -> dict:
     with _LOCK:
         sources = rt.pm_dir / "sources.toml"
         over = srcs.with_document(srcs.load_overlay(sources), it["kind"], _rel(rt, it["path"]), it["account"])
+        merged = srcs.merge(srcs.base(sources), over)
+        missing = _missing(merged)
+        if missing:                                         # S65: keep the document; the ledger is built when the last one arrives
+            srcs.save_overlay(sources, over)
+            _update(rt, iid, status="kept", steps_json=json.dumps(_steps(it["kind"], 4)),
+                    result_json=json.dumps({**it["result"], "waiting_for": missing}, default=str))
+            return {"events": 0, "waiting_for": missing}
         b = _builder(rt)
-        log, led, checks, notes, src = b.build(srcs.merge(srcs.base(sources), over), rt.repo)
+        log, led, checks, notes, src = b.build(merged, rt.repo)
         failed = [c for c in checks if not c[1]]
         if failed:
             raise ValueError(f"{len(failed)} check(s) fail now: nothing written")
@@ -221,10 +266,47 @@ def apply(rt, iid: int) -> dict:
         with transaction(con):
             b.write(con, log, led, src)
         srcs.save_overlay(sources, over)
+        try:                                                # S65: lines the rules could not place become questions
+            from pflab.ingest import bank_labels
+            bank_labels.ask(con, src.get("_unlabelled") or [], rt.clock())
+        except Exception:
+            pass
     _update(rt, iid, status="in the ledger", steps_json=json.dumps(_steps(it["kind"], 5)),
             result_json=json.dumps({**it["result"], "written": len(log)}))
     rt.bump("portfolio", "command", "watch")
     return {"events": len(log)}
+
+
+def add_entry(rt, section: str, entry: dict, write: bool = False) -> dict:
+    """S65: an IPO or an opening cost entered on the dashboard (`ingest/sources.ipo_entry`, `cost_entry`). Without `write` the
+    ledger is rebuilt as a DRY RUN with it and the checks are shown; with `write` (his press) and every check passing, the entry
+    joins sources.app.toml and the ledger is rewritten in one transaction. Before a first setup is complete it is only kept."""
+    from pflab.ingest import sources as srcs
+    with _LOCK:
+        sources = rt.pm_dir / "sources.toml"
+        over = srcs.with_entry(srcs.load_overlay(sources), section, entry)
+        merged = srcs.merge(srcs.base(sources), over)
+        missing = _missing(merged)
+        if missing:
+            if write:
+                srcs.save_overlay(sources, over)
+            return {"checks": [], "failed": 0, "written": False, "kept": bool(write), "waiting_for": missing}
+        b = _builder(rt)
+        log, led, checks, notes, src = b.build(merged, rt.repo)
+        failed = [c for c in checks if not c[1]]
+        res = {"checks": [{"name": n, "ok": ok, "detail": d} for n, ok, d in checks], "notes": notes, "events": len(log),
+               "failed": len(failed), "written": False}
+        if write:
+            if failed:
+                raise ValueError(f"{len(failed)} check(s) fail: nothing written")
+            from pflab.pm.store import transaction
+            con = rt.cursor()
+            with transaction(con):
+                b.write(con, log, led, src)
+            srcs.save_overlay(sources, over)
+            res["written"] = True
+            rt.bump("portfolio", "command", "watch")
+    return res
 
 
 # --- screenshots --------------------------------------------------------------------------------------------------------

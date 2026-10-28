@@ -49,6 +49,13 @@ def run(con, root, asof: date, now: datetime, index=None) -> dict:
             out["us_sleeve_proposed"] = sleeve.propose(con, root, asof, now, p["investable"]) is not None
     except Exception as e:
         out["us_sleeve_error"] = f"{type(e).__name__}: {str(e)[:100]}"
+    try:                                    # S65: his answers to the bank-label questions become rules for the next ledger build
+        from pflab.ingest import bank
+        from pflab.ingest import bank_labels
+        from pflab.pm import store
+        out["bank_rules_added"] = bank_labels.apply_answers(con, store.pm_dir() / bank.LOCAL_RULES_NAME)
+    except Exception as e:
+        out["bank_rules_error"] = f"{type(e).__name__}: {str(e)[:100]}"
     try:                                    # S65: deferred US items open on their date or event (agents/needs.py)
         from pflab.agents import needs
         out["deferred_asked"] = [k for k, v in needs.deferred_items(con, now).items() if v]

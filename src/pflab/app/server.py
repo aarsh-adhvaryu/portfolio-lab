@@ -282,6 +282,78 @@ def create_app(rt) -> FastAPI:
         from pflab import features
         return {"channel": features.channel(), "features": features.listing(rt.settings)}
 
+    @app.get("/api/setup")
+    def setup_api():
+        """S65: the accounts he set up (names, bank, last four digits) and the documents still needed."""
+        from pflab.ingest import setup_sources as su
+        from pflab.ingest import sources as srcs
+        p = rt.pm_dir / "sources.toml"
+        if not p.exists():
+            return {"exists": False, "needed": ["Set up your accounts first (Setup): the start date and the accounts."]}
+        src = srcs.load(p)
+        return {"exists": True, "start": str(src.get("start")), "accounts": src.get("accounts") or {}, "needed": su.needed(src)}
+
+    @app.post("/api/setup")
+    def setup_write(answers: dict = Body(...)):
+        """Write sources.toml from his answers (never replacing an existing file) and file the documents still needed."""
+        from pflab.ingest import setup_sources as su
+        from pflab.ingest import sources as srcs
+        p = rt.pm_dir / "sources.toml"
+        try:
+            su.write(p, answers)
+        except su.SetupError as e:
+            raise HTTPException(400, str(e))
+        merged = srcs.load(p)
+        return {"needed": su.needed(merged), "asked": su.ask_needed(rt.cursor(), merged, rt.clock())}
+
+    @app.post("/api/ledger/ipo")
+    def ledger_ipo(fields: dict = Body(...), write: bool = Body(False)):
+        """An IPO allotment entered by hand: dry run first, written only on his press (write true) with every check passing."""
+        from pflab.app import inbox as ib
+        from pflab.ingest import sources as srcs
+        try:
+            e = srcs.ipo_entry(fields.get("ipo_id"), fields.get("funding_account"), fields.get("demat_account"), fields.get("isin"),
+                               int(fields.get("qty") or 0), float(fields.get("price") or 0), fields.get("allot_date"),
+                               fields.get("bank_date"), float(fields.get("bank_amount") or 0), fields.get("symbol") or "",
+                               fields.get("applied") or None, int(fields["bid_qty"]) if fields.get("bid_qty") else None,
+                               float(fields["bid_price"]) if fields.get("bid_price") else None, fields.get("assumed") or "")
+            return json.loads(json.dumps(ib.add_entry(rt, "ipo", e, write), default=str))
+        except (ValueError, TypeError) as err:
+            raise HTTPException(400, str(err))
+
+    @app.post("/api/ledger/opening-cost")
+    def ledger_opening_cost(fields: dict = Body(...), write: bool = Body(False)):
+        """The cost and date of a holding that has no history here (for example received from a relative), with its stated basis."""
+        from pflab.app import inbox as ib
+        from pflab.ingest import sources as srcs
+        try:
+            e = srcs.cost_entry(fields.get("account"), fields.get("isin"), float(fields.get("cost_per_unit") or 0), fields.get("acquired"),
+                                fields.get("basis"))
+            return json.loads(json.dumps(ib.add_entry(rt, "opening_cost", e, write), default=str))
+        except (ValueError, TypeError) as err:
+            raise HTTPException(400, str(err))
+
+    @app.get("/api/secrets")
+    def secrets_api():
+        """S65: which secrets are set (names only; a value is never sent back) and the statement-password names asked for."""
+        from pflab.ingest import sources as srcs
+        from pflab.pm import secrets_setup as ss
+        try:
+            asked = ss.password_names(srcs.load(rt.pm_dir / "sources.toml"))
+        except Exception:
+            asked = []
+        return {"status": ss.status(), "passwords_asked": asked, "fields": {s: [[k, what] for k, what, _ in fs] for s, fs in ss.FIELDS.items()}}
+
+    @app.post("/api/secrets")
+    def set_secret(section: str = Body(...), key: str = Body(...), value: str = Body(...)):
+        """Write one secret (write-only; nothing is echoed or logged)."""
+        from pflab.pm import secrets_setup as ss
+        try:
+            done = ss.set_values({(section, key): value})
+        except ss.SetupError as e:
+            raise HTTPException(400, str(e))
+        return {"set": done}
+
     @app.get("/api/us")
     def us_api():
         from pflab import features

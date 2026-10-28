@@ -378,7 +378,10 @@ function renderSettings(s) {
       ${toggleRow('drop_watch', 'Take files from the drop folder', 'files placed in D:\\portfolio_lab\\drop go to the inbox by themselves', s.drop_watch)}
       <div class="setting"><div style="flex:1;display:flex;flex-direction:column;gap:2px"><label for="simsHour">Nightly simulation after</label><span class="small muted">Full: 10,000 paths; Marathon: 100,000</span></div><select id="simsHour" class="inp" style="flex:0 0 auto">${[18, 19, 20, 21, 22, 23].map((h) => `<option value="${h}" ${s.sims_hour === h ? 'selected' : ''}>${h}:00</option>`).join('')}</select></div>
     </section>
+    <section class="panel" style="flex:1 1 420px"><span class="lbl">Setup</span><span class="small muted">your accounts, the start date and the files the ledger still needs</span>
+      <a class="btn primary" href="#/setup" style="align-self:flex-start">Open Setup</a></section>
     <section class="panel" style="flex:1 1 420px" id="featuresP"><span class="lbl">Beta features</span><span class="small muted">loading…</span></section>
+    <section class="panel" style="flex:1 1 420px" id="secretsP"><span class="lbl">Keys and passwords</span><span class="small muted">loading…</span></section>
     <section class="panel" style="flex:1 1 640px" id="modelsP"><span class="lbl">Models: one per job</span><span class="small muted">loading…</span></section>
     <section class="panel" style="flex:1 1 420px"><span class="lbl">Never, whatever the settings</span>
       ${['Place an order or a GTT', 'Change targets, limits or the stock list', 'Move money', 'Send personal data out of this PC'].map((t) => `<div class="setting small soft"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg> ${esc(t)}</div>`).join('')}
@@ -392,7 +395,68 @@ function renderSettings(s) {
   document.querySelectorAll('[data-sbrain]').forEach((b) => { b.onclick = async () => { S.settings = await post('/api/settings', { brain: b.dataset.sbrain }); redraw(); }; });
   $('simsHour').onchange = async () => { S.settings = await post('/api/settings', { sims_hour: Number($('simsHour').value) }); redraw(); };
   renderFeatures(redraw);
+  renderSecrets();
   renderModels(redraw);
+}
+/* S65: Setup (ingest/setup_sources.py): the accounts and the start date write sources.toml; the files still needed are listed */
+function renderSetup(d) {
+  const need = d.needed.length ? `<ul>${d.needed.map((t) => `<li>${esc(t)}</li>`).join('')}</ul><span class="small muted">Drop each one in Inbox and files (any name: it is recognised by what is inside).</span>`
+    : '<span class="small up">Nothing missing: the ledger can be built.</span>';
+  const accts = d.exists ? Object.entries(d.accounts).map(([n, v]) => `<tr><td>${esc(n)}</td><td>${esc(v.kind)}</td><td>${esc(v.bank || v.provider || '')}</td><td>${esc(v.last4 ? '…' + v.last4 : (v.cas_dp || ''))}</td></tr>`).join('') : '';
+  const form = d.exists ? `<span class="small muted">Your accounts file exists (start ${esc(d.start)}). Setup never replaces it; to change an account, edit sources.toml.</span>` : `
+    <div class="row wrapr" style="gap:6px"><label class="small">Start date <input id="suStart" class="inp" type="date" style="flex:0 0 150px"></label>
+      <label class="small">Zerodha account name <input id="suBroker" class="inp" value="zer" style="flex:0 0 100px"></label>
+      <label class="small">Its demat DP id (8 characters, optional) <input id="suDp" class="inp" style="flex:0 0 120px"></label></div>
+    <span class="small muted">Bank accounts: a name you choose, the bank, the LAST FOUR digits only, and a name for its file password (optional).</span>
+    <div id="suBanks"></div><button class="btn" id="suAddBank">Add a bank account</button>
+    <button class="btn primary" id="suSave" style="align-self:flex-start">Save the setup</button>`;
+  $('screen').innerHTML = `<div class="cols"><section class="panel" style="flex:1 1 520px"><span class="lbl">Setup · accounts and start date</span>${form}
+      ${accts ? `<div class="scroll"><table><thead><tr><th>Name</th><th>Kind</th><th>Bank</th><th>Ends</th></tr></thead><tbody>${accts}</tbody></table></div>` : ''}</section>
+    <section class="panel" style="flex:1 1 420px"><span class="lbl">Files still needed</span>${need}</section>
+    <section class="panel" style="flex:1 1 100%"><span class="lbl">By hand · an IPO allotment, or a holding with no history here</span>
+      <span class="small muted">Check rebuilds the ledger as a dry run and shows every cross-check. Add to the ledger writes it, only when all checks pass.</span>
+      <div class="row wrapr" style="gap:6px" id="ipoF">${[['ipo_id', 'IPO id'], ['funding_account', 'paid from (account name)'], ['demat_account', 'demat account name'], ['isin', 'ISIN'], ['symbol', 'symbol'], ['qty', 'shares allotted'], ['price', 'issue price'], ['allot_date', 'allotment date'], ['bank_date', 'bank line date'], ['bank_amount', 'bank line amount']].map(([k, p]) => `<input class="inp" data-f="${k}" placeholder="${p}" style="flex:0 0 150px">`).join('')}
+        <button class="btn" data-ledger="ipo" data-write="0">Check IPO</button><button class="btn primary" data-ledger="ipo" data-write="1">Add IPO to the ledger</button></div>
+      <div class="row wrapr" style="gap:6px" id="costF">${[['account', 'account name'], ['isin', 'ISIN'], ['cost_per_unit', 'cost per unit'], ['acquired', 'acquired on (date)'], ['basis', 'what the cost is based on']].map(([k, p]) => `<input class="inp" data-f="${k}" placeholder="${p}" style="flex:0 0 ${k === 'basis' ? 260 : 150}px">`).join('')}
+        <button class="btn" data-ledger="opening-cost" data-write="0">Check cost</button><button class="btn primary" data-ledger="opening-cost" data-write="1">Add cost to the ledger</button></div>
+      <div id="ledgerOut" class="small"></div></section></div>`;
+  document.querySelectorAll('[data-ledger]').forEach((b) => { b.onclick = async () => {
+    const box = b.closest('.row'); const fields = {}; box.querySelectorAll('[data-f]').forEach((i) => { fields[i.dataset.f] = i.value.trim(); });
+    try {
+      const r = await post('/api/ledger/' + b.dataset.ledger, { fields, write: b.dataset.write === '1' });
+      $('ledgerOut').innerHTML = (r.waiting_for && r.waiting_for.length ? `<b class="warn">${r.kept ? 'Kept.' : 'Not checked yet.'}</b> Still waiting for: ${esc(r.waiting_for.join('; '))}` :
+        `<b class="${r.failed ? 'down' : 'up'}">${r.written ? 'Written to the ledger. ' : ''}${r.failed ? r.failed + ' check(s) failed' : 'all checks pass'}</b><ul>${r.checks.map((c) => `<li class="${c.ok ? 'up' : 'down'}">${c.ok ? 'PASS' : 'FAIL'} ${esc(c.name)}${c.ok ? '' : ' · ' + esc(JSON.stringify(c.detail))}</li>`).join('')}</ul>`);
+    } catch (e) { $('ledgerOut').innerHTML = `<b class="down">${esc(e.message)}</b>`; }
+  }; });
+  if (d.exists) return;
+  const addBank = () => { const r = document.createElement('div'); r.className = 'row wrapr'; r.style.gap = '6px';
+    r.innerHTML = '<input class="inp bn" placeholder="name, e.g. main" style="flex:0 0 120px"><input class="inp bb" placeholder="bank, e.g. SBI" style="flex:0 0 100px"><input class="inp bl" maxlength="4" placeholder="last 4" style="flex:0 0 70px"><input class="inp bp" placeholder="password name, e.g. SBI_PW" style="flex:0 0 190px">';
+    $('suBanks').appendChild(r); };
+  addBank(); $('suAddBank').onclick = addBank;
+  $('suSave').onclick = async () => {
+    const banks = [...document.querySelectorAll('#suBanks .row')].map((r) => ({ name: r.querySelector('.bn').value, bank: r.querySelector('.bb').value, last4: r.querySelector('.bl').value, password_name: r.querySelector('.bp').value })).filter((b) => b.name || b.last4);
+    try { await post('/api/setup', { start: $('suStart').value, broker: { account: $('suBroker').value, cas_dp: $('suDp').value }, banks }); load(true); } catch (e) { alert(e.message); }
+  };
+}
+/* S65: keys and passwords go to %USERPROFILE%\.pflab\secrets.toml; the form is write-only (a value is never shown or sent back) */
+async function renderSecrets() {
+  const el = $('secretsP'); if (!el) return;
+  let d;
+  try { d = await api('/api/secrets'); } catch (e) { el.innerHTML = `<span class="lbl">Keys and passwords</span><span class="small warn">${esc(e.message)}</span>`; return; }
+  const rows = [];
+  Object.entries(d.fields).forEach(([sec, fs]) => fs.forEach(([k, what]) => rows.push([sec, k, what])));
+  d.passwords_asked.forEach((n) => rows.push(['passwords', n, 'Password for the statement file ' + n]));
+  el.innerHTML = '<span class="lbl">Keys and passwords · typed here go to your secrets file, never shown again</span>' + rows.map(([sec, k, what]) => {
+    const on = d.status[sec + '.' + k];
+    return `<div class="setting"><div style="flex:1;display:flex;flex-direction:column;gap:2px"><span>${esc(what)}</span><span class="small ${on ? 'up' : 'muted'}">${on ? 'set' : 'not set'}</span></div>
+      <input class="inp" type="password" autocomplete="off" placeholder="${on ? 'change…' : 'type it…'}" style="flex:0 0 150px" data-sec="${esc(sec)}" data-key="${esc(k)}"><button class="btn" data-savesec="${esc(sec)}|${esc(k)}">Save</button></div>`;
+  }).join('');
+  el.querySelectorAll('[data-savesec]').forEach((b) => { b.onclick = async () => {
+    const [sec, k] = b.dataset.savesec.split('|');
+    const inp = el.querySelector(`input[data-sec="${sec}"][data-key="${k}"]`);
+    if (!inp.value.trim()) return;
+    try { await post('/api/secrets', { section: sec, key: k, value: inp.value }); inp.value = ''; renderSecrets(); } catch (e) { alert(e.message); }
+  }; });
 }
 /* S65: beta features (configs/features.toml): built and tested, not yet trusted with money; his switch wins over the channel's default */
 async function renderFeatures(redraw) {
@@ -1404,6 +1468,7 @@ async function load(force = false) {
       else if (screen === 'sims') { const d = await api('/api/sims'); if (fresh()) renderSims(d); }
       else if (screen === 'graph') { const d = await api('/api/graph?' + new URLSearchParams({ kinds: (S.gKinds || ['company', 'sector', 'verdict', 'org', 'person']).join(','), ...(S.gUptoDate ? { upto: S.gUptoDate } : {}) })); if (fresh()) renderGraph(d); }
       else if (screen === 'settings') { const d = await api('/api/settings'); if (fresh()) { S.settings = d; renderSettings(d); } }
+      else if (screen === 'setup') { const d = await api('/api/setup'); if (fresh()) renderSetup(d); }
       else if (screen === 'ai') { const d = await api('/api/ai' + (S.chat ? '?chat=' + S.chat : '')); if (fresh()) { S.chat = d.chat_id; renderAI(d); } }
       else if (screen === 'watch') { const d = await api('/api/watch'); if (fresh()) keepInputs(() => renderWatch(d)); }
       else if (screen === 'inbox') { const d = await api('/api/inbox'); if (fresh()) keepInputs(() => renderInbox(d)); }
@@ -1417,14 +1482,14 @@ async function load(force = false) {
 function route() {
   const id = (location.hash.replace('#/', '') || 'command');
   const was = S.screen;
-  S.screen = TABS.some(([t]) => t === id) || id === 'settings' ? id : 'command';
+  S.screen = TABS.some(([t]) => t === id) || id === 'settings' || id === 'setup' ? id : 'command';
   if (S.screen !== was) $('screen').innerHTML = '<div class="soon"><span class="muted">Loading…</span></div>';   // never the old screen
   renderTabs(); load(true);
 }
 const TOPICS = { command: null, portfolio: ['live', 'portfolio', 'settings'], watch: ['watch', 'live', 'settings'],
   research: ['research', 'watch', 'settings'], ai: ['chat', 'notifications', 'settings', 'inbox'], schedule: ['activity', 'notes', 'sims', 'settings'],
   inbox: ['inbox', 'settings'], sims: ['sims', 'settings'], graph: ['settings'], hq: ['hq', 'inbox', 'settings'],
-  settings: ['settings', 'kite'] };
+  settings: ['settings', 'kite'], setup: ['inbox', 'settings'] };
 function listen() {
   const es = new EventSource('/api/events');
   let prev = null;

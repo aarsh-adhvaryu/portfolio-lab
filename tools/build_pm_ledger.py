@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from pflab.ingest import bank, cas as casm, contract_note as cn, tradebook as tb, zerodha_ledger as zl
+from pflab.ingest import bank, bank_labels, cas as casm, contract_note as cn, tradebook as tb, zerodha_ledger as zl
 from pflab.ledger import ipo, reconcile
 from pflab.ledger.book import Ledger
 from pflab.ledger.events import Event, EventLog, save as save_events
@@ -90,6 +90,8 @@ def build(src: dict, root: Path) -> tuple:
         warnings.simplefilter("ignore")
         for b in src["bank"]:
             stm[b["account"]] = bank.classify(bank.parse(str(root / b["file"]), password=_pw(b.get("password_env"))), rules)
+    stm, lab = bank_labels.auto_label(stm, zl.bank_flows(zdf))             # S65: own transfers and broker flows by code
+    notes.append(f"labels by code: {lab['own_pairs']} own transfers, {lab['broker']} broker flows")
     skip = set()
     for p in bank.pair_own_transfers(stm):
         skip |= {p["from_ref"], p["to_ref"]}
@@ -179,7 +181,7 @@ def build(src: dict, root: Path) -> tuple:
             check(f"{acc} holdings = CAS {end}", br.empty, br[["isin", "a_value", "b_value", "note"]].to_dict("records"))
     for i in src.get("ipo", []):
         names.setdefault(i["isin"], {}).setdefault("symbol", i.get("symbol", "NSE"))
-    src = {**src, "_names": names}
+    src = {**src, "_names": names, "_unlabelled": bank_labels.groups(stm)}
     return log, led, checks, notes, src
 
 

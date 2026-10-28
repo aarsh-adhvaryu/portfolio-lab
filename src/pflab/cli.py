@@ -51,6 +51,8 @@ def main(argv=None):
     pm = sub.add_parser("pm", help="Portfolio Manager store")
     pmsub = pm.add_subparsers(dest="pm_cmd", required=True)
     pmsub.add_parser("init", help="create or migrate the ledger database")
+    rs = pmsub.add_parser("reset", help="S65: move the whole PM folder aside (his record is moved, never deleted); lists it without --confirm")
+    rs.add_argument("--confirm", default="", help="the word erase-my-record, to move it")
     i = pmsub.add_parser("instruments", help="instrument master summary")
     i.add_argument("--build", action="store_true",
                    help="fetch AMFI NAVAll and rebuild the master from panel + AMFI")
@@ -233,6 +235,10 @@ def main(argv=None):
     thp.add_argument("--asof", type=_d, default=date.today())
     sub.add_parser("drift", help="re-test every adopted rule on the data since it was fixed (S46)")
     sub.add_parser("inbox", help="read every file dropped into PFLAB_PM_DIR/inbox into the knowledge graph")
+    sup = sub.add_parser("setup", help="S65: secrets (typed, never echoed or printed) and which are set")
+    sup.add_argument("action", choices=["secrets", "status"])
+    sup.add_argument("--only", nargs="*", choices=["kite", "telegram", "anthropic", "sec"], help="just these sections")
+    sup.add_argument("--change", action="store_true", help="ask again for values already set")
     stp = sub.add_parser("studies", help="results of the S45 split study and the S49 memory comparison")
     stp.add_argument("which", choices=["split", "memory"])
     fcp = sub.add_parser("forecast", help="S64 forecasts: price ranges, turnover (tickets), results; run | show | test (calibration, long)")
@@ -244,6 +250,8 @@ def main(argv=None):
     lp.add_argument("--claim", type=int, help="claim id (test)")
 
     a = p.parse_args(argv)
+    if a.cmd == "setup":
+        return _setup(a)
     if a.cmd == "learner":
         return _learner(a)
     if a.cmd == "forecast":
@@ -451,6 +459,24 @@ def _llm(a) -> int:
         r = smoke.run(store.connect(), a.model)
         print(r)
         return 0 if r["passed"] else 1
+    return 0
+
+
+def _setup(a) -> int:
+    """pflab setup secrets|status: the secrets file by prompt (getpass), names only on screen. Statement passwords are asked
+    for under the names his sources file gives them."""
+    from pflab.ingest import sources as srcs
+    from pflab.pm import secrets_setup as ss
+    from pflab.pm import store
+    if a.action == "status":
+        for name, ok in ss.status().items():
+            print(f"{'set    ' if ok else 'missing'}  {name}")
+        return 0
+    try:
+        names = ss.password_names(srcs.load(store.pm_dir() / "sources.toml"))
+    except Exception:
+        names = []                                  # no sources file yet: Setup writes it, then run this again for the passwords
+    ss.prompt(a.only, None if a.only else names, change=a.change)
     return 0
 
 
@@ -912,6 +938,18 @@ def _conductor(a) -> int:
 
 def _pm(a) -> int:
     from pflab.pm import store
+    if a.pm_cmd == "reset":
+        from pflab.pm import reset as rsm
+        try:
+            r = rsm.reset(store.pm_dir(), date.today(), a.confirm)
+        except (RuntimeError, FileNotFoundError) as e:
+            print(f"refused: {e}")
+            return 1
+        print(f"{r['from']}  ->  {r['to']}")
+        for name, size in r["files"]:
+            print(f"  {size / 1e6:9.1f} MB  {name}")
+        print(f"{len(r['files'])} files, {r['bytes'] / 1e6:.1f} MB: {r['note']}")
+        return 0 if r["moved"] or not a.confirm else 1
     if a.pm_cmd == "init":
         con = store.connect()
         v = con.execute("SELECT max(version) FROM schema_migrations").fetchone()[0]

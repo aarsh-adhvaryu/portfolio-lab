@@ -570,8 +570,13 @@ def order_calculation(ctx: Ctx, a: dict) -> dict:
 def prepare_plan(ctx: Ctx, a: dict) -> dict:
     from pflab.app import research
     amt = a.get("amount")
-    return _act(ctx, _decision("prepare_plan", "", f"Rs {amt:,.0f}" if amt else "the ready plans", "", _checked(ctx, a["why"])),
-                lambda: f"{len(research.compute_plan(ctx.rt, amt).get('plans', []))} plan(s) refreshed")
+    def do() -> str:
+        res = research.compute_plan(ctx.rt, amt)            # S65: it reports a count, or the error it kept; never "0 plans" for a failure
+        if res.get("error"):
+            ctx.problems.append(f"prepare_plan failed: {res['error'][:160]}")
+            return f"plan refresh FAILED: {res['error'][:200]}"
+        return f"{res.get('plans', 0)} plan(s) refreshed" + (f", one for Rs {amt:,.0f}" if amt else "")
+    return _act(ctx, _decision("prepare_plan", "", f"Rs {amt:,.0f}" if amt else "the ready plans", "", _checked(ctx, a["why"])), do)
 
 
 def correct_memory(ctx: Ctx, a: dict) -> dict:

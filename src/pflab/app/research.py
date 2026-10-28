@@ -133,8 +133,12 @@ def compute_plan(rt, amount: Optional[float] = None, now: Optional[datetime] = N
     out = {"at": now.isoformat(timespec="seconds")}
     try:
         extra = ready.custom(amount, now.date()) if amount else None
-        plans = ready.refresh(rt.cursor(), now.date(), rt.data_root, now, zones_by_isin(rt), extra,
-                              fall_fn=ready.sleeve_fall(rt.data_root))
+        try:
+            fall_fn = ready.sleeve_fall(rt.data_root)
+        except Exception as e:                      # S65: no index history yet (a fresh install): the plan goes without the fall estimate
+            fall_fn = None
+            out["fall_estimate"] = f"left out: {type(e).__name__}"
+        plans = ready.refresh(rt.cursor(), now.date(), rt.data_root, now, zones_by_isin(rt), extra, fall_fn=fall_fn)
         out["plans"] = len(plans)
     except Exception as e:
         out["error"] = f"{type(e).__name__}: {e}"[:400]
