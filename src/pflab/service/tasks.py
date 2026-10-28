@@ -367,19 +367,27 @@ register(Job("us_fx", Daily(7, 25, weekdays_only=False), _us_fx, "US sleeve: USD
 
 
 def _mail(ctx: Ctx) -> dict:
-    """S65: read-only Gmail: new statement attachments into the inbox (ingest/gmail.py); asks once to be connected."""
+    """S65: read-only Gmail: new statement attachments into the inbox (ingest/gmail.py); asks once to be connected.
+    S66: then what the money emails SAY, read by the local model and checked against his record (ingest/mail_read.py)."""
     from pflab import guard
-    from pflab.hq import desk
-    from pflab.ingest import gmail
+    from pflab.hq import desk, models
+    from pflab.ingest import gmail, mail_read
     if guard.blocked("mail"):
         return {"skipped": "the workshop does not read his mail"}
     if not gmail.connected():
         gmail.ask_to_connect(ctx.con, ctx.now)
         return {"skipped": "Gmail not connected (asked once in Needs from you)"}
-    return gmail.fetch(desk.from_ctx(ctx))
+    rt, sess = desk.from_ctx(ctx), gmail.session()
+    out = gmail.fetch(rt, sess)
+    try:
+        out["read"] = mail_read.run(rt, sess, models.model_id("mail_reading"))
+    except Exception as e:                                   # the local model off, say: the emails are read tomorrow
+        out["read"] = f"not read today: {type(e).__name__}: {str(e)[:160]}"
+    return out
 
 
-register(Job("mail", Daily(21, 15, weekdays_only=False), _mail, "read-only Gmail, once a day: statements that arrived by email into the inbox (checked, then your press)"))
+register(Job("mail", Daily(21, 15, weekdays_only=False), _mail, "read-only Gmail, once a day: statements that arrived by email into the "
+             "inbox (checked, then your press); what money emails say, read on this PC and checked against your record"))
 
 
 def _twin(ctx: Ctx) -> dict:

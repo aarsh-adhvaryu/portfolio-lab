@@ -29,7 +29,7 @@ what remains: `docs/PLAN.md`; rules for Claude Code: `CLAUDE.md`.
    Google's page opens; approve "Read your email" only. The first look reads a year of mail at once; after that, once a day at 21:15. Statement
    attachments (by content; everything else is dropped unread) come into the inbox like a file you drop; protected ones open with the passwords you saved (the file
    is stored as it came, still locked). Files none opens are asked about once per sender, with a slot named after it in Settings > Keys (NSDL, SBI ...); saving it
-   tries again at once. Then Needs from you asks you to approve the accounts in Setup. Testing-mode tokens expire after 7 days: publish the consent screen
+   tries again at once. Then Needs from you asks you to approve the accounts in Setup. The same daily run also reads what money emails say (trades, deposits, dividends, IPO allotments, bank alerts, research) with the model on this PC only, checks each fact against Kite and your record, and asks only about what is missing or disagrees; nothing is written to your record from an email. Testing-mode tokens expire after 7 days: publish the consent screen
    ("In production", unverified is fine for yourself) to keep it connected.
 6. **Switch it on.** Settings: Telegram on (held alerts are then delivered), the brain on "economy", preset "full". Close the window, then register the tick (every
    15 minutes, at logon, at wake): `powershell -ExecutionPolicy Bypass -File tools\register_tasks.ps1` (preview with `-WhatIf`). After that it runs, learns and asks by itself.

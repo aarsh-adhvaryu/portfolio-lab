@@ -20,9 +20,9 @@ the workshop; their data collection always runs. Code: `release.py`, `guard.py`,
 | package | role |
 |---|---|
 | `data` | collectors and loaders: NSE/BSE bhavcopy, corporate actions, dividends, surveillance, indices, VIX, BSE announcements/shareholding/insider, GDELT, deals, FPI, macro, F&O (`fo_daily`), US prices (`us_prices`), SEC (`sec_edgar`), panel and calendar |
-| `ledger`, `ingest` | event-sourced ledger (FIFO lots, income, fees), `foreign` (US dollar ledger); parsers: Console tradebook/ledger, contract notes, CAS, bank statements, SBI interest certificates, Kite (read-only); `sniff` (files by content, incl. deposit interest certificates and which saved password opened a file), `setup_sources` (incl. `infer`: Setup proposed from the dropped files), `bank_labels`, `sources` (+ overlay); the inbox keeps files dropped before Setup and builds the ledger from all of them in one press (`inbox.apply_all`); `gmail` (read-only Gmail: statement attachments by content into the inbox, protected files opened in memory by saved password, an unopenable one asked about once) |
+| `ledger`, `ingest` | event-sourced ledger (FIFO lots, income, fees), `foreign` (US dollar ledger); parsers: Console tradebook/ledger, contract notes, CAS, bank statements, SBI interest certificates, Kite (read-only); `sniff` (files by content, incl. deposit interest certificates and which saved password opened a file), `setup_sources` (incl. `infer`: Setup proposed from the dropped files), `bank_labels`, `sources` (+ overlay); the inbox keeps files dropped before Setup and builds the ledger from all of them in one press (`inbox.apply_all`); `gmail` (read-only Gmail: statement attachments by content into the inbox, protected files opened in memory by saved password, an unopenable one asked about once); `mail_read` (what money emails SAY: the local model only, numbers kept only when the email states them, each fact checked by code against Kite and the record) |
 | `tax` | rules (dated, sourced tables in `configs/tax/`), gains by schedule, income (both regimes), proposed sales, `foreign`, `quicko` (the pack: 112A CSV in the department's layout, reconcile) |
-| `pm` | the store (DuckDB, schema v41), instruments, FDs (incl. `fd.entry`: a deposit from the Setup form, checked against the bank's maturity amount), bonds, gold, prices, today (net worth), `secrets` / `secrets_setup`, `reset` |
+| `pm` | the store (DuckDB, schema v42), instruments, FDs (incl. `fd.entry`: a deposit from the Setup form, checked against the bank's maturity amount), bonds, gold, prices, today (net worth), `secrets` / `secrets_setup`, `reset` |
 | `portfolio`, `risk`, `plan` | `prefs` (his preferences changed by the AI only when he asks, one exact edit, his yes, a backup); tax-aware sell-down; exposure, Monte Carlo, CAPM, themes, scenarios, sleeve study; targets, deploy, guards, safety, buy zone, ready plans, pot, reserve, nudges, trader tickets, advisor, `twin` (the scoreboard: four paper books with the same money) |
 | `quant`, `fundamentals`, `monitor`, `signals`, `backtest`, `eval` | forecasts (price ranges, scored), Hawkes, options, scans, comove, process, event studies, `stress_hedge` (the stress gauge and forward test F5, paper only); BSE results, valuation; promoter/event monitors; the engine and its protected tests |
 | `kg` | time-aware knowledge graph, hypotheses, memory/documents (the readers live in `hq/readers.py`) |
@@ -113,13 +113,13 @@ Backfills, in `tools\` (each is resumable; every one takes more than 5 minutes):
 BigQuery free sandbox), `backfill_deals.py --source deals|institutions` (deals and institutional holdings). Kite each trading morning: `python tools\kite_login.py`
 or the dashboard button (read-only).
 
-## Store (`PFLAB_PM_DIR\ledger.duckdb`, schema v41; migrates itself)
+## Store (`PFLAB_PM_DIR\ledger.duckdb`, schema v42; migrates itself)
 Ledger and tax: accounts, events, lots, cash_ledger, income, fees, carry_forward, tax_years, instruments, prices, navs, gold_rates, fds, fd_interest, bonds,
 sgb_series, fund_holdings, ipo_applications, targets, us_trades, us_remittances, fx_rates, instrument_alias. Kite and checks: kite_snapshots, kite_trades,
 live_quotes, recon_breaks, job_runs. Agents and the brain: questions, memory, decisions, briefs, theses, proposals, watches, ready_plans, scans, research_flags,
 outbox, alerts_sent, api_calls, llm_runs, hq_passes, hq_tool_calls, hq_tasks, hq_predictions, hq_suggestions, hq_readings, hq_reminders, limit_proposals,
 theme_baskets, pot_ideas, forecasts (renamed from tfm_forecasts in v36), twin_days and twin_trades (the scoreboard). Graph: kg_nodes, kg_edges, kg_docs, kg_aliases, kg_hypotheses. Learner: learn_sources,
-learn_claims, learn_tests (the counter), learn_proposals, learned, forward_months (the forward tests). Dashboard: chats, chat_messages, app_notes, inbox_items, mail_seen (Gmail messages already looked at). Take ids with `store.next_id`.
+learn_claims, learn_tests (the counter), learn_proposals, learned, forward_months (the forward tests). Dashboard: chats, chat_messages, app_notes, inbox_items, mail_seen (Gmail messages already looked at), mail_facts (what the emails said and how each checked). Take ids with `store.next_id`.
 
 ## Settings (Settings screen; `PFLAB_PM_DIR\app\settings.json`)
 theme, privacy (hides rupee amounts), telegram_send (off until switch-on: held alerts stay held), scheduler, live_prices (Kite quotes in market hours),

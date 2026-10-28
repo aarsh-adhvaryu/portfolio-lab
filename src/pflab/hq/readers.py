@@ -21,7 +21,7 @@ from pflab.hq import governor as gv
 from pflab.hq import llm
 
 DOC_CHARS = 12_000
-KINDS = ("filing", "result", "article", "dataset")
+KINDS = ("filing", "result", "article", "dataset", "email")     # S66: research emails naming no id of his (ingest/mail_read.py)
 MAT_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["material", "why"],      # S61 slider
               "properties": {"material": {"type": "string", "enum": ["yes", "no", "unsure"]}, "why": {"type": "string"}}}
 SYSTEM = (
@@ -169,7 +169,7 @@ def pending(con, asof: date, held: Sequence[str], listed: Sequence[str], days: i
         out.append({"doc_id": doc_id, "kind": kind, "published": pub, "title": title, "source": source, "url": url,
                     "attrs": attrs, "text_path": text_path, "isins": about,
                     "held": any(i in held for i in about)})
-    rank = {"result": 0, "filing": 1, "dataset": 2, "article": 3}
+    rank = {"result": 0, "filing": 1, "dataset": 2, "email": 3, "article": 4}
     out.sort(key=lambda r: (not r["held"], rank[r["kind"]], -r["published"].timestamp()))
     return out[:limit]
 

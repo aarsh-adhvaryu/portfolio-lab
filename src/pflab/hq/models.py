@@ -61,6 +61,8 @@ JOBS: Dict[str, Job] = {j.name: j for j in [
         "web on 20 real questions"),
     Job("review", "the security agent's weekly review of new code for bugs and leaks", ("sonnet", "opus", "haiku"),
         "sonnet", "S62: code only (the privacy grep passes first), about Rs 10 a review"),
+    Job("mail_reading", "reading what your bank and broker emails say (they never leave this PC)", ("local",), "local",
+        "S66: his emails carry his banking details: local only; numbers kept only when the email itself states them"),
 ]}
 
 

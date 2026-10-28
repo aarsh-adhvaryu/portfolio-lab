@@ -482,6 +482,8 @@ async function renderMail() {
   let d; try { d = await api('/api/mail'); } catch (e) { el.innerHTML = `<span class="lbl">Gmail (read-only)</span><span class="small warn">${esc(e.message)}</span>`; return; }
   el.innerHTML = `<span class="lbl">Gmail (read-only)</span>` + (d.connected
     ? `<span class="small up">Connected. ${d.messages} message(s) looked at, ${d.kept} statement file(s) brought in${d.last ? ', last ' + esc(d.last.slice(0, 16)) : ''}. It can never send, delete or change mail.</span>`
+      + (d.facts && d.facts.latest.length ? `<span class="small muted">What your emails said (read on this PC; checked against your record): ${Object.entries(d.facts.counts).map(([k, n]) => n + ' ' + esc(k)).join(', ')}</span>
+        <div class="scroll"><table><tbody>${d.facts.latest.map((f) => `<tr><td class="small">${esc(f.received)}</td><td>${esc(f.says)}</td><td class="small ${f.status === 'matched' ? 'up' : f.status === 'conflict' || f.status === 'new' ? 'warn' : 'muted'}">${esc(f.status)}: ${esc(f.detail || '')}</td></tr>`).join('')}</tbody></table></div>` : '')
     : `<span class="small muted">${d.client_file ? 'Ready: press Connect, approve read-only access in the browser.' : 'First the one-time Google step in README (the downloaded client_secret file is picked up from Downloads).'}</span>`
       + (d.client_file ? '<button class="btn primary" id="mailGo" style="align-self:flex-start">Connect Gmail</button>' : ''));
   if ($('mailGo')) $('mailGo').onclick = async () => {

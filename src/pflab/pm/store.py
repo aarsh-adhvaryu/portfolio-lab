@@ -571,6 +571,14 @@ MIGRATIONS = [
         msg_id VARCHAR PRIMARY KEY, seen_at TIMESTAMP NOT NULL, files INTEGER NOT NULL, kept INTEGER NOT NULL
     );
     """),
+    # 2026-10-28: S66 what his money emails say (ingest/mail_read.py): one row per fact the local model read and code checked
+    (42, "mail_facts_s66", """
+    CREATE TABLE mail_facts (
+        fact_id BIGINT PRIMARY KEY, msg_id VARCHAR NOT NULL, seq INTEGER NOT NULL, received_at TIMESTAMP NOT NULL, sender VARCHAR,
+        subject VARCHAR, kind VARCHAR NOT NULL, fields_json VARCHAR NOT NULL, status VARCHAR NOT NULL, detail VARCHAR, model VARCHAR,
+        created_at TIMESTAMP NOT NULL, checked_at TIMESTAMP
+    );
+    """),
 ]
 
 

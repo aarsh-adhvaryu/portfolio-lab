@@ -281,7 +281,9 @@ def create_app(rt) -> FastAPI:
         """S65: read-only Gmail: connected or not, what was fetched."""
         from pflab.ingest import gmail
         n = rt.cursor().execute("SELECT count(*), coalesce(sum(kept), 0), max(seen_at) FROM mail_seen").fetchone()
+        from pflab.ingest import mail_read
         return {"connected": gmail.connected(), "client_file": gmail.has_client(), "messages": n[0], "kept": int(n[1]),
+                "facts": json.loads(json.dumps(mail_read.summary(rt.cursor(), 12), default=str)),
                 "last": str(n[2]) if n[2] else None}
 
     @app.post("/api/mail/connect")

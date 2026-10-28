@@ -61,6 +61,12 @@ universe includes every name that traded); taxes and costs are in the objective;
    **Read-only Gmail (v2026.10.28.5-.6):** built and tested on a fake Gmail (`ingest/gmail.py`, job `mail`); Connect fetches at once; a cold start reads a
    year of mail, asks one password per locked sender (a slot in Settings > Keys; saving it fetches again), then asks him to approve the accounts in Setup; after
    Setup, checked statements ask for his press. Not yet run against his real mailbox: his one-time Google step first (README step 5).
+   **What his emails say (S66, v2026.10.28.9):** the daily `mail` job also reads money emails (trades, IPO allotments, dividends, deposit bookings and maturities, bank
+   alerts, corporate actions, research) with the LOCAL model only (`ingest/mail_read.py`; job `mail_reading` on the slider offers nothing else). A number or date
+   survives only when the email itself states it; code then checks each fact against Kite and the record (matched, pending, new, conflict); only a missing or
+   disagreeing trade, IPO allotment or deposit is asked (nothing is written to the record from an email); research that names no id of his becomes a graph document
+   the readers read. Tried on the real local model with four invented emails (a trade, a deposit, a dividend, an OTP: all read right; 8-14 s an email; a first look
+   stops after 25 minutes and continues next run). Not yet seen on his real mail.
    **One icon (v2026.10.28.7):** only "Portfolio Lab" on the desktop; each start takes the newest release first (`launcher.update_first`: backup, self-test,
    undone on a failure), then starts on it. The "Portfolio Lab Update" icon is gone.
    **The workshop holds nothing personal (2026-10-28):** its statements (`new\`), its store and his settings files (`pm\`), the old store copies and the
