@@ -159,7 +159,8 @@ def assess(con, cid: int, now: Optional[datetime] = None) -> dict:
     stale = {e["id"] for e in stale_items(ev, now)}
     pro = [e for e in ev if e["stance"] == "for" and e["id"] not in stale]
     con_ = [e for e in ev if e["stance"] == "against" and e["id"] not in stale]
-    gaps = [e for e in ev if e["stance"] == "missing"]
+    arrived = {r[0] for r in con.execute("SELECT dep_key FROM hq_case_deps WHERE case_id=? AND status='arrived'", [cid]).fetchall()}
+    gaps = [e for e in ev if e["stance"] == "missing" and str(e.get("source_id") or "")[4:] not in arrived]     # a gap that was filled is history
     open_deps = con.execute("SELECT count(*) FROM hq_case_deps WHERE case_id=? AND status='open'", [cid]).fetchone()[0]
     if not pro and not con_:
         verdict = "insufficient" if (gaps or open_deps) else "open"
@@ -197,9 +198,23 @@ def request(con, cid: int, now: datetime, dep_key: str, what: str, *, kind: str 
             qid = int(r2[0]) if r2 else None
     con.execute("INSERT INTO hq_case_deps VALUES (?,?,?,?,?,?,?,?,?,?)",
                 [did, cid, dep_key, kind, what, "open", now, None, qid, json.dumps({**(match or {}), "since": str(now)})])
-    add_evidence(con, cid, now, f"missing: {what}", stance="missing", kind="observation", source_kind="request")
+    add_evidence(con, cid, now, f"missing: {what}", stance="missing", kind="observation", source_id=f"dep:{dep_key}", source_kind="request")
     set_status(con, cid, "waiting_data", now, f"waiting for {dep_key}: {what[:160]}")
     return did, True
+
+
+def _floor(m: dict, requested) -> datetime:
+    """The earliest publication date that can answer a report request: the end of the period asked for, else 30 days before the request."""
+    from datetime import date as _d
+    pe = m.get("period_end")
+    try:
+        if pe:
+            d = _d.fromisoformat(str(pe)[:10])
+            return datetime(d.year, d.month, d.day)
+    except ValueError:
+        pass
+    r = requested if isinstance(requested, datetime) else datetime.fromisoformat(str(requested)[:19])
+    return r - timedelta(days=30)
 
 
 def arrive(con, cid: int, dep_key: str, now: datetime, detail: str = "") -> bool:
@@ -235,20 +250,28 @@ def sweep(con, now: datetime) -> List[Tuple[int, str]]:
             if a and a[0] in ("answered", "dropped") and m.get("answer", True) and not m.get("doc_kind") and not m.get("inbox"):
                 found = f"his answer to question #{qid}" if a[0] == "answered" else f"question #{qid} closed"
         if not found and m.get("doc_kind"):
-            args: list = [m["doc_kind"], requested]
+            # right company (the edge), right type, and published for the period asked: on or after the period's end, else not before
+            # 30 days ahead of the request. An old report imported only now is not what was asked for.
+            floor = _floor(m, requested)
+            args: list = [m["doc_kind"], requested, floor]
             sql = "SELECT d.doc_id, d.title FROM kg_docs d "
             if m.get("isin"):
                 sql += "JOIN kg_edges e ON e.src = d.doc_id AND e.dst = ? "
                 args = [f"company:{m['isin']}", *args]
-            sql += "WHERE d.kind = ? AND d.ingested_at >= ? AND d.dup_of IS NULL ORDER BY d.ingested_at LIMIT 1"
+            sql += "WHERE d.kind = ? AND d.ingested_at >= ? AND d.published_at >= ? AND d.dup_of IS NULL ORDER BY d.ingested_at LIMIT 1"
             r = con.execute(sql, args).fetchone()
             if r:
                 found = f"{m['doc_kind']} {r[0]}: {(r[1] or '')[:80]}"
         if not found and m.get("inbox"):
-            r = con.execute("SELECT item_id, name FROM inbox_items WHERE created_at >= ? AND status <> 'removed' ORDER BY item_id LIMIT 1",
-                            [requested]).fetchone()
-            if r:
-                found = f"file {r[1]} in the inbox"
+            token = str(m.get("company") or (get(con, cid) or {}).get("subject") or "").strip().lower()
+            for iid, name, kind, text in con.execute("SELECT item_id, name, kind, coalesce(text, '') FROM inbox_items WHERE created_at >= ? "
+                                                     "AND status <> 'removed' ORDER BY item_id", [requested]).fetchall():
+                if m.get("inbox_kind") and kind != m["inbox_kind"]:
+                    continue                                      # a statement does not answer a request for a results report
+                if token and token not in f"{name} {text[:4000]}".lower():
+                    continue                                      # a file about someone else does not either
+                found = f"file {name} in the inbox"
+                break
         if not found and m.get("sandbox"):
             from pflab.agents import sandbox as sb
             if sb.status()["ok"]:

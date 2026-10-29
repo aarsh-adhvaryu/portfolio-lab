@@ -354,3 +354,53 @@ def test_the_comparison_reports_missing_keys_and_non_numeric_differences():
     assert any(x.startswith("b:") for x in d) and any(x.startswith("c:") and "no such result" in x for x in d) and any(x.startswith("d:") for x in d)
     assert not any(x.startswith("a:") for x in d)                                          # within tolerance
     assert cases.compare_results({"a": 1}, {"a": True}) != []                              # a number is not a boolean
+
+
+# --- F: a request is answered only by the right company, type and period ----------------------------------------------------------------
+
+def _doc(con, doc_id, kind, isin, published, ingested):
+    con.execute("INSERT INTO kg_docs (doc_id, kind, title, published_at, ingested_at) VALUES (?, ?, ?, ?, ?)", [doc_id, kind, doc_id, published, ingested])
+    con.execute("INSERT INTO kg_edges VALUES (?, 'about', ?, ?, NULL, 'test', NULL, NULL, ?)", [doc_id, f"company:{isin}", ingested, ingested])
+
+
+def test_only_the_right_company_type_and_period_answer_a_report_request(con):
+    from datetime import timedelta
+    from pflab.hq import cases
+    A, B = "INE000A01011", "INE000B01012"
+    cid, _ = cases.open_case(con, NOW, "What did AAA's Q2 results say?", subject="AAA", isin=A)
+    cases.request(con, cid, NOW, "q2", "AAA's Q2 results", match={"doc_kind": "result", "isin": A, "period_end": "2026-09-30"})
+    later = NOW + timedelta(hours=2)
+    _doc(con, "result:BBB:q2", "result", B, NOW + timedelta(hours=1), later)                       # another company's report
+    _doc(con, "filing:AAA:x", "filing", A, NOW + timedelta(hours=1), later)                        # the right company, the wrong kind
+    _doc(con, "result:AAA:q1", "result", A, datetime(2026, 7, 30), later)                          # an OLD report, imported only now
+    assert cases.sweep(con, later) == [] and cases.get(con, cid)["status"] == "waiting_data"
+    _doc(con, "result:AAA:q2", "result", A, datetime(2026, 10, 27), later)                         # the right one: published after the period ended
+    assert cases.sweep(con, later) == [(cid, "q2")] and cases.get(con, cid)["status"] == "queued"
+
+
+def test_an_unrelated_inbox_file_does_not_unblock_a_request_for_a_file(con):
+    from datetime import timedelta
+    from pflab.hq import cases
+    cid, _ = cases.open_case(con, NOW, "AAA annual report?", subject="AAA")
+    cases.request(con, cid, NOW, "ar", "AAA's annual report", match={"inbox": True, "inbox_kind": "result"})
+    later = NOW + timedelta(hours=1)
+    for iid, name, kind in ((1, "bank_statement.pdf", "bank"), (2, "other_company_results.pdf", "result")):
+        con.execute("INSERT INTO inbox_items (item_id, name, kind, sha, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'ready', ?, ?)",
+                    [iid, name, kind, f"s{iid}", later, later])
+    assert cases.sweep(con, later) == []                                                           # wrong kind, then wrong company
+    con.execute("INSERT INTO inbox_items (item_id, name, kind, sha, status, created_at, updated_at) VALUES (3, 'AAA_results_q2.pdf', 'result', 's3', 'ready', ?, ?)", [later, later])
+    assert cases.sweep(con, later) == [(cid, "ar")]
+
+
+def test_a_filled_gap_is_history_not_a_current_gap(con):
+    from datetime import timedelta
+    from pflab.hq import cases
+    A = "INE000A01011"
+    cid, _ = cases.open_case(con, NOW, "AAA?", subject="AAA", isin=A)
+    cases.request(con, cid, NOW, "q2", "AAA's Q2 results", match={"doc_kind": "result", "isin": A})
+    assert cases.assess(con, cid, NOW)["missing"] == 1 and cases.assess(con, cid, NOW)["verdict"] == "insufficient"
+    _doc(con, "result:AAA:q2", "result", A, NOW + timedelta(hours=1), NOW + timedelta(hours=1))
+    cases.sweep(con, NOW + timedelta(hours=2))
+    a = cases.assess(con, cid, NOW + timedelta(hours=2))
+    assert a["missing"] == 0 and a["open_dependencies"] == 0                                       # still in the evidence log, no longer a gap
+    assert any(e["stance"] == "missing" for e in cases.evidence(con, cid))

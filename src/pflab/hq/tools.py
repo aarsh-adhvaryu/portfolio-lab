@@ -862,9 +862,9 @@ def request_report(ctx: Ctx, a: dict) -> dict:
     c = _case(ctx, a)
     match = {}
     if a.get("doc_kind"):
-        match = {"doc_kind": a["doc_kind"], **({"isin": c["isin"]} if c["isin"] else {})}
+        match = {"doc_kind": a["doc_kind"], **({"isin": c["isin"]} if c["isin"] else {}), **({"period_end": a["period_end"]} if a.get("period_end") else {})}
     elif a.get("from_inbox"):
-        match = {"inbox": True}
+        match = {"inbox": True, **({"inbox_kind": a["inbox_kind"]} if a.get("inbox_kind") else {}), **({"company": a["company"]} if a.get("company") else {})}
     what = _checked(ctx, a["what"])
     return _act(ctx, _decision("ask", "investigator", c["subject"] or "", f"case #{c['id']}: {what}", "a named gap in an investigation"),
                 lambda: (cases.request(ctx.con, c["id"], ctx.now, a["key"], what, match=match, kind="report" if match else "answer")[1]
@@ -1081,6 +1081,9 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
          "case waits and resumes by itself when it arrives. Say exactly what is needed (which report, which period).",
          {"case_id": _i("the case", 1, 10 ** 9), "key": _s("a short stable name for this request", 40), "what": _s("exactly what is needed", 400),
           "doc_kind": _s("if a public document of this kind about the company will do", enum=["filing", "result", "article", "dataset", "email"]),
+          "period_end": _s("the date the period the report covers ends (YYYY-MM-DD): only a document published on or after it will do"),
+          "inbox_kind": _s("the kind of file he must drop (for example result, cas, bank)"),
+          "company": _s("a word that must appear in the file's name or text (the company)"),
           "from_inbox": {"type": "boolean", "description": "true if only a file he drops can supply it"}}, ("case_id", "key", "what"), request_report),
     Tool("case_calculate", "action", "A calculation for a case (reviewed measures first; else code is written, run in the sandbox, written a second time and "
          "compared). Script, data, parameters and result are kept. Needs the sandbox: with none the case waits for it.",
