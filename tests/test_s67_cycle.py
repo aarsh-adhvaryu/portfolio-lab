@@ -111,7 +111,7 @@ def test_attempts_are_bounded_a_failure_backs_off_and_the_last_one_is_final(con,
     tid = board.post(con, "calc", "always fails", NOW)
 
     def boom(rt_, t):
-        raise RuntimeError("the model was unreachable")
+        raise board.Retryable("the model was unreachable")
     seen = []
     for _ in range(board.MAX_ATTEMPTS + 2):
         t = board.run_one(rt, {"calc": boom})
@@ -122,6 +122,8 @@ def test_attempts_are_bounded_a_failure_backs_off_and_the_last_one_is_final(con,
         clock.t += timedelta(hours=1)
     assert seen == [("retry", 1), ("retry", 2), ("failed", 3)]
     assert board.run_one(rt, {"calc": boom}) is None             # nothing runs forever
+    bug = board.post(con, "calc", "has a bug", clock.t)
+    assert board.run_one(rt, {"calc": lambda r, t: 1 / 0})["status"] == "failed" and board.get(con, bug)["attempts"] == 1   # a bug is not retried
 
 
 def test_a_chain_over_the_hop_limit_is_held_and_has_two_explicit_ways_out(con, tmp_path):
@@ -359,3 +361,43 @@ def test_the_brain_tools_for_cases_are_registered_with_strict_schemas_and_the_ri
     ctx = tl.Ctx(rt, 1, gv.SONNET, True, {"AAA": AAA}, egress.Gate(), NOW)
     text, err = tl.run(ctx, "open_case", {"question": "Anything odd?"}, 1)
     assert "cases belong to the main brain" in text and con.execute("SELECT count(*) FROM hq_cases").fetchone()[0] == 0
+
+
+# --- after a sleep: catch up before thinking, and say what is not current -------------------------------------------------------------------
+
+def test_after_a_wake_nothing_is_presented_as_current_until_the_data_has_caught_up(con, tmp_path, quiet, monkeypatch):
+    import numpy as np
+    from pflab.app import runtime, system
+    monkeypatch.setattr(system, "_ollama", lambda: {"up": True, "models": ["qwen3:8b-q8_0", "nomic-embed-text:latest"]})
+    (tmp_path / "pm").mkdir(exist_ok=True)
+    clock = Clock(datetime(2026, 11, 2, 10, 0))                                            # a Monday
+    rt = runtime.Runtime(tmp_path / "pm", tmp_path / "data", tmp_path, con=con, clock=clock)
+    for d in (date(2026, 10, 28), date(2026, 10, 29), date(2026, 10, 30)):                 # the last prices are Friday's
+        con.execute("INSERT INTO prices VALUES (?,?,?,?,?,?)", [AAA, d, 100.0, "EQ", "nse_bhavcopy", clock.t])
+    con.execute("INSERT INTO hq_suggestions (sug_id, pass_id, model, made_at, kind, isin, symbol, text, reasoning, horizon_days, shadow, answer) "
+                "VALUES (1, 1, 'opus', ?, 'add', ?, 'AAA', 'Add to AAA on a dip.', 'r', 30, false, 'none')", [clock.t - timedelta(days=3), AAA])
+    con.execute("INSERT INTO hq_tasks (task_id, created_at, from_agent, to_agent, text, status, hops) VALUES (7, ?, 'x', 'calc', 'was running', 'running', 0)",
+                [clock.t - timedelta(days=3)])
+    assert rt.beat() is None                                                                 # the first beat only starts the clock
+    clock.t = datetime(2026, 11, 2, 10, 1)
+    assert rt.beat() is None
+    clock.t = datetime(2026, 11, 5, 9, 0)                                                    # the laptop slept for three days
+    assert rt.beat().startswith("woke after")
+    assert board.get(con, 7)["status"] == "retry"                                            # what was running was recovered at the wake
+    rec = system.recommendations(rt, clock.t)
+    assert rec["current"] is False and rec["items"] and "NOT shown as current" in rec["say"]
+    assert system.picture(rt, clock.t)["catching_up"] and system.picture(rt, clock.t)["verdict"].startswith("catching up")
+    # no pass is made on old prices: the data first
+    r = brain.wake(rt, Fake(), egress.Gate(), held=[AAA], listed=[BBB], cfg=CFG, rival=False)
+    assert r["pass"] is None and "waiting for current data" in r["why"]
+    # the catch-up brings the session's prices; the next beat clears the flag and the queued item is current again
+    con.execute("INSERT INTO prices VALUES (?,?,?,?,?,?)", [AAA, date(2026, 11, 4), 101.0, "EQ", "nse_bhavcopy", clock.t])
+    clock.t = datetime(2026, 11, 5, 9, 1)
+    assert rt.beat() is None and rt.catching_up is None
+    assert system.recommendations(rt, clock.t)["current"] is True
+    # a failed refresh does not make old prices look refreshed
+    con.execute("DELETE FROM prices WHERE date = ?", [date(2026, 11, 4)])
+    con.execute("INSERT INTO job_runs (run_id, job, started_at, status, detail) VALUES (1, 'prices', ?, 'failed', 'RuntimeError: the bhavcopy file was missing')",
+                [clock.t])
+    why = system.stale_prices(con, clock.t)
+    assert "latest refresh failed" in why and "bhavcopy file was missing" in why

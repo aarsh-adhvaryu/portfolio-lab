@@ -27,6 +27,9 @@ KEYWORDS = {
     "risk": r"risk|monte|simulat|fall|crash|drawdown|worst|chance",
     "tax": r"\btax|regime|refund|advance",
     "context": r"news|why|filing|announce|result|happen|moved|fell|rose",
+    "system": r"working|in sync|status|connected|kite login|gmail|telegram|docker|sandbox|stale|fresh|up to date|failing|failed|broken|"
+              r"researching|investigat|running now|catching up|everything ok",
+    "mail": r"e-?mails?|\bmail\b|did .{0,30}(arrive|come through)|alert from my bank",
 }
 SYSTEM = ("You answer the investor's questions about his own portfolio using ONLY the FACTS given. Rules: every number you "
           "write must appear in FACTS exactly as given (rupees as given, fractions may be written as percents); do "
@@ -71,7 +74,7 @@ def facts_table(facts: Dict[str, object]) -> str:
 
 
 def ask(con, q: str, asof: date, *, llm: Optional[Callable[[str], str]] = None, chat: Optional[Callable] = None,
-        model: Optional[str] = None, tools_override: Optional[List[str]] = None) -> Answer:
+        model: Optional[str] = None, tools_override: Optional[List[str]] = None, history: str = "") -> Answer:
     """Real runs take the slider's models (S61, `hq/models.py`: routing; answers drafted by each model of its chain
     until one passes the guard); with no model, routing is by keywords and the answer is the facts themselves. Tests
     pass `chat` / `llm` directly."""
@@ -98,7 +101,7 @@ def ask(con, q: str, asof: date, *, llm: Optional[Callable[[str], str]] = None, 
                 from pflab.llm import client, eval12
                 names, router = eval12.laya_route(q, client.http_transport), "laya"
             elif router_model:
-                names, router = llm_route(q, chat, router_model), "model"
+                names, router = llm_route((history[-300:] + "\nFollow-up: " if history else "") + q, chat, router_model), "model"
             else:
                 names = []
         except Exception:
@@ -117,7 +120,8 @@ def ask(con, q: str, asof: date, *, llm: Optional[Callable[[str], str]] = None, 
             facts[f"{n}.error"] = f"{type(e).__name__}: {e}"[:200]
     src_txt = ("\n\nSOURCES (cite a source as [S1]; quote a title only inside double quotes followed by its tag):\n"
                + "\n".join(f"[{k}] {v}" for k, v in sources.items())) if sources else ""
-    prompt = f"QUESTION: {q}\n\nFACTS (as of {asof}):\n{facts_table(facts)}{src_txt}"
+    earlier = f"EARLIER IN THIS CHAT (for what the question refers to; every number must still come from FACTS):\n{history}\n\n" if history else ""
+    prompt = f"{earlier}QUESTION: {q}\n\nFACTS (as of {asof}):\n{facts_table(facts)}{src_txt}"
     from pflab.llm import client, graphs
     if llm is not None:
         chain = [("given", llm)]

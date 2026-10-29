@@ -717,15 +717,21 @@ def picture_tool(ctx: Ctx, a: dict) -> dict:
 
 
 def system_status(ctx: Ctx, a: dict) -> dict:
-    """The system's own state, built by code (app/system.py): the same picture the Command centre shows."""
+    """The system's own state, built by code (app/system.py): the same picture the Command centre shows, whether this runs in the
+    dashboard or in the background tick."""
     from pflab.app import system
     p = system.picture(ctx.rt, ctx.now)
-    return {"verdict": p["verdict"], "connectors": [{k: c[k] for k in ("name", "state", "line")} for c in p["connectors"]],
-            "data_freshness": [{k: f[k] for k in ("name", "latest", "state", "line")} for f in p["freshness"]],
-            "running_now": p["work"]["running"], "recently_done": [w["says"] + " (" + w["at"] + ")" for w in p["work"]["recent"][:6]],
-            "failed_last_day": p["work"]["failed_24h"], "needs_from_him": [n["title"] for n in p["needs"]["items"]],
-            "tools": p["tools"], "source": "app/system.py: read from the store, the data folder and this machine; states: ok, warn (late or "
-            "waiting on him), down, off"}
+    w = p["work"]
+    return {"verdict": p["verdict"], "catching_up": p["catching_up"],
+            "connectors": [{k: c[k] for k in ("name", "state", "line")} for c in p["connectors"]],
+            "data_freshness": [{k: f[k] for k in ("name", "latest", "state", "line", "retained")} for f in p["freshness"]],
+            "running_now": w["running"], "recently_done": [x["says"] + " (" + x["at"] + ")" for x in w["recent"][:6]],
+            "failed_last_day": w["failed_24h"], "needs_from_him": [n["title"] for n in p["needs"]["items"]],
+            "tasks": w["tasks"], "held_tasks": w["held"], "being_researched": [{k: c[k] for k in ("id", "question", "status", "waiting_for")} for c in w["investigating"]],
+            "decided_lately": w["decided"], "recommendations": {k: p["recommendations"][k] for k in ("current", "why", "say")},
+            "changed_since_his_last_visit": p["changed"], "tools": p["tools"],
+            "source": "app/system.py: read from the store, the data folder and this machine; states: ok, warn (late or waiting on him), down, off; "
+            "a recommendation prepared earlier is not current while `recommendations.current` is false"}
 
 
 def mail_facts(ctx: Ctx, a: dict) -> dict:

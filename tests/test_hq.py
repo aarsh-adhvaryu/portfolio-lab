@@ -339,7 +339,9 @@ def test_brain_predictions_checked_by_code():
         assert brain.check_prediction(p, syms, NOW)[1] and why in brain.check_prediction(p, syms, NOW)[1]
 
 
-def test_brain_wakes_only_on_new_material_events(con, tmp_path, brain_input):
+def test_brain_wakes_only_on_new_material_events(con, tmp_path, brain_input, monkeypatch):
+    from pflab.app import system
+    monkeypatch.setattr(system, "stale_prices", lambda con_, now_: None)       # S67 has its own test: old prices stop a pass (test_s67_cycle)
     rt = _desk(con, tmp_path, brain="off")
     assert brain.wake(rt, Fake(), egress.Gate(), held=[AAA], listed=[BBB], cfg=CFG)["pass"] is None
     rt.settings["brain"] = "economy"

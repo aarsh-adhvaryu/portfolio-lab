@@ -31,6 +31,7 @@ INDICES = {"NIFTY 50": "NSE:NIFTY 50", "BANK NIFTY": "NSE:NIFTY BANK", "NIFTY 50
 SCHEDULER_EVERY_S = 60
 LIVE_EVERY_S = 60
 MC_PATHS, MC_MAX_AGE_H = 10_000, 20
+WAKE_GAP = timedelta(minutes=5)     # the scheduler loop turns every minute: a longer silence is a sleep
 BATCH_POLL_MIN = 30                 # a submitted Opus batch is collected this often while the window is open
 
 
@@ -61,6 +62,9 @@ class Runtime:
         self.sims_running = False
         self.sims_error: Optional[str] = None
         self._hq_wake = threading.Event()             # S59: an order on the board runs at once
+        self.catching_up: Optional[str] = None        # S67: set after a wake or a start after a long stop, until the data is current again
+        self._beat: Optional[datetime] = None
+        self._woke_at: Optional[datetime] = None
 
     # --- change signals ----------------------------------------------------------------------------------------------
     def bump(self, *topics: str) -> None:
@@ -84,6 +88,9 @@ class Runtime:
     def start(self) -> None:
         from pflab.service import jobs
         jobs.reap_at_start(self.cursor(), self.clock())     # S66: runs left "running" by a stopped process are due again
+        last_run = self.cursor().execute("SELECT max(started_at) FROM job_runs").fetchone()[0]
+        if last_run is not None and self.clock() - last_run > timedelta(hours=6):
+            self.catching_up, self._woke_at = f"started after {int((self.clock() - last_run).total_seconds() // 3600)} h off", self.clock()
         for name, fn in (("scheduler", self._scheduler_loop), ("live", self._live_loop), ("mc", self._mc_loop),
                          ("research", self._research_loop), ("hq", self._hq_loop), ("phone", self._phone_loop)):
             t = threading.Thread(target=self._guard(fn), name=name, daemon=True)
@@ -111,8 +118,31 @@ class Runtime:
                     self.stop.wait(60)
         return run
 
+    def beat(self) -> Optional[str]:
+        """Called once a loop. A gap far longer than the loop's own pause means the PC slept (or the process was frozen): recover what was
+        running, look for what arrived, and say so until the data is current again. Pure: the clock is the runtime's own, so tests move it."""
+        from pflab.app import system
+        from pflab.hq import service
+        now = self.clock()
+        last, self._beat = self._beat, now
+        if last is not None and now - last > WAKE_GAP:
+            mins = int((now - last).total_seconds() // 60)
+            self.catching_up, self._woke_at = f"woke after {mins} min away", now
+            try:
+                service.start(self)
+            except Exception:
+                log.exception("recovery after wake failed")
+            self.bump("health", "command")
+        elif self.catching_up and self._woke_at is not None:
+            ok, _why = system.critical_fresh(self.cursor(), now)
+            if ok or now - self._woke_at > timedelta(hours=2):
+                self.catching_up = None
+                self.bump("health", "command")
+        return self.catching_up
+
     def _scheduler_loop(self) -> None:
         while not self.stop.is_set():
+            self.beat()
             self.run_wanted()
             if self.settings.get("scheduler", True):
                 self.scheduler_once()
