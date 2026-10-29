@@ -202,8 +202,19 @@ def _mail(rt, now: datetime) -> dict:
                   [g["detail"] for g in gp[:3]])
 
 
+def _holes_cached(rt, now: datetime) -> dict:
+    """Counting session files and the calendar is not free (thousands of files); the screen asks every few seconds, so the answer is kept
+    for five minutes and refreshed in the background (the same rule as the other slow probes)."""
+    from pflab.app import system
+    end = now.date() - timedelta(days=1)
+    return system._cached(f"history:{rt.data_root}:{end}", 300, lambda: bhavcopy_holes(rt.data_root, HISTORY_START, end),
+                          {"have": 0, "expected": 0, "holes": [], "first": None, "last": None, "pending": True})
+
+
 def _history(rt, now: datetime) -> dict:
-    h = bhavcopy_holes(rt.data_root, HISTORY_START, now.date() - timedelta(days=1))
+    h = _holes_cached(rt, now)
+    if h.get("pending"):
+        return _stage("history", "Market history", PARTIAL, "counting the sessions held…", [])
     if not h["have"]:
         return _stage("history", "Market history", TODO, "no market history yet", ["It fills itself in hourly steps; `tools/backfill_bhavcopy.py` does it faster (long run: yours)."])
     left = len(h["holes"])

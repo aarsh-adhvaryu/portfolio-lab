@@ -107,6 +107,7 @@ def test_a_job_with_a_failed_sub_step_has_failed_and_the_screen_says_which(rt, t
 
 def test_the_hq_job_fails_when_a_part_fails_instead_of_reporting_a_success(rt, monkeypatch):
     from pflab.service import tasks  # noqa: F401  (registers the jobs)
+    monkeypatch.setattr(service, "_last", {})                      # the round's own rate limits are keyed by object id: start clean
     monkeypatch.setattr(service, "paid_allowed", lambda r: True)
 
     def boom(r, limit=40):
@@ -118,6 +119,7 @@ def test_the_hq_job_fails_when_a_part_fails_instead_of_reporting_a_success(rt, m
     ctx = jobs.Ctx(rt.cursor(), NOW, rt.pm_dir, rt.data_root, rt.repo, "python", None)
     out = service.tick_job(ctx)
     assert "readers" in out["failed"] and "unreachable" in out["failed"]["readers"]
+    service._last.clear()                                          # a new round on a new object of the same id would otherwise be rate-limited
     assert jobs.run_job(ctx, jobs.Job("hq_demo", jobs.REGISTRY["hq"].schedule, service.tick_job)).status == "failed"
 
 

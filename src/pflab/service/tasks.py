@@ -384,8 +384,8 @@ def _mail(ctx: Ctx) -> dict:
     except Exception as e:                                   # the local model off, say: the emails are read at the next try
         out["read"] = f"not read: {type(e).__name__}: {str(e)[:160]}"
         out["failed"] = {"mail_reading": out["read"]}        # S67: the attachments came; the reading did not: the run is a failed one
-    if out.get("errors") and not out.get("kept") and not out.get("messages"):
-        out.setdefault("failed", {})["fetch"] = f"{out['errors']} message(s) could not be fetched"
+    if out.get("errors") and out["errors"] >= out.get("messages", 0):                 # every message tried failed: the run did not read mail
+        out.setdefault("failed", {})["fetch"] = f"{out['errors']} message(s) could not be fetched or stored"
     return out
 
 
