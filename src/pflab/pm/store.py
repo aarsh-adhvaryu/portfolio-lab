@@ -634,6 +634,13 @@ MIGRATIONS = [
     (44, "effect_state_s67", """
     ALTER TABLE hq_effects ADD COLUMN state VARCHAR;
     """),
+    # 2026-10-29: S67 local. Where each mailbox's walk back through its history has reached (windows of weeks, newest first, resumed
+    # after any stop): the old single capped look (400 days / 1,500 messages) could never reach older evidence.
+    (45, "mail_scan_s67", """
+    CREATE TABLE mail_scan (
+        mailbox VARCHAR PRIMARY KEY, oldest DATE, complete BOOLEAN NOT NULL, scanned INTEGER NOT NULL, updated_at TIMESTAMP NOT NULL
+    );
+    """),
 ]
 
 

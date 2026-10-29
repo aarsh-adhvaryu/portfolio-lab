@@ -19,9 +19,10 @@ Nothing read here is sent to any model or API. The workshop (beta) never reads h
 from __future__ import annotations
 
 import base64
+import hashlib
 import re
 import shutil
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
 
@@ -31,7 +32,11 @@ QUERY = "has:attachment newer_than:{days}d (filename:pdf OR filename:xlsx OR fil
 KEEP = ("cas", "bank", "tradebook", "contract_note", "funds_ledger", "fd_certificate", "gift_city")
 EXTS = (".pdf", ".xlsx", ".xls", ".csv")
 AGENT = "mail"
-FIRST_DAYS, FIRST_LIMIT = 400, 1500          # the first look (a cold start): a year of statements, so Setup and the tax year have their history
+FIRST_DAYS, FIRST_LIMIT = 400, 1500          # S65 values, kept for reference: the walk below replaces the single capped look
+WINDOW_DAYS = 60                             # one slice of history listed at a time, newest first, saved when finished
+HORIZON_DAYS = 3650                          # how far back the walk goes (ten years); the coverage says so, never "all of it"
+BATCH_MESSAGES = 600                         # new messages handled per run; the walk resumes where it stopped
+RECENT_LIMIT, WINDOW_LIMIT = 2000, 5000
 MAIL_WORDS = {"co", "in", "com", "net", "org", "gov", "mail", "mails", "email", "mailer", "mailers", "alerts", "alert", "info", "noreply"}
 
 
@@ -121,6 +126,73 @@ def message_ids(sess, query: str, limit: int = 300) -> List[str]:
     return ids[:limit]
 
 
+def window_query(start: date, end: date) -> str:
+    """Attachments dated from `start` up to (not including) `end`: Gmail's after:/before: take days as YYYY/MM/DD."""
+    return (f"has:attachment after:{start:%Y/%m/%d} before:{end:%Y/%m/%d} "
+            "(filename:pdf OR filename:xlsx OR filename:xls OR filename:csv)")
+
+
+def mailbox_key(sess) -> str:
+    """A stable name for this mailbox's checkpoint (a hash of its address, never the address)."""
+    try:
+        return "mb:" + hashlib.sha1(profile(sess).lower().encode()).hexdigest()[:10]
+    except Exception:
+        return "mb:default"
+
+
+def scan_state(con, mailbox: str) -> dict:
+    r = con.execute("SELECT oldest, complete, scanned FROM mail_scan WHERE mailbox=?", [mailbox]).fetchone()
+    return {"oldest": r[0], "complete": bool(r[1]), "scanned": int(r[2])} if r else {"oldest": None, "complete": False, "scanned": 0}
+
+
+def _save_scan(con, mailbox: str, oldest: date, complete: bool, scanned: int, now: datetime) -> None:
+    con.execute("INSERT OR REPLACE INTO mail_scan VALUES (?,?,?,?,?)", [mailbox, oldest, complete, scanned, now])
+
+
+def coverage(con, now: datetime) -> list:
+    """Per mailbox: how far back it has been read. Honest about what email alone cannot show: a mailbox walked to the horizon has had
+    its ATTACHMENTS read; statements that only came as a link, or with no file, were not looked for here."""
+    out = []
+    for mb, oldest, complete, scanned, upd in con.execute("SELECT mailbox, oldest, complete, scanned, updated_at FROM mail_scan ORDER BY mailbox").fetchall():
+        out.append({"mailbox": mb, "read_back_to": str(oldest), "reached_horizon": bool(complete), "messages": int(scanned),
+                    "horizon_days": HORIZON_DAYS, "link_only_or_no_file_mail_checked": False, "updated": str(upd)[:16]})
+    return out
+
+
+def scan_ids(sess, con, mailbox: str, now: datetime, days: int, budget: Optional[int] = None):
+    """The message ids to handle this run: the recent weeks first (new mail), then history walked back one window at a time from where
+    the last run stopped. A window is marked finished only after every id in it was handed out and handled, so a stop (the budget, a
+    crash, a closed lid) resumes inside it; messages already seen are skipped without counting. Old evidence is never starved by the
+    newest page: the walk always moves back."""
+    budget = BATCH_MESSAGES if budget is None else budget
+    today = now.date()
+    given: set = set()                                       # an id is handed out once per run, however many windows list it
+    for mid in message_ids(sess, window_query(today - timedelta(days=days), today + timedelta(days=1)), RECENT_LIMIT):
+        given.add(mid)
+        yield mid
+    st = scan_state(con, mailbox)
+    if st["complete"]:
+        return
+    oldest = st["oldest"] or (today + timedelta(days=1))
+    horizon = today - timedelta(days=HORIZON_DAYS)
+    n = 0
+    while oldest > horizon:
+        start = oldest - timedelta(days=WINDOW_DAYS)
+        for mid in message_ids(sess, window_query(start, oldest), WINDOW_LIMIT):
+            if mid in given or _seen(con, mid):
+                continue
+            if n >= budget:
+                return                                       # this window stays open: the next run resumes here
+            n += 1
+            given.add(mid)
+            yield mid
+        oldest = start
+        _save_scan(con, mailbox, oldest, oldest <= horizon, st["scanned"] + n, now)
+        if n >= budget:
+            return
+    _save_scan(con, mailbox, oldest, True, st["scanned"] + n, now)
+
+
 def _parts(payload: dict) -> Iterable[dict]:
     yield payload
     for p in payload.get("parts", []) or []:
@@ -174,10 +246,10 @@ def fetch(rt, sess=None, days: int = 40, now: Optional[datetime] = None) -> dict
     con, now = rt.cursor(), now or rt.clock()
     pw = sniff.passwords_from_secrets()
     out = {"messages": 0, "files": 0, "kept": 0, "duplicates": 0, "locked": 0, "dropped": 0, "errors": 0}
-    first = not con.execute("SELECT 1 FROM mail_seen LIMIT 1").fetchone()
     locked_by: dict = {}
     from pflab.app import readiness
-    for mid in message_ids(sess, QUERY.format(days=FIRST_DAYS if first else days), FIRST_LIMIT if first else 300):
+    mailbox = mailbox_key(sess)
+    for mid in scan_ids(sess, con, mailbox, now, days):
         if _seen(con, mid):
             continue
         gap = f"mail:msg:{mid}"
