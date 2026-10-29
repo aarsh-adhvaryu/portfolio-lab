@@ -142,12 +142,23 @@ def strategy(con, root, asof: date, name: str, qty: int, issue: float, budget: f
             out["the_rest_under_the_standard_plan"] = remaining_plan(con, asof, left)
         except Exception as e:
             out["the_rest_under_the_standard_plan"] = {"not_built": f"{type(e).__name__}: {str(e)[:120]}"}
+    br = out["base_rates"]
+
+    def pct(x):
+        return f"{x * 100:+.0f}%"
+    gc, a20 = br.get("listing_gain_at_close"), br.get("after_listing_day_20_sessions")
+    sell = ("Sell on the listing day: takes the listing gain if there is one" +
+            (f" (in the history here {gc['share_up'] * 100:.0f}% of large IPOs closed their first day above the issue price, median {pct(gc['median'])})" if gc else
+             " (no listing history is available here to say how often)") +
+            ", pays short-term tax on the gain, and gives up whatever comes later. A choice, not a default.")
+    hold = ("Hold: a view on the business, not on the listing. " +
+            (f"After the first day the history here is a median of {pct(a20['median'])} over 20 sessions (10th to 90th percentile {pct(a20['p10'])} to {pct(a20['p90'])}): "
+             "a wide spread, other companies, not a forecast of this one. " if a20 else "") +
+            "Holding for the long term is as legitimate as selling, and the tax rate and the holding period then differ (the tax engine has them dated).")
     out["choices_for_the_allotment"] = [
-        "Sell on the listing day: takes the pop if there is one (large IPOs listed above the issue price in 7 of 10 cases), "
-        "pays short-term tax on the gain, and gives up what comes later.",
-        "Hold: the base rates show large IPOs after the listing day were flat to down over 1-3 months with a wide spread; holding "
-        "is a view on the company, not on the listing.",
-        "Sell part on the day and hold the rest: caps the regret either way.",
+        sell, hold, "Sell part on the day and hold the rest: caps the regret either way.",
+        "Belonging to a large business group does not guarantee returns: look at the company's own numbers, and at what the group's names already "
+        "add to the portfolio (group_exposure above).",
         "Whatever the choice, decide it BEFORE the listing and write it down; the listing-day price is where emotion decides for you."]
     out["to_look_up_with_web_search"] = [
         "subscription by category (QIB, NII, retail) and whether the issue closed far above 1x",
