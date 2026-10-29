@@ -466,7 +466,7 @@ def critical_fresh(con, now: datetime) -> tuple:
     return (False, why) if why else (True, "")
 
 
-_ISIN = re.compile(r"(?:IN[A-Z0-9]{10}|ZZ\d{10})")
+_ISIN = re.compile(r"\b(?:IN[A-Z0-9]{10}|ZZ\d{10})\b")
 
 
 def instrument_stale(con, now: datetime, isin: str) -> Optional[str]:
