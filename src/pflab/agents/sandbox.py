@@ -57,7 +57,7 @@ class Local:
 
 
 def _flags(name: str, work: Optional[Path] = None, out: Optional[Path] = None) -> List[str]:
-    cmd = ["docker", "run", "--rm", "--name", name, "--network", "none", "--read-only", "--tmpfs", "/tmp:rw,noexec,size=256m",
+    cmd = ["docker", "run", "--rm", "--name", name, "--network", "none", "--read-only", "--tmpfs", "/tmp:rw,size=256m",
            "--memory", "2g", "--memory-swap", "2g", "--cpus", "2", "--pids-limit", "256", "--cap-drop", "ALL", "--ipc", "none",
            "--ulimit", "nofile=256:256", "--ulimit", "core=0", "--security-opt", "no-new-privileges"]
     if work is not None:

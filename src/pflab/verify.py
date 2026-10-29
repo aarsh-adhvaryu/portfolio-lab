@@ -234,18 +234,16 @@ def configuration(ctx: Ctx, rep: Report) -> None:
 
 
 def local_model(ctx: Ctx, rep: Report) -> None:
-    from pflab.app import system
-    ol = system._ollama.__wrapped__() if hasattr(system._ollama, "__wrapped__") else None
     try:
         import urllib.request
         with urllib.request.urlopen("http://localhost:11434/api/tags", timeout=3) as r:
             names = [m["name"] for m in json.loads(r.read()).get("models", [])]
-        need = {"qwen3:8b-q8_0", "nomic-embed-text:latest"}
-        miss = sorted(need - set(names))
-        rep.add("local model (Ollama)", PASS if not miss else NEEDS, "running; both models present" if not miss else f"running; missing {', '.join(miss)}",
-                "" if not miss else "ollama pull " + miss[0].split(":")[0] if miss else "")
     except Exception:
         rep.add("local model (Ollama)", NEEDS, "Ollama does not answer on this PC", "start Ollama, then run this command again")
+        return
+    miss = sorted({"qwen3:8b-q8_0", "nomic-embed-text:latest"} - set(names))
+    rep.add("local model (Ollama)", PASS if not miss else NEEDS, "running; both models present" if not miss else f"running; missing {', '.join(miss)}",
+            "" if not miss else f"ollama pull {miss[0]}")
 
 
 def sandbox_checks(ctx: Ctx, rep: Report) -> None:

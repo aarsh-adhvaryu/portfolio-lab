@@ -212,9 +212,15 @@ def connectors(rt, now: datetime) -> List[dict]:
     ol = _ollama()
     need = {"qwen3:8b-q8_0", "nomic-embed-text:latest"}
     missing = sorted(need - set(ol["models"]))
-    out.append({"id": "local", "name": "Local model", "state": OK if ol["up"] and not missing else DOWN,
-                "line": ("running on this PC; both models present" if ol["up"] and not missing else
-                         "Ollama is not running: local reading, emails and drafts wait" if not ol["up"] else f"missing: {', '.join(missing)}"), "action": None})
+    if ol.get("pending"):                                       # the first look at a slow Ollama: not "down", not yet known
+        local = (WARN, "checking the local model…")
+    elif ol["up"] and not missing:
+        local = (OK, "running on this PC; both models present")
+    elif not ol["up"]:
+        local = (DOWN, "Ollama is not running: local reading, emails and drafts wait")
+    else:
+        local = (DOWN, f"missing: {', '.join(missing)}")
+    out.append({"id": "local", "name": "Local model", "state": local[0], "line": local[1], "action": None})
 
     # Claude API: a key and a cap are not a working road; the last call says
     cfg = analyst.config()
