@@ -242,6 +242,27 @@ function readinessCard(s) {
     <span class="tiny muted">Read from what is reconciled and covered, not from jobs having run.</span>
   </section>`;
 }
+function coverageCard(s) {
+  const c = s && s.coverage;
+  const o = s && s.onboarding;
+  const newHere = o && o.say ? `<div class="small warn" style="padding:4px 0">${esc(o.say)}</div>` : '';
+  if (!c || (!c.accounts.length && !c.mailboxes.length)) {
+    return newHere ? `<section class="panel" style="flex:1 1 380px;display:flex;flex-direction:column;gap:4px"><span class="lbl">What I know about you</span>${newHere}${(o.unknown || []).map((u) => `<div class="tiny muted">Not yet known: ${esc(u)}</div>`).join('')}</section>` : '';
+  }
+  const st = c.status;
+  const tone = st.label === 'complete' ? 'up' : 'warn';
+  return `<section class="panel" style="flex:1 1 380px;display:flex;flex-direction:column;gap:4px">
+    <div class="row" style="justify-content:space-between"><span class="lbl">Accounts found and what I can say about them</span><span class="small ${tone}">${esc(st.label)}</span></div>
+    ${newHere}
+    ${c.accounts.map((a) => `<div style="padding:3px 0;border-bottom:1px solid var(--line2)"><div class="row" style="gap:8px"><b style="font-size:13px;flex:1">${esc(a.account)}</b><span class="tiny muted">${esc(a.state)}</span></div>
+      <div class="tiny muted">${a.first_month ? 'activity ' + esc(a.first_month) + ' to ' + esc(a.last_month) + (a.silent_months && a.silent_months.length ? '; no activity in ' + esc(a.silent_months.slice(0, 4).join(', ')) : '') : 'no ledger activity yet'}${a.next ? ' · ' + esc(a.next) : ''}</div></div>`).join('')}
+    ${c.mailboxes.map((m) => `<div class="tiny muted">Mailbox read back to ${esc(m.read_back_to)}${m.reached_horizon ? ' (the furthest I look: ' + Math.round(m.horizon_days / 365) + ' years)' : ' (still reading)'}; mail with no file or only a link is not checked here.</div>`).join('')}
+    ${c.gaps.length ? `<div class="tiny warn">${c.gaps.length} file(s) or message(s) I could not use are listed, not forgotten.</div>` : ''}
+    ${(st.reasons || []).map((r) => `<div class="tiny warn">${esc(r)}</div>`).join('')}
+    ${st.label !== 'complete' ? '<div class="row"><button class="btn" id="covConfirm" style="font-size:12px;padding:3px 9px">This is every account, mailbox and export</button></div>' : ''}
+    <span class="tiny muted">${esc(st.note || '')}</span>
+  </section>`;
+}
 function showCase(c) {
   const ev = c.evidence.map((e) => `<li><b>${esc(e.stance)}</b>${e.source_kind ? ' · ' + esc(e.source_kind) : ''}: ${esc(e.text)} <span class="tiny muted">(published ${esc((e.published || e.event || 'undated').toString().slice(0, 10))}, retrieved ${esc((e.retrieved || '').toString().slice(0, 10))})</span></li>`).join('');
   const calc = c.calculations.map((k) => `<li>calculation #${k.id}: ${esc(k.status)}${k.contained ? ', contained' : ''}; data: ${esc(k.datasets.join(', '))}; result: ${esc(JSON.stringify(k.result))}</li>`).join('');
@@ -277,6 +298,8 @@ function askCard(s) {
 function wireSystem() {
   const seen = document.getElementById('seen');
   if (seen) seen.onclick = async () => { try { await post('/api/system/seen', {}); } catch (er) { alert(er.message); } S.sys = null; load(true); };
+  const cc = document.getElementById('covConfirm');
+  if (cc) cc.onclick = async () => { if (!confirm('Confirm that these are all your accounts, mailboxes and exports? I will ask again if I find another.')) return; try { await post('/api/coverage/confirm', {}); } catch (er) { alert(er.message); } S.sys = null; load(true); };
   document.querySelectorAll('[data-hrel]').forEach((b) => { b.onclick = async () => { try { await post('/api/hq/tasks/' + b.dataset.hrel + '/release', {}); } catch (er) { alert(er.message); } S.sys = null; load(true); }; });
   document.querySelectorAll('[data-hdis]').forEach((b) => { b.onclick = async () => { const why = prompt('Why dismiss it?', 'not wanted'); if (why === null) return; try { await post('/api/hq/tasks/' + b.dataset.hdis + '/dismiss', { reason: why }); } catch (er) { alert(er.message); } S.sys = null; load(true); }; });
   document.querySelectorAll('[data-case]').forEach((a) => { a.onclick = async (e) => { e.preventDefault(); try { showCase(await api('/api/cases/' + a.dataset.case)); } catch (er) { alert(er.message); } }; });
@@ -295,7 +318,7 @@ function renderCommand(d) {
   $('screen').innerHTML = `
   ${systemHero(d.system)}
   <div class="cols">${needsCard(d.system)}${workCard(d.system)}${syncCard(d.system)}</div>
-  <div class="cols">${researchCard(d.system)}${changedCard(d.system)}${readinessCard(d.system)}</div>
+  <div class="cols">${researchCard(d.system)}${changedCard(d.system)}${readinessCard(d.system)}${coverageCard(d.system)}</div>
   ${tickerStrip(d.tickers || [])}
   ${freshBanner(h.today, d.kite)}
   <div class="cols">
