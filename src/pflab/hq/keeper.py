@@ -197,6 +197,8 @@ def run(con, now: datetime, root=None) -> dict:
         hyp = hy.check_due(con, root, now) if root is not None else {}
     except Exception as e:                                   # a hypothesis check never stops the keeper
         hyp = {"error": f"{type(e).__name__}: {str(e)[:100]}"}
-    return {"hypotheses": hyp, "scored": score_due(con, now), "suggestions_scored": sg.score_due(con, now, index),
+    from pflab.hq import board, cases
+    return {"held_expired": board.expire_held(con, now), "case_outcomes": cases.link_outcomes(con, now),
+            "hypotheses": hyp, "scored": score_due(con, now), "suggestions_scored": sg.score_due(con, now, index),
             "notes_ended": tidy_notes(con, now), "outcomes_written": write_outcomes(con, now, fu),
             "decisions_followed": sum(1 for f in fu if f["since"]), "unknown_subjects": sum(1 for f in fu if f.get("unknown_subject"))}

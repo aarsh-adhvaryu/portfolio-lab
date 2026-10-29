@@ -69,6 +69,21 @@ names and ids before every push (CLAUDE.md). Work on a branch `pm/sN-<slug>`, me
 (3) the `plans` job (13.6 min cold) and the news step of `collect`; (4) the other screens (Agent HQ, Portfolio, Schedule) in the style of the new Command centre;
 (5) route simple local questions in the chat to `system_status` and `mail_facts` (the brain already has them).
 
+## S67 completion cycle: checklist (cloud session 2026-10-29, branch `claude/wonderful-bardeen-z07h1e`; Sonnet 5.5 is the development model only)
+Baseline on `d81efb8` (Linux, Python 3.13, `requirements.lock` without `pywin32`): 2061 passed, 7 skipped, **7 failed, all environmental and failing the same on a
+pristine checkout**: the 6 `test_engine_golden` digests (platform float digests) and `test_app_launcher::test_children_end_with_the_system` (Windows process tree).
+Docker is not available in the cloud container (daemon absent): containment is tested through the adapter with a fake runner and the fail-closed path only.
+- [x] migration 43 (cases, evidence, deps, calcs, effects, reviews, health_checks, known_gaps; hq_tasks states)
+- [x] board: waiting/retry states, bounded attempts, reap, held release/dismiss/expire, `once` effects, stable dedup keys
+- [x] `hq/cases.py` + brain case tools (open_case, case_evidence, request_report, case_calculate, case_close, resolve_task)
+- [ ] brain/case pass wiring (trigger `case`, sweep + discover, end_pass), Desk parity, chat history, centre tools
+- [ ] sandbox fail-closed + probe; workshop wait-for-sandbox
+- [ ] status/staleness (failed ops never refresh), job subtask propagation, connector health from real operations
+- [ ] email provenance policy (readers/egress), local-vs-cloud labels in the UI
+- [ ] gmail/tradecheck/inbox recoverable workflow, known gaps, readiness + resumable backfill
+- [ ] update/rollback keeps post-upgrade events; `pflab verify` local acceptance command
+- [ ] UI (app.js) + responsiveness under slow dependencies; docs; full suite; privacy grep; commit, push, draft PR
+
 ## What remains (dated; update at each stop)
 0. **DONE 2026-10-28: the app runs his money.** `D:\PortfolioLabApp` (release `v2026.10.28.x` from GitHub; clean-room install and a real update and rollback tested), market data and news seeded (3.9 GB), his preferences carried, the RECORD rebuilt by the system itself from his files (13 of 13 checks, 1,383 events, 14 FDs), the desktop shortcuts and the scheduled tick point at it, the user-level PFLAB_DATA_DIR removed. Live checks: two Telegram summaries delivered; one brain pass (Opus, Sonnet rival) Rs 13.07; October's spend Rs 1,420 of 2,500 (the workshop's carried). Found and fixed on the way: a hidden source file, untested library versions (now `requirements.lock`), a long-path limit, the tick needing his user.
    **Read-only Gmail (v2026.10.28.5-.6):** built and tested on a fake Gmail (`ingest/gmail.py`, job `mail`); Connect fetches at once; a cold start reads a

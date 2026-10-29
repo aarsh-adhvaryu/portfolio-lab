@@ -25,7 +25,7 @@ class Agent:
 
 
 def _status(out: dict) -> str:
-    return {"needs_approval": "needs_approval", "failed": "failed"}.get(out.get("status", "done"), "done")
+    return {"needs_approval": "needs_approval", "failed": "failed", "waiting": "waiting"}.get(out.get("status", "done"), "done")
 
 
 def _chat(mode: str) -> Callable:
