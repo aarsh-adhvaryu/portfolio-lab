@@ -37,6 +37,33 @@ MAX_OUT = 1_000_000                # bytes of out.json read back from a run
 _cache: dict = {"at": 0.0, "ok": False, "why": ""}
 
 
+def read_result(path: Path, limit: int = MAX_OUT) -> dict:
+    """The one file a run hands back, read defensively: a link or reparse point or any non-regular file is refused (a run could point it
+    at a host file), at most `limit` bytes are read (never the whole file first), and it must be a JSON object. Anything else becomes
+    {"error": why}, which the caller reports as a failed run: nothing is guessed from a damaged result."""
+    path = Path(path)
+    try:
+        st = path.lstat()
+    except OSError:
+        return {}
+    import stat
+    if stat.S_ISLNK(st.st_mode) or not stat.S_ISREG(st.st_mode) or getattr(st, "st_file_attributes", 0) & 0x400:
+        return {"error": "the run's result was not a plain file and was refused"}
+    if st.st_size > limit:
+        return {"error": f"the run's result is larger than {limit} bytes and was refused"}
+    try:
+        with open(path, "rb") as fh:
+            data = fh.read(limit + 1)
+        if len(data) > limit:
+            return {"error": f"the run's result is larger than {limit} bytes and was refused"}
+        obj = json.loads(data.decode("utf-8"))
+    except (OSError, ValueError):
+        return {"error": "the run's result was not valid JSON and was refused"}
+    if not isinstance(obj, dict) or not all(isinstance(k, str) for k in obj):
+        return {"error": "the run's result was not a JSON object and was refused"}
+    return obj
+
+
 class SandboxUnavailable(RuntimeError):
     """The contained sandbox cannot run now. Nothing was executed."""
 
@@ -87,9 +114,8 @@ class Docker:
                 self.kill(name)
                 raise
             f = out / "out.json"
-            if f.exists():                                         # the only thing that comes back, size-capped
-                data = f.read_bytes()[:MAX_OUT]
-                (work / "out.json").write_bytes(data)
+            if os.path.lexists(f):                                 # the only thing that comes back: bounded, regular, a JSON object
+                (work / "out.json").write_text(json.dumps(read_result(f)), encoding="utf-8")
             return p
         finally:
             shutil.rmtree(out, ignore_errors=True)

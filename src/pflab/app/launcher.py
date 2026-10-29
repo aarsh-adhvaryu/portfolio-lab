@@ -253,6 +253,9 @@ def _run(pm: Path, log) -> int:
         lock.__exit__(None, None, None)
         restart(log)
         return 0
+    from pflab import activation
+    if activation.activate(pm, via="icon"):                # the investor's own click: a fresh profile starts its work now
+        log.info("first launch: the profile is now active")
     try:
         rc = _serve(pm, log, url, port, win)
     except BaseException:

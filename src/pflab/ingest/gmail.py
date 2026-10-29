@@ -88,6 +88,8 @@ def session():
     """An authorised HTTP session (read-only scope), refreshed when its token has expired."""
     from google.auth.transport.requests import AuthorizedSession, Request
     from google.oauth2.credentials import Credentials
+    from pflab import activation
+    activation.guard("reading the mailbox")
     if not connected():
         raise MailError("Gmail is not connected: run `pflab mail connect` (or Settings > Connect Gmail)")
     creds = Credentials.from_authorized_user_file(str(token_path()), SCOPES)

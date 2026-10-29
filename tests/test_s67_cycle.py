@@ -217,11 +217,13 @@ def test_a_missing_report_is_one_dependency_and_one_request_and_the_same_case_re
 def test_a_case_passes_through_a_restart_and_a_reopened_conclusion_keeps_why_it_changed(con):
     cid, _ = cases.open_case(con, NOW, "Is the thesis on BBB intact?", subject="BBB", isin=BBB)
     cases.start_pass(con, [cid], 5, NOW)
+    cases._LIVE.clear()                                                               # the process died: a new one owns nothing
     assert cases.reap(con, NOW + timedelta(minutes=1)) == 1                           # the process died mid-pass
     c = cases.get(con, cid)
     assert c["status"] == "retry" and c["attempts"] == 1 and "interrupted" in c["error"]
     for k in range(5):
         cases.start_pass(con, [cid], 5 + k, NOW)
+        cases._LIVE.clear()                                                       # each time the process died again
         cases.reap(con, NOW)
     assert cases.get(con, cid)["status"] == "failed"                                  # out of attempts: visible, not looping
     cid2, _ = cases.open_case(con, NOW, "Is the thesis on AAA intact?", subject="AAA", isin=AAA)

@@ -23,6 +23,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import threading
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -317,7 +318,13 @@ def due(con, now: datetime, limit: int = 6) -> List[int]:
                                       "next_review_at <= ?)) ORDER BY opened_at, case_id LIMIT ?", [now, limit]).fetchall()]
 
 
+_LIVE: set = set()                                         # case ids in a pass of THIS process: a wake must not reap them
+_LIVE_LOCK = threading.Lock()
+
+
 def start_pass(con, ids: Sequence[int], pass_id: int, now: datetime) -> None:
+    with _LIVE_LOCK:
+        _LIVE.update(ids)
     for cid in ids:
         con.execute("UPDATE hq_cases SET status='running', pass_id=?, updated_at=?, attempts=attempts + 1 WHERE case_id=?", [pass_id, now, cid])
         log(con, cid, now, "pass", f"case pass #{pass_id} began")
@@ -326,6 +333,8 @@ def start_pass(con, ids: Sequence[int], pass_id: int, now: datetime) -> None:
 def end_pass(con, ids: Sequence[int], pass_id: int, now: datetime, ok: bool, error: str = "") -> None:
     """After a case pass: a case the brain left `running` has had a step; it is queued for another, or (steps used up) closed as
     inconclusive with a review date. A failed pass is a failed attempt: retry later, `failed` after max_attempts."""
+    with _LIVE_LOCK:
+        _LIVE.difference_update(ids)
     for cid in ids:
         c = get(con, cid)
         if c is None or c["status"] != "running":
@@ -350,6 +359,8 @@ def end_pass(con, ids: Sequence[int], pass_id: int, now: datetime, ok: bool, err
 
 def defer(con, ids: Sequence[int], now: datetime, why: str) -> None:
     """A pass was not made for a reason that is not the case's (a spending limit): back to the queue, no attempt counted."""
+    with _LIVE_LOCK:
+        _LIVE.difference_update(ids)
     for cid in ids:
         con.execute("UPDATE hq_cases SET status='queued', attempts=greatest(attempts - 1, 0), updated_at=? WHERE case_id=? AND status='running'",
                     [now, cid])
@@ -358,7 +369,9 @@ def defer(con, ids: Sequence[int], now: datetime, why: str) -> None:
 
 def reap(con, now: datetime) -> int:
     """Cases left `running` by a process that died: back to retry (the pass is counted), or failed when out of attempts."""
-    rows = con.execute("SELECT case_id FROM hq_cases WHERE status='running'").fetchall()
+    with _LIVE_LOCK:
+        mine = set(_LIVE)
+    rows = [r for r in con.execute("SELECT case_id FROM hq_cases WHERE status='running'").fetchall() if r[0] not in mine]
     for (cid,) in rows:
         end_pass(con, [cid], -1, now, False, "interrupted: the system closed during the pass")
         log(con, cid, now, "interrupted", "the system closed during a pass; effects already done are not repeated")

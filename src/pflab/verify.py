@@ -443,7 +443,7 @@ def seed_store_for_drill(db: Path, now: datetime) -> None:
                 "VALUES (1, ?, 'investor', 'no_such_agent', 'drill task', '{}', 'running', 0, 'dashboard', 1, ?)", [now, now])
     con.execute("INSERT INTO hq_cases (case_id, subject_key, opened_at, updated_at, origin, question, status, attempts, max_attempts, steps) "
                 "VALUES (1, 'drill:case', ?, ?, 'code', 'drill question', 'running', 1, 3, 0)", [now, now])
-    con.execute("INSERT INTO hq_effects VALUES ('drill:effect', 1, 'message', ?, 'sent before the stop')", [now])
+    con.execute("INSERT INTO hq_effects (effect_key, task_id, kind, done_at, detail, state) VALUES ('drill:effect', 1, 'message', ?, 'sent before the stop', 'done')", [now])
     con.execute("INSERT INTO job_runs (run_id, job, started_at, status) VALUES (1, 'collect', ?, 'running')", [now])
     con.execute("INSERT INTO questions VALUES (1, ?, 'drill', 'drill:q', 'asked once', 'open', NULL, NULL)", [now])
     con.close()

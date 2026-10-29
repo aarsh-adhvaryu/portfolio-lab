@@ -267,7 +267,7 @@ def run(spec: Spec, frames: Dict[str, pd.DataFrame], python: str = sys.executabl
         except subprocess.TimeoutExpired:
             return Run(False, [f"stopped after {time_limit} s"], contained=box.contained)
         secs = (datetime.now() - t0).total_seconds()
-        out = json.loads((work / "out.json").read_text(encoding="utf-8")) if (work / "out.json").exists() else {}
+        out = sb.read_result(work / "out.json")
         c = box.contained
         if "error" in out:
             return Run(False, [out.get("test_detail") or out["error"]], seconds=secs, contained=c)

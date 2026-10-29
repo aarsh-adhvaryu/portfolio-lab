@@ -124,6 +124,9 @@ def is_due(ctx: Ctx, job: Job) -> Tuple[bool, str]:
 def run_job(ctx: Ctx, job: Job, slot: Optional[datetime] = None) -> RunResult:
     """Run one job now, under its lock, recording the outcome. Never raises for a job's own failure."""
     con = ctx.con
+    from pflab import activation
+    if activation.is_pending(ctx.pm_dir):             # a fresh profile does nothing until the investor's first launch from the icon
+        return RunResult(job.name, "skipped", "waiting for the first launch from the desktop icon")
     if job.enabled_fn is not None:
         ok, why = job.enabled_fn(ctx)
         if not ok:

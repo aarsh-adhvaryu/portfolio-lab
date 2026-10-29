@@ -127,6 +127,9 @@ def client(secrets, store: Optional[TokenStore] = None, now: Optional[datetime] 
            factory: Optional[Callable] = None) -> Optional[ReadOnlyKite]:
     """A logged-in read-only client, or None when there is no valid token today (the caller then falls back
     to end-of-day data and says so)."""
+    from pflab import activation
+    if activation.is_pending():                            # a fresh profile reaches no broker until the investor's first launch
+        return None
     tok = (store or TokenStore()).load(now or datetime.now())
     return ReadOnlyKite(secrets.get("kite", "api_key"), tok, factory) if tok else None
 

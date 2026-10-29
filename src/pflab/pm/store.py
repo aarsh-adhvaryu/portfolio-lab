@@ -629,6 +629,11 @@ MIGRATIONS = [
         closed_at TIMESTAMP, status VARCHAR NOT NULL, attempts INTEGER NOT NULL DEFAULT 0
     );
     """),
+    # 2026-10-29: S67 local. An effect is 'started' before it runs and 'done' after: a stop in between is an uncertain outcome the
+    # system reports, not an effect it believes happened (rows from before have no state and count as done).
+    (44, "effect_state_s67", """
+    ALTER TABLE hq_effects ADD COLUMN state VARCHAR;
+    """),
 ]
 
 

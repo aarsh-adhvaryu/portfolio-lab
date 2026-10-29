@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Callable, Dict, List, Optional, Tuple
@@ -89,14 +90,36 @@ def once(con, task_id: Optional[int], key: str, kind: str, now: datetime, do: Ca
     False when an earlier run already did it. The key is written first, so an effect that dies halfway is not repeated blindly: the
     next run sees the key and the task's `progress` says it was interrupted there."""
     if con.execute("SELECT 1 FROM hq_effects WHERE effect_key=?", [key]).fetchone():
-        return False
-    con.execute("INSERT INTO hq_effects VALUES (?,?,?,?,?)", [key, task_id, kind, now, detail[:300]])
+        return False                          # done, or 'started' by a run that died: not repeated blindly (see `uncertain`)
+    con.execute("INSERT INTO hq_effects (effect_key, task_id, kind, done_at, detail, state) VALUES (?,?,?,?,?,'started')",
+                [key, task_id, kind, now, detail[:300]])
     try:
         do()
     except Exception:
         con.execute("DELETE FROM hq_effects WHERE effect_key=?", [key])      # it did not happen: the next run may try again
         raise
+    con.execute("UPDATE hq_effects SET state='done' WHERE effect_key=?", [key])
     return True
+
+
+def once_db(con, task_id: Optional[int], key: str, kind: str, now: datetime, do: Callable[[], object], detail: str = "") -> bool:
+    """`once` for an effect that only writes to the store: the marker and the effect commit together or not at all, so a stop can leave
+    neither half behind (no 'started' row, nothing to be uncertain about). For a message sent outside, use `once`."""
+    from pflab.pm.store import transaction
+    if con.execute("SELECT 1 FROM hq_effects WHERE effect_key=?", [key]).fetchone():
+        return False
+    with transaction(con):
+        con.execute("INSERT INTO hq_effects (effect_key, task_id, kind, done_at, detail, state) VALUES (?,?,?,?,?,'done')",
+                    [key, task_id, kind, now, detail[:300]])
+        do()
+    return True
+
+
+def uncertain(con) -> List[dict]:
+    """Effects whose run stopped between 'started' and 'done': they may or may not have happened outside (a message, a question). Never
+    repeated by the system; listed so he is told and can say. A store-only effect cannot be here (`once_db`)."""
+    return [{"key": r[0], "task": r[1], "kind": r[2], "since": str(r[3])[:16], "detail": r[4]} for r in con.execute(
+        "SELECT effect_key, task_id, kind, done_at, detail FROM hq_effects WHERE state='started' ORDER BY done_at").fetchall()]
 
 
 def wake(con, key: str, now: datetime, note: str = "") -> int:
@@ -126,6 +149,15 @@ def _backoff(attempts: int) -> timedelta:
     return timedelta(minutes=RETRY_MINUTES * 2 ** max(0, attempts - 1))
 
 
+_LIVE: set = set()                                         # task ids being run by THIS process (a process that died has none)
+_LIVE_LOCK = threading.Lock()
+
+
+def live_ids() -> set:
+    with _LIVE_LOCK:
+        return set(_LIVE)
+
+
 def run_one(rt, agents: Dict[str, Callable], deliver: Optional[Callable[[dict], None]] = None) -> Optional[dict]:
     """Take the oldest task due, run its agent, keep the result, hand on its follow-ups, deliver the answer. A failure that may
     pass becomes `retry` (bounded by MAX_ATTEMPTS); an agent that needs data returns status 'waiting' and is resumed by `wake`."""
@@ -134,6 +166,16 @@ def run_one(rt, agents: Dict[str, Callable], deliver: Optional[Callable[[dict], 
     tid = next_queued(con, now)
     if tid is None:
         return None
+    with _LIVE_LOCK:
+        _LIVE.add(tid)                                     # this process owns it until it ends: a wake must not reap it
+    try:
+        return _run_claimed(rt, agents, deliver, con, tid, now)
+    finally:
+        with _LIVE_LOCK:
+            _LIVE.discard(tid)
+
+
+def _run_claimed(rt, agents: Dict[str, Callable], deliver, con, tid: int, now: datetime) -> Optional[dict]:
     con.execute("UPDATE hq_tasks SET status='running', started_at=?, attempts=coalesce(attempts, 0) + 1, next_review_at=NULL "
                 "WHERE task_id=? AND status IN ('queued','retry')", [now, tid])
     t = get(con, tid)
@@ -188,11 +230,16 @@ def recent(con, limit: int = 40) -> List[dict]:
 
 def reap(con, now: datetime) -> int:
     """A task left `running` by a process that died goes back to `retry` (it can be run again, once more, at once), or is failed when it
-    has used MAX_ATTEMPTS. What it did before the stop is in `hq_effects`; its `progress` says so. Returns how many were found."""
-    rows = con.execute("SELECT task_id, coalesce(attempts, 0) FROM hq_tasks WHERE status='running'").fetchall()
+    has used MAX_ATTEMPTS. What it did before the stop is in `hq_effects`; its `progress` says so. A task this process is still running
+    (a slow job, or the PC slept and woke inside the same process) is left alone: only a task no live worker of this process owns is
+    one a dead process left. Returns how many were found."""
+    mine = live_ids()
+    rows = [r for r in con.execute("SELECT task_id, coalesce(attempts, 0) FROM hq_tasks WHERE status='running'").fetchall() if r[0] not in mine]
     for tid, attempts in rows:
-        done = con.execute("SELECT count(*) FROM hq_effects WHERE task_id=?", [tid]).fetchone()[0]
-        note = f"interrupted on attempt {attempts} when the system closed" + (f"; {done} effect(s) already done are not repeated" if done else "")
+        done = con.execute("SELECT count(*) FROM hq_effects WHERE task_id=? AND coalesce(state, 'done')='done'", [tid]).fetchone()[0]
+        unsure = con.execute("SELECT count(*) FROM hq_effects WHERE task_id=? AND state='started'", [tid]).fetchone()[0]
+        note = (f"interrupted on attempt {attempts} when the system closed" + (f"; {done} effect(s) already done are not repeated" if done else "")
+                + (f"; {unsure} effect(s) stopped halfway and may or may not have happened (not repeated, listed for him)" if unsure else ""))
         if attempts < MAX_ATTEMPTS:
             con.execute("UPDATE hq_tasks SET status='retry', next_review_at=?, progress=?, result=? WHERE task_id=?",
                         [now, note, f"stopped: {note}; it runs again", tid])
