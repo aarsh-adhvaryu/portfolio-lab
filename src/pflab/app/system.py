@@ -507,6 +507,15 @@ def processing(rt) -> List[dict]:
     ]
 
 
+def _readiness(rt, now: datetime) -> dict:
+    from pflab.app import readiness
+    try:
+        r = readiness.assess(rt, now)
+    except Exception as e:                                      # the picture never fails because one part could not be read
+        return {"ready": False, "percent": 0, "stages": [], "remaining": [], "gaps": [], "say": f"readiness could not be read: {type(e).__name__}"}
+    return {k: r[k] for k in ("ready", "percent", "stages", "remaining", "say")} | {"gaps": r["gaps"][:8]}
+
+
 # --- the picture ---------------------------------------------------------------------------------------------------------------
 
 def picture(rt, now: Optional[datetime] = None) -> dict:
@@ -528,4 +537,4 @@ def picture(rt, now: Optional[datetime] = None) -> dict:
         verdict = f"catching up ({catching}); " + verdict
     return {"at": now.isoformat(timespec="seconds"), "verdict": verdict, "state": DOWN if bad else WARN if late or catching else OK,
             "connectors": cs, "freshness": fr, "work": w, "needs": nd, "recommendations": rec, "catching_up": catching,
-            "changed": changed_since(con, last_visit(rt), now), "processing": processing(rt), "tools": {"total": len(tl.TOOLS), **kinds}}
+            "changed": changed_since(con, last_visit(rt), now), "processing": processing(rt), "readiness": _readiness(rt, now), "tools": {"total": len(tl.TOOLS), **kinds}}

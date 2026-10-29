@@ -626,7 +626,7 @@ MIGRATIONS = [
     );
     CREATE TABLE known_gaps (
         gap_id INTEGER PRIMARY KEY, gap_key VARCHAR UNIQUE, source VARCHAR NOT NULL, detail VARCHAR NOT NULL, opened_at TIMESTAMP NOT NULL,
-        closed_at TIMESTAMP, status VARCHAR NOT NULL
+        closed_at TIMESTAMP, status VARCHAR NOT NULL, attempts INTEGER NOT NULL DEFAULT 0
     );
     """),
 ]
