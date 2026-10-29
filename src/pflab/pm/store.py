@@ -675,6 +675,13 @@ MIGRATIONS = [
         repro VARCHAR, proposed_patch VARCHAR, status VARCHAR NOT NULL, origin VARCHAR
     );
     """),
+    # 2026-10-29: S67 local. Accounts found from the statements themselves (not from a typed list), masked, with how they were found.
+    (49, "account_candidates_s67", """
+    CREATE TABLE account_candidates (
+        cand_key VARCHAR PRIMARY KEY, first_seen TIMESTAMP NOT NULL, last_seen TIMESTAMP NOT NULL, kind VARCHAR NOT NULL, bank VARCHAR, last4 VARCHAR,
+        dp_ids VARCHAR, label VARCHAR NOT NULL, n_files INTEGER NOT NULL, sources VARCHAR, state VARCHAR NOT NULL
+    );
+    """),
 ]
 
 

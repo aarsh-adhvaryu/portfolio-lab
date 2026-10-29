@@ -248,6 +248,7 @@ def fetch(rt, sess=None, days: int = 40, now: Optional[datetime] = None) -> dict
     out = {"messages": 0, "files": 0, "kept": 0, "duplicates": 0, "locked": 0, "dropped": 0, "errors": 0}
     locked_by: dict = {}
     from pflab.app import readiness
+    from pflab.ingest import coverage
     mailbox = mailbox_key(sess)
     for mid in scan_ids(sess, con, mailbox, now, days):
         if _seen(con, mid):
@@ -267,6 +268,8 @@ def fetch(rt, sess=None, days: int = 40, now: Optional[datetime] = None) -> dict
             for name, data in files:
                 out["files"] += 1
                 info = sniff.sniff(data, name, pw)
+                sha12 = hashlib.sha256(data).hexdigest()[:12]
+                coverage.note_account(con, info, f"mail:{mailbox}", now, sha12)                       # an account is recorded by what the file shows
                 if info["kind"] in KEEP:
                     try:
                         r = ib.receive(rt, name, data)
@@ -278,8 +281,10 @@ def fetch(rt, sess=None, days: int = 40, now: Optional[datetime] = None) -> dict
                     out["locked"] += 1
                     locked_by.setdefault(sender_name(meta["from"]), (meta, name))
                     locked = True
+                    coverage.note_gap(con, "locked", sha12, f"a locked file from {sender_name(meta['from'])} ({meta['date'][:16]}): no saved password opens it", now)
                 else:
                     out["dropped"] += 1
+                    coverage.note_gap(con, "unsupported", sha12, f"a file from {sender_name(meta['from'])} ({meta['date'][:16]}) that no reader recognises as a statement", now)
         except Exception as e:                                   # S67: one message that cannot be stored never stops the rest; it is a counted gap
             out["errors"] += 1
             readiness.open_gap(con, gap, "mail", f"a message's files could not be stored ({type(e).__name__}: {str(e)[:100]})", now)
@@ -312,6 +317,10 @@ def fetch(rt, sess=None, days: int = 40, now: Optional[datetime] = None) -> dict
         questions.ask(con, AGENT, f"mail:ready:{ready[1]}",
                       f"{ready[0]} new statement(s) are checked and ready (see Inbox and files). Press 'Add everything to the ledger' in "
                       "Setup to add them; nothing is written before your press.", now)
+    try:                                                     # S67 local: the inventory goes to him once, grouped, as soon as there is one to show
+        coverage.ask_inventory(con, now)
+    except Exception:
+        pass
     rt.bump("inbox")
     return out
 
