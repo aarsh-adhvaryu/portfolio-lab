@@ -607,6 +607,15 @@ def processing(rt) -> List[dict]:
     ]
 
 
+def _coverage(con, now: datetime) -> dict:
+    """The account / source / period picture: what was found, how far back each mailbox was read, what is open, and why it is not called complete."""
+    try:
+        from pflab.ingest import coverage
+        return {"status": coverage.status(con, now), "accounts": coverage.matrix(con, now), "gaps": coverage.gaps(con)[:20], "mailboxes": coverage.mailboxes(con, now)}
+    except Exception:
+        return {"status": {"label": "nothing read yet", "reasons": []}, "accounts": [], "gaps": [], "mailboxes": []}
+
+
 def _onboarding(con) -> dict:
     try:
         from pflab.app import onboarding
@@ -645,4 +654,4 @@ def picture(rt, now: Optional[datetime] = None) -> dict:
         verdict = f"catching up ({catching}); " + verdict
     return {"at": now.isoformat(timespec="seconds"), "verdict": verdict, "state": DOWN if bad else WARN if late or catching else OK,
             "connectors": cs, "freshness": fr, "work": w, "needs": nd, "recommendations": rec, "catching_up": catching,
-            "changed": changed_since(con, last_visit(rt), now), "processing": processing(rt), "readiness": _readiness(rt, now), "onboarding": _onboarding(con), "tools": {"total": len(tl.TOOLS), **kinds}}
+            "changed": changed_since(con, last_visit(rt), now), "processing": processing(rt), "readiness": _readiness(rt, now), "onboarding": _onboarding(con), "coverage": _coverage(con, now), "tools": {"total": len(tl.TOOLS), **kinds}}

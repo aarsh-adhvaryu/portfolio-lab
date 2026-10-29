@@ -282,6 +282,20 @@ def create_app(rt) -> FastAPI:
         from pflab.app import system
         return json.loads(json.dumps(system.picture(rt), default=str))
 
+    @app.get("/api/coverage")
+    def coverage_api():
+        """Every account found, its months, the open gaps, each mailbox's reach, and whether the picture may be called complete."""
+        from pflab.app import system
+        return json.loads(json.dumps(system._coverage(rt.cursor(), rt.clock()), default=str))
+
+    @app.post("/api/coverage/confirm")
+    def coverage_confirm():
+        """He presses: this is every account, mailbox and export. Only this call confirms; nothing the system does by itself can."""
+        from pflab.ingest import coverage
+        coverage.confirm_inventory(rt.cursor(), rt.clock())
+        rt.bump("health")
+        return {"ok": True, "status": coverage.status(rt.cursor(), rt.clock())}
+
     @app.post("/api/system/seen")
     def system_seen():
         """He has looked: what changed is counted from now (app/system.py `changed_since`)."""

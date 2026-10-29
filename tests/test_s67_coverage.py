@@ -150,3 +150,17 @@ def test_nothing_is_claimed_before_anything_is_read(rt):
     s = coverage.status(rt.cursor(), NOW)
     assert s["label"] == "nothing read yet" and s["accounts"] == 0
     assert coverage.ask_inventory(rt.cursor(), NOW) is None                                                   # and nothing is asked about an empty inventory
+
+
+def test_the_screen_gets_the_coverage_and_only_his_press_confirms(rt):
+    from fastapi.testclient import TestClient
+    from pflab.app.server import create_app
+    g = WindowedGmail(mailbox())
+    read_everything(rt, g)
+    c = TestClient(create_app(rt))
+    d = c.get("/api/coverage").json()
+    assert d["status"]["label"] == "partial" and len(d["accounts"]) == 5 and d["gaps"] and d["mailboxes"][0]["reached_horizon"] is True
+    assert c.get("/api/system").json()["coverage"]["status"]["label"] == "partial"
+    assert not coverage.inventory_confirmed(rt.cursor())
+    r = c.post("/api/coverage/confirm").json()
+    assert r["ok"] and coverage.inventory_confirmed(rt.cursor()) and not any("not confirmed" in x for x in r["status"]["reasons"])
