@@ -38,6 +38,8 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 PASS, FAIL, NEEDS, SKIP, INFO = "pass", "fail", "needs you", "skipped", "info"
+OPTIONAL_CHECKS = {"live model call", "connector colours"}          # everything else is required: skipped or informational does not accept
+HEARTBEAT_MAX_AGE_S = 300                                          # a heartbeat older than this is not evidence the app is running now
 ICON = {PASS: "PASS ", FAIL: "FAIL ", NEEDS: "NEEDS", SKIP: "skip ", INFO: "info "}
 
 
@@ -60,13 +62,21 @@ class Report:
         self.checks.append(c)
         return c
 
+    def incomplete(self) -> List[str]:
+        """Required checks that were skipped or only informational: a check that did not pass is not a pass. Optional ones are named in
+        OPTIONAL_CHECKS and never block."""
+        return [c.name for c in self.checks if c.name not in OPTIONAL_CHECKS and c.status in (SKIP, INFO)]
+
     @property
     def verdict(self) -> str:
         if any(c.status == FAIL for c in self.checks):
             return "NOT READY: at least one check failed"
         if any(c.status == NEEDS for c in self.checks):
             return "CLOUD-TESTED CANDIDATE: waiting for steps only you can do (below); run the same command again after them"
-        return "ACCEPTED on this PC for the checks that ran (skipped checks are listed)"
+        inc = self.incomplete()
+        if inc:
+            return "NOT ACCEPTED: required check(s) did not pass: " + ", ".join(inc[:6])
+        return "ACCEPTED on this PC: every required check passed (optional checks are listed)"
 
     def text(self) -> str:
         i = self.identity
@@ -525,6 +535,18 @@ def wake_check(ctx: Ctx, rep: Report) -> None:
         d = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         rep.add("sleep and wake", FAIL, "heartbeat.json cannot be read")
+        return
+    try:                                                           # liveness: an old settled heartbeat from a stopped app proves nothing now
+        age = (ctx.now - datetime.fromisoformat(str(d.get("at"))[:19])).total_seconds()
+    except (TypeError, ValueError):
+        rep.add("sleep and wake", FAIL, "the heartbeat has no readable time")
+        return
+    from pflab._lock import _alive
+    if age > HEARTBEAT_MAX_AGE_S or not _alive(str(d.get("pid", ""))):
+        rep.add("sleep and wake", NEEDS,
+                f"the last beat was {int(age // 60)} min ago" + (" and its process is gone" if not _alive(str(d.get("pid", ""))) else "")
+                + ": this is an old heartbeat, not evidence about the app now",
+                "start Portfolio Lab, leave it open, then run `pflab verify --wake-check` again")
         return
     w = d.get("last_wake")
     if not w:

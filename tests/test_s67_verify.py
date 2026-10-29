@@ -100,16 +100,22 @@ def test_the_sleep_and_wake_check_reads_what_the_app_wrote_across_a_real_sleep(t
         verify.wake_check(ctx, rep)
         return rep.checks[0]
     assert check().status == verify.NEEDS and "heartbeat" in check().detail                       # the app has not run with this version yet
-    hb.write_text(json.dumps({"at": "2026-11-04T20:59:00", "last_wake": None, "wakes": 0, "catching_up": None}), encoding="utf-8")
+    import os
+    fresh = (NOW - timedelta(seconds=30)).isoformat(timespec="seconds")
+    hb.write_text(json.dumps({"at": "2026-11-04T18:00:00", "pid": os.getpid(), "last_wake": None, "wakes": 0, "catching_up": None}), encoding="utf-8")
+    assert check().status == verify.NEEDS and "old heartbeat" in check().detail                    # an old beat is not evidence about now
+    hb.write_text(json.dumps({"at": fresh, "pid": 999999999, "last_wake": None, "wakes": 0, "catching_up": None}), encoding="utf-8")
+    assert check().status == verify.NEEDS and "process is gone" in check().detail                 # a fresh-looking beat from a dead process
+    hb.write_text(json.dumps({"at": fresh, "pid": os.getpid(), "last_wake": None, "wakes": 0, "catching_up": None}), encoding="utf-8")
     assert check().status == verify.NEEDS and "no wake has been seen" in check().detail
-    hb.write_text(json.dumps({"at": "x", "catching_up": "woke after 7 min away", "wakes": 1,
+    hb.write_text(json.dumps({"at": fresh, "pid": os.getpid(), "catching_up": "woke after 7 min away", "wakes": 1,
                               "last_wake": {"at": "2026-11-04T20:00:00", "away_min": 7, "recovered": {"tasks_recovered": 0}}}), encoding="utf-8")
     assert check().status == verify.NEEDS and "still catching up" in check().detail
-    hb.write_text(json.dumps({"at": "x", "catching_up": None, "wakes": 1, "last_wake": {"at": "2026-11-04T20:00:00", "away_min": 7,
+    hb.write_text(json.dumps({"at": fresh, "pid": os.getpid(), "catching_up": None, "wakes": 1, "last_wake": {"at": "2026-11-04T20:00:00", "away_min": 7,
                                                                                      "recovered": {"tasks_recovered": 1}, "settled_at": "2026-11-04T20:03:00"}}), encoding="utf-8")
     c = check()
     assert c.status == verify.PASS and "data caught up" in c.detail
-    hb.write_text(json.dumps({"at": "x", "last_wake": {"at": "t", "recovered": "failed"}}), encoding="utf-8")
+    hb.write_text(json.dumps({"at": fresh, "pid": os.getpid(), "last_wake": {"at": "t", "recovered": "failed"}}), encoding="utf-8")
     assert check().status == verify.FAIL
 
 

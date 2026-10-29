@@ -278,3 +278,20 @@ def test_a_rollback_that_cannot_prepare_the_older_store_changes_nothing(tmp_path
     assert (pm / "ledger.duckdb").read_bytes() == before                        # the complete current store is still in service
     assert not (pm / "ledger.rollback_candidate.duckdb").exists()
     assert up.checked_out(app) == "v2026.10.15"                                 # and the code was not switched back
+
+
+# --- C: a check that did not pass does not accept the candidate ----------------------------------------------------------------------
+
+def test_a_required_check_that_is_skipped_or_only_informational_blocks_acceptance_an_optional_one_does_not():
+    from pflab import verify
+    rep = verify.Report()
+    rep.add("migration rehearsal", verify.PASS, "ok")
+    rep.add("live model call", verify.SKIP, "not asked for")               # optional
+    assert rep.verdict.startswith("ACCEPTED") and rep.incomplete() == []
+    rep.add("data freshness", verify.INFO, "prices are 6 days old")        # required: informational is not a pass
+    assert rep.verdict.startswith("NOT ACCEPTED") and "data freshness" in rep.verdict
+    rep2 = verify.Report()
+    rep2.add("sandbox", verify.SKIP, "offline run")
+    assert rep2.verdict.startswith("NOT ACCEPTED")
+    rep2.add("restart drill", verify.FAIL, "x")
+    assert rep2.verdict.startswith("NOT READY")
