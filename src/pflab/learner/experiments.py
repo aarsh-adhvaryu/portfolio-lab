@@ -191,6 +191,7 @@ WRITER_SYSTEM = (
     "The code defines def compute(data) where data maps the dataset name to a pandas DataFrame with columns date and close, and returns "
     '{"signal": number}: above 0 means be invested for the next month, 0 or below means be out. compute is called once per month-end with ONLY the rows '
     "up to that date; use only those rows, never assume a length (check len first). Do not modify the input frame. Allowed imports: numpy, pandas, math. "
+    "The frame holds DAILY rows (a month is about 21 rows, a year about 252). "
     "No files, no network. You are shown every earlier candidate and exactly how it scored: do not repeat one that failed; change one thing for a reason."
 )
 
@@ -311,6 +312,13 @@ def run(con, eid: int, root: Path, now: datetime, writer: Callable[[str], str], 
             tried += 1
             continue
         spec, r = outcome
+        sha = hashlib.sha256(spec.code.encode()).hexdigest()
+        if any(a.get("code") and hashlib.sha256(a["code"].encode()).hexdigest() == sha for a in attempts(con, eid) if a["kind"] != "baseline"):
+            # the same code again is not a new variant: it is not scored again and does not count as a test; it uses an attempt
+            _attempt(con, eid, tried + 1, now, "candidate", "duplicate", code=spec.code, error="identical to an earlier candidate: not scored again",
+                     seconds=r.seconds, contained=r.contained)
+            tried += 1
+            continue
         try:
             dev, val = score_period(df, r.walk, tp.DEV), score_period(df, r.walk, tp.VAL)
         except ValueError as e:

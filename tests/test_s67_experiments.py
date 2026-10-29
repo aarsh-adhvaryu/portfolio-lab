@@ -58,6 +58,10 @@ def reply(code: str, explain="rule") -> str:
     return f"WHY: {explain}\n```python\n{code.strip()}\n```\n"
 
 
+def variant(code, k):
+    return code + f"\n# variant {k}\n"
+
+
 class Writer:
     def __init__(self, *codes):
         self.codes, self.prompts = list(codes), []
@@ -134,7 +138,7 @@ def test_always_invested_cannot_beat_itself_and_the_rule_is_deflated_by_the_test
 def test_a_candidate_is_baselined_run_in_the_sandbox_scored_counted_and_recorded(con, tmp_path):
     eid = _reg(con, tmp_path)
     n0 = counter.n_tests(con)
-    w = Writer(CODE_MOM)
+    w = Writer(variant(CODE_MOM, 1), variant(CODE_MOM, 2), variant(CODE_MOM, 3))
     r = ex.run(con, eid, tmp_path, NOW, w, frame=_series())
     assert r["status"] in ("kept", "rejected") and r["attempts"] >= 1
     a = ex.attempts(con, eid)
@@ -155,7 +159,7 @@ def test_a_candidate_is_baselined_run_in_the_sandbox_scored_counted_and_recorded
 
 def test_a_rejected_candidate_is_a_valid_result_and_the_attempt_stays_on_record(con, tmp_path):
     eid = _reg(con, tmp_path)
-    r = ex.run(con, eid, tmp_path, NOW, Writer(CODE_ALWAYS), frame=_series())
+    r = ex.run(con, eid, tmp_path, NOW, Writer(*[variant(CODE_ALWAYS, k) for k in range(3)]), frame=_series())
     assert r["status"] == "rejected" and r["attempts"] == ex.MAX_ATTEMPTS and "none beat" in r["why"]
     kept_rows = [x for x in ex.attempts(con, eid) if x["kind"] == "candidate"]
     assert len(kept_rows) == ex.MAX_ATTEMPTS and all(x["status"] == "rejected" and x["code"] for x in kept_rows)
@@ -274,3 +278,12 @@ def test_a_candidate_that_really_beats_the_comparator_is_kept_as_shadow_research
     assert "Shadow research only" in con.execute("SELECT decision_why FROM learn_experiments WHERE exp_id=?", [eid]).fetchone()[0]
     assert "SHADOW" in live.current(con, ("experiment",))[0]["text"]
     assert con.execute("SELECT count(*) FROM learned WHERE kind IN ('finding', 'instruction', 'daily_cap', 'model')").fetchone()[0] == 0   # nothing is wired as a rule
+
+
+def test_the_same_code_again_is_not_a_new_variant_and_is_not_counted(con, tmp_path):
+    eid = _reg(con, tmp_path)
+    n0 = counter.n_tests(con)
+    r = ex.run(con, eid, tmp_path, NOW, Writer(CODE_ALWAYS), frame=_series())
+    st = [a["status"] for a in ex.attempts(con, eid) if a["kind"] == "candidate"]
+    assert st == ["rejected", "duplicate", "duplicate"] and r["status"] == "rejected"
+    assert counter.n_tests(con) == n0 + 1                                                    # only the one evaluated variant counted
