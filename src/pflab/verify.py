@@ -252,8 +252,24 @@ def local_model(ctx: Ctx, rep: Report) -> None:
         rep.add("local model (Ollama)", NEEDS, "Ollama does not answer on this PC", "start Ollama, then run this command again")
         return
     miss = sorted({"qwen3:8b-q8_0", "nomic-embed-text:latest"} - set(names))
-    rep.add("local model (Ollama)", PASS if not miss else NEEDS, "running; both models present" if not miss else f"running; missing {', '.join(miss)}",
-            "" if not miss else f"ollama pull {miss[0]}")
+    if miss:
+        rep.add("local model (Ollama)", NEEDS, f"running; missing {', '.join(miss)}", f"ollama pull {miss[0]}")
+        return
+    # listing the models proves nothing about inference: ask a question with one right answer, and embed a sentence
+    try:
+        from pflab.llm import client
+        t = client.chat("qwen3:8b-q8_0", [{"role": "user", "content": "What is 17 plus 25? Reply with only the number."}], num_predict=20, timeout=180)
+        ok_chat = "42" in t.text
+        v = client.http_transport("POST", "/api/embed", {"model": "nomic-embed-text", "input": "a sentence to embed"}, 120)
+        vec = (v.get("embeddings") or [[]])[0]
+        ok_emb = len(vec) >= 100 and any(abs(x) > 0 for x in vec)
+    except Exception as e:
+        rep.add("local model (Ollama)", FAIL, f"both models are installed but inference failed: {type(e).__name__}: {str(e)[:120]}",
+                "restart Ollama; if the GPU dropped off the bus use Restart, not Shut down")
+        return
+    rep.add("local model (Ollama)", PASS if ok_chat and ok_emb else FAIL,
+            f"real inference: answered in {t.seconds:g} s, {t.tokens_out} tokens; embedding of {len(vec)} numbers" if ok_chat and ok_emb
+            else f"inference ran but gave a wrong result (answer {t.text[:40]!r}, embedding {len(vec)} numbers)")
 
 
 def sandbox_checks(ctx: Ctx, rep: Report) -> None:
@@ -573,11 +589,19 @@ def live_model(ctx: Ctx, rep: Report) -> None:
         con = store.connect(pm / "ledger.duckdb")
         gate = egress.load(con)
         client = an.make_client(secrets)
-        p = {"model": gv.HAIKU, "max_tokens": 20, "system": "Reply with the single word: ok",
-             "messages": [{"role": "user", "content": "ping"}]}
-        s = llm.call(con, "gatekeeper", p, client, now=ctx.now, mode="economy", private_text="", gate=gate, topic="verify", question="verify ping")
+        nonce = f"v{ctx.now:%H%M%S}"
+        tool = {"name": "echo_code", "description": "Report the verification code you were given.",
+                "input_schema": {"type": "object", "additionalProperties": False, "properties": {"code": {"type": "string"}}, "required": ["code"]}}
+        p = {"model": gv.HAIKU, "max_tokens": 60, "system": "You must call the tool echo_code with the code you are given.",
+             "tools": [tool], "tool_choice": {"type": "tool", "name": "echo_code"},
+             "messages": [{"role": "user", "content": f"The verification code is {nonce}."}]}
+        s = llm.call(con, "gatekeeper", p, client, now=ctx.now, mode="economy", private_text="", gate=gate, topic="verify", question="verify tool call")
         con.close()
-        rep.add("live model call", PASS if "ok" in s.text.lower() else INFO, f"answered through the privacy gate and the budget (cost Rs {s.cost_inr:.2f}; recorded on the copy only)")
+        used = [b for b in (getattr(s.message, "content", None) or []) if getattr(b, "type", "") == "tool_use"]
+        ok = bool(used) and used[0].name == "echo_code" and (used[0].input or {}).get("code") == nonce
+        rep.add("live model call", PASS if ok else FAIL,
+                (f"the model chose the tool and used it correctly through the privacy gate and the budget (cost Rs {s.cost_inr:.2f}; recorded on the copy only)"
+                 if ok else "the model answered but did not call the tool with the given code: a ping is not tool use"))
     except Exception as e:
         rep.add("live model call", FAIL, f"{type(e).__name__}: {str(e)[:160]}", "check the key, the monthly cap and the network")
 

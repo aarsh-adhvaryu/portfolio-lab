@@ -475,3 +475,32 @@ def test_in_the_real_container_the_job_folder_cannot_be_written_and_the_host_is_
              "open(os.environ['PFLAB_OUT'] + '/out.json', 'w').write(json.dumps(r))")
     _Scripted(probe).run(work, 30)
     assert json.loads((work / "out.json").read_text(encoding="utf-8")) == {"wrote_work": False, "host_home": False, "secret_env": False}
+
+
+# --- C: the live model check needs a real tool call; a ping does not pass ---------------------------------------------------------------------
+
+def _live(monkeypatch, tmp_path, block):
+    from pflab import verify
+    from pflab.agents import analyst as an
+    from pflab.hq import egress, llm
+    from pflab.pm import secrets as sec
+    monkeypatch.setattr(sec, "load", lambda: object())
+    monkeypatch.setattr(an, "make_client", lambda s: object())
+    monkeypatch.setattr(egress, "load", lambda con: egress.Gate())
+    (tmp_path / "pmc").mkdir(exist_ok=True)
+    store.connect(tmp_path / "pmc" / "ledger.duckdb").close()
+    ctx = SimpleNamespace(now=NOW, pm_copy=lambda: tmp_path / "pmc")
+    monkeypatch.setattr(llm, "call", lambda con, agent, p, client, **kw: SimpleNamespace(message=SimpleNamespace(content=block(p)), cost_inr=0.4))
+    rep = verify.Report()
+    verify.live_model(ctx, rep)
+    return rep.checks[0]
+
+
+def test_a_model_that_only_says_ok_does_not_pass_the_live_check_but_one_that_uses_the_tool_does(monkeypatch, tmp_path):
+    from pflab import verify
+    say_ok = _live(monkeypatch, tmp_path, lambda p: [SimpleNamespace(type="text", text="ok")])
+    assert say_ok.status == verify.FAIL and "not tool use" in say_ok.detail
+    wrong = _live(monkeypatch, tmp_path, lambda p: [SimpleNamespace(type="tool_use", name="echo_code", input={"code": "wrong"})])
+    assert wrong.status == verify.FAIL
+    good = _live(monkeypatch, tmp_path, lambda p: [SimpleNamespace(type="tool_use", name="echo_code", input={"code": p["messages"][0]["content"].split()[-1].rstrip(".")})])
+    assert good.status == verify.PASS and "used it correctly" in good.detail
