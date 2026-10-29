@@ -109,9 +109,11 @@ DERIVED = ("lots", "cash_ledger", "income", "fees")             # written by the
 
 
 def merge_new_rows(kept: Path, live: Path) -> dict:
-    """Bring back what was written after the backup: for each table both stores have, the rows of `kept` whose key is not in `live`
-    (full-row comparison for a table without a key), over the columns both know. Returns {table: rows added} and the tables only `kept`
-    has. Nothing in `live` is changed or removed."""
+    """Bring back what happened after the backup: for each table both stores have, over the columns both know, the rows of `kept` that are
+    new (added), the rows whose values changed (updated: the later version wins) and the rows `kept` no longer has (deleted: a deletion
+    is not undone). A table without a key is compared whole rows; the events by everything but their ids, so a correction replaces the
+    old version instead of standing beside it. A table that cannot be reconciled is listed under `errors` and left as the backup has it.
+    Returns {added, updated, deleted, errors, only_in_kept, rows}; `rows` counts the rows added."""
     import duckdb
     con = duckdb.connect(str(live))
     try:
@@ -124,7 +126,7 @@ def merge_new_rows(kept: Path, live: Path) -> dict:
                                                    "AND table_schema='main' AND table_name=? ORDER BY ordinal_position", [t]).fetchall()]
                      for (t,) in con.execute("SELECT table_name FROM information_schema.tables WHERE table_catalog='kept' "
                                              "AND table_schema='main' AND table_type='BASE TABLE'").fetchall()}
-        added, only_kept = {}, sorted(set(kept_cols) - set(live_cols))
+        added, only_kept, updated, deleted, errors = {}, sorted(set(kept_cols) - set(live_cols)), {}, {}, {}
         for t in sorted(set(live_cols) & set(kept_cols)):
             if t == "schema_migrations" or t in DERIVED:
                 continue                                          # derived from the events (the ledger rebuild writes them): not merged
@@ -144,6 +146,15 @@ def merge_new_rows(kept: Path, live: Path) -> dict:
                     con.execute(f'INSERT INTO "events" ("event_id", {nl}, "ingested_at") VALUES (' + ",".join("?" * (len(nat) + 2)) + ")", [top + k, *r])
                 if rows:
                     added[t] = len(rows)
+                try:                                              # an event the later store no longer has (a corrected one) is not kept beside its fix
+                    gone = con.execute('SELECT count(*) FROM "events" l WHERE NOT EXISTS (SELECT 1 FROM kept."events" k WHERE '
+                                       + " AND ".join(f'l."{c}" IS NOT DISTINCT FROM k."{c}"' for c in nat) + ")").fetchone()[0]
+                    if gone:
+                        con.execute('DELETE FROM "events" WHERE event_id IN (SELECT event_id FROM "events" l WHERE NOT EXISTS (SELECT 1 FROM kept."events" k WHERE '
+                                    + " AND ".join(f'l."{c}" IS NOT DISTINCT FROM k."{c}"' for c in nat) + "))")
+                        deleted[t] = int(gone)
+                except Exception as e:
+                    errors[t] = f"{type(e).__name__}: {str(e)[:120]}"
                 continue
             pk = [c for (c,) in con.execute("SELECT unnest(constraint_column_names) FROM duckdb_constraints() WHERE database_name = current_database() "
                                             "AND table_name=? AND constraint_type='PRIMARY KEY'", [t]).fetchall()]
@@ -155,8 +166,27 @@ def merge_new_rows(kept: Path, live: Path) -> dict:
                 n = con.execute(f'INSERT INTO "{t}" ({lst}) SELECT {lst} FROM (SELECT {lst} FROM kept."{t}" EXCEPT SELECT {lst} FROM "{t}")').fetchone()
             if n and n[0]:
                 added[t] = int(n[0])
+            if pk and all(c in cols for c in pk):
+                same = " AND ".join(f'l."{c}" = k."{c}"' for c in pk)
+                try:
+                    rest = [c for c in cols if c not in pk]
+                    if rest:                                      # changed after the backup: the later version stands
+                        diff = " OR ".join(f'l."{c}" IS DISTINCT FROM k."{c}"' for c in rest)
+                        m = con.execute(f'SELECT count(*) FROM "{t}" l JOIN kept."{t}" k ON {same} WHERE {diff}').fetchone()[0]
+                        if m:
+                            con.execute(f'UPDATE "{t}" SET ' + ", ".join(f'"{c}" = k."{c}"' for c in rest)
+                                        + f' FROM kept."{t}" k WHERE ' + " AND ".join(f'"{t}"."{c}" = k."{c}"' for c in pk))
+                            updated[t] = int(m)
+                    g = con.execute(f'SELECT count(*) FROM "{t}" l WHERE NOT EXISTS (SELECT 1 FROM kept."{t}" k WHERE {same})').fetchone()[0]
+                    if g:                                         # removed after the backup: not brought back
+                        con.execute(f'DELETE FROM "{t}" WHERE NOT EXISTS (SELECT 1 FROM kept."{t}" k WHERE '
+                                    + " AND ".join(f'"{t}"."{c}" = k."{c}"' for c in pk) + ")")
+                        deleted[t] = int(g)
+                except Exception as e:
+                    errors[t] = f"{type(e).__name__}: {str(e)[:120]}"
         con.execute("DETACH kept")
-        return {"added": added, "only_in_kept": only_kept, "rows": sum(added.values())}
+        return {"added": added, "updated": updated, "deleted": deleted, "errors": errors, "only_in_kept": only_kept,
+                "rows": sum(added.values())}
     finally:
         con.close()
 
@@ -273,27 +303,42 @@ def rollback(root: Path, pm_dir: Path, run: Run = run_cmd, install: Optional[Cal
     now = now or datetime.now()
     kept = None
     live = pm_dir / "ledger.duckdb"
-    if bk and Path(bk).exists() and live.exists():
-        kept = Path(app.get("folder", root.parent)) / "backups" / f"ledger_before_rollback_{now:%Y%m%d_%H%M%S}.duckdb"
-        kept.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(live, kept)
-    _git(run, root, "checkout", "--detach", prev)
-    (install or (lambda p: default_install(p, run)))(root)
+    cand = None
     merged = None
     if bk and Path(bk).exists():
-        shutil.copy2(bk, live)
-        if kept is not None:                                  # S67: what was written since the update comes back into the restored store
+        # S67 local: the restored store is PREPARED beside the live one (backup + everything done since, reconciled) and checked; the live
+        # store is replaced only when that is whole. If it cannot be made safely, nothing changes: same code, same store, and it says why.
+        cand = pm_dir / "ledger.rollback_candidate.duckdb"
+        cand.unlink(missing_ok=True)
+        shutil.copy2(bk, cand)
+        if live.exists():
+            kept = Path(app.get("folder", root.parent)) / "backups" / f"ledger_before_rollback_{now:%Y%m%d_%H%M%S}.duckdb"
+            kept.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(live, kept)
             try:
-                merged = merge_new_rows(kept, live)
-            except Exception as e:                            # the copy beside it still holds everything; say so
-                merged = {"error": f"{type(e).__name__}: {str(e)[:160]}", "added": {}, "only_in_kept": [], "rows": 0}
+                merged = merge_new_rows(kept, cand)
+                if merged.get("errors"):
+                    raise UpdateError("tables could not be reconciled: " + "; ".join(f"{t}: {e}" for t, e in merged["errors"].items()))
+                _row_counts(cand)                             # the prepared store opens and every table can be counted
+            except Exception as e:
+                cand.unlink(missing_ok=True)
+                raise UpdateError(f"the rollback was not done: the earlier release's store could not be prepared safely "
+                                  f"({type(e).__name__}: {str(e)[:200]}). Nothing was changed; the current store is kept whole "
+                                  f"(a copy is also in {kept.name}).")
+    _git(run, root, "checkout", "--detach", prev)
+    (install or (lambda p: default_install(p, run)))(root)
+    if cand is not None:
+        import os
+        os.replace(cand, live)
     cur = str(app.get("tag", ""))
     _set_release(root, prev, "", "")
     note = f"back on {prev}"
     if kept:
         note += f"; the store is the backup from before the update"
         if merged and not merged.get("error"):
+            ch = sum((merged.get("updated") or {}).values()), sum((merged.get("deleted") or {}).values())
             note += (f", plus the {merged['rows']} row(s) written since the update"
+                     + (f", {ch[0]} changed row(s) and {ch[1]} removal(s) carried over" if ch[0] or ch[1] else "")
                      + (f" (tables the older version does not have stay only in {kept.name}: {', '.join(merged['only_in_kept'])})"
                         if merged["only_in_kept"] else "")
                      + f"; the store as it was is also kept in {kept.name} (nothing was deleted)")

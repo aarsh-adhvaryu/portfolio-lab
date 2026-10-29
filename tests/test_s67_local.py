@@ -207,3 +207,74 @@ def test_one_fresh_stock_does_not_make_a_suggestion_on_another_stock_current(con
 def test_a_plan_is_judged_on_the_isins_in_its_stored_inputs(con):
     from pflab.app import system
     assert system._ISIN.findall('{"buy": "INE000A01011", "x": "ZZ0001234567", "n": "XINE000A01011Y"}') == ["INE000A01011", "ZZ0001234567"]
+
+
+# --- A: a rollback keeps changes and deletions made after the upgrade, or changes nothing ---------------------------------------------
+
+def _two_stores(tmp_path):
+    import duckdb
+    from datetime import date
+    from pflab.ledger.events import Event, EventLog, save
+    old = [m for m in store.MIGRATIONS if m[0] <= 42]
+    bk, kept = tmp_path / "bk.duckdb", tmp_path / "kept.duckdb"
+    con = duckdb.connect(str(bk))
+    store.migrate(con, old)
+    save(con, EventLog([Event("deposit", "ZER", date(2026, 10, 1), amount=1000.0), Event("buy", "ZER", date(2026, 10, 2), isin="INE000A01011", qty=1, price=10.0, ref="T1")]))
+    for k in (1, 2, 3):
+        con.execute("INSERT INTO questions VALUES (?, ?, 'x', ?, 'q', 'open', NULL, NULL)", [k, NOW, f"k{k}"])
+    con.close()
+    kept.write_bytes(bk.read_bytes())
+    c = store.connect(kept)                                                  # the app on the newer release
+    c.execute("UPDATE questions SET status='answered', answer='yes' WHERE q_id=1")             # an old row changed
+    c.execute("DELETE FROM questions WHERE q_id=2")                                             # an old row removed
+    c.execute("DELETE FROM events WHERE ref='T1'")                                              # a transaction corrected: the old version goes ...
+    c.execute("INSERT INTO events (event_id, kind, account_id, trade_date, isin, qty, price, ref, ingested_at) SELECT max(event_id) + 1, 'buy', 'ZER', "
+              "DATE '2026-10-02', 'INE000A01011', 2, 10.0, 'T1', now() FROM events")                 # ... and the fixed one stands
+    c.close()
+    return bk, kept
+
+
+def test_merge_carries_over_changed_rows_and_deletions_and_a_corrected_event_replaces_the_old_one(tmp_path):
+    import duckdb
+    from pflab import update as up
+    bk, kept = _two_stores(tmp_path)
+    r = up.merge_new_rows(kept, bk)
+    assert r["errors"] == {} and r["updated"].get("questions") == 1 and r["deleted"].get("questions") == 1
+    con = duckdb.connect(str(bk), read_only=True)
+    q = dict(con.execute("SELECT q_id, status FROM questions").fetchall())
+    assert q == {1: "answered", 3: "open"}                                       # the change stands, the deletion is not undone
+    assert con.execute("SELECT ref, qty FROM events WHERE ref='T1'").fetchall() == [("T1", 2.0)]     # the corrected version only, not both
+    con.close()
+    again = up.merge_new_rows(kept, bk)
+    assert again["rows"] == 0 and again["updated"] == {} and again["deleted"] == {}
+
+
+def test_a_rollback_that_cannot_prepare_the_older_store_changes_nothing(tmp_path, monkeypatch):
+    from pflab import release, update as up
+    from tests.test_s65_update import g, ok_install, publish
+    origin, work, folder = tmp_path / "origin.git", tmp_path / "work", tmp_path / "PortfolioLabApp"
+    g(tmp_path, "init", "-q", "--bare", "-b", "main", str(origin))
+    g(tmp_path, "clone", "-q", str(origin), str(work))
+    g(work, "checkout", "-q", "-b", "main")
+    (work / ".gitignore").write_text("release.toml\n", encoding="utf-8")
+    publish(work, "one", "v2026.10.01")
+    app = folder / "app"
+    folder.mkdir()
+    g(folder, "clone", "-q", str(origin), str(app))
+    g(app, "checkout", "-q", "--detach", "v2026.10.01")
+    release.write(app, folder, "v2026.10.01")
+    pm = folder / "pm"
+    bk, _kept = _two_stores(tmp_path)
+    pm.mkdir()
+    (pm / "ledger.duckdb").write_bytes(bk.read_bytes())
+    publish(work, "two", "v2026.10.15")
+    r = up.update(app, pm, install=ok_install, selftest=lambda root: (True, "ok"), now=NOW)
+    assert r["updated"]
+    before = (pm / "ledger.duckdb").read_bytes()
+    monkeypatch.setattr(up, "merge_new_rows", lambda k, l: {"errors": {"questions": "ConstraintException: cannot represent"}, "added": {}, "only_in_kept": []})
+    with pytest.raises(up.UpdateError) as e:
+        up.rollback(app, pm, install=ok_install, now=NOW)
+    assert "Nothing was changed" in str(e.value) and "could not be reconciled" in str(e.value)
+    assert (pm / "ledger.duckdb").read_bytes() == before                        # the complete current store is still in service
+    assert not (pm / "ledger.rollback_candidate.duckdb").exists()
+    assert up.checked_out(app) == "v2026.10.15"                                 # and the code was not switched back
