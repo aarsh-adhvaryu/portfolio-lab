@@ -295,3 +295,62 @@ def test_a_required_check_that_is_skipped_or_only_informational_blocks_acceptanc
     assert rep2.verdict.startswith("NOT ACCEPTED")
     rep2.add("restart drill", verify.FAIL, "x")
     assert rep2.verdict.startswith("NOT READY")
+
+
+# --- F: a calculation reproduces from the data it ran on, not today's ---------------------------------------------------------------------
+
+def _kept_calc(con, frames, code=None):
+    from pflab.agents import workshop as wk
+    from pflab.hq import cases
+    spec = wk.Spec(["d"], code or "def compute(data):\n    return {'total': float(data['d']['x'].sum()), 'label': 'sum'}\n",
+                   {"data": {"d": [{"x": 1.0}, {"x": 2.0}]}, "expected": {"total": 3.0, "label": "sum"}, "tol": 1e-9})
+    run = wk.run(spec, dict(frames))
+    assert run.ok, run.problems
+    out = wk.Outcome("checked", run, spec, "t", ["ok"])
+    out.inputs = dict(frames)
+    return cases.record_calc(con, None, NOW, "Total of x?", out)
+
+
+def test_a_calculation_is_reproduced_from_its_kept_data_even_when_today_s_data_has_changed(con, monkeypatch):
+    import pandas as pd
+    from pflab.hq import cases
+    monkeypatch.setenv("PFLAB_SANDBOX", "local")
+    kid = _kept_calc(con, {"d": pd.DataFrame({"x": [1.0, 2.0, 3.0]})})
+    row = con.execute("SELECT kept, n_rows FROM hq_calc_inputs WHERE calc_id=?", [kid]).fetchone()
+    assert row == (True, 3) and json.loads(con.execute("SELECT versions_json FROM hq_calcs WHERE calc_id=?", [kid]).fetchone()[0])["pandas"]
+    today = lambda names: {"d": pd.DataFrame({"x": [50.0, 60.0]})}             # the data moved on since
+    r = cases.reproduce(con, kid, today)
+    assert r["reproduced"] and r["basis"] == "original" and r["differences"] == []        # still the original answer
+    c = cases.reproduce(con, kid, today, basis="current")
+    assert not c["reproduced"] and c["basis"] == "current" and "not a reproduction" in c["label"]
+    assert any(d.startswith("total:") for d in c["differences"])
+
+
+def test_a_record_without_its_original_data_says_so_and_does_not_pass_a_rerun_off_as_a_reproduction(con, monkeypatch):
+    import pandas as pd
+    from pflab.hq import cases
+    monkeypatch.setenv("PFLAB_SANDBOX", "local")
+    kid = _kept_calc(con, {"d": pd.DataFrame({"x": [1.0, 2.0, 3.0]})})
+    con.execute("DELETE FROM hq_calc_inputs WHERE calc_id=?", [kid])
+    r = cases.reproduce(con, kid)
+    assert r["ok"] is False and r["reproduced"] is False and "was not kept" in r["why"]
+    r2 = cases.reproduce(con, kid, lambda names: {"d": pd.DataFrame({"x": [1.0, 2.0, 3.0]})})      # a caller who gives today's data gets a labelled rerun
+    assert r2["basis"] == "current" and r2["reproduced"] is False and r2["same_as_kept"] is True
+
+
+def test_damaged_kept_data_is_refused(con, monkeypatch):
+    import pandas as pd
+    from pflab.hq import cases
+    monkeypatch.setenv("PFLAB_SANDBOX", "local")
+    kid = _kept_calc(con, {"d": pd.DataFrame({"x": [1.0, 2.0, 3.0]})})
+    con.execute("UPDATE hq_calc_inputs SET sha256='00' || substr(sha256, 3) WHERE calc_id=?", [kid])
+    assert "no longer matches its hash" in cases.reproduce(con, kid)["why"]
+
+
+def test_the_comparison_reports_missing_keys_and_non_numeric_differences():
+    from pflab.hq import cases
+    assert cases.compare_results({"a": 1.0, "b": "x"}, {"a": 1.0, "b": "x"}) == []
+    d = cases.compare_results({"a": 1.0, "b": "x", "c": True}, {"a": 1.0000001, "b": "y", "d": 3})
+    assert any(x.startswith("b:") for x in d) and any(x.startswith("c:") and "no such result" in x for x in d) and any(x.startswith("d:") for x in d)
+    assert not any(x.startswith("a:") for x in d)                                          # within tolerance
+    assert cases.compare_results({"a": 1}, {"a": True}) != []                              # a number is not a boolean

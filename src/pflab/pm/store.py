@@ -641,6 +641,15 @@ MIGRATIONS = [
         mailbox VARCHAR PRIMARY KEY, oldest DATE, complete BOOLEAN NOT NULL, scanned INTEGER NOT NULL, updated_at TIMESTAMP NOT NULL
     );
     """),
+    # 2026-10-29: S67 local. A kept calculation keeps the exact data it ran on (a parquet snapshot with a content hash, up to a size cap)
+    # and the library versions, so "reproduce" runs on the ORIGINAL inputs; a rerun on today's data is labelled as such.
+    (46, "calc_inputs_s67", """
+    CREATE TABLE hq_calc_inputs (
+        calc_id INTEGER NOT NULL, dataset VARCHAR NOT NULL, sha256 VARCHAR NOT NULL, n_rows INTEGER NOT NULL, n_bytes INTEGER NOT NULL,
+        kept BOOLEAN NOT NULL, data BLOB, PRIMARY KEY (calc_id, dataset)
+    );
+    ALTER TABLE hq_calcs ADD COLUMN versions_json VARCHAR;
+    """),
 ]
 
 

@@ -150,7 +150,7 @@ attempt("root_read_only", write_root)
 attempt("work_read_only", write_work)
 r["no_host_home"] = not any(os.path.exists(p) for p in ("/host", "/Users", "/mnt/c", "/home/user", "/root/.pflab"))
 r["no_secret_env"] = not any(k.upper().startswith(("ANTHROPIC", "AWS_", "GOOGLE_", "KITE", "TELEGRAM", "PFLAB_")) for k in os.environ if k != "PFLAB_OUT")
-r["not_root"] = os.getuid() != 0
+r["not_root"] = getattr(os, "getuid", lambda: 1000)() != 0          # the container is Linux; the host test of this script has no getuid
 print(json.dumps(r))
 '''
 

@@ -327,6 +327,7 @@ class Outcome:
     reused_from: Optional[str] = None                 # the kept calculation it came from (the library)
     measure: Optional[str] = None                     # a reviewed measure answered it (calc/measures.py)
     confirm: Optional[dict] = None                    # the independent second writing: agrees | disagrees | not run
+    inputs: Optional[dict] = None                     # S67: the frames the run read (name -> DataFrame), kept by cases.record_calc
 
 
 def solve(question: str, frames_for: Callable[[List[str]], Dict[str, pd.DataFrame]], schema: str, samples: str,
@@ -694,7 +695,12 @@ def ask(con, question: str, pm_dir: Path, root: Path, asof: date, *, writer: str
         writers.append(("local model", local or local_writer(), LOCAL_TRIES))
     elif writer == "auto":                                   # Opus refused or failed its checks: the local model, labelled
         writers.append(("local model (fallback after Opus)", local or local_writer(), LOCAL_TRIES))
-    frames_for = lambda names: {n: load_dataset(n, con, root, asof) for n in names}   # noqa: E731
+    captured: dict = {}
+
+    def frames_for(names):                                  # S67: what each run read is remembered, so the number can be reproduced from it
+        got = {n: load_dataset(n, con, root, asof) for n in names}
+        captured.update(got)
+        return got
     out = None
     if library:                                            # reviewed measures, then the library, before paying a writer
         filler = local or _filler()
@@ -712,6 +718,8 @@ def ask(con, question: str, pm_dir: Path, root: Path, asof: date, *, writer: str
             out.confirm = confirm(question, out, frames_for, schema, samples, second + writers)
             if out.confirm["status"] == "disagrees":
                 out.status = "disputed"
+    if out.spec is not None:
+        out.inputs = {n: captured[n] for n in out.spec.datasets if n in captured}
     d = keep(pm_dir, question, out, now)
     if out.run is not None and not out.run.contained:       # only the explicit workshop setting runs uncontained; say so once a day
         from pflab.agents import questions as qs

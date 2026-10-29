@@ -260,6 +260,40 @@ def sweep(con, now: datetime) -> List[Tuple[int, str]]:
 
 # --- calculations: reproducible -------------------------------------------------------------------------------------------------------
 
+MAX_SNAPSHOT_BYTES = 25_000_000                              # a dataset larger than this is hashed but not kept (not reproducible from the original)
+
+
+def frame_sha(df) -> str:
+    """A hash of a frame's content: column names, types and every row (not its parquet bytes, which differ between library versions)."""
+    import pandas as pd
+    h = hashlib.sha256()
+    h.update(json.dumps([[str(c), str(t)] for c, t in zip(df.columns, df.dtypes)]).encode())
+    h.update(pd.util.hash_pandas_object(df.reset_index(drop=True), index=False).values.tobytes())
+    return h.hexdigest()
+
+
+def runtime_versions() -> dict:
+    import sys
+    out = {"python": sys.version.split()[0]}
+    for m in ("pandas", "numpy", "pyarrow", "scipy", "statsmodels"):
+        try:
+            out[m] = __import__(m).__version__
+        except Exception:
+            out[m] = None
+    return out
+
+
+def snapshot_inputs(con, calc_id: int, inputs: Optional[dict]) -> None:
+    import io
+    for name, df in (inputs or {}).items():
+        buf = io.BytesIO()
+        df.to_parquet(buf, index=False)
+        raw = buf.getvalue()
+        keep = len(raw) <= MAX_SNAPSHOT_BYTES
+        con.execute("INSERT INTO hq_calc_inputs VALUES (?,?,?,?,?,?,?)",
+                    [calc_id, name, frame_sha(df), int(len(df)), len(raw), keep, raw if keep else None])
+
+
 def record_calc(con, cid: Optional[int], now: datetime, question: str, out, *, attempts: Optional[int] = None) -> int:
     """Keep a workshop outcome: the script, the datasets it read, its parameters, the result and how it was checked, so the number can
     be reproduced (`reproduce`) and an independent check can be shown beside it."""
@@ -268,7 +302,8 @@ def record_calc(con, cid: Optional[int], now: datetime, question: str, out, *, a
     code = spec.code if spec else ""
     kid = _id(con, "hq_calcs", "calc_id")
     folder = getattr(out, "folder", None)
-    con.execute("INSERT INTO hq_calcs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    con.execute("INSERT INTO hq_calcs (calc_id, case_id, created_at, question, code, code_sha, alt_code, datasets_json, params_json, result_json, "
+                "status, contained, attempts, check_json, workshop_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 [kid, cid, now, question[:600], code, hashlib.sha256(code.encode()).hexdigest(), (spec.alt_code if spec else "") or None,
                  json.dumps(spec.datasets if spec else []), json.dumps((spec.params if spec else {}) or {}, default=str),
                  json.dumps(run.result if run else {}, default=str), getattr(out, "status", "failed"),
@@ -276,6 +311,8 @@ def record_calc(con, cid: Optional[int], now: datetime, question: str, out, *, a
                  json.dumps({"test": (spec.test if spec else {}), "confirm": getattr(out, "confirm", None), "cross_checked": bool(run and run.cross_checked),
                              "problems": (run.problems if run else [])}, default=str),
                  getattr(folder, "name", None)])
+    con.execute("UPDATE hq_calcs SET versions_json=? WHERE calc_id=?", [json.dumps(runtime_versions()), kid])
+    snapshot_inputs(con, kid, getattr(out, "inputs", None))
     if cid is not None:
         ok = getattr(out, "status", "") == "checked"
         confirmed = (getattr(out, "confirm", None) or {}).get("status")
@@ -287,21 +324,75 @@ def record_calc(con, cid: Optional[int], now: datetime, question: str, out, *, a
     return kid
 
 
-def reproduce(con, calc_id: int, frames_for, sandbox=None) -> dict:
-    """Run a kept calculation again on today's data (or the given frames) and say whether the result is the same as the kept one."""
+def compare_results(kept: dict, got: dict, rel: float = 1e-6) -> List[str]:
+    """Every difference between two results, complete: a key missing on either side, a number off by more than `rel`, any other value not
+    equal (text, booleans, nested values). An empty list means identical."""
+    diffs = []
+    for k in sorted(set(kept) | set(got), key=str):
+        if k not in got:
+            diffs.append(f"{k}: kept {kept[k]!r}, the rerun has no such result")
+        elif k not in kept:
+            diffs.append(f"{k}: the rerun adds {got[k]!r}, which was not kept")
+        else:
+            a, b = kept[k], got[k]
+            num = lambda x: isinstance(x, (int, float)) and not isinstance(x, bool)       # noqa: E731
+            if num(a) and num(b):
+                if abs(float(a) - float(b)) > rel * max(1.0, abs(float(a))):
+                    diffs.append(f"{k}: kept {a}, rerun {b}")
+            elif a != b or type(a) is not type(b) and (isinstance(a, bool) or isinstance(b, bool)):
+                diffs.append(f"{k}: kept {a!r}, rerun {b!r}")
+    return diffs
+
+
+def original_inputs(con, calc_id: int, names: List[str]) -> Tuple[Optional[dict], str]:
+    """The data the calculation ran on, from its snapshot, each checked against its recorded hash. (None, why) when any is missing."""
+    import io
+    import pandas as pd
+    out = {}
+    for n in names:
+        r = con.execute("SELECT sha256, kept, data FROM hq_calc_inputs WHERE calc_id=? AND dataset=?", [calc_id, n]).fetchone()
+        if r is None:
+            return None, f"the original data of '{n}' was not kept (an older record)"
+        if not r[1] or r[2] is None:
+            return None, f"the original data of '{n}' was too large to keep (hash {r[0][:12]})"
+        df = pd.read_parquet(io.BytesIO(bytes(r[2])))
+        if frame_sha(df) != r[0]:
+            return None, f"the kept data of '{n}' no longer matches its hash: it was changed or damaged"
+        out[n] = df
+    return out, ""
+
+
+def reproduce(con, calc_id: int, frames_for=None, sandbox=None, basis: str = "original") -> dict:
+    """Run a kept calculation again. basis='original' (the default) uses the data it ran on, from its snapshot; if that is not available
+    it says so and runs nothing unless the caller gave `frames_for`, in which case the rerun is on current data and is labelled so. It
+    never quietly uses today's data as a reproduction. basis='current' runs on `frames_for(datasets)`. `differences` lists every way the
+    result differs, missing keys included."""
     from pflab.agents import workshop as wk
-    r = con.execute("SELECT code, alt_code, datasets_json, params_json, result_json, question FROM hq_calcs WHERE calc_id=?", [calc_id]).fetchone()
+    r = con.execute("SELECT code, alt_code, datasets_json, params_json, result_json, question, check_json FROM hq_calcs WHERE calc_id=?", [calc_id]).fetchone()
     if not r:
         raise LookupError(f"no calculation #{calc_id}")
-    code, alt, ds, params, result, question = r
-    spec_row = con.execute("SELECT check_json FROM hq_calcs WHERE calc_id=?", [calc_id]).fetchone()[0]
-    test = (json.loads(spec_row or "{}").get("test") or {})
+    code, alt, ds, params, result, question, check = r
+    test = (json.loads(check or "{}").get("test") or {})
     spec = wk.Spec(json.loads(ds), code, test, alt or "", "", json.loads(params or "{}"))
-    run = wk.run(spec, frames_for(spec.datasets), sandbox=sandbox)
+    frames = None
+    if basis == "original":
+        frames, why = original_inputs(con, calc_id, spec.datasets)
+        if frames is None and frames_for is not None:
+            basis = "current"                              # no snapshot: the caller asked for a rerun, and it is labelled as one
+        elif frames is None:
+            return {"ok": False, "reproduced": False, "basis": "original", "label": "not reproducible", "same_as_kept": False, "why": why,
+                    "differences": [], "result": {}, "kept": json.loads(result or "{}"), "problems": [why]}
+    if basis == "current":
+        if frames_for is None:
+            raise ValueError("a rerun on current data needs frames_for")
+        frames = frames_for(spec.datasets)
+    run = wk.run(spec, frames, sandbox=sandbox)
     kept = json.loads(result or "{}")
-    same = bool(run.ok) and all(abs(float(run.result.get(k, 0)) - float(v)) <= 1e-6 * max(1.0, abs(float(v)))
-                                for k, v in kept.items() if isinstance(v, (int, float)) and not isinstance(v, bool))
-    return {"ok": run.ok, "same_as_kept": same, "result": run.result, "kept": kept, "problems": run.problems}
+    diffs = compare_results(kept, run.result) if run.ok else ["the rerun did not produce a result"]
+    same = bool(run.ok) and not diffs
+    label = "reproduced from the original data" if basis == "original" else "a rerun on current data, not a reproduction"
+    return {"ok": run.ok, "reproduced": basis == "original" and same, "basis": basis, "label": label, "same_as_kept": same, "differences": diffs,
+            "result": run.result, "kept": kept, "problems": run.problems}
 
 
 # --- passes: steps, failures, reaping ---------------------------------------------------------------------------------------------------

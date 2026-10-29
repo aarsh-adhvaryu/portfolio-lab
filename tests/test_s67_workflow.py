@@ -187,7 +187,10 @@ class Ticker:
         return self.t
 
 
-def test_backfill_fills_holes_newest_first_in_bounded_steps_and_resumes(tmp_path):
+def test_backfill_fills_holes_newest_first_in_bounded_steps_and_resumes(tmp_path, monkeypatch):
+    def no_calendar(*a, **k):
+        raise FileNotFoundError("no collected index calendar: sessions are weekdays")      # the test must not read this PC's collected data
+    monkeypatch.setattr("pflab.data.indices.load", no_calendar)
     root = tmp_path / "data"
     start, end = date(2026, 10, 1), date(2026, 10, 30)                             # 22 weekdays
     before = rd.bhavcopy_holes(root, start, end)
