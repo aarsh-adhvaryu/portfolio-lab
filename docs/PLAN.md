@@ -75,6 +75,7 @@ Baseline on `d81efb8` (Linux, Python 3.13, `requirements.lock` without `pywin32`
 checkout: the 6 `test_engine_golden` digests (platform float digests; the engine tests were not touched) and `test_app_launcher::test_children_end_with_the_system` (Windows
 process tree). Docker is not available in the cloud container (no daemon): the sandbox is tested through its adapter with a fake Docker, the fail-closed path and the probe's
 verdicts; the real container test (`-m docker`) is skipped here and is part of `pflab verify` on his PC.
+**Result on the candidate (same Linux environment): 2125 passed, 8 skipped (the `docker` marker and platform skips), 7 failed: exactly the 7 environmental failures above, nothing new.** New tests: `tests/test_s67_*.py` (cycle, status, sandbox, workflow, update, verify, health; about 90 tests, including a real headless worker force-killed and restarted).
 What changed (details in `docs/BUILT.md`): migration 43; durable board states and recovery; investigations (`hq/cases.py`) with the brain's case tools, discovery, dependencies,
 reproducible calculations and a process review; the sandbox fails closed and proves its containment; connectors coloured by real operations, retained data marked stale, job
 sub-step failures propagate; email provenance policy and the local/cloud list; chat and background parity (the system and mail tools in the ask centre, chat history and open
