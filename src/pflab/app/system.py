@@ -466,24 +466,76 @@ def critical_fresh(con, now: datetime) -> tuple:
     return (False, why) if why else (True, "")
 
 
+_ISIN = re.compile(r"(?:IN[A-Z0-9]{10}|ZZ\d{10})")
+
+
+def instrument_stale(con, now: datetime, isin: str) -> Optional[str]:
+    """Why THIS instrument's price is not current (its own latest close against the last closed session), else None. Another instrument's
+    fresh price says nothing about it; an instrument with no price at all is not current either."""
+    from pflab.conductor import calendar as cal
+    px = con.execute("SELECT max(date) FROM prices WHERE isin=?", [isin]).fetchone()[0]
+    if px is None:
+        return f"no price for {isin} in the record"
+    try:
+        exp = cal.load().last_closed_session(now)
+    except Exception:
+        exp = now.date() - timedelta(days=1)
+    if (exp - px).days > 1:
+        return f"the price of {isin} is from {px}, the last session was {exp}"
+    return None
+
+
+def _depends_on(con, kind: str, row) -> List[str]:
+    """The instruments a recommendation stands on: a suggestion's own; a plan's, read from its stored inputs. Empty when unknown."""
+    if kind == "suggestion":
+        if row[0]:
+            return [row[0]]
+        if row[1]:
+            r = con.execute("SELECT isin FROM instruments WHERE symbol=?", [row[1]]).fetchall()
+            return [x[0] for x in r] if len(r) == 1 else []
+        return []
+    return sorted(set(_ISIN.findall(row[0] or "")))
+
+
 def recommendations(rt, now: datetime) -> dict:
-    """What is waiting for him (suggestions not answered or scored, ready plans) and whether it may be shown as current: not while the
-    prices behind it are old or the system is catching up after being off."""
+    """What is waiting for him (suggestions not answered or scored, ready plans) and whether EACH may be shown as current. An item is current
+    only when the prices of the instruments it stands on are current (one fresh stock cannot validate another) and the system is not
+    catching up after being off. An item whose instruments are unknown falls back to the market-wide rule and says so."""
     con = rt.cursor()
-    ok, why = critical_fresh(con, now)
+    ok_all, why_all = critical_fresh(con, now)
     catching = getattr(rt, "catching_up", None)
-    if ok and catching:
-        ok, why = False, f"catching up: {catching}"
     items = []
-    for sid, kind, sym, text, made in con.execute(
-            "SELECT sug_id, kind, symbol, text, made_at FROM hq_suggestions WHERE shadow=false AND answer='none' AND scored_at IS NULL "
+
+    def judge(deps: List[str]) -> tuple:
+        if catching:
+            return False, f"catching up: {catching}"
+        for d in deps:
+            w = instrument_stale(con, now, d)
+            if w:
+                return False, w
+        if deps:
+            return True, ""
+        return (ok_all, why_all) if not ok_all else (True, "")                       # unknown dependencies: the market-wide rule
+    for sid, kind, sym, text, made, isin in con.execute(
+            "SELECT sug_id, kind, symbol, text, made_at, isin FROM hq_suggestions WHERE shadow=false AND answer='none' AND scored_at IS NULL "
             "ORDER BY sug_id DESC LIMIT 10").fetchall():
-        items.append({"kind": "suggestion", "id": sid, "text": f"{kind} {sym or ''}: {text}"[:200], "made": str(made)[:16]})
-    for pid, key, due, amount, created in con.execute(
-            "SELECT plan_id, trigger_key, due, amount, created_at FROM ready_plans WHERE status='current' ORDER BY due LIMIT 10").fetchall():
-        items.append({"kind": "plan", "id": pid, "text": f"ready plan '{key}' due {due}", "made": str(created)[:16]})
+        deps = _depends_on(con, "suggestion", (isin, sym))
+        cur, w = judge(deps)
+        items.append({"kind": "suggestion", "id": sid, "text": f"{kind} {sym or ''}: {text}"[:200], "made": str(made)[:16],
+                      "current": cur, "why": w or None, "depends_on": deps or "the market as a whole"})
+    for pid, key, due, amount, created, pj in con.execute(
+            "SELECT plan_id, trigger_key, due, amount, created_at, plan_json FROM ready_plans WHERE status='current' ORDER BY due LIMIT 10").fetchall():
+        deps = _depends_on(con, "plan", (pj,))
+        cur, w = judge(deps)
+        items.append({"kind": "plan", "id": pid, "text": f"ready plan '{key}' due {due}", "made": str(created)[:16],
+                      "current": cur, "why": w or None, "depends_on": deps or "the market as a whole"})
+    stale = [i for i in items if not i["current"]]
+    ok = (not catching) and (not stale) and (ok_all or bool(items))
+    if not items:
+        ok = ok_all and not catching
+    why = (f"catching up: {catching}" if catching else (stale[0]["why"] if stale else why_all)) if not ok else ""
     return {"current": ok, "why": why or None, "items": items,
-            "say": None if ok or not items else f"{len(items)} item(s) were prepared earlier and are NOT shown as current: {why}"}
+            "say": None if not stale else f"{len(stale)} of {len(items)} item(s) were prepared earlier and are NOT shown as current: {stale[0]['why']}"}
 
 
 # --- what changed since he last looked ------------------------------------------------------------------------------------------------------

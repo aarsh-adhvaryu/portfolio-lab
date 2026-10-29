@@ -176,3 +176,34 @@ def test_a_case_in_a_pass_is_not_reaped_by_a_wake(con):
     cases.end_pass(con, [cid], 5, NOW, True)
     con.execute("UPDATE hq_cases SET status='running' WHERE case_id=1")                 # now an orphan: nothing in this process owns it
     assert cases.reap(con, NOW) == 1
+
+
+# --- D: each recommendation is current on its own instruments ------------------------------------------------------------------------
+
+def test_one_fresh_stock_does_not_make_a_suggestion_on_another_stock_current(con, tmp_path):
+    from datetime import date
+    from pflab.app import runtime, system
+    A, B = "INE000A01011", "INE000B01012"
+    now = datetime(2026, 11, 2, 10, 0)                                       # a Monday: the last closed session is Friday 30 Oct
+    for isin, sym in ((A, "AAA"), (B, "BBB")):
+        con.execute("""INSERT INTO instruments (isin, key_kind, asset_class, tax_class, listed, symbol, name, source, built_at)
+                       VALUES (?, 'isin', 'equity', 'listed_equity', TRUE, ?, ?, 'synthetic', now())""", [isin, sym, sym])
+    con.execute("INSERT INTO prices VALUES (?,?,?,?,?,?)", [B, date(2026, 10, 30), 100.0, "EQ", "nse", now])        # B is current
+    con.execute("INSERT INTO prices VALUES (?,?,?,?,?,?)", [A, date(2026, 10, 20), 100.0, "EQ", "nse", now])        # A is twelve days old
+    for sid, isin, sym in ((1, A, "AAA"), (2, B, "BBB")):
+        con.execute("INSERT INTO hq_suggestions (sug_id, pass_id, model, made_at, kind, isin, symbol, text, reasoning, horizon_days, shadow, answer) "
+                    "VALUES (?, 1, 'm', ?, 'add', ?, ?, 'a', 'r', 30, false, 'none')", [sid, now, isin, sym])
+    (tmp_path / "pm").mkdir()
+    rt = runtime.Runtime(tmp_path / "pm", tmp_path / "data", tmp_path, con=con, clock=lambda: now)
+    rec = system.recommendations(rt, now)
+    by = {i["id"]: i for i in rec["items"]}
+    assert by[1]["current"] is False and A in by[1]["why"] and by[1]["depends_on"] == [A]
+    assert by[2]["current"] is True and by[2]["why"] is None
+    assert rec["current"] is False and "1 of 2" in rec["say"]                      # the picture as a whole is not called current
+    con.execute("INSERT INTO prices VALUES (?,?,?,?,?,?)", [A, date(2026, 10, 30), 100.0, "EQ", "nse", now])
+    assert system.recommendations(rt, now)["current"] is True
+
+
+def test_a_plan_is_judged_on_the_isins_in_its_stored_inputs(con):
+    from pflab.app import system
+    assert system._ISIN.findall('{"buy": "INE000A01011", "x": "ZZ0001234567", "n": "XINE000A01011Y"}') == ["INE000A01011", "ZZ0001234567"]
