@@ -26,6 +26,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
+import re
+
 import pandas as pd
 
 from pflab.learner import counter
@@ -183,15 +185,28 @@ def attempts(con, eid: int) -> List[dict]:
 # --- the writer's prompt: the next trial is chosen from what was recorded --------------------------------------------------------------------
 
 WRITER_SYSTEM = (
-    "You write ONE small Python rule for a research experiment on a daily index series. Reply with JSON only: "
-    '{"datasets": ["<the dataset name>"], "code": "...", "test": {"data": {"<dataset name>": [rows]}, "expected": {"signal": value}, "tol": 1e-6}, '
-    '"explain": "one sentence: why this rule might work"}. '
-    "Rules: code defines def compute(data) where data maps the dataset name to a pandas DataFrame with columns date and close, and returns "
+    "You write ONE small Python rule for a research experiment on a daily index series. Reply in exactly this form and nothing else:\n"
+    "WHY: one sentence on why this rule might work\n"
+    "```python\n<the code>\n```\n"
+    "The code defines def compute(data) where data maps the dataset name to a pandas DataFrame with columns date and close, and returns "
     '{"signal": number}: above 0 means be invested for the next month, 0 or below means be out. compute is called once per month-end with ONLY the rows '
-    "up to that date; use only those rows. Allowed imports: numpy, pandas, math. No files, no network. The test case is a tiny made-up series with the "
-    "signal you expect on its last row. You are shown every earlier candidate and exactly how it scored: do not repeat one that failed; change one thing "
-    "for a reason."
+    "up to that date; use only those rows, never assume a length (check len first). Do not modify the input frame. Allowed imports: numpy, pandas, math. "
+    "No files, no network. You are shown every earlier candidate and exactly how it scored: do not repeat one that failed; change one thing for a reason."
 )
+
+FENCE = re.compile(r"```(?:python)?\s*\n(.*?)```", re.S)
+
+
+def parse_reply(text: str) -> Tuple[str, str]:
+    """(code, why) from the writer's reply: the first fenced block, else the whole reply if it already is a module. A model's thinking, if
+    any, is dropped first. Raises ValueError when there is no code."""
+    t = re.sub(r"<think>.*?</think>", "", text or "", flags=re.S)
+    m = FENCE.search(t)
+    code = (m.group(1) if m else t if "def compute" in t else "").strip("\n")
+    if "def compute" not in code:
+        raise ValueError("the reply holds no code with def compute(data)")
+    w = re.search(r"WHY:\s*(.+)", t)
+    return code + "\n", (w.group(1).strip() if w else "")[:300]
 
 
 def prompt(con, eid: int, dataset: str, history: List[dict]) -> str:
@@ -276,10 +291,9 @@ def run(con, eid: int, root: Path, now: datetime, writer: Callable[[str], str], 
             reply = writer(prompt(con, eid, dataset, history) + (f"\nYOUR LAST TRY FAILED TO RUN: {feedback}\nFix only that." if feedback else ""))
             cost += float(getattr(writer, "last_cost", 0.0) or 0.0)
             try:
-                spec = wk.parse_spec(reply)
-                spec = wk.Spec([dataset], spec.code, spec.test, "", spec.explain, spec.params)
-                if dataset not in (spec.test.get("data") or {}):
-                    raise ValueError(f"the test case needs data for {dataset!r}")
+                code, why_w = parse_reply(reply)
+                smoke = [{"date": d.isoformat(), "close": float(c)} for d, c in zip(df["date"][:60], df["close"][:60])]      # trusted rows, not the model's
+                spec = wk.Spec([dataset], code, {"data": {dataset: smoke}, "expected": {}}, "", why_w)
                 r = wk.run(spec, {dataset: df}, time_limit=ATTEMPT_WALL_S, sandbox=box, walk=[d.isoformat() for d in dates])
             except sb.SandboxUnavailable as e:
                 _set(con, eid, "waiting", f"waiting for the sandbox: {e}", now)

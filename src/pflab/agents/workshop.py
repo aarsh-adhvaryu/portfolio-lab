@@ -247,7 +247,7 @@ def run(spec: Spec, frames: Dict[str, pd.DataFrame], python: str = sys.executabl
         spec = replace(spec, alt_code="")          # a copy is no second method: dropped (optional), never a failed try
     problems = static_check(spec.code) + ([f"alt_code: {p}" for p in static_check(spec.alt_code)] if spec.alt_code else [])
     t = spec.test or {}
-    if not t.get("data") or not t.get("expected"):
+    if not t.get("data") or not (t.get("expected") or walk):
         problems.append("no test case (test.data and test.expected are both required)")
     if problems:
         return Run(False, problems)

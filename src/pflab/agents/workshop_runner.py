@@ -111,6 +111,10 @@ def main(folder: str) -> int:
                                                                                 **job["test"].get("params", {})}))
             exp = {kk: float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else v
                    for kk, v in job["test"]["expected"].items()}
+            if not exp and job.get("walk"):                 # S67: a walk-forward job is smoke-tested on trusted rows: it must give a numeric signal
+                if isinstance(got.get("signal"), bool) or not isinstance(got.get("signal"), (int, float)):
+                    raise AssertionError("compute must return a numeric 'signal'")
+                continue
             if not exp:
                 raise AssertionError("the test case states no expected result")
             bad = _agree(got, exp, float(job["test"].get("tol", 1e-6)), only=set(exp))

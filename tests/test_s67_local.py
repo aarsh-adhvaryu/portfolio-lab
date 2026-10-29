@@ -404,3 +404,74 @@ def test_a_filled_gap_is_history_not_a_current_gap(con):
     a = cases.assess(con, cid, NOW + timedelta(hours=2))
     assert a["missing"] == 0 and a["open_dependencies"] == 0                                       # still in the evidence log, no longer a gap
     assert any(e["stance"] == "missing" for e in cases.evidence(con, cid))
+
+
+# --- E: the real container (needs Docker Desktop and the pflab-sandbox:2 image; skipped otherwise) -----------------------------------------
+
+class _Scripted(sb.Docker):
+    """The real container flags and mounts, running a given script instead of the runner."""
+    def __init__(self, script):
+        super().__init__()
+        self.script = script
+
+    def command(self, work, name, out):
+        return sb._flags(name, work, out) + [self.image, "python", "-I", "-c", self.script]
+
+
+def _need_docker():
+    if not sb.status(force=True)["ok"]:
+        pytest.skip("Docker is not running or the pflab-sandbox:2 image is not built")
+
+
+@pytest.mark.docker
+def test_a_containment_probe_comes_with_a_successful_real_calculation(tmp_path):
+    import pandas as pd
+    from pflab.agents import workshop as wk
+    _need_docker()
+    assert sb.probe()["ok"]
+    spec = wk.Spec(["d"], "def compute(data):\n    return {'total': float(data['d']['x'].sum())}\n",
+                   {"data": {"d": [{"x": 1.0}, {"x": 2.0}]}, "expected": {"total": 3.0}, "tol": 1e-9})
+    r = wk.run(spec, {"d": pd.DataFrame({"x": [1.0, 2.0, 3.0]})}, sandbox=sb.Docker())
+    assert r.ok and r.contained and r.result == {"total": 6.0}
+
+
+@pytest.mark.docker
+@pytest.mark.parametrize("script,expect", [
+    ("import os; open(os.environ['PFLAB_OUT'] + '/out.json', 'w').write('x' * 2_000_000)", "larger than"),
+    ("import os; open(os.environ['PFLAB_OUT'] + '/out.json', 'w').write('not json')", "not valid JSON"),
+    ("import os; open(os.environ['PFLAB_OUT'] + '/out.json', 'w').write('[1, 2]')", "not a JSON object"),
+])
+def test_in_the_real_container_a_bad_result_file_is_refused_not_read(tmp_path, script, expect):
+    _need_docker()
+    work = tmp_path / "work"
+    work.mkdir()
+    _Scripted(script).run(work, 30)
+    got = json.loads((work / "out.json").read_text(encoding="utf-8"))
+    assert list(got) == ["error"] and expect in got["error"]
+
+
+@pytest.mark.docker
+def test_in_the_real_container_a_run_past_its_limit_is_killed_and_leaves_no_container(tmp_path):
+    import subprocess
+    _need_docker()
+    work = tmp_path / "work"
+    work.mkdir()
+    box = _Scripted("import time; time.sleep(120)")
+    with pytest.raises(subprocess.TimeoutExpired):
+        box.run(work, 3)
+    left = subprocess.run(["docker", "ps", "-q", "--filter", "name=pflab-wk-"], capture_output=True, timeout=20).stdout.strip()
+    assert left == b""
+
+
+@pytest.mark.docker
+def test_in_the_real_container_the_job_folder_cannot_be_written_and_the_host_is_not_visible(tmp_path):
+    _need_docker()
+    work = tmp_path / "work"
+    work.mkdir()
+    probe = ("import os, json\nr = {}\n"
+             "try:\n    open('/work/x', 'w'); r['wrote_work'] = True\nexcept Exception:\n    r['wrote_work'] = False\n"
+             "r['host_home'] = os.path.exists('/Users') or os.path.exists('/mnt/c') or os.path.exists('/host_mnt')\n"
+             "r['secret_env'] = any(k.upper().startswith(('ANTHROPIC', 'KITE', 'GOOGLE', 'TELEGRAM')) for k in os.environ)\n"
+             "open(os.environ['PFLAB_OUT'] + '/out.json', 'w').write(json.dumps(r))")
+    _Scripted(probe).run(work, 30)
+    assert json.loads((work / "out.json").read_text(encoding="utf-8")) == {"wrote_work": False, "host_home": False, "secret_env": False}

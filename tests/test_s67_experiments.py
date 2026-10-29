@@ -54,16 +54,8 @@ CODE_BROKEN = '''
 def compute(data):
     return {"signal": undefined_name}
 '''
-TEST_ROWS = [{"date": f"2020-01-{k:02d}", "close": 100.0 + k} for k in range(1, 20)]
-
-
 def reply(code: str, explain="rule") -> str:
-    return json.dumps({"datasets": [ex.DEFAULT_DATASET], "code": code, "explain": explain,
-                       "test": {"data": {ex.DEFAULT_DATASET: TEST_ROWS}, "expected": {"signal": 1.0 if "return {\"signal\": 1.0}" in code and "c.iloc" not in code else _mom_expect()}, "tol": 1e-6}})
-
-
-def _mom_expect():
-    return 1.0                                   # fewer than 253 rows in the test case: the rule returns 1.0 there
+    return f"WHY: {explain}\n```python\n{code.strip()}\n```\n"
 
 
 class Writer:
@@ -94,6 +86,15 @@ def test_the_question_is_registered_before_any_candidate_and_never_twice(con, tm
         ex.register(con, tmp_path / "proto", NOW, hypothesis="x", why_it_matters="", disproof="y", source_kind="investor")
     with pytest.raises(ValueError):
         ex.register(con, tmp_path / "proto", NOW, hypothesis="x2", why_it_matters="w", disproof="y", source_kind="a hunch")
+
+
+def test_the_reply_is_read_from_a_fenced_block_with_or_without_thinking_and_nothing_else_is_run():
+    code, why = ex.parse_reply("<think>hmm</think>\nWHY: it follows trends\n```python\ndef compute(data):\n    return {'signal': 1.0}\n```\n")
+    assert "def compute" in code and why == "it follows trends"
+    assert ex.parse_reply("def compute(data):\n    return {'signal': 1.0}")[0].startswith("def compute")
+    for bad in ("I think you should buy.", "", "```python\nprint(1)\n```"):
+        with pytest.raises(ValueError):
+            ex.parse_reply(bad)
 
 
 def test_a_changed_protocol_or_evaluator_stops_the_run(con, tmp_path):
