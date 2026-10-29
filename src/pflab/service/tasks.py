@@ -408,10 +408,18 @@ def _backfill(ctx: Ctx) -> dict:
 
 
 def _backfill_enabled(ctx: Ctx) -> Tuple[bool, str]:
+    """Enabled only while sessions are missing and the disk has room. Never raises: a data folder that does not exist yet has all of it missing."""
     import shutil
+    from pathlib import Path
     from pflab.app import readiness
-    if shutil.disk_usage(ctx.data_root).free / 1e9 < MIN_FREE_GB:
-        return False, f"under {MIN_FREE_GB} GB free"
+    probe = Path(ctx.data_root)
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    try:
+        if shutil.disk_usage(probe).free / 1e9 < MIN_FREE_GB:
+            return False, f"under {MIN_FREE_GB} GB free"
+    except OSError:
+        return False, "the data folder's disk cannot be read"
     h = readiness.bhavcopy_holes(ctx.data_root, readiness.HISTORY_START, ctx.now.date() - timedelta(days=1))
     return (bool(h["holes"]), "market history has no holes")
 

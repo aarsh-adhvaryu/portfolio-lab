@@ -163,6 +163,8 @@ def round_(rt, stop=None, attended: bool = True) -> dict:
             out.setdefault("failed", {})[name] = out[name][len("failed: "):]
 
     part("board", lambda: board.run_all(rt, roster.runners(), deliver(rt), max_n=20 if attended else 8, stop=stop))
+    from pflab.hq import cases
+    part("cases", lambda: len(cases.sweep(rt.cursor(), rt.clock())))     # S67: what a waiting investigation needed may have arrived (free, code only)
     if rt.settings.get("drop_watch", True):
         def drop():
             got = watcher.scan(rt)

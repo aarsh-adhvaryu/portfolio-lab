@@ -148,6 +148,7 @@ def connectors(rt, now: datetime) -> List[dict]:
     from pflab import release
     from pflab.agents import analyst
     from pflab.agents import sandbox as sb
+    from pflab.app import readiness
     from pflab.app import runtime as rtm
     from pflab.ingest import gmail
     from pflab.pm import secrets_setup as ss
@@ -182,6 +183,9 @@ def connectors(rt, now: datetime) -> List[dict]:
             g = (WARN, "connected; no successful read yet")
         elif now - ma["ok"] > timedelta(days=2):
             g = (WARN, f"connected, but not read since {str(ma['ok'])[:16]} (it should run daily); {base}")
+        elif readiness.gaps(con, "mail"):
+            gp = readiness.gaps(con, "mail")
+            g = (WARN, f"{base}; {len(gp)} message(s) could not be read ({gp[0]['detail'][:70]}); they are tried again, the rest arrived")
         elif odd:
             g = (WARN, f"{base}; {odd} email fact(s) not in your record")
         else:
