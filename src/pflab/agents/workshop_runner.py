@@ -76,6 +76,27 @@ def _agree(a: dict, b: dict, tol: float, only=None) -> list:
     return bad
 
 
+MAX_WALK = 400
+
+
+def _walk(fn, real: dict, walk: dict, params: dict) -> dict:
+    """Walk-forward: for each date, compute() sees ONLY the rows dated up to and including it (cut here, by this runner, not by the model's
+    code) and must return a `signal`. Point-in-time by construction: a candidate cannot read a row after the date it is asked about."""
+    dates = [str(d) for d in walk.get("dates", [])]
+    if not dates or len(dates) > MAX_WALK:
+        raise ValueError(f"walk needs 1 to {MAX_WALK} dates")
+    out = {}
+    for d in dates:
+        cut = pd.Timestamp(d)
+        sub = {n: f[pd.to_datetime(f["date"]) <= cut].copy() for n, f in real.items()}
+        r = _clean(_call(fn, sub, params))
+        s = r.get("signal")
+        if isinstance(s, bool) or not isinstance(s, (int, float)):
+            raise ValueError("compute must return a numeric 'signal'")
+        out[d] = float(s)
+    return out
+
+
 def main(folder: str) -> int:
     f = Path(folder)
     job = json.loads((f / "job.json").read_text(encoding="utf-8"))
@@ -98,8 +119,12 @@ def main(folder: str) -> int:
                 raise AssertionError(out["test_detail"])
         out["test_ok"] = True
         real = _frames(job["datasets"], f)
-        out["result"] = _clean(_call(fns["compute"], {n: d.copy() for n, d in real.items()}, job.get("params", {})))
-        if "alt" in fns:
+        if job.get("walk"):
+            out["walk"] = _walk(fns["compute"], real, job["walk"], job.get("params", {}))
+            out["result"] = {"walk_dates": float(len(out["walk"]))}
+        else:
+            out["result"] = _clean(_call(fns["compute"], {n: d.copy() for n, d in real.items()}, job.get("params", {})))
+        if "alt" in fns and not job.get("walk"):
             out["alt_result"] = _clean(_call(fns["alt"], {n: d.copy() for n, d in real.items()}, job.get("params", {})))
             out["disagree"] = _agree(out["result"], out["alt_result"], 1e-4)
     except Exception as e:                            # the model's code failing is a finding, reported back to it

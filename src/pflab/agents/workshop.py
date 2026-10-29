@@ -205,6 +205,7 @@ class Run:
     cross_checked: bool = False
     seconds: float = 0.0
     contained: bool = False                      # ran in Docker (no network, read-only root), not the local subprocess
+    walk: Optional[Dict[str, float]] = None      # S67: walk-forward mode only: {date: signal}, each computed from the rows up to that date
 
 
 def parse_spec(text: str) -> Spec:
@@ -238,7 +239,7 @@ def defaults(spec: Spec) -> dict:
 
 
 def run(spec: Spec, frames: Dict[str, pd.DataFrame], python: str = sys.executable,
-        time_limit: int = TIME_LIMIT_S, values: Optional[dict] = None, sandbox=None) -> Run:
+        time_limit: int = TIME_LIMIT_S, values: Optional[dict] = None, sandbox=None, walk: Optional[List[str]] = None) -> Run:
     """Static check, then the sandbox (Docker when it works, else the local subprocess): the test case first, then the
     real frames (with `values` for the parameters, else their defaults); a second method must agree."""
     if spec.alt_code and same_method(spec.code, spec.alt_code):
@@ -257,9 +258,10 @@ def run(spec: Spec, frames: Dict[str, pd.DataFrame], python: str = sys.executabl
             (work / "alt_code.py").write_text(spec.alt_code, encoding="utf-8")
         for i, name in enumerate(spec.datasets):
             frames[name].to_parquet(work / f"{i}.parquet", index=False)
-        (work / "job.json").write_text(json.dumps({"datasets": spec.datasets, "test": t,
-                                                    "params": {**defaults(spec), **(values or {})}}, default=str),
-                                        encoding="utf-8")
+        job = {"datasets": spec.datasets, "test": t, "params": {**defaults(spec), **(values or {})}}
+        if walk:
+            job["walk"] = {"dates": [str(d) for d in walk]}
+        (work / "job.json").write_text(json.dumps(job, default=str), encoding="utf-8")
         box = sandbox or sb.pick(python)
         t0 = datetime.now()
         try:
@@ -276,7 +278,8 @@ def run(spec: Spec, frames: Dict[str, pd.DataFrame], python: str = sys.executabl
         if out.get("disagree"):
             return Run(False, ["the two methods disagree: " + "; ".join(out["disagree"][:5])], out.get("result", {}),
                        seconds=secs, contained=c)
-        return Run(True, [], out["result"], cross_checked="alt_result" in out, seconds=secs, contained=c)
+        return Run(True, [], out["result"], cross_checked="alt_result" in out, seconds=secs, contained=c,
+                   walk=out.get("walk") if isinstance(out.get("walk"), dict) else None)
     finally:
         shutil.rmtree(work, ignore_errors=True)
 

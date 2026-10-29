@@ -650,6 +650,20 @@ MIGRATIONS = [
     );
     ALTER TABLE hq_calcs ADD COLUMN versions_json VARCHAR;
     """),
+    # 2026-10-29: S67 local. The bounded experiment loop (learner/experiments.py): the registered question and every attempt with its measured result.
+    (47, "experiments_s67", """
+    CREATE TABLE learn_experiments (
+        exp_id INTEGER PRIMARY KEY, key VARCHAR UNIQUE, registered_at TIMESTAMP NOT NULL, hypothesis VARCHAR NOT NULL, why_it_matters VARCHAR NOT NULL,
+        disproof VARCHAR NOT NULL, source_kind VARCHAR NOT NULL, source_ref VARCHAR, dataset VARCHAR NOT NULL, max_attempts INTEGER NOT NULL,
+        protocol_path VARCHAR NOT NULL, protocol_sha VARCHAR NOT NULL, evaluator_sha VARCHAR NOT NULL, status VARCHAR NOT NULL,
+        decision_why VARCHAR, decided_at TIMESTAMP, baseline_json VARCHAR
+    );
+    CREATE TABLE learn_attempts (
+        attempt_id INTEGER PRIMARY KEY, exp_id INTEGER NOT NULL, n INTEGER NOT NULL, made_at TIMESTAMP NOT NULL, kind VARCHAR NOT NULL,
+        status VARCHAR NOT NULL, code VARCHAR, code_sha VARCHAR, note VARCHAR, error VARCHAR, result_json VARCHAR, seconds DOUBLE,
+        contained BOOLEAN, cost_inr DOUBLE
+    );
+    """),
 ]
 
 
