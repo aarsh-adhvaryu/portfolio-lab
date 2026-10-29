@@ -148,11 +148,12 @@ def probe(runner: Callable = subprocess.run, image: str = IMAGE, work: Optional[
     finally:
         if work is None:
             shutil.rmtree(d, ignore_errors=True)
-    # a run past its limit must be killed: a loop of 4 s with a 2 s limit, then the container must be gone
-    killed = _time_limit_check(runner, image, d if work else None)
-    checks["time_limit_kills"] = killed
+    if not checks:
+        return {"ok": False, "checks": {}, "why": "the probe printed no result: containment is not proven"}
+    # a run past its limit must be killed: a loop of 30 s with a 2 s limit, then the container must be gone
+    checks["time_limit_kills"] = _time_limit_check(runner, image, d if work else None)
     bad = [k for k, v in checks.items() if v is not True]
-    return {"ok": bool(checks) and not bad, "checks": checks, "why": ("failed: " + ", ".join(bad)) if bad or not checks else "contained"}
+    return {"ok": not bad, "checks": checks, "why": ("failed: " + ", ".join(bad)) if bad else "contained"}
 
 
 def _time_limit_check(runner: Callable, image: str, work: Optional[Path]) -> bool:
@@ -208,6 +209,20 @@ def status(runner: Callable = subprocess.run, now: Optional[float] = None, force
 
 def available(runner: Callable = subprocess.run, now: Optional[float] = None, force: bool = False) -> bool:
     return status(runner, now, force)["ok"]
+
+
+def blocked_by_probe(con) -> Optional[str]:
+    """Why generated code must not run: the latest containment probe failed. None when it passed, or has not run yet (the first use is
+    allowed to find out). Not read under PFLAB_SANDBOX=local, which is the workshop's explicit uncontained setting."""
+    if os.environ.get("PFLAB_SANDBOX", "").lower() == "local":
+        return None
+    try:
+        r = con.execute("SELECT ok, detail, checked_at FROM health_checks WHERE connector='sandbox' ORDER BY check_id DESC LIMIT 1").fetchone()
+    except Exception:
+        return None
+    if r is not None and not r[0]:
+        return f"the sandbox's containment probe failed on {str(r[2])[:16]} ({str(r[1])[:100]})"
+    return None
 
 
 def installed_app() -> bool:

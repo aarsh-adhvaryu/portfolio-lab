@@ -17,6 +17,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
+from pflab.hq import egress
 from pflab.hq import governor as gv
 from pflab.hq import llm
 
@@ -181,11 +182,58 @@ def params(text: str) -> dict:
             "messages": [{"role": "user", "content": text}]}
 
 
+PERSONAL = ("account number", "address", "PAN", "UPI id", "IFSC code", "his name")
+
+
+class Withheld(Exception):
+    """A document that may not leave this PC (S67): the reason is kept, the document is not retried."""
+
+
+def email_for_api(row: dict, gate) -> str:
+    """The text of an email-kind document as it may go to the API, or `Withheld`. An email is never a public kind: it goes only when
+    (1) its provenance holds: the mail reader cleared it (`attrs.cleared` = the SHA-256 of the text it checked, when it named none of
+    his ids) and the stored text still has that hash; and (2) the text is redacted and passes the full identity check NOW, as private
+    text (not by the document-kind shortcut that public filings get). Raw email is never allowed out by kind alone."""
+    import hashlib
+    from pflab.hq import redact
+    attrs = json.loads(row["attrs"] or "{}")
+    p = row.get("text_path")
+    if not attrs.get("cleared") or not p or not Path(p).exists():
+        raise Withheld("the email has no clearance from the mail reader (provenance missing)")
+    body = Path(p).read_text(encoding="utf-8", errors="replace")
+    if hashlib.sha256(body.encode("utf-8")).hexdigest() != attrs["cleared"]:
+        raise Withheld("the stored email text changed after it was cleared")
+    text = f"{row['title'] or ''}\n{body}"[:DOC_CHARS]
+    clean, counts = redact.redact(text, gate, lines=False)          # a research desk's phone or e-mail is redacted and may go; his ids may not
+    personal = sorted(k for k in counts if k in PERSONAL)
+    if personal:
+        raise Withheld("the email carries his own details (" + ", ".join(personal) + "): it is not public research")
+    try:
+        egress.check(clean, gate)
+    except egress.EgressBlocked as e:
+        raise Withheld(str(e))
+    return clean
+
+
+def withhold(con, row: dict, now: datetime, why: str) -> dict:
+    """Record that a document was not sent, so it is not tried again and the screen can say why."""
+    con.execute("INSERT INTO hq_readings VALUES (?,?,?,?,?,?,?,?,?,?)",
+                [row["doc_id"], now, "none (not sent)", "no", f"withheld: {why}"[:400], "", "[]", 0, None, json.dumps(row["isins"])])
+    return {"doc_id": row["doc_id"], "material": "no", "held": row["held"], "cost": 0.0, "dropped": 0, "withheld": why}
+
+
 def read_one(con, row: dict, client, gate, now: datetime, mode: str, cfg: Optional[dict] = None) -> dict:
     from pflab.kg import graph as g
-    text = doc_text(row)
-    sent = llm.call(con, "reader", params(text), client, now=now, mode=mode, private_text="", gate=gate,
-                    doc_kinds=(row["kind"],), topic=",".join(row["isins"]), question=f"read {row['doc_id']}", cfg=cfg)
+    if row["kind"] == "email":                          # provenance first: an email is private until the mail reader cleared it
+        try:
+            text = email_for_api(row, gate)
+        except Withheld as e:
+            return withhold(con, row, now, str(e))
+        kinds, private = (), text                       # checked as private text, in full
+    else:
+        text, kinds, private = doc_text(row), (row["kind"],), ""
+    sent = llm.call(con, "reader", params(text), client, now=now, mode=mode, private_text=private, gate=gate,
+                    doc_kinds=kinds, topic=",".join(row["isins"]), question=f"read {row['doc_id']}", cfg=cfg)
     out = sent.json()
     material = out.get("material") if out.get("material") in ("yes", "no", "unsure") else "unsure"
     from pflab.hq import brain
@@ -193,7 +241,7 @@ def read_one(con, row: dict, client, gate, now: datetime, mode: str, cfg: Option
     if mm != gv.HAIKU:                                  # S61: the slider moved materiality: that model's verdict stands
         p = {**params(text), "model": mm,
              "output_config": {"effort": "low", "format": {"type": "json_schema", "schema": MAT_SCHEMA}}}
-        ms = llm.call(con, "reader", p, client, now=now, mode=mode, private_text="", gate=gate, doc_kinds=(row["kind"],),
+        ms = llm.call(con, "reader", p, client, now=now, mode=mode, private_text=private, gate=gate, doc_kinds=kinds,
                       topic=",".join(row["isins"]), question=f"materiality {row['doc_id']}", cfg=cfg)
         m, extra = ms.json(), ms.cost_inr
         if m.get("material") in ("yes", "no", "unsure"):
@@ -259,7 +307,7 @@ def run(con, asof: date, client, gate, now: datetime, mode: str, held: Sequence[
             break
         except Exception:                                   # one bad document never stops the rest
             failed += 1
-    return {"read": len(done), "material": sum(d["material"] == "yes" for d in done),
+    return {"read": len(done), "withheld": sum(1 for d in done if d.get("withheld")), "material": sum(d["material"] == "yes" for d in done),
             "material_held": [d["doc_id"] for d in done if d["material"] == "yes" and d["held"]],
             "cost_inr": round(sum(d["cost"] for d in done), 2), "failed": failed, "stopped": stopped}
 

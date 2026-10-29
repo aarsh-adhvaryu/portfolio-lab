@@ -534,6 +534,10 @@ def wake(rt, client, gate, *, held: Sequence[str], listed: Sequence[str], cal=No
     mode = rt.settings.get("brain", "economy")
     if mode == "off":
         return {"pass": None, "why": "the brain is off (Settings)", "resumed": len(resumed), "opened": len(opened)}
+    from pflab.app import system
+    stale = system.stale_prices(con, now)
+    if stale:                                                   # after a sleep or a shutdown: catch up first, then think
+        return {"pass": None, "why": f"waiting for current data: {stale}", "resumed": len(resumed), "opened": len(opened)}
     trigger = due_scheduled(con, now, cal)
     since = last_pass_at(con) or (now - FIRST_LOOKBACK)
     seen = seen_keys(con, since)

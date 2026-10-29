@@ -285,8 +285,10 @@ def _public(rt, mid: str, meta: dict, text: str, f: dict, gate) -> Optional[str]
     if not about:
         return None
     sender = re.sub(r"<[^>]*>|\S+@\S+", "", meta.get("from", "")).strip(' "') or "email"     # the name only, never an address
+    import hashlib
     did = g.doc(con, "email", f"mail:{mid}", rt.clock(), meta.get("subject") or f["kind"], source=sender[:80],
-                attrs={"kind": f["kind"]})
+                attrs={"kind": f["kind"], "provenance": "email, checked by the mail reader against his ids",
+                       "cleared": hashlib.sha256(text.encode("utf-8")).hexdigest()})   # S67: the hash readers.email_for_api must find again
     p = rt.data_root / "kg" / "mail" / f"{did.split(':')[-1]}.txt"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(text, encoding="utf-8")

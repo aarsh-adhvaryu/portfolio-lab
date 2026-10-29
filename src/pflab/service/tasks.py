@@ -381,13 +381,38 @@ def _mail(ctx: Ctx) -> dict:
     out = gmail.fetch(rt, sess)
     try:
         out["read"] = mail_read.run(rt, sess, models.model_id("mail_reading"))
-    except Exception as e:                                   # the local model off, say: the emails are read tomorrow
-        out["read"] = f"not read today: {type(e).__name__}: {str(e)[:160]}"
+    except Exception as e:                                   # the local model off, say: the emails are read at the next try
+        out["read"] = f"not read: {type(e).__name__}: {str(e)[:160]}"
+        out["failed"] = {"mail_reading": out["read"]}        # S67: the attachments came; the reading did not: the run is a failed one
+    if out.get("errors") and not out.get("kept") and not out.get("messages"):
+        out.setdefault("failed", {})["fetch"] = f"{out['errors']} message(s) could not be fetched"
     return out
 
 
 register(Job("mail", Daily(21, 15, weekdays_only=False), _mail, "read-only Gmail, once a day: statements that arrived by email into the "
-             "inbox (checked, then your press); what money emails say, read on this PC and checked against your record"))
+             "inbox (checked, then your press); what money emails say, read on this PC and checked against your record",
+             cooldown_minutes=180))
+
+
+def _sandbox_enabled(ctx: Ctx) -> Tuple[bool, str]:
+    import shutil
+    return (shutil.which("docker") is not None, "Docker is not installed")
+
+
+def _sandbox_probe(ctx: Ctx) -> dict:
+    """S67: containment proven by use, weekly: a container with the sandbox's flags tries the network, writes to the root and the job
+    folder, looks for host paths and secrets, and a loop past its limit must be killed. The result is the sandbox's colour on the screen."""
+    from pflab.agents import sandbox as sb
+    from pflab.app import system
+    r = sb.probe()
+    system.record_check(ctx.con, "sandbox", r["ok"], ctx.now, r["why"] if not r["ok"] else "all checks passed: " + ", ".join(sorted(r["checks"])))
+    if not r["ok"]:
+        raise RuntimeError(f"sandbox containment not proven: {r['why']}")
+    return {"checks": len(r["checks"])}
+
+
+register(Job("sandbox", Daily(6, 40, weekdays_only=False), _sandbox_probe, "proves the calculation sandbox is contained (no network, read-only, killed at its limit)",
+             cooldown_minutes=360, enabled_fn=_sandbox_enabled))
 
 
 def _twin(ctx: Ctx) -> dict:

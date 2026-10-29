@@ -108,6 +108,20 @@ def wake(con, key: str, now: datetime, note: str = "") -> int:
     return len(ids)
 
 
+class Retryable(RuntimeError):
+    """An agent raises this (or any network or timeout error) when trying again later may work."""
+
+
+_TRANSIENT_NAMES = {"APIConnectionError", "APITimeoutError", "RateLimitError", "InternalServerError", "OverloadedError", "ConnectTimeout",
+                    "ReadTimeout", "ConnectionError", "Timeout", "ChunkedEncodingError", "ServiceUnavailable"}
+
+
+def is_transient(e: BaseException) -> bool:
+    """A failure that may pass by itself: a network or timeout error, an API overload or rate limit, or an explicit Retryable. A bug
+    (ZeroDivisionError, KeyError) is not retried: it would fail the same way."""
+    return isinstance(e, (Retryable, ConnectionError, TimeoutError)) or any(c.__name__ in _TRANSIENT_NAMES for c in type(e).__mro__)
+
+
 def _backoff(attempts: int) -> timedelta:
     return timedelta(minutes=RETRY_MINUTES * 2 ** max(0, attempts - 1))
 
@@ -129,7 +143,7 @@ def run_one(rt, agents: Dict[str, Callable], deliver: Optional[Callable[[dict], 
         rep = fn(rt, t) if fn else Reply(f"No agent called '{t['to']}'.", status="failed")
     except Exception as e:                                 # an agent failing answers with its error, never silently
         rep = Reply(f"The {t['to']} agent failed: {type(e).__name__}: {str(e)[:300]}", ["error"], status="failed")
-        transient = True
+        transient = is_transient(e)
     waiting_on = str(rep.data.get("waiting_on") or "") if rep.status == "waiting" else None
     if rep.status == "waiting" and not waiting_on:
         rep.status = "failed"                              # waiting for nothing named could never be resumed

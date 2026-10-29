@@ -36,7 +36,7 @@ ADDRESS_WORDS = re.compile(r"\b(address|flat|floor|apartment|apt|building|bldg|r
                            r"near|opp|taluka|tehsil|district|dist|pin ?code|pincode|postal code|house no|plot)\b", re.I)
 SIMPLE = [("PAN", egress.NEVER["PAN"], "[PAN]"), ("e-mail", egress.NEVER["e-mail"], "[EMAIL]"),
           ("UPI id", egress.NEVER["UPI id"], "[UPI]"), ("IFSC code", egress.NEVER["IFSC code"], "[IFSC]"),
-          ("phone", egress.NEVER["phone"], "[PHONE]")]
+          ("phone", re.compile(r"(?<![\d.])(?:\+91[\s-]?)?[6-9]\d{4}[\s-]?\d{5}(?!\d|\.\d)"), "[PHONE]")]    # S67: also "98765 43210"
 
 
 def redact(text: str, gate: egress.Gate, address: Optional[List[str]] = None,

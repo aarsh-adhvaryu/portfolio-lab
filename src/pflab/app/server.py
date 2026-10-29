@@ -282,6 +282,44 @@ def create_app(rt) -> FastAPI:
         from pflab.app import system
         return json.loads(json.dumps(system.picture(rt), default=str))
 
+    @app.post("/api/system/seen")
+    def system_seen():
+        """He has looked: what changed is counted from now (app/system.py `changed_since`)."""
+        from pflab.app import system
+        system.mark_visit(rt)
+        return {"ok": True}
+
+    @app.get("/api/cases/{cid}")
+    def case_view(cid: int):
+        """One investigation: evidence with its times, requests, calculations, why it changed (hq/cases.py)."""
+        from pflab.hq import views as hv
+        try:
+            return hv.case_detail(rt.cursor(), cid)
+        except LookupError as e:
+            raise HTTPException(404, str(e))
+
+    @app.post("/api/hq/tasks/{tid}/release")
+    def hq_release(tid: int):
+        """A task held at the hop limit runs once (its chain stays counted)."""
+        from pflab.hq import board
+        try:
+            out = board.release(rt.cursor(), tid, rt.clock(), "the investor (dashboard)")
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        rt.wake_hq()
+        rt.bump("hq")
+        return out
+
+    @app.post("/api/hq/tasks/{tid}/dismiss")
+    def hq_dismiss(tid: int, reason: str = Body("not wanted", embed=True)):
+        from pflab.hq import board
+        try:
+            out = board.dismiss(rt.cursor(), tid, rt.clock(), "the investor (dashboard)", reason)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        rt.bump("hq")
+        return out
+
     @app.get("/api/mail")
     def mail_status():
         """S65: read-only Gmail: connected or not, what was fetched."""

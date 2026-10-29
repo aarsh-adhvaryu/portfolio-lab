@@ -660,6 +660,9 @@ def ask(con, question: str, pm_dir: Path, root: Path, asof: date, *, writer: str
     from pflab.agents import analyst as an
     from pflab.agents import memory as mem
     now = now or datetime.now()
+    why = sb.blocked_by_probe(con)
+    if why:
+        raise sb.SandboxUnavailable(why)                     # S67: a failed containment probe stops generated code until it passes again
     cat = catalogue(root)
     schema = schema_text(cat)
     shown = {n: sample_rows(cols) for n, (_d, cols) in cat.items() if ":" not in n}
