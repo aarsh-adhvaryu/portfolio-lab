@@ -243,6 +243,8 @@ class Runtime:
         con = self.cursor()
         if con.execute("SELECT 1 FROM hq_tasks WHERE status IN ('queued','running') LIMIT 1").fetchone():
             return False                              # S59: an agent at work (a paid call in flight) is not cut off
+        if con.execute("SELECT 1 FROM hq_cases WHERE status='running' LIMIT 1").fetchone():
+            return False                              # S67: neither is an investigation's pass
         return not con.execute("SELECT 1 FROM job_runs WHERE status='running' LIMIT 1").fetchone()
 
     def poll_batches(self) -> bool:

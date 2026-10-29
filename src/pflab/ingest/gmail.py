@@ -174,34 +174,45 @@ def fetch(rt, sess=None, days: int = 40, now: Optional[datetime] = None) -> dict
     out = {"messages": 0, "files": 0, "kept": 0, "duplicates": 0, "locked": 0, "dropped": 0, "errors": 0}
     first = not con.execute("SELECT 1 FROM mail_seen LIMIT 1").fetchone()
     locked_by: dict = {}
+    from pflab.app import readiness
     for mid in message_ids(sess, QUERY.format(days=FIRST_DAYS if first else days), FIRST_LIMIT if first else 300):
         if _seen(con, mid):
+            continue
+        gap = f"mail:msg:{mid}"
+        if readiness.give_up(con, gap):                      # failed three times: left as a visible gap, not retried by itself
             continue
         out["messages"] += 1
         kept, locked = 0, False
         try:
             meta, files = attachments(sess, mid)
-        except Exception:
+        except Exception as e:
             out["errors"] += 1
+            readiness.open_gap(con, gap, "mail", f"a message could not be fetched ({type(e).__name__}: {str(e)[:100]})", now)
             continue
-        for name, data in files:
-            out["files"] += 1
-            info = sniff.sniff(data, name, pw)
-            if info["kind"] in KEEP:
-                try:
-                    r = ib.receive(rt, name, data)
-                    out["duplicates" if r.get("duplicate") else "kept"] += 1
-                    kept += 0 if r.get("duplicate") else 1
-                except ValueError:                           # a bank statement for an account not set up: the inbox asked him
-                    out["kept"] += 1
-            elif sniff.is_encrypted(data, name) and not info.get("password_name"):
-                out["locked"] += 1
-                locked_by.setdefault(sender_name(meta["from"]), (meta, name))
-                locked = True
-            else:
-                out["dropped"] += 1
+        try:
+            for name, data in files:
+                out["files"] += 1
+                info = sniff.sniff(data, name, pw)
+                if info["kind"] in KEEP:
+                    try:
+                        r = ib.receive(rt, name, data)
+                        out["duplicates" if r.get("duplicate") else "kept"] += 1
+                        kept += 0 if r.get("duplicate") else 1
+                    except ValueError:                           # a bank statement for an account not set up: the inbox asked him
+                        out["kept"] += 1
+                elif sniff.is_encrypted(data, name) and not info.get("password_name"):
+                    out["locked"] += 1
+                    locked_by.setdefault(sender_name(meta["from"]), (meta, name))
+                    locked = True
+                else:
+                    out["dropped"] += 1
+        except Exception as e:                                   # S67: one message that cannot be stored never stops the rest; it is a counted gap
+            out["errors"] += 1
+            readiness.open_gap(con, gap, "mail", f"a message's files could not be stored ({type(e).__name__}: {str(e)[:100]})", now)
+            continue
         if not locked:                                       # a message with a locked file is not marked seen: tried again once a password is added
             con.execute("INSERT OR REPLACE INTO mail_seen VALUES (?,?,?,?)", [mid, now, len(files), kept])
+            readiness.close_gap(con, gap, now)
     for pname, (meta, name) in locked_by.items():           # one item per sender, however many of its files are locked
         questions.ask(con, AGENT, f"mail:locked:{pname}",
                       f"Password-protected files came by email from {meta['from'][:80]} (for example {name}, {meta['date'][:16]}) and none of "

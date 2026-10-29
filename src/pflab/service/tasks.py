@@ -394,6 +394,32 @@ register(Job("mail", Daily(21, 15, weekdays_only=False), _mail, "read-only Gmail
              cooldown_minutes=180))
 
 
+def _backfill(ctx: Ctx) -> dict:
+    """S67: market history fills itself, in steps of about 90 seconds (newest sessions first), so a first run needs no long command and
+    an interruption costs nothing. The readiness stages and the known gaps are brought up to date with it."""
+    from pflab.app import readiness
+    from pflab.hq import desk
+    out = readiness.backfill_step(ctx.data_root, ctx.now)
+    sync = readiness.sync_gaps(desk.from_ctx(ctx), ctx.now)
+    res = {**{k: v for k, v in out.items() if k != "last_error"}, "gaps_open": sync["open"], "ready": sync["ready"]}
+    if out.get("errors") and not out.get("fetched"):
+        res["failed"] = {"bhavcopy": out.get("last_error") or f"{out['errors']} session(s) could not be fetched"}
+    return res
+
+
+def _backfill_enabled(ctx: Ctx) -> Tuple[bool, str]:
+    import shutil
+    from pflab.app import readiness
+    if shutil.disk_usage(ctx.data_root).free / 1e9 < MIN_FREE_GB:
+        return False, f"under {MIN_FREE_GB} GB free"
+    h = readiness.bhavcopy_holes(ctx.data_root, readiness.HISTORY_START, ctx.now.date() - timedelta(days=1))
+    return (bool(h["holes"]), "market history has no holes")
+
+
+register(Job("backfill", Interval(60, weekdays_only=False), _backfill, "market history fills itself in 90-second steps until no session is missing; "
+             "readiness and known gaps updated", cooldown_minutes=30, enabled_fn=_backfill_enabled))
+
+
 def _sandbox_enabled(ctx: Ctx) -> Tuple[bool, str]:
     import shutil
     return (shutil.which("docker") is not None, "Docker is not installed")
