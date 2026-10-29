@@ -59,6 +59,13 @@ def main(argv=None):
     qp.add_argument("--check", help="a Console or Quicko tax P&L export (.xlsx/.csv) to reconcile against the ledger")
     rs = pmsub.add_parser("reset", help="S65: move the whole PM folder aside (his record is moved, never deleted); lists it without --confirm")
     rs.add_argument("--confirm", default="", help="the word erase-my-record, to move it")
+    fr = pmsub.add_parser("fresh", help="S67: archive this profile (verified, opaque bytes) and begin a new empty one that waits for the desktop icon; lists without --confirm")
+    fr.add_argument("--archive-to", required=True, help="a folder OUTSIDE the profile and the data folders, for the recovery archive")
+    fr.add_argument("--statements", help="a folder of downloaded statements to archive as well")
+    fr.add_argument("--confirm", default="", help="the word start-fresh")
+    rr = pmsub.add_parser("restore", help="S67: copy an archived profile into an EMPTY separate folder (never the active profile)")
+    rr.add_argument("archive")
+    rr.add_argument("into")
     i = pmsub.add_parser("instruments", help="instrument master summary")
     i.add_argument("--build", action="store_true",
                    help="fetch AMFI NAVAll and rebuild the master from panel + AMFI")
@@ -1054,6 +1061,26 @@ def _pm(a) -> int:
             print(f"  {size / 1e6:9.1f} MB  {name}")
         print(f"{len(r['files'])} files, {r['bytes'] / 1e6:.1f} MB: {r['note']}")
         return 0 if r["moved"] or not a.confirm else 1
+    if a.pm_cmd == "fresh":
+        from pathlib import Path
+        from pflab.pm import fresh as frm
+        try:
+            r = frm.fresh(store.pm_dir(), Path(a.archive_to), date.today(), a.confirm, {"statements": Path(a.statements)} if a.statements else None)
+        except (RuntimeError, FileNotFoundError, FileExistsError, ValueError) as e:
+            print(f"refused: {e}")
+            return 1
+        print(f"{r['files']} files, {r['bytes'] / 1e6:.1f} MB in {r['from']}: {r['note']}")
+        return 0 if r["done"] or not a.confirm else 1
+    if a.pm_cmd == "restore":
+        from pathlib import Path
+        from pflab.pm import fresh as frm
+        try:
+            r = frm.restore(Path(a.archive), Path(a.into))
+        except (RuntimeError, FileExistsError, FileNotFoundError) as e:
+            print(f"refused: {e}")
+            return 1
+        print(f"restored {r['restored']} files to {r['to']}: {r['note']}")
+        return 0
     if a.pm_cmd == "init":
         con = store.connect()
         v = con.execute("SELECT max(version) FROM schema_migrations").fetchone()[0]
