@@ -282,6 +282,18 @@ def create_app(rt) -> FastAPI:
         from pflab.app import system
         return json.loads(json.dumps(system.picture(rt), default=str))
 
+    @app.get("/api/world")
+    def world_api():
+        """The World screen: every sense, agent, routine, piece of work, guard and check, with its state and what happened last (app/world.py)."""
+        from pflab.app import world
+        return world.build(rt, rt.clock())
+
+    @app.post("/api/world/pause")
+    def world_pause(paused: bool = Body(..., embed=True)):
+        """Pause or resume the system's own routines (the scheduler setting). Work already running finishes; nothing new starts while paused."""
+        rt.set_settings({"scheduler": not paused})
+        return {"paused": paused}
+
     @app.get("/api/coverage")
     def coverage_api():
         """Every account found, its months, the open gaps, each mailbox's reach, and whether the picture may be called complete."""

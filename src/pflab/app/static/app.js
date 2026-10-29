@@ -3,7 +3,7 @@
 'use strict';
 
 const TABS = [
-  ['command', 'Command centre'], ['portfolio', 'Portfolio'], ['watch', 'Watch list'], ['ai', 'AI centre'],
+  ['world', 'World'], ['command', 'Command centre'], ['portfolio', 'Portfolio'], ['watch', 'Watch list'], ['ai', 'AI centre'],
   ['hq', 'Agent HQ'], ['inbox', 'Inbox and files'], ['research', 'Research and plans'], ['sims', 'Simulations'],
   ['graph', 'Knowledge graph'], ['schedule', 'Schedule']];
 const GEAR = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>';
@@ -23,7 +23,7 @@ function brief(detail) {
   return detail;
 }
 
-const S = { screen: 'command', settings: { privacy: false, theme: 'dark' }, data: {}, selected: null, pview: 'stocks',
+const S = { screen: 'world', settings: { privacy: false, theme: 'dark' }, data: {}, selected: null, pview: 'stocks',
   last: 0, pending: false, stopped: false, chat: null, mode: 'auto', draft: '', agent: 0 };
 
 /* ---------- helpers ---------- */
@@ -1702,6 +1702,7 @@ async function load(force = false) {
       S.settings = { ...S.settings, ...S.data.command.settings }; applyTheme();   // privacy and theme on every screen
       renderStatus(S.data.command);
       if (screen === 'portfolio') { const d = await api('/api/portfolio' + (S.selected ? '?isin=' + encodeURIComponent(S.selected) : '')); if (fresh()) renderPortfolio(d); }
+      else if (screen === 'world') { const d = await api('/api/world'); if (fresh()) renderWorld(d); }
       else if (screen === 'schedule') { const d = await api('/api/schedule'); if (fresh()) keepInputs(() => renderSchedule(d)); }
       else if (screen === 'sims') { const d = await api('/api/sims'); if (fresh()) renderSims(d); }
       else if (screen === 'graph') { const d = await api('/api/graph?' + new URLSearchParams({ kinds: (S.gKinds || ['company', 'sector', 'verdict', 'org', 'person']).join(','), ...(S.gUptoDate ? { upto: S.gUptoDate } : {}) })); if (fresh()) renderGraph(d); }
@@ -1718,13 +1719,13 @@ async function load(force = false) {
   }
 }
 function route() {
-  const id = (location.hash.replace('#/', '') || 'command');
+  const id = (location.hash.replace('#/', '') || 'world');
   const was = S.screen;
-  S.screen = TABS.some(([t]) => t === id) || id === 'settings' || id === 'setup' ? id : 'command';
+  S.screen = TABS.some(([t]) => t === id) || id === 'settings' || id === 'setup' ? id : 'world';
   if (S.screen !== was) $('screen').innerHTML = '<div class="soon"><span class="muted">Loading…</span></div>';   // never the old screen
   renderTabs(); load(true);
 }
-const TOPICS = { command: null, portfolio: ['live', 'portfolio', 'settings'], watch: ['watch', 'live', 'settings'],
+const TOPICS = { world: ['hq', 'inbox', 'activity', 'health', 'command', 'settings'], command: null, portfolio: ['live', 'portfolio', 'settings'], watch: ['watch', 'live', 'settings'],
   research: ['research', 'watch', 'settings'], ai: ['chat', 'notifications', 'settings', 'inbox'], schedule: ['activity', 'notes', 'sims', 'settings'],
   inbox: ['inbox', 'settings'], sims: ['sims', 'settings'], graph: ['settings'], hq: ['hq', 'inbox', 'settings'],
   settings: ['settings', 'kite'], setup: ['inbox', 'settings'] };
