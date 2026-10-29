@@ -69,20 +69,28 @@ names and ids before every push (CLAUDE.md). Work on a branch `pm/sN-<slug>`, me
 (3) the `plans` job (13.6 min cold) and the news step of `collect`; (4) the other screens (Agent HQ, Portfolio, Schedule) in the style of the new Command centre;
 (5) route simple local questions in the chat to `system_status` and `mail_facts` (the brain already has them).
 
-## S67 completion cycle: checklist (cloud session 2026-10-29, branch `claude/wonderful-bardeen-z07h1e`; Sonnet 5.5 is the development model only)
-Baseline on `d81efb8` (Linux, Python 3.13, `requirements.lock` without `pywin32`): 2061 passed, 7 skipped, **7 failed, all environmental and failing the same on a
-pristine checkout**: the 6 `test_engine_golden` digests (platform float digests) and `test_app_launcher::test_children_end_with_the_system` (Windows process tree).
-Docker is not available in the cloud container (daemon absent): containment is tested through the adapter with a fake runner and the fail-closed path only.
-- [x] migration 43 (cases, evidence, deps, calcs, effects, reviews, health_checks, known_gaps; hq_tasks states)
-- [x] board: waiting/retry states, bounded attempts, reap, held release/dismiss/expire, `once` effects, stable dedup keys
-- [x] `hq/cases.py` + brain case tools (open_case, case_evidence, request_report, case_calculate, case_close, resolve_task)
-- [ ] brain/case pass wiring (trigger `case`, sweep + discover, end_pass), Desk parity, chat history, centre tools
-- [ ] sandbox fail-closed + probe; workshop wait-for-sandbox
-- [ ] status/staleness (failed ops never refresh), job subtask propagation, connector health from real operations
-- [ ] email provenance policy (readers/egress), local-vs-cloud labels in the UI
-- [ ] gmail/tradecheck/inbox recoverable workflow, known gaps, readiness + resumable backfill
-- [ ] update/rollback keeps post-upgrade events; `pflab verify` local acceptance command
-- [ ] UI (app.js) + responsiveness under slow dependencies; docs; full suite; privacy grep; commit, push, draft PR
+## S67 completion cycle (cloud session 2026-10-29, branch `claude/wonderful-bardeen-z07h1e`; Sonnet 5.5 is the development model only)
+**Status: implementation complete and cloud-tested candidate; local checks pending (below). Nothing was merged or tagged; the app takes release tags, so it has not seen any of this.**
+Baseline on `d81efb8` (Linux, Python 3.13, `requirements.lock` without `pywin32`): 2061 passed, 7 skipped, 7 failed, all environmental and failing the same on a pristine
+checkout: the 6 `test_engine_golden` digests (platform float digests; the engine tests were not touched) and `test_app_launcher::test_children_end_with_the_system` (Windows
+process tree). Docker is not available in the cloud container (no daemon): the sandbox is tested through its adapter with a fake Docker, the fail-closed path and the probe's
+verdicts; the real container test (`-m docker`) is skipped here and is part of `pflab verify` on his PC.
+What changed (details in `docs/BUILT.md`): migration 43; durable board states and recovery; investigations (`hq/cases.py`) with the brain's case tools, discovery, dependencies,
+reproducible calculations and a process review; the sandbox fails closed and proves its containment; connectors coloured by real operations, retained data marked stale, job
+sub-step failures propagate; email provenance policy and the local/cloud list; chat and background parity (the system and mail tools in the ask centre, chat history and open
+work to the brain); readiness, known gaps, a resumable bhavcopy backfill job; a recoverable mail workflow; rehearsed migrations and a rollback that keeps post-upgrade rows;
+`pflab verify` and `tools\verify_candidate.ps1`; a headless worker; the heartbeat; the UI for investigations, held work, changes since the last visit, readiness and processing.
+Measured here (pytest -s, `test_the_screen_stays_responsive_while_a_slow_dependency_and_a_slow_job_run`): with Ollama and Docker probes of 3 s each and a backfill running, the
+status call answered in 0.9 s the first time and within 0.1 s after; his laptop's real throughput is a local check.
+**Local acceptance (his):** the one command is in `README.md` ("Local acceptance of a candidate release"). It must print no FAIL; the "needs you" items it lists are Kite login,
+`pflab mail connect` (OAuth), Docker running with the image `pflab-sandbox:2` built, and the two real-world steps (a real sleep and wake with `-WakeCheck`, and the app running
+after Claude Code is closed). A bounded live model run through the gate is `-LiveModel`.
+**After acceptance, to ship:** (1) the workshop: `git switch main; git merge --no-ff claude/wonderful-bardeen-z07h1e`, run the suite (7 environmental failures above are the cloud's, his PC should show none),
+the privacy grep (`python -m pflab.hq.security` must print "privacy grep: clean"); (2) `git tag vYYYY.MM.DD[.N]; git push origin main --tags`; (3) the app takes the newest tag at its next start (backup, rehearsal on a copy, install, undone on a failure).
+Build the sandbox image once on the PC: `docker build -t pflab-sandbox:2 -f sandbox/Dockerfile .` (the install script does it for a new install; an existing one needs it before the first calculation).
+**Recovery:** `pflab update --rollback` (app closed) returns to the previous tag and the store from before the update, then brings back every row written since (events renumbered by a rebuild are matched by content), and keeps the store as it was in `backups\ledger_before_rollback_<date>.duckdb`; tables only the newer version has stay in that file.
+A failed update undoes itself the same way; the backup is taken before anything else.
+**Not done, on purpose:** no OpenCode, agent SDK or OpenSandbox (no acceptance failure needed them); no new service; the `plans` job's 13.6 min cold run is still the tuning item below.
 
 ## What remains (dated; update at each stop)
 0. **DONE 2026-10-28: the app runs his money.** `D:\PortfolioLabApp` (release `v2026.10.28.x` from GitHub; clean-room install and a real update and rollback tested), market data and news seeded (3.9 GB), his preferences carried, the RECORD rebuilt by the system itself from his files (13 of 13 checks, 1,383 events, 14 FDs), the desktop shortcuts and the scheduled tick point at it, the user-level PFLAB_DATA_DIR removed. Live checks: two Telegram summaries delivered; one brain pass (Opus, Sonnet rival) Rs 13.07; October's spend Rs 1,420 of 2,500 (the workshop's carried). Found and fixed on the way: a hidden source file, untested library versions (now `requirements.lock`), a long-path limit, the tick needing his user.

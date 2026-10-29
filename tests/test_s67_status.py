@@ -106,6 +106,7 @@ def test_a_job_with_a_failed_sub_step_has_failed_and_the_screen_says_which(rt, t
 
 
 def test_the_hq_job_fails_when_a_part_fails_instead_of_reporting_a_success(rt, monkeypatch):
+    from pflab.service import tasks  # noqa: F401  (registers the jobs)
     monkeypatch.setattr(service, "paid_allowed", lambda r: True)
 
     def boom(r, limit=40):
