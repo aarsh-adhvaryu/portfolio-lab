@@ -57,3 +57,37 @@ def test_a_pending_profile_runs_no_job_and_reaches_no_mailbox_or_broker(tmp_path
     assert kite.client(SimpleNamespace(get=lambda *a: "x")) is None
     activation.activate(tmp_path, via="icon")
     assert not activation.is_pending()                                          # the same folder, now opened by the icon
+
+
+# --- the first conversation ----------------------------------------------------------------------------------------------------------
+
+def test_a_new_activated_profile_is_welcomed_once_and_the_unknowns_shrink_as_it_learns(tmp_path, monkeypatch):
+    from pflab.agents import questions
+    from pflab.app import onboarding
+    from pflab.pm import store
+    monkeypatch.setenv("PFLAB_PM_DIR", str(tmp_path / "pm"))
+    (tmp_path / "pm").mkdir()
+    con = store.connect(tmp_path / "pm" / "ledger.duckdb")
+    now = datetime(2026, 10, 29, 17, 0)
+    activation.write_pending(tmp_path / "pm")
+    assert onboarding.welcome(con, now) is None                                   # waiting for the icon: nothing is asked
+    activation.activate(tmp_path / "pm", via="icon")
+    qid = onboarding.welcome(con, now)
+    assert qid and onboarding.welcome(con, now) is None                           # asked once, never repeated
+    text = questions.open_questions(con)[0][2]
+    assert "I know nothing about you yet" in text and "will not guess" in text and "other mailbox" in text
+    b = onboarding.briefing(con)
+    assert b["new"] and len(b["unknown"]) == 3 and b["say"].startswith("I am new here")
+    questions.answer(con, qid, "PhD in 2028; keep 3 lakh as cash; 30 percent fall", now)
+    assert all("goals" not in u for u in onboarding.briefing(con)["unknown"])     # his answer is remembered: that unknown is gone
+    con.execute("INSERT INTO accounts (account_id, kind, provider) VALUES ('ZER', 'demat', 'x')")
+    assert not onboarding.is_new(con) and onboarding.briefing(con)["say"] is None
+
+
+def test_a_profile_that_already_has_accounts_gets_no_welcome(tmp_path, monkeypatch):
+    from pflab.app import onboarding
+    from pflab.pm import store
+    monkeypatch.setenv("PFLAB_PM_DIR", str(tmp_path))
+    con = store.connect(tmp_path / "l.duckdb")
+    con.execute("INSERT INTO accounts (account_id, kind, provider) VALUES ('ZER', 'demat', 'x')")
+    assert onboarding.welcome(con, datetime(2026, 10, 29, 17, 0)) is None

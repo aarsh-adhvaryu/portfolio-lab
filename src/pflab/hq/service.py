@@ -145,6 +145,11 @@ def start(rt) -> dict:
     from pflab.hq import board, cases
     con, now = rt.cursor(), rt.clock()
     out = {"tasks_recovered": board.reap(con, now), "cases_recovered": cases.reap(con, now), "cases_resumed": len(cases.sweep(con, now))}
+    try:                                                   # a new, activated profile gets its one grouped first question
+        from pflab.app import onboarding
+        out["welcome"] = onboarding.welcome(con, now)
+    except Exception:
+        out["welcome"] = None
     rt.bump("hq")
     return out
 
