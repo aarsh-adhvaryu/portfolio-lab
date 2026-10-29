@@ -434,6 +434,8 @@ def review(con, cid: int, now: datetime) -> dict:
         if e["kind"] == "calculation" and e["data"].get("confirmed") not in ("agrees",):
             flags.append("a calculation was used without an independent confirmation")
             break
+    if re.search(r"\b(guarantee[sd]?|certain(ly)?|risk[- ]free|sure thing|will (surely )?(rise|outperform|beat)|cannot fail)\b", (c["reason"] or "") + " " + (c["uncertainty"] or ""), re.I):
+        flags.append("the reasoning states certainty the evidence cannot give")
     if a["missing"] and c["decision"] in ("suggest", "tell"):
         flags.append("a decision was made with evidence still marked missing")
     sent = con.execute("SELECT count(*) FROM hq_case_log WHERE case_id=? AND event='told'", [cid]).fetchone()[0]
@@ -502,6 +504,13 @@ def discover(con, now: datetime, held: Sequence[str] = (), listed: Sequence[str]
             sym = names.get(isin, isin)
             go(f"A material document about {sym} was read ({(summary or '')[:160]}): what does it change for the investor's holding or plan?",
                f"discover:reading:{doc}", subject=sym, isin=isin)
+    for ipo_id, isin, qty, amount, listed in con.execute(
+            "SELECT ipo_id, isin, allotted_qty, allotted_amount, listed_on FROM ipo_applications WHERE status = 'allotted' AND coalesce(allotted_qty, 0) > 0 "
+            "AND (listed_on IS NULL OR listed_on >= ?) ORDER BY ipo_id", [(now - timedelta(days=30)).date()]).fetchall():
+        sym = names.get(isin, ipo_id)
+        go(f"An IPO allotment ({sym}) is in hand: what do the facts say about holding it, selling part and selling it all? Weigh holding as much as selling, "
+           "say what is known, what is not, and what the group exposure adds; decide before the listing.", f"discover:ipo:{ipo_id}", subject=sym, isin=isin,
+           assumptions=["no listing-day sale is assumed", "belonging to a business group is not evidence of returns"])
     for tid, text, body in con.execute("SELECT task_id, text, body_json FROM hq_tasks WHERE status='held' ORDER BY task_id").fetchall():
         b = json.loads(body or "{}")
         go(f"A chain of agents stopped at the hop limit (task #{tid}, meant for {b.get('meant_for', '?')}): release it, dismiss it, or ask for it again?",

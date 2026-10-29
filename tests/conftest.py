@@ -40,6 +40,16 @@ def _local_sandbox(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _fresh_probe_cache():
+    """The system picture caches its slow probes (Ollama, Docker) between calls; a test never sees another test's answer."""
+    from pflab.app import system
+    with system._LOCK:
+        system._CACHE.clear()
+        system._BUSY.clear()
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _fake_investor_name(monkeypatch):
     """Tests never read the investor's real name list (S63); the analyst's gate sees an invented one."""
     from pflab.agents import analyst

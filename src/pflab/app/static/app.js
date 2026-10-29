@@ -166,8 +166,11 @@ const GOTO = { kite: 'kite', gmail: 'gmail', settings: '#/settings', inbox: '#/i
 function systemHero(s) {
   if (!s) return '<div class="panel"><span class="small muted">Reading the system…</span></div>';
   const run = s.work.running.length ? `<span class="chip warn pulse">working: ${esc(s.work.running.map((r) => r.job.replace(/_/g, ' ')).join(', '))}</span>` : '<span class="chip muted">idle: nothing is due</span>';
+  const rec = s.recommendations && !s.recommendations.current && s.recommendations.say
+    ? `<div class="small warn" role="status">${esc(s.recommendations.say)}. They stay out of the lists until the data has caught up.</div>` : '';
   return `<div class="panel" style="display:flex;flex-direction:column;gap:12px;border-color:${s.state === 'ok' ? 'var(--line)' : s.state === 'down' ? 'var(--down)' : 'var(--warn-line)'}">
     <div class="row wrapr" style="gap:12px;justify-content:space-between"><div class="row" style="gap:10px">${sdot(s.state)}<b style="font-size:16px">The system: ${esc(s.verdict)}</b></div>${run}</div>
+    ${rec}
     <div class="row wrapr" style="gap:8px">${s.connectors.map((c) => `<span class="chip" title="${esc(c.line)}" style="display:flex;gap:6px;align-items:center">${sdot(c.state)}<b>${esc(c.name)}</b><span class="muted">${esc(c.line.length > 56 ? c.line.slice(0, 54) + '…' : c.line)}</span>${c.action ? `<a href="#" data-sysgo="${esc(c.action)}" class="small">${c.action === 'kite' ? 'Log in' : c.action === 'gmail' ? 'Connect' : 'Open'}</a>` : ''}</span>`).join('')}</div>
   </div>`;
 }
@@ -195,11 +198,70 @@ function workCard(s) {
 function syncCard(s) {
   if (!s) return '';
   const late = s.freshness.filter((f) => f.state !== 'ok').length;
+  /* S67: data kept from before a failed refresh is marked RETAINED and stale, with the failure beside it */
   return `<section class="panel" style="flex:1 1 380px;display:flex;flex-direction:column;gap:2px">
     <div class="row" style="justify-content:space-between"><span class="lbl">Is it in sync?</span><span class="small ${late ? 'warn' : 'up'}">${late ? late + ' behind' : 'all current'}</span></div>
-    ${s.freshness.map((f) => `<div class="row" style="gap:8px;padding:4px 0;border-bottom:1px solid var(--line2)" title="${esc(f.line)}">${sdot(f.state)}<span style="flex:1;font-size:13px">${esc(f.name)}</span>
-      <span class="num small ${f.state === 'ok' ? 'muted' : f.state === 'warn' ? 'warn' : 'down'}">${esc(f.latest || 'none')}</span></div>`).join('')}
+    ${s.freshness.map((f) => `<div style="padding:4px 0;border-bottom:1px solid var(--line2)" title="${esc(f.line)}"><div class="row" style="gap:8px">${sdot(f.state)}<span style="flex:1;font-size:13px">${esc(f.name)}</span>
+      ${f.retained ? '<span class="chip warn" style="font-size:10px">retained, stale</span>' : ''}<span class="num small ${f.state === 'ok' ? 'muted' : f.state === 'warn' ? 'warn' : 'down'}">${esc(f.latest || 'none')}</span></div>
+      ${f.retained ? `<div class="tiny warn" style="padding-left:20px">${esc(f.line.slice(f.line.indexOf('showing')))}</div>` : ''}</div>`).join('')}
   </section>`;
+}
+const CASE_CHIP = { queued: 'muted', running: 'warn', waiting_data: 'warn', retry: 'warn', awaiting_approval: 'warn', done: 'up', failed: 'down' };
+function researchCard(s) {
+  if (!s) return '';
+  const w = s.work, inv = w.investigating || [], held = w.held || [], tk = w.tasks || {};
+  const tkLine = Object.keys(tk).length ? Object.entries(tk).map(([k, v]) => `${v} ${k.replace(/_/g, ' ')}`).join(', ') : '';
+  return `<section class="panel" style="flex:1 1 520px;display:flex;flex-direction:column;gap:8px">
+    <div class="row" style="justify-content:space-between"><span class="lbl">Being looked into</span><span class="small muted">${inv.length ? inv.length + ' open' : 'nothing open'}${tkLine ? ' · tasks: ' + esc(tkLine) : ''}</span></div>
+    ${inv.map((c) => `<div class="item"><span class="dot" style="background:var(--${CASE_CHIP[c.status] === 'up' ? 'up' : c.status === 'failed' ? 'down' : 'warn'})"></span><div style="min-width:0;flex:1">
+      <div style="font-size:13px;line-height:1.4"><a href="#" data-case="${c.id}">${esc(c.question)}</a></div>
+      <div class="tiny muted">${esc(c.status.replace(/_/g, ' '))} · since ${esc(c.since)} · evidence: ${c.evidence.for} for, ${c.evidence.against} against, ${c.evidence.missing} missing${c.evidence.stale ? ', ' + c.evidence.stale + ' stale' : ''}</div>
+      ${c.waiting_for.length ? `<div class="tiny warn">waiting for: ${esc(c.waiting_for.join('; '))}. It carries on by itself when this arrives.</div>` : ''}
+      ${c.error ? `<div class="tiny down">${esc(c.error)}${c.next ? ' · tries again ' + esc(c.next) : ''}</div>` : ''}</div></div>`).join('') || '<span class="small muted">No open investigation. The system opens one by itself when it finds a question nobody asked.</span>'}
+    ${(w.decided || []).slice(0, 3).map((c) => `<div class="tiny muted">Decided: ${esc(c.question)} → <b>${esc(c.decision)}</b>${c.review ? ' · looks again ' + esc(c.review) : ''}</div>`).join('')}
+    ${held.map((h) => `<div class="item"><span class="dot" style="background:var(--warn)"></span><div style="flex:1;font-size:13px">Held at the agents' hop limit: ${esc(h.text.slice(0, 120))}<div class="tiny muted">meant for ${esc(h.meant_for || '?')} · ${esc(h.why || '')} · since ${esc(h.since)}</div></div>
+      <button class="btn" data-hrel="${h.id}" style="font-size:12px;padding:3px 9px">Run once</button><button class="btn" data-hdis="${h.id}" style="font-size:12px;padding:3px 9px">Dismiss</button></div>`).join('')}
+  </section>`;
+}
+function changedCard(s) {
+  if (!s || !s.changed) return '';
+  const c = s.changed;
+  return `<section class="panel" style="flex:1 1 380px;display:flex;flex-direction:column;gap:6px">
+    <div class="row" style="justify-content:space-between"><span class="lbl">Since you last looked (${esc(c.since)})</span><button class="btn" id="seen" style="font-size:12px;padding:3px 9px">Mark seen</button></div>
+    ${c.items.map((i) => `<div class="item"><span class="dot" style="background:${i.kind === 'failed' ? 'var(--down)' : 'var(--accent)'}"></span><div style="font-size:13px;line-height:1.4">${esc(i.text)}<div class="tiny muted">${esc(i.at)}</div></div></div>`).join('') || '<span class="small muted">Nothing new.</span>'}
+    ${c.count > c.items.length ? `<span class="tiny muted">and ${c.count - c.items.length} more</span>` : ''}
+  </section>`;
+}
+function readinessCard(s) {
+  const r = s && s.readiness;
+  if (!r || !r.stages || !r.stages.length) return '';
+  return `<section class="panel" style="flex:1 1 380px;display:flex;flex-direction:column;gap:4px">
+    <div class="row" style="justify-content:space-between"><span class="lbl">Ready to rely on?</span><span class="small ${r.ready ? 'up' : 'warn'}">${r.ready ? 'yes' : r.percent + '%'}</span></div>
+    ${r.stages.map((g) => `<div style="padding:3px 0;border-bottom:1px solid var(--line2)"><div class="row" style="gap:8px">${sdot(g.state === 'done' ? 'ok' : g.state === 'partial' ? 'warn' : 'down')}<b style="font-size:13px;flex:1">${esc(g.title)}</b><span class="tiny muted">${esc(g.state)}</span></div>
+      <div class="tiny muted" style="padding-left:20px">${esc(g.detail)}</div>${g.todo.map((t) => `<div class="tiny warn" style="padding-left:20px">${esc(t)}</div>`).join('')}</div>`).join('')}
+    <span class="tiny muted">Read from what is reconciled and covered, not from jobs having run.</span>
+  </section>`;
+}
+function showCase(c) {
+  const ev = c.evidence.map((e) => `<li><b>${esc(e.stance)}</b>${e.source_kind ? ' · ' + esc(e.source_kind) : ''}: ${esc(e.text)} <span class="tiny muted">(published ${esc((e.published || e.event || 'undated').toString().slice(0, 10))}, retrieved ${esc((e.retrieved || '').toString().slice(0, 10))})</span></li>`).join('');
+  const calc = c.calculations.map((k) => `<li>calculation #${k.id}: ${esc(k.status)}${k.contained ? ', contained' : ''}; data: ${esc(k.datasets.join(', '))}; result: ${esc(JSON.stringify(k.result))}</li>`).join('');
+  const log = c.log.map((l) => `<li><span class="tiny muted">${esc(l.at)}</span> ${esc(l.event)}: ${esc(l.detail || '')}</li>`).join('');
+  const rv = c.reviews.map((r) => `<li>${r.flags.length ? esc(r.flags.join('; ')) : 'no process problems found'}${r.outcome ? ' · outcome later: ' + esc(r.outcome) : ''}</li>`).join('');
+  const box = document.createElement('dialog');
+  box.style.cssText = 'max-width:760px;width:92vw;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:16px';
+  box.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px"><b>#${c.id} ${esc(c.question)}</b>
+    <span class="small muted">${esc(c.status.replace(/_/g, ' '))} · ${c.assessment.verdict} · decision: ${esc(c.decision || 'none yet')}${c.reason ? ' (' + esc(c.reason) + ')' : ''}${c.uncertainty ? ' · uncertain: ' + esc(c.uncertainty) : ''}</span>
+    ${c.assumptions.length ? `<div class="small">Assumes: ${esc(c.assumptions.join('; '))}</div>` : ''}
+    <div class="small"><b>Evidence</b><ul>${ev || '<li>none yet</li>'}</ul></div>${calc ? `<div class="small"><b>Calculations</b><ul>${calc}</ul></div>` : ''}
+    <div class="small"><b>Why it changed / what happened</b><ul>${log}</ul></div>${rv ? `<div class="small"><b>Review of the process</b><ul>${rv}</ul></div>` : ''}
+    <button class="btn" id="caseClose">Close</button></div>`;
+  document.body.appendChild(box);
+  box.querySelector('#caseClose').onclick = () => { box.close(); box.remove(); };
+  box.showModal();
+}
+function processingNote(s) {
+  if (!s || !s.processing) return '';
+  return `<details class="tiny muted" style="margin-top:6px"><summary>Where each thing is processed</summary>${s.processing.map((p) => `<div style="padding:2px 0"><b>${esc(p.what)}</b>: ${esc(p.where)} (${esc(p.model)}). Sends: ${esc(p.sends)}.</div>`).join('')}</details>`;
 }
 function askCard(s) {
   const t = s ? s.tools : null;
@@ -209,9 +271,15 @@ function askCard(s) {
     <div class="row"><label for="quickAsk" style="position:absolute;left:-9999px">Question</label><input id="quickAsk" class="inp" placeholder="Ask about your portfolio, a company, a plan, or the system itself…"><button class="btn primary" id="quickSend">Ask</button></div>
     <div class="row wrapr" style="gap:6px">${asks.map((a) => `<button class="btn" data-ask="${esc(a)}" style="font-size:12px;padding:5px 10px">${esc(a)}</button>`).join('')}</div>
     <span class="tiny muted">${t ? `One assistant with ${t.total} tools (${t.read || 0} read-only, the rest journal or ask you first); it reads Kite, your record, Gmail's facts, filings and the system's own state, and can never place an order. ` : ''}Local first; nothing leaves the PC unless a question needs the API and fits your cap.</span>
+    ${processingNote(s)}
   </section>`;
 }
 function wireSystem() {
+  const seen = document.getElementById('seen');
+  if (seen) seen.onclick = async () => { try { await post('/api/system/seen', {}); } catch (er) { alert(er.message); } S.sys = null; load(true); };
+  document.querySelectorAll('[data-hrel]').forEach((b) => { b.onclick = async () => { try { await post('/api/hq/tasks/' + b.dataset.hrel + '/release', {}); } catch (er) { alert(er.message); } S.sys = null; load(true); }; });
+  document.querySelectorAll('[data-hdis]').forEach((b) => { b.onclick = async () => { const why = prompt('Why dismiss it?', 'not wanted'); if (why === null) return; try { await post('/api/hq/tasks/' + b.dataset.hdis + '/dismiss', { reason: why }); } catch (er) { alert(er.message); } S.sys = null; load(true); }; });
+  document.querySelectorAll('[data-case]').forEach((a) => { a.onclick = async (e) => { e.preventDefault(); try { showCase(await api('/api/cases/' + a.dataset.case)); } catch (er) { alert(er.message); } }; });
   document.querySelectorAll('[data-sysgo]').forEach((a) => { a.onclick = async (e) => {
     e.preventDefault(); const g = a.dataset.sysgo;
     if (g === 'kite') return kiteLogin();
@@ -227,6 +295,7 @@ function renderCommand(d) {
   $('screen').innerHTML = `
   ${systemHero(d.system)}
   <div class="cols">${needsCard(d.system)}${workCard(d.system)}${syncCard(d.system)}</div>
+  <div class="cols">${researchCard(d.system)}${changedCard(d.system)}${readinessCard(d.system)}</div>
   ${tickerStrip(d.tickers || [])}
   ${freshBanner(h.today, d.kite)}
   <div class="cols">
@@ -598,7 +667,7 @@ async function renderModels(redraw) {
 }
 /* ---------- Agent HQ (S59): order any agent, the board, spend against the limits, the brain's journal ---------- */
 const BRAIN_MODES = [['off', 'Off'], ['economy', 'Economy'], ['normal', 'Normal']];
-const TASK_CLS = { done: 'up', failed: 'down', running: 'warn', queued: 'muted', held: 'warn', needs_approval: 'warn' };
+const TASK_CLS = { done: 'up', failed: 'down', running: 'warn', queued: 'muted', held: 'warn', needs_approval: 'warn', waiting: 'warn', retry: 'warn', dismissed: 'muted' };
 const inr = (x) => '₹' + Number(x || 0).toLocaleString('en-IN', { maximumFractionDigits: x < 10 ? 2 : 0 });
 function meter(used, cap) {
   const f = cap > 0 ? Math.min(1, used / cap) : 0;
@@ -798,7 +867,7 @@ function renderHQ(d) {
         ${d.other_decisions ? `<span class="tiny muted">${d.other_decisions} other decision(s) kept (not about a company).</span>` : ''}
       </div>`;
   const readersP = `<div class="panel" style="display:flex;flex-direction:column;gap:6px"><span class="lbl">Readers (latest)</span>
-        ${d.readings.length ? d.readings.map((r) => `<div class="small"><span class="${r.material === 'yes' ? 'warn' : 'muted'}">${esc(r.material)}</span> ${esc(r.kind)}: ${esc((r.summary || r.title || '').slice(0, 200))}${r.dropped ? ` <span class="tiny muted">${r.dropped} figure(s) dropped</span>` : ''}</div>`).join('') : '<span class="small muted">Nothing read yet.</span>'}
+        ${d.readings.length ? d.readings.map((r) => `<div class="small"><span class="${r.material === 'yes' ? 'warn' : 'muted'}">${esc(r.material)}</span> ${esc(r.kind)}: ${esc((r.summary || r.title || '').slice(0, 200))}${r.dropped ? ` <span class="tiny muted">${r.dropped} figure(s) dropped</span>` : ''} <span class="tiny muted">· ${esc(r.where || '')}</span></div>`).join('') : '<span class="small muted">Nothing read yet.</span>'}
       </div>`;
   const remP = `<div class="panel" style="display:flex;flex-direction:column;gap:6px"><span class="lbl">Reminders and the drop folder</span>
         ${d.reminders.length ? d.reminders.map((r) => `<div class="small row" style="justify-content:space-between"><span>${esc(r.due.slice(5))} · ${esc(r.text)}</span><button class="btn" style="min-height:26px;padding:2px 8px" data-hqrem="${r.id}">Cancel</button></div>`).join('') : '<span class="small muted">No reminder (say "remind me to … tomorrow at 9").</span>'}

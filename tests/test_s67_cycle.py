@@ -401,3 +401,123 @@ def test_after_a_wake_nothing_is_presented_as_current_until_the_data_has_caught_
                 [clock.t])
     why = system.stale_prices(con, clock.t)
     assert "latest refresh failed" in why and "bhavcopy file was missing" in why
+
+
+# --- review, learning and limits ------------------------------------------------------------------------------------------------------------------
+
+def test_a_failed_tool_and_a_contradicted_assumption_are_found_by_the_process_review_and_kept(con, tmp_path, quiet):
+    cid, _ = cases.open_case(con, NOW, "Is AAA's order inflow improving?", subject="AAA", isin=AAA,
+                             assumptions=["management guidance for order inflow holds"])
+    rt = _desk(con, tmp_path, Clock(NOW))
+    first = Fake([
+        _tool_msg(("stock_facts", {"symbol": "ZZZ"}),                                    # a tool that fails: no such stock
+                  ("case_evidence", {"case_id": cid, "stance": "for", "source_kind": "article", "text": "A broker says orders are strong.",
+                                     "source_id": "art:1", "published": "2026-10-20"})),    # 6 days old news: stale
+        _tool_msg(("case_evidence", {"case_id": cid, "stance": "against", "source_kind": "filing", "published": "2026-10-26",
+                                     "text": "Management guidance for order inflow was withdrawn in today's filing.", "source_id": "f:7"}),
+                  ("case_close", {"case_id": cid, "decision": "suggest", "reason": "A certain improvement: orders will rise.", "uncertainty": "low"})),
+        _note("Closed.")])
+    brain.think(rt, "case", [], first, egress.Gate(), cfg=CFG, case_ids=[cid])
+    c = cases.get(con, cid)
+    assert c["status"] == "done" and c["decision"] == "suggest"
+    flags = json.loads(con.execute("SELECT process_json FROM hq_case_reviews WHERE case_id=?", [cid]).fetchone()[0])["flags"]
+    joined = " | ".join(flags)
+    assert "stale or undated" in joined and "tool call(s) failed" in joined and "assumption contradicted" in joined
+    assert "certainty the evidence cannot give" in joined and "confidence not supported" in joined
+    assert [e for e, in con.execute("SELECT event FROM hq_case_log WHERE case_id=? AND event='process review'", [cid]).fetchall()]
+    # later: the correction. The case reopens on its review day, the new evidence changes the decision, and WHY is kept
+    later = NOW + timedelta(days=8)
+    assert cases.due(con, later) == [cid]
+    cases.add_evidence(con, cid, later, "Orders recovered in the next filing; guidance restored.", stance="for", source_id="f:8", source_kind="filing",
+                       published_at=later)
+    r = cases.conclude(con, cid, later, "watch", "guidance restored; one filing is not a trend")
+    assert r["changed"]
+    why = con.execute("SELECT detail FROM hq_case_log WHERE case_id=? AND event='conclusion changed'", [cid]).fetchone()[0]
+    assert "was suggest" in why and "now watch" in why
+    # a scored suggestion is linked back as an OUTCOME that never replaces the review
+    con.execute("INSERT INTO hq_suggestions (sug_id, pass_id, model, made_at, kind, isin, symbol, text, reasoning, horizon_days, shadow, outcome) "
+                "VALUES (1, ?, 'm', ?, 'add', ?, 'AAA', 't', 'r', 30, false, 'declined: the price fell 3%')", [c["pass_id"], NOW, AAA])
+    con.execute("UPDATE hq_cases SET decision='suggest' WHERE case_id=?", [cid])
+    assert cases.link_outcomes(con, later) == 1 and cases.link_outcomes(con, later) == 0
+    note = con.execute("SELECT outcome, note FROM hq_case_reviews WHERE case_id=? ORDER BY review_id DESC LIMIT 1", [cid]).fetchone()
+    assert "price fell" in note[0] and "does not show the reasoning was sound" in note[1]
+
+
+def test_a_case_that_never_settles_is_closed_as_inconclusive_after_its_passes_and_reviewed_later(con):
+    cid, _ = cases.open_case(con, NOW, "Is there an edge in AAA's order book?", subject="AAA")
+    t = NOW
+    for k in range(cases.MAX_STEPS):
+        cases.start_pass(con, [cid], 100 + k, t)
+        cases.end_pass(con, [cid], 100 + k, t, True)
+        t += timedelta(hours=2)
+    c = cases.get(con, cid)
+    assert c["status"] == "done" and c["decision"] == "inconclusive" and c["next_review"] > t - timedelta(hours=2)
+    assert c["verdict"] == "open" and "could not settle" in (c["uncertainty"] or "")
+    # no pass of a case ever turns into a live rule or a promoted strategy: the learner's registers are untouched
+    for table in ("learn_claims", "learn_tests", "learned", "limit_proposals"):
+        assert con.execute(f"SELECT count(*) FROM {table}").fetchone()[0] == 0
+
+
+def test_an_ipo_allotment_opens_a_case_that_weighs_holding_as_much_as_selling_and_a_listing_day_sale_is_not_assumed(con):
+    con.execute("INSERT INTO ipo_applications (ipo_id, account_id, status, allotted_qty, allotted_amount, listed_on, isin) VALUES ('IPO1', 'ZER', 'allotted', 20, 20000, NULL, ?)", [AAA])
+    new = cases.discover(con, NOW, [AAA], [])
+    c = cases.get(con, new[0])
+    assert "holding it, selling part and selling it all" in c["question"] and "no listing-day sale is assumed" in c["assumptions"]
+    assert "business group is not evidence of returns" in c["assumptions"][1] and cases.discover(con, NOW, [AAA], []) == []     # once
+    from pflab.plan import ipo
+    import pandas as pd
+    base = {"n": 40, "listing_gain_at_close": {"median": 0.05, "p10": -0.1, "p90": 0.3, "share_up": 0.62},
+            "after_listing_day_20_sessions": {"median": -0.02, "p10": -0.2, "p90": 0.2, "share_up": 0.45}}
+    import pflab.plan.ipo as ipo_mod
+    orig = ipo_mod.base_rates
+    ipo_mod.base_rates = lambda root, *a, **k: base
+    try:
+        out = ipo.strategy(con, "x", NOW.date(), "ALPHACO", 20, 1000.0, 50000.0, with_plan=False, stcg=0.2)
+    finally:
+        ipo_mod.base_rates = orig
+    text = " ".join(out["choices_for_the_allotment"])
+    assert "62% of large IPOs closed their first day above" in text and "as legitimate as selling" in text and "does not guarantee returns" in text
+    assert "7 of 10" not in text                                                       # the claim comes from the numbers, not from a typed sentence
+
+
+def test_resource_limits_hold_a_day_of_actions_is_capped_and_a_request_cannot_be_spammed(con, tmp_path, quiet):
+    cid, _ = cases.open_case(con, NOW, "Is anything odd in AAA?", subject="AAA", isin=AAA)
+    rt = _desk(con, tmp_path, Clock(NOW))
+    ctx = tl.Ctx(rt, 1, gv.OPUS, False, {"AAA": AAA}, egress.Gate(), NOW, case_ids=[cid])
+    cases.start_pass(con, [cid], 1, NOW)
+    done = []
+    for k in range(tl.DAILY["request_report"] + 2):
+        text, err = tl.run(ctx, "request_report", {"case_id": cid, "key": f"r{k}", "what": f"the report called {chr(97 + k)}"}, 1)
+        done.append(json.loads(text)["carried_out"])
+    assert done == [True] * tl.DAILY["request_report"] + [False, False]               # beyond the day's limit it is journalled, not carried out
+    assert con.execute("SELECT count(*) FROM hq_case_deps").fetchone()[0] == tl.DAILY["request_report"]
+
+
+def test_the_scheduled_hq_job_runs_a_whole_investigation_with_nobody_asking(con, tmp_path, quiet, monkeypatch):
+    """The tick's `hq` job (no window, no prompt): the round finds the open question itself, the brain's tool loop (a scripted model) looks,
+    records evidence, asks for the missing report once and writes its note. Checks the wiring through the real round, not any reasoning."""
+    from pflab.hq import desk, phone
+    from pflab.service import jobs, tasks  # noqa: F401  (registers the jobs)
+    con.execute("INSERT INTO kg_hypotheses VALUES (1, ?, NULL, 'AAA', 'a rotation out of the sector', NULL, '[]', 'review', ?, NULL, NULL)", [NOW, NOW.date()])
+    fake = Fake([
+        _tool_msg(("cases", {"scope": "active"}),
+                  ("case_evidence", {"case_id": 1, "stance": "neutral", "source_kind": "observation", "text": "The sector index fell on the same day."}),
+                  ("request_report", {"case_id": 1, "key": "flows", "what": "the sector fund flows report", "from_inbox": True})),
+        _note("Opened a case on AAA and asked for the flows report.")])
+    monkeypatch.setattr(service, "client", lambda rt_: fake)
+    monkeypatch.setattr(service, "names", lambda rt_: ([AAA], [BBB]))
+    monkeypatch.setattr(service, "read_now", lambda rt_, limit=40: {"read": 0})
+    monkeypatch.setattr(service, "texts_now", lambda rt_: {"kept": 0})
+    monkeypatch.setattr(phone, "poll_once", lambda rt_, timeout=0: 0)
+    monkeypatch.setattr("pflab.hq.security.egress", lambda rt_: {})
+    monkeypatch.setattr(service, "paid_allowed", lambda rt_: True)
+    ctx = jobs.Ctx(con, NOW, tmp_path / "pm", tmp_path / "data", tmp_path / "repo", "python", None)
+    res = jobs.run_job(ctx, jobs.Job("hq_case_demo", jobs.REGISTRY["hq"].schedule, service.tick_job))
+    assert res.status == "ok", res.detail
+    assert "case" in json.loads(res.detail)["brain"]
+    c = cases.get(con, 1)
+    assert c["status"] == "waiting_data" and c["origin"] == "code"
+    assert con.execute("SELECT trigger, status FROM hq_passes WHERE role='brain'").fetchall() == [("case", "done")]
+    assert [r[0] for r in con.execute("SELECT tool FROM hq_tool_calls ORDER BY call_no").fetchall()] == ["cases", "case_evidence", "request_report"]
+    assert con.execute("SELECT count(*) FROM questions WHERE subject_key='case:1:flows'").fetchone()[0] == 1
+    assert con.execute("SELECT count(*) FROM outbox").fetchone()[0] == 0                       # nothing was sent: the workshop channel and the cap decide that

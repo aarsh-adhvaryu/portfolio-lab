@@ -67,7 +67,7 @@ def test_strategy_gives_facts_and_choices_and_predicts_nothing(tmp_path, monkeyp
     assert r["allotment"] == {"shares": 22, "issue_price": 1191.0, "value_rs": 26202, "share_of_budget_pct": 17.5, "left_to_invest_rs": 123798}
     assert r["the_rest_under_the_standard_plan"] == {"left": 123798.0} and r["group_exposure"]["group"] == "reliance"
     assert r["tax_on_a_sale_within_a_year"]["on_a_25pct_listing_gain_rs"] == round(26202 * 0.25 * 0.20)
-    assert len(r["choices_for_the_allotment"]) == 4 and "BEFORE the listing" in r["choices_for_the_allotment"][3]
+    assert len(r["choices_for_the_allotment"]) == 5 and "BEFORE the listing" in r["choices_for_the_allotment"][4]     # S67: hold is weighed as much as sell
     assert any("grey-market" in x for x in r["to_look_up_with_web_search"])
     assert "whether this goes up or down" in r["not_known"]
 

@@ -19,6 +19,7 @@ import json
 import re
 import shutil
 import subprocess
+import threading
 import time
 import urllib.request
 from datetime import date, datetime, timedelta
@@ -26,15 +27,44 @@ from typing import Dict, List, Optional
 
 OK, WARN, DOWN, OFF = "ok", "warn", "down", "off"
 _CACHE: Dict[str, tuple] = {}
+_LOCK = threading.Lock()
+_BUSY: set = set()
+FIRST_WAIT_S = 0.4          # the very first look waits this long for a slow probe, then answers "not known yet" instead of holding the screen
 
 
-def _cached(key: str, ttl: float, fn):
+def _cached(key: str, ttl: float, fn, default=None):
+    """Stale-while-revalidate: a probe that talks to another program (Ollama, Docker) can be slow or hang, and the screen asks for the
+    picture every few seconds. An expired answer is returned at once while ONE background thread refreshes it; the first ever look waits
+    at most FIRST_WAIT_S for it and otherwise answers `default`. The picture is never slower than its slowest cached part."""
     t = time.time()
-    if key in _CACHE and t - _CACHE[key][0] < ttl:
-        return _CACHE[key][1]
-    v = fn()
-    _CACHE[key] = (t, v)
-    return v
+    with _LOCK:
+        hit = _CACHE.get(key)
+        fresh = hit is not None and t - hit[0] < ttl
+        if fresh:
+            return hit[1]
+        start = key not in _BUSY
+        if start:
+            _BUSY.add(key)
+
+    def refresh():
+        try:
+            v = fn()
+        except Exception:
+            v = default if hit is None else hit[1]
+        with _LOCK:
+            _CACHE[key] = (time.time(), v)
+            _BUSY.discard(key)
+
+    if start:
+        th = threading.Thread(target=refresh, name=f"probe-{key}", daemon=True)
+        th.start()
+        if hit is None:
+            th.join(FIRST_WAIT_S)
+    if hit is not None:
+        return hit[1]
+    with _LOCK:
+        got = _CACHE.get(key)
+    return got[1] if got else default
 
 
 # --- the machine ----------------------------------------------------------------------------------------------------------
@@ -47,20 +77,27 @@ def _ollama() -> dict:
             return {"up": True, "models": names}
         except Exception:
             return {"up": False, "models": []}
-    return _cached("ollama", 30, look)
+    return _cached("ollama", 30, look, {"up": False, "models": [], "pending": True})
+
+
+def _docker_probe() -> str:
+    if not shutil.which("docker"):
+        return "not installed"
+    try:
+        r = subprocess.run(["docker", "info", "--format", "{{.ServerVersion}}"], capture_output=True, text=True, timeout=4,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return "running" if r.returncode == 0 and r.stdout.strip() else "not running"
+    except Exception:
+        return "not running"
 
 
 def _docker() -> str:
-    def look():
-        if not shutil.which("docker"):
-            return "not installed"
-        try:
-            r = subprocess.run(["docker", "info", "--format", "{{.ServerVersion}}"], capture_output=True, text=True, timeout=4,
-                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-            return "running" if r.returncode == 0 and r.stdout.strip() else "not running"
-        except Exception:
-            return "not running"
-    return _cached("docker", 300, look)
+    return _cached("docker", 300, _docker_probe, "checking")
+
+
+def _sandbox_status() -> dict:
+    from pflab.agents import sandbox as sb
+    return _cached("sandbox", sb.CACHE_S, lambda: sb.status(force=True), {"ok": False, "why": "still checking"})
 
 
 def record_check(con, connector: str, ok: bool, now: datetime, detail: str = "", usable: Optional[bool] = None) -> int:
@@ -193,7 +230,8 @@ def connectors(rt, now: datetime) -> List[dict]:
     out.append({"id": "api", "name": "Claude API", "state": a[0], "line": a[1], "action": None})
 
     # Sandbox: Docker answering and the image built, and a containment probe that passed
-    ss_ = sb.status() if _docker() == "running" else {"ok": False, "why": "Docker is not running" if _docker() == "not running" else "Docker is not installed"}
+    dk = _docker()
+    ss_ = _sandbox_status() if dk == "running" else {"ok": False, "why": {"not running": "Docker is not running", "checking": "still checking Docker"}.get(dk, "Docker is not installed")}
     probe = con.execute("SELECT checked_at, ok, detail FROM health_checks WHERE connector='sandbox' ORDER BY check_id DESC LIMIT 1").fetchone()
     if not ss_["ok"]:
         sx = (WARN, f"{ss_['why']}: calculations wait; nothing generated is run outside a container")

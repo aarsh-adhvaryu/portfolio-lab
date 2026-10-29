@@ -125,20 +125,41 @@ class Runtime:
         from pflab.hq import service
         now = self.clock()
         last, self._beat = self._beat, now
+        wake = None
         if last is not None and now - last > WAKE_GAP:
             mins = int((now - last).total_seconds() // 60)
             self.catching_up, self._woke_at = f"woke after {mins} min away", now
             try:
-                service.start(self)
+                wake = {"at": now.isoformat(timespec="seconds"), "away_min": mins, "recovered": service.start(self)}
             except Exception:
                 log.exception("recovery after wake failed")
+                wake = {"at": now.isoformat(timespec="seconds"), "away_min": mins, "recovered": "failed"}
             self.bump("health", "command")
         elif self.catching_up and self._woke_at is not None:
             ok, _why = system.critical_fresh(self.cursor(), now)
             if ok or now - self._woke_at > timedelta(hours=2):
                 self.catching_up = None
                 self.bump("health", "command")
+        self._write_beat(now, wake)
         return self.catching_up
+
+    def _write_beat(self, now: datetime, wake: Optional[dict]) -> None:
+        """`pm/app/heartbeat.json`: the last beat and the last wake with what was recovered, for `pflab verify --wake-check` (a sleep that
+        really happened on this PC is the one thing a cloud test cannot do). Best effort: a full disk never stops the loop."""
+        p = self.pm_dir / "app" / "heartbeat.json"
+        try:
+            old = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+        except (OSError, ValueError):
+            old = {}
+        doc = {"at": now.isoformat(timespec="seconds"), "pid": __import__("os").getpid(), "catching_up": self.catching_up,
+               "last_wake": wake or old.get("last_wake"), "wakes": int(old.get("wakes", 0)) + (1 if wake else 0)}
+        if wake is None and old.get("last_wake") and self.catching_up is None and "settled_at" not in old.get("last_wake", {}):
+            doc["last_wake"] = {**old["last_wake"], "settled_at": now.isoformat(timespec="seconds")}     # the data caught up after that wake
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps(doc), encoding="utf-8")
+        except OSError:
+            pass
 
     def _scheduler_loop(self) -> None:
         while not self.stop.is_set():

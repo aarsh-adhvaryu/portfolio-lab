@@ -245,6 +245,13 @@ def main(argv=None):
     mlp.add_argument("action", choices=["connect", "fetch", "status"])
     mlp.add_argument("--client", help="the Google client file (default: gmail_client.json in the .pflab folder of your user folder)")
     mlp.add_argument("--days", type=int, default=40, help="fetch: how far back to look")
+    vp = sub.add_parser("verify", help="S67: local acceptance of a candidate release: prerequisites, sandbox, connector reads, migration and rollback "
+                                        "rehearsal on copies, a restart drill; changes nothing of yours, prints a sanitized report")
+    vp.add_argument("--app", help="the installed app's folder (default: from release.toml, else PFLAB_PM_DIR)")
+    vp.add_argument("--report", help="write the report here (and a .json beside it)")
+    vp.add_argument("--wake-check", action="store_true", help="only: did the app see and recover from a real sleep?")
+    vp.add_argument("--live-model", action="store_true", help="also one small model call through the privacy gate and the budget")
+    vp.add_argument("--offline", action="store_true", help="do not contact Kite or Gmail")
     upp = sub.add_parser("update", help="S65: the installed app updates to the newest release tag (store backed up first), or --rollback")
     upp.add_argument("--rollback", action="store_true", help="return to the previous release and the store from before the update")
     upp.add_argument("--check", action="store_true", help="only say whether a newer release exists")
@@ -267,6 +274,14 @@ def main(argv=None):
     guard.set_flags(a.paid, a.live)
     if a.cmd == "setup":
         return _setup(a)
+    if a.cmd == "verify":
+        from pathlib import Path as _P
+
+        from pflab import verify
+        rep = verify.run(_P(a.app) if a.app else None, report=_P(a.report) if a.report else None, wake=a.wake_check, model=a.live_model,
+                         offline=a.offline)
+        print(rep.text())
+        return 1 if any(c.status == verify.FAIL for c in rep.checks) else 0
     if a.cmd == "update":
         return _update(a)
     if a.cmd == "mail":
