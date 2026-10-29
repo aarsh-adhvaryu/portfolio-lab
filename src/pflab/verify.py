@@ -466,13 +466,37 @@ def seed_store_for_drill(db: Path, now: datetime) -> None:
     from pflab.pm import store
     con = store.connect(db)
     con.execute("INSERT INTO hq_tasks (task_id, created_at, from_agent, to_agent, text, body_json, status, hops, channel, attempts, started_at) "
-                "VALUES (1, ?, 'investor', 'no_such_agent', 'drill task', '{}', 'running', 0, 'dashboard', 1, ?)", [now, now])
+                "VALUES (1, ?, 'investor', 'graph', 'drill task', '{}', 'running', 0, 'dashboard', 1, ?)", [now, now])          # a real, code-only agent
     con.execute("INSERT INTO hq_cases (case_id, subject_key, opened_at, updated_at, origin, question, status, attempts, max_attempts, steps) "
                 "VALUES (1, 'drill:case', ?, ?, 'code', 'drill question', 'running', 1, 3, 0)", [now, now])
     con.execute("INSERT INTO hq_effects (effect_key, task_id, kind, done_at, detail, state) VALUES ('drill:effect', 1, 'message', ?, 'sent before the stop', 'done')", [now])
+    con.execute("INSERT INTO hq_effects (effect_key, task_id, kind, done_at, detail, state) VALUES ('drill:halfway', 1, 'message', ?, 'stopped between started and done', 'started')", [now])
+    con.execute("INSERT INTO learn_experiments (exp_id, key, registered_at, hypothesis, why_it_matters, disproof, source_kind, dataset, max_attempts, protocol_path, "
+                "protocol_sha, evaluator_sha, status) VALUES (1, 'drill', ?, 'drill hypothesis', 'w', 'd', 'investor', 'index:NIFTY50_TRI', 3, 'none', 'x', 'x', 'running')", [now])
+    con.execute("INSERT INTO learn_attempts (attempt_id, exp_id, n, made_at, kind, status, note) VALUES (1, 1, 1, ?, 'candidate', 'rejected', 'recorded before the stop')", [now])
     con.execute("INSERT INTO job_runs (run_id, job, started_at, status) VALUES (1, 'collect', ?, 'running')", [now])
     con.execute("INSERT INTO questions VALUES (1, ?, 'drill', 'drill:q', 'asked once', 'open', NULL, NULL)", [now])
     con.close()
+
+
+def _drill_store_checks(db: Path, steps: list) -> bool:
+    """After the clean stop: the experiment the dead process left running continues from its recorded attempt, the effect that stopped halfway is
+    listed and was not repeated, and the effect that was done is still the one row."""
+    import duckdb
+    try:
+        con = duckdb.connect(str(db), read_only=True)
+        exp = con.execute("SELECT status FROM learn_experiments WHERE exp_id=1").fetchone()[0]
+        n_att = con.execute("SELECT count(*) FROM learn_attempts WHERE exp_id=1").fetchone()[0]
+        eff = dict(con.execute("SELECT effect_key, state FROM hq_effects").fetchall())
+        con.close()
+    except Exception as e:
+        steps.append(f"the store could not be read after the stop ({type(e).__name__})")
+        return False
+    ok_exp = exp == "registered" and n_att == 1
+    ok_eff = eff.get("drill:halfway") == "started" and eff.get("drill:effect") == "done" and len(eff) == 2
+    steps.append("experiment resumes from its recorded attempt" if ok_exp else f"experiment is {exp} with {n_att} attempt(s): NOT recovered")
+    steps.append("a halfway effect is listed, not repeated" if ok_eff else f"effects {eff}: NOT as expected")
+    return ok_exp and ok_eff
 
 
 def restart_drill(ctx: Ctx, rep: Report, *, python: Optional[str] = None, cwd: Optional[Path] = None, seconds: float = 90.0) -> None:
@@ -528,7 +552,8 @@ def restart_drill(ctx: Ctx, rep: Report, *, python: Optional[str] = None, cwd: O
                 p2.kill()
                 rc = None
             steps.append("stopped cleanly" if rc == 0 else f"did not stop cleanly (exit {rc})")
-            ok = recovered and rc == 0 and once and t.get("attempts", 0) <= 3
+            extra_ok = _drill_store_checks(pm / "ledger.duckdb", steps)
+            ok = recovered and rc == 0 and once and t.get("attempts", 0) <= 3 and extra_ok
             rep.add("restart drill", PASS if ok else FAIL, "; ".join(steps))
         finally:
             if p2.poll() is None:
