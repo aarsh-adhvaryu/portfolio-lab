@@ -664,6 +664,17 @@ MIGRATIONS = [
         contained BOOLEAN, cost_inr DOUBLE
     );
     """),
+    # 2026-10-29: S67 local. Objectives framed from a wish (hq/objectives.py) and software changes the system proposes (never applied by it).
+    (48, "objectives_issues_s67", """
+    CREATE TABLE hq_objectives (
+        obj_id INTEGER PRIMARY KEY, case_id INTEGER, made_at TIMESTAMP NOT NULL, wish VARCHAR NOT NULL, status VARCHAR NOT NULL,
+        frame_json VARCHAR NOT NULL, problems_json VARCHAR
+    );
+    CREATE TABLE hq_issues (
+        issue_id INTEGER PRIMARY KEY, made_at TIMESTAMP NOT NULL, kind VARCHAR NOT NULL, title VARCHAR NOT NULL, evidence VARCHAR NOT NULL,
+        repro VARCHAR, proposed_patch VARCHAR, status VARCHAR NOT NULL, origin VARCHAR
+    );
+    """),
 ]
 
 

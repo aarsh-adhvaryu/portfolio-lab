@@ -318,7 +318,26 @@ def mail(con, asof: date) -> Facts:
     return out
 
 
+def research(con, asof: date) -> Facts:
+    """The shared research workspace as chat sees it: the same investigations, experiments, objectives and proposals the background work keeps."""
+    from pflab.hq import objectives
+    from pflab.learner import counter, experiments as ex
+    out: Facts = {}
+    for e in ex.report(con)[-6:]:
+        out[f"experiment.{e['id']}"] = f"{e['status']}: {e['hypothesis'][:110]} ({e['candidates']} candidates, {e['kept']} kept; {(e['why'] or '')[:100]})"
+    out["experiments.variants_searched_in_all"] = counter.n_tests(con)
+    for o in objectives.current(con)[:4]:
+        out[f"objective.{o['id']}"] = f"{o['status']}: {o['wish'][:80]}"
+    n_issue = con.execute("SELECT count(*) FROM hq_issues WHERE status='proposed'").fetchone()[0]
+    out["software_changes_proposed_not_applied"] = int(n_issue)
+    if len(out) <= 2 and not n_issue:
+        out["research.note"] = "no experiment or objective has been registered yet"
+    return out
+
+
 TOOLS: List[Tool] = [
+    Tool("research", "research", "the research workspace: experiments the system has registered and run (kept, rejected, waiting), the objectives framed from his wishes "
+         "(framed or still draft), how many variants have been searched, and software changes it has proposed; what has been tried and failed", research),
     Tool("networth", "ledger", "net worth, holdings, rupee values of what is owned, gains and losses, cash, buckets",
          networth),
     Tool("guards", "guard", "whether a stock on the list is safe to buy; NSE surveillance (ASM, GSM, ESM); safety "

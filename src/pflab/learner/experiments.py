@@ -46,6 +46,22 @@ SPENT_FROM = date(2022, 1, 1)           # the period the repo declares spent: ne
 
 STATUSES = ("registered", "running", "kept", "rejected", "deferred", "waiting")
 
+import threading
+_LIVE: set = set()                      # experiments THIS process is running: a wake must not reap them; a dead process owns none
+_LIVE_LOCK = threading.Lock()
+
+
+def reap(con, now: datetime) -> int:
+    """An experiment left `running` by a process that died goes back to `registered`: every attempt already recorded stays (and counted), and
+    the run carries on from the attempts left. One that this process is still running is left alone."""
+    with _LIVE_LOCK:
+        mine = set(_LIVE)
+    rows = [r[0] for r in con.execute("SELECT exp_id FROM learn_experiments WHERE status='running'").fetchall() if r[0] not in mine]
+    for eid in rows:
+        con.execute("UPDATE learn_experiments SET status='registered', decision_why=? WHERE exp_id=?",
+                    [f"interrupted when the system closed ({now:%Y-%m-%d %H:%M}); continues from its recorded attempts", eid])
+    return len(rows)
+
 
 def evaluator_sha() -> str:
     return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
@@ -255,6 +271,18 @@ def run(con, eid: int, root: Path, now: datetime, writer: Callable[[str], str], 
     from pflab.agents import workshop as wk
     meta = _verify_protocol(con, eid)
     dataset, max_attempts = meta["dataset"], meta["max_attempts"]
+    with _LIVE_LOCK:
+        _LIVE.add(eid)
+    try:
+        return _run(con, eid, root, now, writer, sandbox, frame, clock, dataset, max_attempts)
+    finally:
+        with _LIVE_LOCK:
+            _LIVE.discard(eid)
+
+
+def _run(con, eid: int, root: Path, now: datetime, writer, sandbox, frame, clock, dataset: str, max_attempts: int) -> dict:
+    from pflab.agents import sandbox as sb
+    from pflab.agents import workshop as wk
     t_start = clock()
     try:
         box = sandbox or sb.pick()
