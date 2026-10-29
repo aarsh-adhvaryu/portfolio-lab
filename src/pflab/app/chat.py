@@ -148,8 +148,18 @@ def answer(rt, con, q: str, mode: str, approved: bool = False) -> dict:
                 "route": ["note reused (not bought twice)"] if reused else ["Opus not rung", "local model (guarded)"],
                 "status": "needs_approval" if "to go ahead" in text else "done"}
 
+    from pflab.agents import sandbox as sb
     from pflab.agents import workshop as wk
-    out = wk.ask(con, q, rt.pm_dir, rt.data_root, asof, writer="auto", secrets=rt.secrets, approved=approved, now=now)
+    try:
+        out = wk.ask(con, q, rt.pm_dir, rt.data_root, asof, writer="auto", secrets=rt.secrets, approved=approved, now=now)
+    except sb.SandboxUnavailable as e:                   # S67: nothing ran; no host-process fallback
+        from pflab.agents import questions as qs
+        qs.ask(con, "workshop", f"workshop:sandbox:{now:%Y-%m-%d}",
+               f"Calculations are paused: the sandbox is not available ({e}). Start Docker Desktop (and build the image once if asked); "
+               "I run them again when it works.", now)
+        return {"text": f"This calculation did not run: the sandbox is not available ({e}). Generated code only runs contained, "
+                        "so it waits for Docker.", "route": ["sandbox unavailable: nothing was run"], "status": "failed",
+                "meta": "nothing ran on this PC"}
     if out.measure:
         route = ["local model picks a reviewed measure", "reviewed code (calc/measures.py) on this PC"]
         meta = "a reviewed measure; your rows never left the PC"

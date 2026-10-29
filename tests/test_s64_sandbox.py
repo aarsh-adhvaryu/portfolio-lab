@@ -30,12 +30,12 @@ class FakeRun:
 
 def test_the_docker_command_has_every_isolation_flag():
     box = sb.Docker(runner=FakeRun())
-    cmd = box.command(Path("C:/tmp/work"), "pflab-wk-test")
+    cmd = box.command(Path("C:/tmp/work"), "pflab-wk-test", Path("C:/tmp/out"))
     s = " ".join(cmd)
-    for flag in ("--rm", "--network none", "--read-only", "--tmpfs /tmp", "--memory 2g", "--cpus 2", "--pids-limit 256",
-                 "--security-opt no-new-privileges", "-w /work", "pflab-sandbox:1 python -I /app/runner.py /work"):
+    for flag in ("--rm", "--network none", "--read-only", "--tmpfs /tmp", "--memory 2g", "--memory-swap 2g", "--cpus 2", "--pids-limit 256",
+                 "--cap-drop ALL", "--security-opt no-new-privileges", "-w /work", "pflab-sandbox:2 python -I /app/runner.py /work"):
         assert flag in s
-    assert "-v" in cmd and cmd[cmd.index("-v") + 1].endswith(":/work")
+    assert "-v" in cmd and cmd[cmd.index("-v") + 1].endswith(":/work:ro")          # S67: the job folder is read-only
     assert box.contained is True and sb.Local().contained is False
 
 
@@ -64,10 +64,11 @@ def test_available_needs_docker_and_the_image_and_is_remembered():
 
 def test_pick_follows_availability_and_the_environment(monkeypatch):
     monkeypatch.delenv("PFLAB_SANDBOX", raising=False)
-    monkeypatch.setattr(sb, "available", lambda *a, **k: True)
+    monkeypatch.setattr(sb, "status", lambda *a, **k: {"ok": True, "why": ""})
     assert isinstance(sb.pick(), sb.Docker)
-    monkeypatch.setattr(sb, "available", lambda *a, **k: False)
-    assert isinstance(sb.pick(), sb.Local)
+    monkeypatch.setattr(sb, "status", lambda *a, **k: {"ok": False, "why": "Docker Desktop is not running"})
+    with pytest.raises(sb.SandboxUnavailable):                              # S67: no automatic fallback to the host
+        sb.pick()
     monkeypatch.setenv("PFLAB_SANDBOX", "local")
     monkeypatch.setattr(sb, "available", lambda *a, **k: True)
     assert isinstance(sb.pick(), sb.Local)
@@ -138,7 +139,7 @@ def test_security_counts_uncontained_runs(tmp_path, monkeypatch):
 @pytest.mark.docker
 def test_the_real_container_runs_a_calculation_and_blocks_the_network(tmp_path):
     if not sb.available(force=True):
-        pytest.skip("Docker is not running or the pflab-sandbox:1 image is not built")
+        pytest.skip("Docker is not running or the pflab-sandbox:2 image is not built")
     r = wk.run(_spec(), {"d": pd.DataFrame({"x": [1.0, 2.0, 3.0]})}, sandbox=sb.Docker())
     assert r.ok and r.contained and r.result == {"total": 6.0}
     # code that reaches for the network, run straight through the runner (the static check would stop it earlier)

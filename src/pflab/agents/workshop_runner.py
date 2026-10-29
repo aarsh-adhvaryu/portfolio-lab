@@ -6,6 +6,7 @@ and writes `out.json`. Results must be a flat dict of names to finite numbers, b
 import importlib.util
 import json
 import math
+import os
 import sys
 import traceback
 from pathlib import Path
@@ -104,7 +105,8 @@ def main(folder: str) -> int:
     except Exception as e:                            # the model's code failing is a finding, reported back to it
         out["error"] = f"{type(e).__name__}: {e}"
         out["trace"] = traceback.format_exc()[-1500:]
-    (f / "out.json").write_text(json.dumps(out, default=str), encoding="utf-8")
+    dest = Path(os.environ.get("PFLAB_OUT") or f)         # in the sandbox the job folder is read-only; the one place to write is /out
+    (dest / "out.json").write_text(json.dumps(out, default=str), encoding="utf-8")
     return 0
 
 

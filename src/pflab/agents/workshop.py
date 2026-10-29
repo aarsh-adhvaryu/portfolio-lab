@@ -36,6 +36,8 @@ from typing import Callable, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from pflab.agents import sandbox as sb
+
 RUNNER = Path(__file__).with_name("workshop_runner.py")
 TIME_LIMIT_S = 60
 MAX_CODE = 20000
@@ -239,7 +241,6 @@ def run(spec: Spec, frames: Dict[str, pd.DataFrame], python: str = sys.executabl
         time_limit: int = TIME_LIMIT_S, values: Optional[dict] = None, sandbox=None) -> Run:
     """Static check, then the sandbox (Docker when it works, else the local subprocess): the test case first, then the
     real frames (with `values` for the parameters, else their defaults); a second method must agree."""
-    from pflab.agents import sandbox as sb
     if spec.alt_code and same_method(spec.code, spec.alt_code):
         from dataclasses import replace
         spec = replace(spec, alt_code="")          # a copy is no second method: dropped (optional), never a failed try
@@ -342,6 +343,8 @@ def solve(question: str, frames_for: Callable[[List[str]], Dict[str, pd.DataFram
                 if unknown:
                     raise ValueError(f"unknown dataset(s): {unknown}")
                 r = run(spec, frames_for(spec.datasets))
+            except sb.SandboxUnavailable:
+                raise                                 # S67: nothing ran; asking the writer again would change nothing
             except Exception as e:                    # a writer's malformed reply is a failed attempt, never a crash
                 spec, r = None, Run(False, [f"{type(e).__name__}: {e}"])
             log.append(f"{name} try {k}: " + ("ok" if r.ok else "; ".join(r.problems)[:300]))
@@ -379,6 +382,8 @@ def confirm(question: str, first: Outcome, frames_for, schema: str, samples: str
             if [d for d in spec.datasets if d not in schema_names(schema)]:
                 raise ValueError("unknown dataset")
             r = run(spec, frames_for(spec.datasets))
+        except sb.SandboxUnavailable:
+            raise
         except Exception as e:                      # a malformed second writing is not a verdict
             tried.append(f"{name}: {type(e).__name__}: {e}"[:200])
             continue
@@ -705,12 +710,11 @@ def ask(con, question: str, pm_dir: Path, root: Path, asof: date, *, writer: str
             if out.confirm["status"] == "disagrees":
                 out.status = "disputed"
     d = keep(pm_dir, question, out, now)
-    if out.run is not None and not out.run.contained:       # S64: Docker did not run it; one ask a day, never a stop
+    if out.run is not None and not out.run.contained:       # only the explicit workshop setting runs uncontained; say so once a day
         from pflab.agents import questions as qs
         qs.ask(con, "workshop", f"workshop:uncontained:{now:%Y-%m-%d}",
-               "Docker Desktop is not running; calculations run uncontained (a plain subprocess, not a security boundary). "
-               "Start Docker Desktop (and build the image once: docker build -t pflab-sandbox:1 -f sandbox/Dockerfile .). "
-               "Answer 'seen' when noted.", now)
+               "This calculation ran in the uncontained developer subprocess (PFLAB_SANDBOX=local), not in Docker. It is a workshop setting, "
+               "not for the app. Answer 'seen' when noted.", now)
     if out.status == "checked":
         summary = "; ".join(f"{k} {v}" for k, v in list(out.run.result.items())[:10])
         how = "reviewed measure" if out.measure else f"{UNREVIEWED}; second writing {(out.confirm or {}).get('status', 'n/a')}"

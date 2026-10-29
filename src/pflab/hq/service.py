@@ -131,9 +131,14 @@ def deliver(rt):
     return send
 
 
-def start(rt) -> None:
-    from pflab.hq import board
-    board.reap(rt.cursor(), rt.clock())
+def start(rt) -> dict:
+    """Taking the store means any task or case still `running` belongs to a process that died: recover them (retry, bounded), then look
+    for what arrived while the system was off. Safe to call again at a wake: it only reads and moves states."""
+    from pflab.hq import board, cases
+    con, now = rt.cursor(), rt.clock()
+    out = {"tasks_recovered": board.reap(con, now), "cases_recovered": cases.reap(con, now), "cases_resumed": len(cases.sweep(con, now))}
+    rt.bump("hq")
+    return out
 
 
 def round_(rt, stop=None, attended: bool = True) -> dict:
