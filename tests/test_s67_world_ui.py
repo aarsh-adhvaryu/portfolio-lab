@@ -97,3 +97,35 @@ def test_an_order_given_from_an_agents_panel_reaches_the_board_and_the_old_tab_i
     assert row == [("calc", "Drawdown of the Nifty 50 since 2020", "investor")], row
     assert "Drawdown of the Nifty 50" in res[2]
     assert "Agent HQ" not in res[3] and res[3].startswith("World|")
+
+
+def test_a_reply_being_typed_is_not_redrawn_away_and_the_screen_catches_up_after(server, tmp_path):
+    """Found on the first real launch: with 30 questions arriving, the screen refreshed under the cursor and an answer could not be finished."""
+    from pflab.agents import questions
+    rt, port = server
+    con = rt.cursor()
+    q1 = questions.ask(con, "mail", "k1", "First question: is this yours?", NOW)
+
+    def later():                                                            # a new question arrives while he is typing the first answer
+        time.sleep(8.0)
+        questions.ask(con, "mail", "k2", "Second question arrived later", NOW)
+        rt.bump("inbox")
+        rt.bump("command")
+    threading.Thread(target=later, daemon=True).start()
+    steps = [
+        (f"var i = document.getElementById('qa{q1}'); i.dataset.mark = 'kept'; i.focus(); i.value = 'yes, it is mine and I'; 1", 0.2),     # 0: typing
+        ("load(true); 1", 4.0),                                                                                                           # 1: a refresh while he types (the arriving question is already in the store)
+        ("load(true); 1", 5.0),                                                                                                                       # 1: refreshes come and go
+        (f"var j = document.getElementById('qa{q1}'); JSON.stringify({{mark: j.dataset.mark, value: j.value, focused: document.activeElement === j, "
+         "second: document.getElementById('screen').innerText.includes('Second question arrived later')})", 0.1),                        # 2: still being typed
+        ("document.activeElement.blur(); 1", 3.0),                                                                                        # 3: he leaves the box
+        (f"JSON.stringify({{second: document.getElementById('screen').innerText.includes('Second question arrived later'), "
+         f"first: (document.getElementById('qa{q1}') || {{}}).value || ''}})", 0.1),                                                      # 4: the screen has caught up, his text is kept
+    ]
+    errors, res = _edge.shoot(f"http://127.0.0.1:{port}/#/ai", str(tmp_path / "type.png"), 1500, 1000, 5, steps)
+    import json
+    assert errors == [], errors
+    mid = json.loads(res[3])
+    assert mid["mark"] == "kept" and mid["value"] == "yes, it is mine and I" and mid["focused"] and mid["second"] is False
+    end = json.loads(res[5])
+    assert end["second"] is True and end["first"] == "yes, it is mine and I"

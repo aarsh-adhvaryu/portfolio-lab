@@ -309,17 +309,55 @@ def recheck(rt, now: datetime) -> int:
         if st != status:
             con.execute("UPDATE mail_facts SET status=?, detail=?, checked_at=? WHERE fact_id=?", [st, why, now, fid])
             n += 1
-            if st == "matched":
-                questions.drop(con, f"mailfact:{fid}", now)
-            elif st in ("new", "conflict") and kind in ASK:
-                _ask(con, fid, f, why, now)
+    regroup(con, now)
     return n
 
 
-def _ask(con, fid: int, f: dict, why: str, now: datetime, sender: str = "") -> None:
+# What an email must state before it is worth a question (an allotment notice with no quantity is noise, not a gap in his record).
+_NEEDS = {"trade": ("quantity",), "ipo_allotment": ("quantity",), "fd_booking": ("amount",), "fd_maturity": ("maturity_amount", "amount")}
+_ABOUT = {"trade": ("trades", "the Console tradebook in Inbox and files (Kite shows them too)"),
+          "ipo_allotment": ("IPO allotments", "Setup's IPO form"),
+          "fd_booking": ("new deposits", "Setup's deposit form"), "fd_maturity": ("matured deposits", "Setup's deposit form")}
+SHOWN = 8
+
+
+def _worth_asking(kind: str, f: dict) -> bool:
+    if not any(f.get(k) for k in _NEEDS.get(kind, ())):
+        return False
+    return bool(f.get("symbol") or f.get("company")) if kind in ("trade", "ipo_allotment") else True
+
+
+def regroup(con, now: datetime) -> int:
+    """S67 (found on the first real launch: 30 near-identical questions, one per email): ONE question per kind listing the distinct items that are
+    not in his record, replaced as the set changes and closed when it empties. Emails that state no quantity or amount are shown, never asked."""
+    import hashlib
     from pflab.agents import questions
-    questions.ask(con, AGENT, f"mailfact:{fid}", f"An email{(' from ' + sender[:60]) if sender else ''} says: {say(f)}. {why[0].upper() + why[1:]}. "
-                  "If it is not yours or is wrong, reply so; nothing is written to your record from an email.", now)
+    n = 0
+    for (key,) in con.execute("SELECT subject_key FROM questions WHERE status='open' AND subject_key LIKE 'mailfact:%'").fetchall():
+        questions.drop(con, key, now)                           # the old one-per-email items give way to the grouped one
+    for kind in ASK:
+        seen: Dict[str, int] = {}
+        for fj, rec in con.execute("SELECT fields_json, received_at FROM mail_facts WHERE kind=? AND status IN ('new','conflict') "
+                                   "ORDER BY received_at DESC", [kind]).fetchall():
+            f = {**json.loads(fj), "kind": kind}
+            if _worth_asking(kind, f):
+                seen.setdefault(say(f), 0)
+                seen[say(f)] += 1
+        prefix = f"mailgroup:{kind}:"
+        if not seen:
+            for (key,) in con.execute("SELECT subject_key FROM questions WHERE status='open' AND subject_key LIKE ?", [prefix + "%"]).fetchall():
+                n += questions.drop(con, key, now)
+            continue
+        items = list(seen)
+        key = prefix + hashlib.sha1("|".join(sorted(items)).encode()).hexdigest()[:10]
+        for (old,) in con.execute("SELECT subject_key FROM questions WHERE status='open' AND subject_key LIKE ? AND subject_key<>?", [prefix + "%", key]).fetchall():
+            questions.drop(con, old, now)                       # the set changed: the old wording is closed, the new one asked
+        what, where = _ABOUT[kind]
+        more = f", and {len(items) - SHOWN} more" if len(items) > SHOWN else ""
+        text = (f"Your email mentions {len(items)} {what} that are not in your record: {'; '.join(items[:SHOWN])}{more}. If they are yours, add them in {where}. "
+                "If they are not yours or are wrong, reply so; nothing is written to your record from an email.")
+        n += 1 if questions.ask(con, AGENT, key, text, now) else 0
+    return n
 
 
 def run(rt, sess, model: str, now: Optional[datetime] = None, chat=None) -> dict:
@@ -366,10 +404,9 @@ def run(rt, sess, model: str, now: Optional[datetime] = None, chat=None) -> dict
                 continue
             out["facts"] += 1
             out[status] += 1
-            if status in ("new", "conflict") and f["kind"] in ASK:
-                _ask(con, fid, f, why, now, meta["from"])
             if f["kind"] in PUBLIC and _public(rt, mid, meta, text, f, gate):
                 out["public"] += 1
+    regroup(con, now)
     rt.bump("inbox")
     return out
 

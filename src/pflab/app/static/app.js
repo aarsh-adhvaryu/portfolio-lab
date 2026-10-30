@@ -817,6 +817,11 @@ function msgHtml(m, prevQ) {
     ${m.meta || m.at ? `<span class="tiny muted">${esc(m.meta)}${m.meta ? ' · ' : ''}${esc(m.at)}</span>` : ''}</div>`;
 }
 function renderAI(d) {
+  const ae = document.activeElement;
+  if (ae && /^qa\d+$/.test(ae.id) && ae.value) { S.deferred = true; return; }          // an answer to one of the system's questions is being typed: draw after
+  const keepQa = {}; document.querySelectorAll('#screen input[id^="qa"]').forEach((i) => { if (i.value) keepQa[i.id] = i.value; });   // half-written answers survive the redraw
+  const scrollY = window.scrollY;
+  setTimeout(() => { Object.entries(keepQa).forEach(([id, v]) => { const i = $(id); if (i && !i.value) i.value = v; }); if (Math.abs(window.scrollY - scrollY) > 2) window.scrollTo(0, scrollY); }, 0);
   const focus = document.activeElement && document.activeElement.id;
   const mode = MODES.find((x) => x[0] === S.mode) || MODES[0];
   let prevQ = null;
@@ -1596,13 +1601,27 @@ function listen() {
   es.onerror = () => { if (S.stopped) es.close(); };
 }
 /* typed text and focus survive a redraw */
+/* Someone is in the middle of an answer: a redraw now would move the page under the cursor (the first real launch asked 30 questions at once and
+   the screen refreshed after every one). The redraw waits until the box is left or empty; nothing typed is ever lost. */
+function typing() {
+  const a = document.activeElement;
+  if (!a || !a.matches || !a.matches('#screen input:not([type=checkbox]):not([type=radio]):not([type=range]), #screen textarea')) return false;
+  return String(a.value || '').length > 0;
+}
+const catchUp = () => { if (S.deferred && !typing()) { S.deferred = false; load(true); } };
+document.addEventListener('focusout', () => { if (S.deferred) setTimeout(catchUp, 350); });
+setInterval(catchUp, 2000);                                                                // (a window that has lost focus sends no focusout)
 function keepInputs(render) {
+  if (typing()) { S.deferred = true; return; }
   const vals = {}; let focus = null;
+  const scrollY = window.scrollY, scrolls = [...document.querySelectorAll('#screen .scroll')].map((e) => [e.scrollTop, e.scrollLeft]);
   document.querySelectorAll('#screen input[id], #screen select[id]').forEach((el) => { if (el.value) vals[el.id] = el.value; });
   if (document.activeElement && document.activeElement.id) focus = document.activeElement.id;
   render();
   Object.entries(vals).forEach(([id, v]) => { const el = $(id); if (el && !el.value && el.type !== 'range') el.value = v; });
   if (focus && $(focus)) { const el = $(focus); el.focus(); if (el.setSelectionRange && el.value) el.setSelectionRange(el.value.length, el.value.length); }
+  if (Math.abs(window.scrollY - scrollY) > 2) window.scrollTo(0, scrollY);                    // the page stays where he was reading
+  document.querySelectorAll('#screen .scroll').forEach((e, i) => { if (scrolls[i]) { e.scrollTop = scrolls[i][0]; e.scrollLeft = scrolls[i][1]; } });
 }
 setInterval(() => { $('clock').textContent = new Date().toLocaleString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }); }, 1000);
 setInterval(() => load(false), 60000);

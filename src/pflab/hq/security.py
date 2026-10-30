@@ -135,6 +135,14 @@ def flows(rt) -> dict:
     for i in bad:
         report(rt, "flows", "medium", f"{i.name}: {i.detail}", f"health:{i.name}:{now:%Y-%m-%d}", now)
     out["health_fail"] = len(bad)
+    from pflab.agents import questions as qs                 # a failure that has cleared closes its own item (the first real launch left six open after the fixes)
+    names = {i.name for i in bad}
+    prefix = "security:flows:health:"
+    closed = 0
+    for (key,) in con.execute("SELECT subject_key FROM questions WHERE status='open' AND subject_key LIKE ?", [prefix + "%"]).fetchall():
+        if key[len(prefix):].rsplit(":", 1)[0] not in names:
+            closed += int(qs.drop(con, key, now))
+    out["health_cleared"] = closed
     open_b = con.execute("SELECT count(*) FROM recon_breaks WHERE coalesce(status, 'open') = 'open' AND created_at >= ?",
                          [now - timedelta(days=7)]).fetchone()[0]
     if open_b:
