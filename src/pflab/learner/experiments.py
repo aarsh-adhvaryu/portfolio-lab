@@ -113,9 +113,9 @@ def score_period(df: pd.DataFrame, signals: Dict[str, float], period: Tuple[str,
     sd = float(diff.std(ddof=1)) if n > 1 else 0.0
     t = float(diff.mean() / (sd / math.sqrt(n))) if n > 1 and sd > 0 else 0.0
 
-    def dd(x):
-        eq = (1 + pd.Series(x)).cumprod()
-        return float((eq / eq.cummax() - 1).min()) if len(eq) else 0.0
+    def dd(x):                                             # from the starting capital (1.0): a first-month loss is a drawdown (audit F5, 2026-10-30)
+        eq = pd.concat([pd.Series([1.0]), (1 + pd.Series(x, dtype=float)).cumprod()], ignore_index=True)
+        return float((eq / eq.cummax() - 1).min())
     return {"n_months": n, "mean_excess": float(diff.mean()) if n else 0.0, "t": round(t, 3), "cand_mean": float(pd.Series(cand).mean()) if n else 0.0,
             "base_mean": float(pd.Series(base).mean()) if n else 0.0, "cand_max_drawdown": round(dd(cand), 4), "base_max_drawdown": round(dd(base), 4),
             "exposure": round(held / n, 3) if n else 0.0}
@@ -235,8 +235,10 @@ def prompt(con, eid: int, dataset: str, history: List[dict]) -> str:
         lines.append("EARLIER CANDIDATES (measured by the evaluator, not claimed):")
         for a in history:
             r = a.get("result") or {}
+            # (audit F5) only the development result goes back to the writer: a validation result fed into the next try would make the
+            # validation period part of the search, no longer unseen. The decision says only whether it passed, not by how much.
             lines.append(f"- attempt {a['n']} [{a['status']}] {a['note'] or ''} {a['error'] or ''} "
-                         + (f"development {r.get('development')}; validation {r.get('validation')}; decision: {r.get('why')}" if r.get("development") else ""))
+                         + (f"development {r.get('development')}; decision: {'kept' if a['status'] == 'kept' else 'not kept'}" if r.get("development") else ""))
             if a.get("code"):
                 lines.append("  code: " + a["code"][:600].replace("\n", " | "))
     return "\n".join(lines)

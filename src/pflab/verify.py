@@ -714,6 +714,13 @@ def run(app: Optional[Path] = None, *, report: Optional[Path] = None, wake: bool
     return rep
 
 
+def exit_code(rep: "Report") -> int:
+    """0 only when accepted; 1 a failure; 2 pending (a step only he can do, or a required check skipped): pending is never success (audit)."""
+    if any(c.status == FAIL for c in rep.checks):
+        return 1
+    return 0 if rep.verdict.startswith("ACCEPTED") else 2
+
+
 def main(argv=None) -> int:
     import argparse
     ap = argparse.ArgumentParser(prog="pflab verify", description="local acceptance check of a candidate release (changes nothing of yours)")
@@ -725,7 +732,7 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     rep = run(Path(a.app) if a.app else None, report=Path(a.report) if a.report else None, wake=a.wake_check, model=a.live_model, offline=a.offline)
     print(rep.text())
-    return 1 if any(c.status == FAIL for c in rep.checks) else 0
+    return exit_code(rep)
 
 
 if __name__ == "__main__":

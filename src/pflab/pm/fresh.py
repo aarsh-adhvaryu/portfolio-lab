@@ -139,31 +139,92 @@ def new_profile(new_dir: Path, old_ledger: Optional[Path], profile: str) -> dict
     return carried
 
 
-def fresh(pm_dir: Path, archive_root: Path, today: date, confirm: str = "", extra: Optional[Dict[str, Path]] = None) -> dict:
-    """Do the whole fresh start. Without the confirmation word it only says what it would do."""
+def old_inputs(repo: Path, data_root: Optional[Path] = None) -> Dict[str, Path]:
+    """The app-owned places outside the profile that hold inputs of the old profile (audit F1): the folder the inbox keeps ledger documents in, the
+    watched drop folder, and the text of emails kept for the knowledge graph. Market data is not personal and stays."""
+    from pflab.hq import watcher
+    out = {"documents": Path(repo) / "new", "drop": watcher.folder(Path(repo))}
+    if data_root is not None:
+        out["mail_text"] = Path(data_root) / "kg" / "mail"
+    return out
+
+
+def _quarantine(name: str, folder: Path, today: date, shared: bool, dest_root: Path) -> Optional[str]:
+    """Move what the old profile left in `folder` aside, so the new profile cannot pick it up; nothing is deleted. An app-owned folder is renamed;
+    a folder he chose himself (PFLAB_DROP_DIR) keeps its other content and only its files move into a dated subfolder."""
+    folder = Path(folder)
+    if not folder.exists() or not any(folder.iterdir()):
+        return None
+    if shared:
+        aside = folder / f"_before_fresh_{today:%Y%m%d}"
+        aside.mkdir(exist_ok=True)
+        for p in [x for x in folder.iterdir() if x.is_file()]:
+            os.replace(p, aside / p.name)
+        return str(aside)
+    # an app-owned folder goes beside the archive (outside the app's checkout, where an extra folder would stop the next update)
+    aside = Path(dest_root) / f"inputs_{today:%Y%m%d}" / name
+    n = 1
+    while aside.exists():
+        n += 1
+        aside = Path(dest_root) / f"inputs_{today:%Y%m%d}_{n}" / name
+    aside.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(folder), str(aside))
+    folder.mkdir(parents=True, exist_ok=True)
+    return str(aside)
+
+
+def fresh(pm_dir: Path, archive_root: Path, today: date, confirm: str = "", extra: Optional[Dict[str, Path]] = None,
+          inputs: Optional[Dict[str, Path]] = None) -> dict:
+    """Do the whole fresh start. Without the confirmation word it only says what it would do.
+
+    Order (audit F1, 2026-10-30): the new profile is BUILT FIRST beside the old one, with its pending gate inside; then the old profile is archived and
+    verified; then the old inputs outside the profile are moved aside; only then are the two folders swapped. A failure before the swap leaves the old
+    profile exactly as it was (the half-built new one is removed); there is never an empty active folder without its gate."""
     pm_dir, archive_root = Path(pm_dir), Path(archive_root)
     files = reset.listing(pm_dir)
-    out = {"from": str(pm_dir), "files": len(files), "bytes": sum(b for _, b in files), "done": False}
+    inputs = dict(inputs or {})
+    out = {"from": str(pm_dir), "files": len(files), "bytes": sum(b for _, b in files), "done": False,
+           "inputs": {k: str(v) for k, v in inputs.items()}}
     if confirm != CONFIRM:
-        out["note"] = f"nothing changed: pass --confirm {CONFIRM} to archive this profile and begin a new one"
+        out["note"] = (f"nothing changed: pass --confirm {CONFIRM} to archive this profile and begin a new one; old inputs that will be moved aside: "
+                       + (", ".join(f"{k} {v}" for k, v in inputs.items()) or "none"))
         return out
     if reset.holds_store(pm_dir):
         raise RuntimeError("another process holds the store (the dashboard, the bot or a job): close it first")
-    dest = archive_root / f"profile_{today:%Y%m%d}"
-    n = 1
-    while dest.exists():
-        n += 1
-        dest = archive_root / f"profile_{today:%Y%m%d}_{n}"
-    manifest = archive(pm_dir, dest, extra)
-    v = verify_archive(dest)
-    if not v["ok"]:
-        raise RuntimeError(f"the archive did not verify ({len(v['problems'])} file(s)): the old profile was not moved")
+    staging = pm_dir.parent / f"{pm_dir.name}_new_{today:%Y%m%d}"
+    if staging.exists():
+        shutil.rmtree(staging)                                      # a half-built one from an interrupted try: never the active profile
+    try:
+        carried = new_profile(staging, pm_dir / "ledger.duckdb", f"profile_{today:%Y%m%d}")
+        from pflab import activation
+        if not activation.is_pending(staging):
+            raise RuntimeError("the new profile has no pending gate")
+        dest = archive_root / f"profile_{today:%Y%m%d}"
+        n = 1
+        while dest.exists():
+            n += 1
+            dest = archive_root / f"profile_{today:%Y%m%d}_{n}"
+        archive(pm_dir, dest, extra)
+        v = verify_archive(dest)
+        if not v["ok"]:
+            raise RuntimeError(f"the archive did not verify ({len(v['problems'])} file(s)): the old profile was not moved")
+        drop_env = bool(os.environ.get("PFLAB_DROP_DIR"))
+        moved_inputs = {k: _quarantine(k, p, today, shared=(k == "drop" and drop_env), dest_root=archive_root) for k, p in inputs.items()}
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
     aside = reset.target_for(pm_dir, today)
     os.replace(pm_dir, aside)                                       # moved, not deleted; the verified archive is the second copy
-    carried = new_profile(pm_dir, aside / "ledger.duckdb", f"profile_{today:%Y%m%d}")
-    out.update(done=True, archive=str(dest), moved_to=str(aside), carried=carried, verified=v["files"], manifest=str(dest / "manifest.json"))
-    out["note"] = (f"archived and verified ({v['files']} files); the old profile is in {aside.name}; the new profile is empty and waits for the "
-                   f"desktop icon. Restore into a separate folder with: pflab pm restore {dest} <empty folder>")
+    try:
+        os.replace(staging, pm_dir)
+    except Exception:
+        os.replace(aside, pm_dir)                                   # put the old one back: never an empty active folder
+        raise
+    out.update(done=True, archive=str(dest), moved_to=str(aside), carried=carried, verified=v["files"], manifest=str(dest / "manifest.json"),
+               inputs_moved={k: m for k, m in moved_inputs.items() if m})
+    moved_txt = "; ".join(f"{k} moved to {m}" for k, m in moved_inputs.items() if m) or "no old inputs outside the profile"
+    out["note"] = (f"archived and verified ({v['files']} files); the old profile is in {aside.name}; {moved_txt}; the new profile is empty and waits "
+                   f"for the desktop icon. Restore into a separate folder with: pflab pm restore {dest} <empty folder>")
     return out
 
 

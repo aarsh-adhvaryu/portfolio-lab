@@ -62,6 +62,11 @@ def default_install(root: Path, run: Run = run_cmd) -> None:
                   else [_python(root), "-m", "pip", "install", "-e", ".", "--quiet"], root)
     if rc:
         raise UpdateError(f"installing the requirements failed: {out[-300:]}")
+    import shutil
+    if shutil.which("docker") and (Path(root) / "sandbox" / "Dockerfile").exists():   # audit F2: the image carries the runner; it is rebuilt with the release
+        rc, out = run(["docker", "build", "-q", "-t", "pflab-sandbox:2", "-f", "sandbox/Dockerfile", "."], root)
+        if rc:                                                # not fatal: the sandbox probe then names the stale image and nothing generated runs
+            print(f"the sandbox image was not rebuilt ({out[-160:]}); calculations wait until it is")
 
 
 def default_selftest(root: Path, run: Run = run_cmd, pm_dir: Optional[Path] = None) -> Tuple[bool, str]:
@@ -106,6 +111,33 @@ def rehearse(copy: Path) -> dict:
 
 
 DERIVED = ("lots", "cash_ledger", "income", "fees")             # written by the ledger rebuild from the events; read from the events elsewhere
+
+
+def rebuild_derived(db: Path) -> dict:
+    """Rewrite the tables computed from the events (DERIVED) in a prepared store and reconcile them: the open lots must equal the positions a
+    replay of the events gives. Raises when they do not (audit F7: a rollback had kept the backup's lots beside newer events)."""
+    import duckdb
+    from pflab.ledger import events as ev
+    from pflab.ledger.book import Ledger
+    from pflab.pm import store
+    con = duckdb.connect(str(db))
+    try:
+        have = {r[0] for r in con.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='main'").fetchall()}
+        if not {"events", "lots"} <= have:
+            return {"events": 0, "positions": 0, "skipped": "no ledger tables in this store"}
+        log = ev.load(con)
+        led = Ledger.replay(log)
+        with store.transaction(con):
+            led.write_derived(con)
+        want = {k: round(float(q), 6) for k, q in led.positions().items() if abs(q) > 1e-9}
+        have = {(a, i): round(float(q), 6) for a, i, q in con.execute(
+            "SELECT account_id, isin, sum(qty) FROM lots WHERE qty <> 0 GROUP BY 1, 2").fetchall() if abs(q) > 1e-9}
+        if want != have:
+            bad = sorted(set(want.items()) ^ set(have.items()))[:5]
+            raise UpdateError(f"the rebuilt lots do not match the events: {bad}")
+        return {"events": len(log.events) if hasattr(log, "events") else None, "positions": len(want)}
+    finally:
+        con.close()
 
 
 def merge_new_rows(kept: Path, live: Path) -> dict:
@@ -319,6 +351,7 @@ def rollback(root: Path, pm_dir: Path, run: Run = run_cmd, install: Optional[Cal
                 merged = merge_new_rows(kept, cand)
                 if merged.get("errors"):
                     raise UpdateError("tables could not be reconciled: " + "; ".join(f"{t}: {e}" for t, e in merged["errors"].items()))
+                rebuild_derived(cand)                         # audit F7: lots, cash, income and fees follow the merged events, checked, before the switch
                 _row_counts(cand)                             # the prepared store opens and every table can be counted
             except Exception as e:
                 cand.unlink(missing_ok=True)

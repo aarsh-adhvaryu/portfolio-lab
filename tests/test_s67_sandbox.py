@@ -23,8 +23,8 @@ NOW = datetime(2026, 11, 4, 21, 0)
 
 class Docker:
     """A fake `docker` command line: answers info, image inspect, run (the probe script), kill and ps; records every call."""
-    def __init__(self, probe=None, info=0, image=0, run_hangs=False):
-        self.calls, self.probe, self.info, self.image, self.run_hangs = [], probe, info, image, run_hangs
+    def __init__(self, probe=None, info=0, image=0, run_hangs=False, runner_sha=None):
+        self.calls, self.probe, self.info, self.image, self.run_hangs, self.runner_sha = [], probe, info, image, run_hangs, runner_sha
         self.killed = []
 
     def __call__(self, cmd, **kw):
@@ -33,6 +33,8 @@ class Docker:
             return SimpleNamespace(returncode=self.info, stdout=b"", stderr=b"")
         if cmd[:3] == ["docker", "image", "inspect"]:
             return SimpleNamespace(returncode=self.image, stdout=b"", stderr=b"")
+        if "sha256sum" in cmd:                                                       # the runner baked into the image
+            return SimpleNamespace(returncode=0, stdout=(self.runner_sha or sb.runner_sha()).encode() + b"  /app/runner.py", stderr=b"")
         if cmd[:2] == ["docker", "kill"]:
             self.killed.append(cmd[2])
             return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
@@ -242,3 +244,10 @@ def test_the_real_container_proves_its_own_containment():
         pytest.skip("Docker is not running or the pflab-sandbox:2 image is not built")
     r = sb.probe()
     assert r["ok"], r
+
+
+def test_an_image_baked_by_an_older_release_is_named_and_proves_nothing():
+    """Audit F2: an update installed new Python but the image kept the old runner; the probe must say so, not pass."""
+    r = sb.probe(Docker(probe=GOOD, runner_sha="0" * 64))
+    assert r["ok"] is False and "different runner" in r["why"] and "docker build" in r["why"]
+    assert sb.probe(Docker(probe=GOOD))["ok"] is True

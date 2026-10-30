@@ -17,6 +17,7 @@ OpenSandbox is not adopted: it adds a server, and our jobs are single-shot; this
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -156,12 +157,35 @@ print(json.dumps(r))
 '''
 
 
+RUNNER_SRC = Path(__file__).with_name("workshop_runner.py")
+STALE_IMAGE = ("the sandbox image holds a different runner than this release (an update does not rebuild it): in the app folder run "
+               "docker build -t {image} -f sandbox/Dockerfile .")
+
+
+def runner_sha() -> str:
+    return hashlib.sha256(RUNNER_SRC.read_bytes()).hexdigest()
+
+
+def image_runner_sha(runner: Callable = subprocess.run, image: str = IMAGE) -> Optional[str]:
+    """The SHA-256 of the runner baked into the image (audit F2), or None when it could not be read."""
+    try:
+        p = runner(["docker", "run", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL", image, "sha256sum", "/app/runner.py"], capture_output=True, timeout=60)
+        out = (p.stdout.decode("utf-8", "replace") if isinstance(p.stdout, bytes) else str(p.stdout or "")).strip().split()
+        return out[0] if p.returncode == 0 and out and len(out[0]) == 64 else None
+    except Exception:
+        return None
+
+
 def probe(runner: Callable = subprocess.run, image: str = IMAGE, work: Optional[Path] = None, timeout_s: int = 60) -> dict:
     """Run the containment checks inside a container. {"ok": bool, "checks": {name: bool}, "why": str}. A missing Docker or image is
     {"ok": False} with the reason; a check that did not run is False, never assumed."""
     ok, why = _docker_ready(runner, image)
     if not ok:
         return {"ok": False, "checks": {}, "why": why}
+    have = image_runner_sha(runner, image)                  # the container must run THIS release's runner, not one baked by an older one
+    if have != runner_sha():
+        return {"ok": False, "checks": {"runner_matches_release": False},
+                "why": STALE_IMAGE.format(image=image) if have else "the runner inside the sandbox image could not be read: " + STALE_IMAGE.format(image=image)}
     d = Path(work) if work else Path(tempfile.mkdtemp(prefix="pflab_probe_"))
     name = f"pflab-probe-{uuid.uuid4().hex[:10]}"
     try:
