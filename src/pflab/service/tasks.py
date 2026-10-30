@@ -60,7 +60,13 @@ def _holdings(ctx: Ctx) -> list:
     from pflab.ledger import events as ev
     from pflab.ledger.book import Ledger
     led = Ledger.replay(ev.load(ctx.con), upto=ctx.now.date())
-    return sorted({isin for (_a, isin) in led.positions() if isin.startswith("IN")})
+    held = {isin for (_a, isin) in led.positions() if isin.startswith("IN")}
+    return sorted(held | kite_holdings(ctx.con))
+
+
+def kite_holdings(con) -> set:
+    from pflab.pm import today
+    return today.kite_held(con)
 
 
 def _filings(ctx: Ctx) -> dict:
@@ -373,6 +379,29 @@ def _us_fx(ctx: Ctx) -> dict:
 
 
 register(Job("us_fx", Daily(7, 25, weekdays_only=False), _us_fx, "US sleeve: USDINR rates into the store"))
+
+
+def _ledger_wanted(ctx: Ctx) -> Tuple[bool, str]:
+    from pflab.app import inbox as ib
+    kinds = "','".join(ib.LEDGER_KINDS)
+    n = ctx.con.execute(f"SELECT count(*) FROM inbox_items WHERE (kind IN ('{kinds}') AND status IN ('ready', 'kept', 'checks failed', 'awaiting setup')) "
+                        "OR (kind = 'fd_certificate' AND status = 'ready')").fetchone()[0]
+    return bool(n), "no new statement to build from"
+
+
+def _ledger(ctx: Ctx) -> dict:
+    """(2026-10-30) His record builds itself: the accounts are set up from the files if nobody has, every statement is read into one ledger, it
+    is written, and what does not match is named with what closes it. No press, no waiting for a complete set."""
+    from pflab.app import inbox as ib
+    from pflab.hq import desk
+    res = ib.build_now(desk.from_ctx(ctx))
+    if res.get("error"):
+        res["failed"] = {"build": res["error"]}
+    return {k: v for k, v in res.items() if k not in ("checks", "notes")} | {"differences": [c["name"] for c in res.get("checks", []) if not c["ok"]]}
+
+
+register(Job("ledger", Interval(15, weekdays_only=False), _ledger, "your record: set up from your files and rebuilt whenever a statement arrives",
+             cooldown_minutes=15, enabled_fn=_ledger_wanted))
 
 
 def _backfill(ctx: Ctx) -> dict:

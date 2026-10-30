@@ -198,8 +198,8 @@ def fail(rt, iid: int, e: Exception) -> None:
 def check(rt, iid: int, action: str) -> None:
     """Refuse at once what cannot be done (the slow work then runs on its own thread)."""
     it = _item(rt, iid)
-    if action == "apply" and (it["kind"] not in LEDGER_KINDS or it["status"] != "ready"):
-        raise ValueError("only a ledger document whose dry run passed can be added")
+    if action == "apply" and not (it["kind"] in LEDGER_KINDS or (it["kind"] == "fd_certificate" and it["status"] == "ready")):
+        raise ValueError("only a statement or a deposit certificate can be added to the ledger")
     if action == "read" and not it.get("text"):
         raise ValueError("no text read from this file")
 
@@ -270,29 +270,17 @@ def _rel(rt, path: str) -> str:
 
 
 def _dry_run(rt, it: dict) -> None:
-    from pflab.ingest import sources as srcs
-    with _LOCK:
-        sources = rt.pm_dir / "sources.toml"
-        over = srcs.with_document(srcs.load_overlay(sources), it["kind"], _rel(rt, it["path"]), it["account"])
-        merged = srcs.merge(srcs.base(sources), over)
-        missing = _missing(merged)
-        if missing:                                         # S65: a first setup fills up file by file; nothing to build yet
-            _update(rt, it["id"], status="ready", result_json=json.dumps({**it["result"], "incomplete": missing, "checks": [],
-                    "notes": ["still waiting for: " + "; ".join(missing)], "events": 0, "failed": 0}, default=str),
-                    steps_json=json.dumps(_steps(it["kind"], 3)))
-            _to_chat(rt, it, f"{it['name']} ({KIND_LABEL[it['kind']]}) is recognised. The ledger cannot be built until the rest arrive: "
-                     + "; ".join(missing) + ". Press 'Add to the ledger' to keep it.", ["read on this PC"])
-            return
-        log, led, checks, notes, _ = _builder(rt).build(merged, rt.repo)
-    failed = [c for c in checks if not c[1]]
-    res = {**it["result"], "checks": [{"name": n, "ok": ok, "detail": d} for n, ok, d in checks], "notes": notes,
-           "events": len(log), "failed": len(failed)}
-    _update(rt, it["id"], status="checks failed" if failed else "ready", result_json=json.dumps(res, default=str),
-            steps_json=json.dumps(_steps(it["kind"], 3 if not failed else 2, failed=bool(failed))))
-    _to_chat(rt, it, f"{it['name']} ({KIND_LABEL[it['kind']]}): the ledger rebuilt as a dry run with it: "
-             + (f"{len(failed)} of {len(checks)} checks failed; see Inbox and files." if failed else
-                f"all {len(checks)} checks pass. Press 'Add to the ledger' in Inbox and files to write it."),
-             ["read on this PC", "ledger dry run"])
+    """A ledger document is recognised and queued: the `ledger` job rebuilds the whole record from every file (2026-10-30: one build for all,
+    written by itself; a difference is named, never a reason to write nothing)."""
+    _update(rt, it["id"], status="ready", steps_json=json.dumps(_steps(it["kind"], 3)),
+            result_json=json.dumps({**it["result"], "note": "recognised; your record is rebuilt with it in a moment"}, default=str))
+    _to_chat(rt, it, f"{it['name']} ({KIND_LABEL[it['kind']]}) is recognised. Your record is rebuilt with it in a moment; anything it cannot "
+             "match is listed in Needs from you with what closes it.", ["read on this PC"])
+    if hasattr(rt, "wanted"):                               # the app: the job runs next on its own thread (a burst of files makes one build)
+        try:
+            rt.request_run("ledger")
+        except Exception:
+            pass
 
 
 def apply(rt, iid: int) -> dict:
@@ -302,6 +290,8 @@ def apply(rt, iid: int) -> dict:
     if it["kind"] == "fd_certificate" and it["status"] == "ready":         # S65: certified interest, his press
         _fd_cert(rt, it, write=True)
         return {"events": 0, "certificate": True}
+    if it["kind"] in LEDGER_KINDS:                          # (2026-10-30) the whole record is rebuilt with it, differences named
+        return build_now(rt)
     if it["kind"] not in LEDGER_KINDS or it["status"] != "ready":
         raise ValueError("only a ledger document whose dry run passed can be added")
     with _LOCK:
@@ -367,7 +357,7 @@ def add_entry(rt, section: str, entry: dict, write: bool = False) -> dict:
     return res
 
 
-def attach_waiting(rt) -> dict:
+def attach_waiting(rt, inline: bool = False) -> dict:
     """S65: after Setup, the files kept while there was none: each bank statement gets its account by its bank and last four digits (one
     that matches none goes to Needs from you), and every file starts its checks."""
     from pflab.ingest import sniff
@@ -385,17 +375,82 @@ def attach_waiting(rt) -> dict:
             unknown.append(name)
             continue
         _update(rt, iid, status="working", account=acc)
-        _start(rt, iid)
+        if inline:
+            _process(rt, iid)
+        else:
+            _start(rt, iid)
         started.append(name)
     rt.bump("inbox")
     return {"started": started, "unknown": unknown}
+
+
+HINTS = [("contract note", "the Console contract notes (Excel) for the days after the last one you gave"),
+         ("Console closing", "the contract notes of your latest trades (their charges), or a newer Console funds ledger"),
+         ("pay-in", "the bank statement that shows each of these Zerodha pay-ins and payouts"),
+         ("statement closing", "the bank statements without a missing month"),
+         ("holdings = CAS", "the Console tradebook for that period, or the IPO in Setup's IPO form"),
+         ("tradebook is given", "the Console tradebook"), ("funds ledger is given", "the Console funds ledger"),
+         ("(CAS) is given", "a depository statement (CAS)"), ("IPO", "Setup's IPO form"),
+         ("source in your files", "the Console funds ledger for that time, and the bank statement that paid the money in")]
+
+
+def record_differences(con, checks, n_events: int, now) -> int:
+    """Each check the built ledger does not pass is an open gap (named, with its detail) and ONE grouped request says what closes each; a check
+    that passes now closes its gap; the request is replaced when the set changes. Returns the number of open differences."""
+    import hashlib
+    from pflab.agents import questions
+    from pflab.app import readiness
+    failed = [(n, d) for n, ok, d in checks if not ok]
+    keys = {}
+    for n, d in failed:
+        k = "ledger:diff:" + re.sub(r"[^a-z0-9]+", "-", n.lower())[:60]
+        keys[k] = (n, d)
+        readiness.open_gap(con, k, "ledger", f"{n}: {str(d)[:300]}", now)
+    for g in readiness.gaps(con, "ledger"):
+        if g["key"] not in keys:
+            readiness.close_gap(con, g["key"], now)
+    qk = "ledger:diffs:" + hashlib.sha1("|".join(sorted(keys)).encode()).hexdigest()[:10]
+    for (k,) in con.execute("SELECT subject_key FROM questions WHERE status='open' AND subject_key LIKE 'ledger:diffs:%' AND subject_key <> ?", [qk]).fetchall():
+        questions.drop(con, k, now)
+    if failed:
+        lines = "; ".join(f"{n} -> {next((h for w, h in HINTS if w in n), 'see Inbox and files')}" for n, _ in failed[:8])
+        questions.ask(con, "ledger", qk, f"Your record is built ({n_events} entries) and keeps itself up to date. {len(failed)} difference(s) with your "
+                      f"files remain; each closes by itself when you drop what it names: {lines}. Nothing else is needed.", now)
+    return len(failed)
+
+
+def build_now(rt) -> dict:
+    """Set up the accounts from the files if nobody has, then build and write the whole record from every statement. Called by the `ledger` job
+    after any statement arrives, and by the screen's press. Nothing is waited for: a missing file is a named difference."""
+    from pflab.agents import questions
+    from pflab.ingest import setup_sources as su
+    con = rt.cursor()
+    sources = rt.pm_dir / "sources.toml"
+    kinds = "','".join(LEDGER_KINDS)
+    if not sources.exists():
+        if not con.execute(f"SELECT 1 FROM inbox_items WHERE kind IN ('{kinds}') AND status <> 'removed' LIMIT 1").fetchone():
+            return {"written": False, "skipped": True, "why": "no statement dropped yet"}
+        prop = su.infer(con, rt.clock().date())
+        try:
+            su.write(sources, prop["answers"])
+        except su.SetupError as e:                          # (no bank statement yet, say): said once, built as soon as it is possible
+            questions.ask(con, "setup", "setup:auto:wait", f"Your accounts cannot be set up from the files yet ({e}). Drop a bank statement, or set "
+                          "them up in Settings > Open Setup.", rt.clock())
+            return {"written": False, "skipped": True, "why": str(e)}
+        a = prop["answers"]
+        names = [a["broker"]["account"] + " (Zerodha)"] + [d["name"] for d in a.get("demats", [])] + [b["name"] for b in a.get("banks", [])]
+        questions.ask(con, "setup", "setup:auto", "I set up your accounts from the files you dropped: " + ", ".join(names) + f", from {a['start']}. "
+                      "If one is wrong or missing, change it in Settings > Open Setup; your record is rebuilt by itself.", rt.clock())
+        attach_waiting(rt, inline=True)
+    return apply_all(rt)
 
 
 def apply_all(rt) -> dict:
     """S65: every ledger document whose dry run passed or that was kept, added in ONE rebuild: written only when every check passes (his press)."""
     from pflab.ingest import sources as srcs
     con = rt.cursor()
-    items = [_item(rt, r[0]) for r in con.execute("SELECT item_id FROM inbox_items WHERE status IN ('ready', 'kept') ORDER BY item_id").fetchall()]
+    items = [_item(rt, r[0]) for r in con.execute("SELECT item_id FROM inbox_items WHERE status IN ('ready', 'kept', 'checks failed') "
+                                                  "ORDER BY item_id").fetchall()]
     items = [it for it in items if it["kind"] in LEDGER_KINDS]
     if not items:
         return {"written": False, "why": "no documents waiting"}
@@ -405,9 +460,6 @@ def apply_all(rt) -> dict:
         for it in items:
             over = srcs.with_document(over, it["kind"], _rel(rt, it["path"]), it["account"])
         merged = srcs.merge(srcs.base(sources), over)
-        missing = _missing(merged)
-        if missing:
-            return {"written": False, "waiting_for": missing}
         b = _builder(rt)
         try:
             log, led, checks, notes, src = b.build(merged, rt.repo)
@@ -417,14 +469,17 @@ def apply_all(rt) -> dict:
         failed = [c for c in checks if not c[1]]
         res = {"checks": [{"name": n, "ok": ok, "detail": d} for n, ok, d in checks], "notes": notes, "events": len(log), "failed": len(failed),
                "documents": len(items), "written": False}
-        if failed:
-            return res
         from pflab.pm.store import transaction
         with transaction(con):
             b.write(con, log, led, src)
         srcs.save_overlay(sources, over)
         for it in items:
-            _update(rt, it["id"], status="in the ledger", steps_json=json.dumps(_steps(it["kind"], 5)))
+            _update(rt, it["id"], status="in the ledger", steps_json=json.dumps(_steps(it["kind"], 5)),
+                    result_json=json.dumps({**it["result"], "checks": res["checks"], "events": len(log), "failed": len(failed)}, default=str))
+        try:
+            record_differences(con, checks, len(log), rt.clock())
+        except Exception:
+            pass
         try:                                                # the accounts are known now: the one grouped inventory question (asked once)
             from pflab.ingest import coverage
             coverage.ask_inventory(con, rt.clock())

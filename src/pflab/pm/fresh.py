@@ -26,6 +26,39 @@ from typing import Dict, List, Optional
 from pflab.pm import reset
 
 CONFIRM = "start-fresh"
+# His CHOICES, not his history (2026-10-30: the first fresh start left them behind and the new profile sat idle: no targets, no watch list,
+# no analyst, no cap). They go with him into a new profile; the data they were built on does not.
+CHOICES = ("api_budget.toml", "targets.toml", "targets_notes.md", "stock_list.toml", "theme_baskets.toml", "groups.toml")
+
+
+def carry_choices(src_pm: Path, dst_pm: Path) -> list:
+    """Copy each choice file the new profile does not have yet. Returns the names copied."""
+    done = []
+    for name in CHOICES:
+        s, d = Path(src_pm) / name, Path(dst_pm) / name
+        if s.is_file() and not d.exists():
+            d.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(s, d)
+            done.append(name)
+    return done
+
+
+def restore_missing_choices(pm_dir: Path) -> list:
+    """A profile made by an earlier fresh start that lacks his choices takes each missing one from the newest earlier profile beside it that has
+    it (`pm_old_*`, moved aside, never deleted). Runs at every start; does nothing once they are there."""
+    pm_dir = Path(pm_dir)
+    olds = sorted((p for p in pm_dir.parent.glob(pm_dir.name + "_old_*") if p.is_dir()), key=lambda p: p.stat().st_mtime, reverse=True)
+    done = []
+    for name in CHOICES:
+        if (pm_dir / name).exists():
+            continue
+        src = next((p for p in olds if (p / name).is_file()), None)
+        if src is not None:
+            shutil.copy2(src / name, pm_dir / name)
+            done.append(f"{name} from {src.name}")
+    return done
+
+
 KEEP_AUDIT = ("learn_tests",)                          # copied whole: counts and thresholds of searches, no personal text
 SPEND_COLUMNS = ("call_id", "created_at", "mode", "model", "topic", "status", "batch_id", "input_tokens", "output_tokens",
                  "cost_usd", "cost_inr", "finished_at")
@@ -135,6 +168,8 @@ def new_profile(new_dir: Path, old_ledger: Optional[Path], profile: str) -> dict
             carried["api_calls"] = int(con.execute("SELECT count(*) FROM api_calls").fetchone()[0])
         con.execute("DETACH old")
     con.close()
+    if old_ledger:
+        carried["choices"] = len(carry_choices(Path(old_ledger).parent, new_dir))
     activation.write_pending(new_dir, profile=profile)
     return carried
 

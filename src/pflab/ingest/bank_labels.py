@@ -25,7 +25,7 @@ from pflab.agents import questions
 
 AGENT = "banklabels"
 TOL = 0.005
-MIN_TOTAL, MIN_LINES, MAX_OPEN = 5_000.0, 3, 10
+MIN_TOTAL, MIN_LINES, MAX_OPEN = 20_000.0, 3, 5         # (2026-10-30) only what moves his money matters; at most 5 open
 KEY = "banklabel"
 CHOICES = {"salary": "salary", "own": "own_transfer", "family": "family_transfer", "spend": "spend", "refund": "refund",
            "other": "other"}
@@ -81,6 +81,13 @@ def auto_label(statements: Dict[str, pd.DataFrame], broker_flows: Optional[pd.Da
                     out[acc].loc[m, "category"], out[acc].loc[m, "rule_id"] = "broker_transfer", "auto_broker"
                     rep["broker"] += 1
                     break
+    # (2026-10-30) a card purchase is spending; nobody needs to be asked about Amazon or a shop. Transfers to people stay questions.
+    card = r"\b(?:POS|PURCH|ECOM|E-COM|CARD)\b"
+    rep["card_spend"] = 0
+    for acc, df in out.items():
+        m = (df["category"] == "unclassified") & (df["debit"] > 0) & df["description"].astype(str).str.upper().str.contains(card, regex=True)
+        out[acc].loc[m, "category"], out[acc].loc[m, "rule_id"] = "spend", "auto_card"
+        rep["card_spend"] += int(m.sum())
     return out, rep
 
 

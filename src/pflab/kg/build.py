@@ -32,7 +32,8 @@ def universe(con, stock_list: List[dict]) -> pd.DataFrame:
     """Held and list companies: isin, symbol, name, sector, scrip."""
     from pflab.ledger import events as ev
     from pflab.ledger.book import Ledger
-    held = {i for (_, i), q in Ledger.replay(ev.load(con)).positions().items() if q}
+    from pflab.pm import today
+    held = {i for (_, i), q in Ledger.replay(ev.load(con)).positions().items() if q} | today.kite_held(con)   # Kite until the statements are read
     rows = {s["isin"]: {"isin": s["isin"], "symbol": s["symbol"], "scrip": s.get("scrip"),
                         "aliases": list(s.get("aliases", []))} for s in stock_list}
     for i in held:

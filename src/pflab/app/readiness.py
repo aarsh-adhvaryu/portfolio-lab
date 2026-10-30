@@ -150,13 +150,15 @@ def _record(rt, now: datetime) -> dict:
     con = rt.cursor()
     n, last = con.execute("SELECT count(*), max(trade_date) FROM events").fetchone()
     if not n:
-        return _stage("record", "Your record (ledger)", TODO, "the ledger is empty", ["Drop your statements in Inbox and files (or let Gmail bring them), then open Setup."])
+        return _stage("record", "Your record (ledger)", TODO, "the ledger is empty", ["Drop your statements in Inbox and files: the accounts are set up and the record is built from them by itself."])
     todo = []
     if not (rt.pm_dir / "sources.toml").exists():
-        todo.append("Approve the accounts in Setup ('Use these accounts', then 'Add everything to the ledger').")
+        todo.append("The accounts are set up from your files at the next build (a minute after a statement arrives); change them in Setup if wrong.")
     waiting = con.execute("SELECT count(*) FROM inbox_items WHERE status IN ('awaiting setup', 'ready')").fetchone()[0]
     if waiting:
-        todo.append(f"{waiting} statement(s) are checked and wait for your press ('Add everything to the ledger').")
+        todo.append(f"{waiting} statement(s) are being built into your record (by itself, within a few minutes).")
+    for g in gaps(con, "ledger")[:4]:                      # what the built record does not yet match, each with its own detail
+        todo.append(f"Difference with your files: {g['detail'][:160]}")
     locked = con.execute("SELECT count(*) FROM questions WHERE status='open' AND subject_key LIKE 'inbox:locked:%'").fetchone()[0]
     if locked:
         todo.append(f"{locked} dropped file(s) are password-protected: save the password in Settings > Keys, then drop them again.")

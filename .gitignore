@@ -34,3 +34,6 @@ logs/
 
 # S65: the installed app's release file (written by tools/install_app.ps1; per install, never in git)
 /release.toml
+
+# his own files, never in git
+/all data/
