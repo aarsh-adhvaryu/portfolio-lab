@@ -84,9 +84,23 @@ def test_f4_two_banks_with_the_same_last_four_digits_stay_two_and_the_picture_is
 
 
 def test_f5_a_loss_in_the_first_period_is_a_drawdown():
-    df = pd.DataFrame({"date": [date(2020, 1, 31), date(2020, 2, 28), date(2020, 3, 31)], "close": [100.0, 70.0, 70.0]})
+    # executed at the session after each decision (2026-10-30): 3 Feb (100) -> 2 Mar (70) is the first month held
+    df = pd.DataFrame({"date": [date(2020, 1, 31), date(2020, 2, 3), date(2020, 2, 28), date(2020, 3, 2), date(2020, 3, 31), date(2020, 4, 1)],
+                       "close": [100.0, 100.0, 70.0, 70.0, 70.0, 70.0]})
     s = ex.score_period(df, {"2020-01-31": 1.0, "2020-02-28": 1.0}, ("2020-01-01", "2020-03-31"))
+    assert s["n_months"] == 2
     assert s["cand_max_drawdown"] == pytest.approx(-0.30, abs=1e-3) and s["base_max_drawdown"] == pytest.approx(-0.30, abs=1e-3)
+
+
+def test_a_decision_is_traded_at_the_next_session_not_its_own_close():
+    # the price jumps 30% the session after the 28 Feb decision: buying on the 28 Feb close would have caught it; no one could
+    df = pd.DataFrame({"date": [date(2020, 1, 31), date(2020, 2, 3), date(2020, 2, 28), date(2020, 3, 2), date(2020, 3, 31), date(2020, 4, 1)],
+                       "close": [100.0, 100.0, 100.0, 130.0, 130.0, 130.0]})
+    s = ex.score_period(df, {"2020-01-31": -1.0, "2020-02-28": 1.0}, ("2020-01-01", "2020-03-31"))
+    assert ex.returns_between(df, [date(2020, 1, 31), date(2020, 2, 28), date(2020, 3, 31)]) == [(date(2020, 1, 31), pytest.approx(0.30)),
+                                                                                                (date(2020, 2, 28), pytest.approx(0.0))]
+    assert s["cand_mean"] < s["base_mean"]                   # out for the jump (decided on 31 Jan, held from 3 Feb), in only after it
+    assert ex.next_day([date(2020, 1, 31)], date(2020, 1, 31)) is None
 
 
 def test_f6_an_interruption_before_the_hand_off_is_saved_loses_nothing(tmp_path, monkeypatch):

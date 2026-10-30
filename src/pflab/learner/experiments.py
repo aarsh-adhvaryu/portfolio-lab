@@ -88,10 +88,26 @@ def walk_dates(df: pd.DataFrame) -> List[date]:
     return sorted(set(month_ends(df, *tp.DEV)) | set(month_ends(df, *tp.VAL)))
 
 
+def next_day(days: List[date], d: date) -> Optional[date]:
+    """The first trading day after `d`: a decision made on d's close is executed at the next session's close, never d's own."""
+    import bisect
+    i = bisect.bisect_right(days, d)
+    return days[i] if i < len(days) else None
+
+
 def returns_between(df: pd.DataFrame, dates: List[date]) -> List[Tuple[date, float]]:
-    """(decision date, return to the next decision date) for consecutive dates in the list."""
+    """(decision date, return held from the session after it to the session after the next decision date). The signal for d sees rows up to d
+    only (the information cutoff); it is traded one session later (audit 2026-10-30: scoring from d's own close credited a price no one could get).
+    A pair whose later execution day is not in the data is left out."""
     px = dict(zip(df["date"], df["close"].astype(float)))
-    return [(a, px[b] / px[a] - 1.0) for a, b in zip(dates, dates[1:])]
+    days = sorted(px)
+    out = []
+    for a, b in zip(dates, dates[1:]):
+        ea, eb = next_day(days, a), next_day(days, b)
+        if ea is None or eb is None or ea > b:
+            continue
+        out.append((a, px[eb] / px[ea] - 1.0))
+    return out
 
 
 def score_period(df: pd.DataFrame, signals: Dict[str, float], period: Tuple[str, str]) -> dict:
@@ -424,6 +440,12 @@ def step(rt, writer: Callable[[str], str], *, sandbox=None) -> dict:
         return {"idle": "no experiment is registered"}
     try:
         return {"experiment": eid, **run(con, eid, rt.data_root, now, writer, sandbox=sandbox)}
+    except RuntimeError as e:
+        if "evaluator changed" not in str(e):
+            return {"experiment": eid, "status": "not run", "why": f"{type(e).__name__}: {str(e)[:160]}"}
+        _set(con, eid, "deferred", "the evaluator changed after it was registered (2026-10-30: trades at the next session's price): "
+             "its result would not mean what was registered; ask the question again to run it under the new rule", now)
+        return {"experiment": eid, "status": "deferred", "why": "the evaluator changed since registration"}
     except Exception as e:
         return {"experiment": eid, "status": "not run", "why": f"{type(e).__name__}: {str(e)[:160]}"}
 

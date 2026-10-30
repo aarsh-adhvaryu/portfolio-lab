@@ -78,10 +78,10 @@ def get(con, tid: int) -> Optional[dict]:
     return d
 
 
-def next_queued(con, now: Optional[datetime] = None) -> Optional[int]:
-    """The oldest task to run: queued, or a retry whose time has come."""
-    r = con.execute("SELECT min(task_id) FROM hq_tasks WHERE status='queued' OR (status='retry' AND (next_review_at IS NULL "
-                    "OR next_review_at <= ?))", [now or datetime.now()]).fetchone()
+def next_queued(con, now: Optional[datetime] = None, his_only: bool = False) -> Optional[int]:
+    """The oldest task to run: queued, or a retry whose time has come. `his_only` (paused): only a task he ordered himself."""
+    r = con.execute("SELECT min(task_id) FROM hq_tasks WHERE (status='queued' OR (status='retry' AND (next_review_at IS NULL "
+                    "OR next_review_at <= ?)))" + (" AND from_agent='investor'" if his_only else ""), [now or datetime.now()]).fetchone()
     return r[0] if r and r[0] is not None else None
 
 
@@ -158,12 +158,12 @@ def live_ids() -> set:
         return set(_LIVE)
 
 
-def run_one(rt, agents: Dict[str, Callable], deliver: Optional[Callable[[dict], None]] = None) -> Optional[dict]:
+def run_one(rt, agents: Dict[str, Callable], deliver: Optional[Callable[[dict], None]] = None, his_only: bool = False) -> Optional[dict]:
     """Take the oldest task due, run its agent, keep the result, hand on its follow-ups, deliver the answer. A failure that may
     pass becomes `retry` (bounded by MAX_ATTEMPTS); an agent that needs data returns status 'waiting' and is resumed by `wake`."""
     con = rt.cursor()
     now = rt.clock()
-    tid = next_queued(con, now)
+    tid = next_queued(con, now, his_only)
     if tid is None:
         return None
     with _LIVE_LOCK:
@@ -216,10 +216,10 @@ def _run_claimed(rt, agents: Dict[str, Callable], deliver, con, tid: int, now: d
     return t
 
 
-def run_all(rt, agents: Dict[str, Callable], deliver=None, max_n: int = 20, stop=None) -> int:
+def run_all(rt, agents: Dict[str, Callable], deliver=None, max_n: int = 20, stop=None, his_only: bool = False) -> int:
     n = 0
     while n < max_n and (stop is None or not stop.is_set()):
-        if run_one(rt, agents, deliver) is None:
+        if run_one(rt, agents, deliver, his_only) is None:
             break
         n += 1
     return n

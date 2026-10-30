@@ -6,25 +6,28 @@
 .DESCRIPTION
   1. clones the candidate into <AppFolder>\verify\candidate (a separate clone; your workshop's dirty files are never touched)
   2. builds <AppFolder>\verify\venv from the candidate's requirements.lock (a separate environment; the app's .venv is never touched)
-  3. runs `pflab verify` from there: prerequisites, sandbox containment probe, read-only Kite and Gmail reads, the candidate's migrations on a
+  3. runs `pflab verify` from there: prerequisites, sandbox containment probe, a read-only Kite read, the candidate's migrations on a
      copy, an upgrade -> write -> rollback rehearsal on copies, a force-kill and restart drill, freshness, and a before/after proof that the
      live ledger file is unchanged
   4. writes a sanitized report to <AppFolder>\verify\report.txt (and report.json)
-  It is resumable: do the steps it lists under "Next, in order" (Kite login, Gmail connect, Docker start, close the dashboard) and run it again.
-  Steps no program can do (a real laptop sleep) are listed, and `-WakeCheck` verifies them afterwards.
+  It is resumable: do the steps it lists under "Next, in order" (Kite login, Docker start, close the dashboard) and run it again.
+  Steps no program can do (a real laptop sleep, an hour's run) are listed, and `-WakeCheck` / `-HourCheck` verify them afterwards.
+  Exit code: 0 accepted, 1 a check failed, 2 evidence still pending.
 
-.PARAMETER Ref        the candidate on GitHub: a branch, tag or commit (default: the S67 candidate branch)
+.PARAMETER Ref        the candidate on GitHub: a branch, tag or commit (default: main, the released line)
 .PARAMETER Repo       your workshop checkout, only used to find the GitHub address (default D:\portfolio_lab)
 .PARAMETER AppFolder  the installed app's folder (default D:\PortfolioLabApp)
 .PARAMETER WakeCheck  after the laptop has really slept with the app open: did the app see and recover from it?
+.PARAMETER HourCheck  after an hour with the app open: up the whole hour in one process, and jobs that finished well (not skipped or failed)
 .PARAMETER LiveModel  also one small model call through the app's privacy gate and budget (costs well under a rupee)
-.PARAMETER Offline    do not contact Kite or Gmail
+.PARAMETER Offline    do not contact Kite
 #>
 param(
-  [string]$Ref = "claude/wonderful-bardeen-z07h1e",
+  [string]$Ref = "main",
   [string]$Repo = "D:\portfolio_lab",
   [string]$AppFolder = "D:\PortfolioLabApp",
   [switch]$WakeCheck,
+  [switch]$HourCheck,
   [switch]$LiveModel,
   [switch]$Offline
 )
@@ -69,6 +72,7 @@ if ((-not (Test-Path $mark)) -or ((Get-Content $mark -Raw).Trim() -ne $hash)) {
 Step "pflab verify"
 $args2 = @("-m", "pflab.cli", "verify", "--app", $AppFolder, "--report", (Join-Path $verify "report.txt"))
 if ($WakeCheck) { $args2 += "--wake-check" }
+if ($HourCheck) { $args2 += "--hour-check" }
 if ($LiveModel) { $args2 += "--live-model" }
 if ($Offline)   { $args2 += "--offline" }
 if ($LiveModel) { $env:PFLAB_CHANNEL = "stable"; $env:PFLAB_PAID = "1" }

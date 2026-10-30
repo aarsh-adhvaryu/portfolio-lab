@@ -164,6 +164,9 @@ def latest(root: Path, asof: date) -> Optional[dict]:
     if t.empty:
         return None
     r = t.sort_values("date").iloc[-1].to_dict()
+    from pflab.quant import options
+    if not options.is_current(r["date"], asof, r.get("expiry")):     # (audit 2026-10-30) an expired contract or an old session: no current data
+        return None
     return {k: (str(v)[:10] if k in ("date", "expiry") else (round(float(v), 4) if isinstance(v, float) else v)) for k, v in r.items()}
 
 

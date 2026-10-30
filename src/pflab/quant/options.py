@@ -168,13 +168,34 @@ def derive_missing(root: Path) -> int:
     return n
 
 
+CURRENT_DAYS = 7          # (audit 2026-10-30) a session older than this is history, not today's market: "no current data"
+
+
+def is_current(session, asof: date, expiry=None) -> bool:
+    """A reading may be used as today's only when its session is recent and its contract has not expired."""
+    s = pd.Timestamp(session).date()
+    if (asof - s).days > CURRENT_DAYS:
+        return False
+    return expiry is None or pd.isna(expiry) or pd.Timestamp(expiry).date() > asof
+
+
+def last_session(root: Path, asof: date) -> Optional[str]:
+    p = Path(root) / "derived" / "fo_index.parquet"
+    if not p.exists():
+        return None
+    t = pd.to_datetime(pd.read_parquet(p, columns=["date"])["date"])
+    t = t[t <= pd.Timestamp(asof)]
+    return None if t.empty else str(t.max().date())
+
+
 def iv_percentile(hist: pd.Series, today: float) -> Optional[float]:
     h = hist.dropna()
     return None if len(h) < IV_HISTORY_MIN else float((h <= today).mean() * 100)
 
 
-def summary(root: Path, asof: date) -> Optional[dict]:
-    """The latest session on or before `asof`: index facts, the IV percentile in its own last year, and participant OI."""
+def summary(root: Path, asof: date, current: bool = True) -> Optional[dict]:
+    """The latest session on or before `asof`: index facts, the IV percentile in its own last year, and participant OI. `current`: None when
+    that session is older than CURRENT_DAYS (an old chain is not today's)."""
     p = Path(root) / "derived" / "fo_index.parquet"
     if not p.exists():
         return None
@@ -184,6 +205,8 @@ def summary(root: Path, asof: date) -> Optional[dict]:
     if t.empty:
         return None
     r = t.iloc[-1].to_dict()
+    if current and not is_current(r["date"], asof):
+        return None
     out = {k: (None if pd.isna(v) else v) for k, v in r.items()}
     out["date"] = str(pd.Timestamp(out["date"]).date())
     if out.get("atm_iv") is not None:
@@ -197,7 +220,8 @@ def line(root: Path, asof: date) -> Optional[str]:
     """One line for the summaries, e.g. "Nifty IV 14 (30th percentile), PCR 1.1, futures premium 6.2% a year"."""
     s = summary(root, asof)
     if not s:
-        return None
+        last = last_session(root, asof)
+        return f"Options: no current data (the last session read is {last})" if last else None
     parts = []
     if s.get("atm_iv") is not None:
         pc = s.get("iv_percentile_1y")
@@ -218,6 +242,8 @@ def buildup_for(root: Path, asof: date, symbols) -> Dict[str, dict]:
     t = t[t["date"] <= pd.Timestamp(asof)]
     if t.empty:
         return {}
+    if not is_current(t["date"].max(), asof):
+        return {}                                              # an old build-up is not today's
     t = t[t["date"] == t["date"].max()]
     t = t[t["symbol"].isin(list(symbols))]
     return {r["symbol"]: {"class": r["class"], "price_change_pct": round(float(r["price_change"]) * 100, 2),

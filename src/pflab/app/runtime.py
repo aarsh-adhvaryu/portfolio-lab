@@ -31,7 +31,9 @@ INDICES = {"NIFTY 50": "NSE:NIFTY 50", "BANK NIFTY": "NSE:NIFTY BANK", "NIFTY 50
 SCHEDULER_EVERY_S = 60
 LIVE_EVERY_S = 60
 MC_PATHS, MC_MAX_AGE_H = 10_000, 20
-WAKE_GAP = timedelta(minutes=5)     # the scheduler loop turns every minute: a longer silence is a sleep
+WAKE_GAP = timedelta(minutes=5)     # the heart beats every 30 s and does nothing else: a longer silence is a sleep, never a long job
+HEART_EVERY_S = 30
+SETTLE_MAX = timedelta(hours=2)     # a wake whose prices are not current by then is recorded as blocked, with what failed
 BATCH_POLL_MIN = 30                 # a submitted Opus batch is collected this often while the window is open
 
 
@@ -91,7 +93,7 @@ class Runtime:
         last_run = self.cursor().execute("SELECT max(started_at) FROM job_runs").fetchone()[0]
         if last_run is not None and self.clock() - last_run > timedelta(hours=6):
             self.catching_up, self._woke_at = f"started after {int((self.clock() - last_run).total_seconds() // 3600)} h off", self.clock()
-        for name, fn in (("scheduler", self._scheduler_loop), ("live", self._live_loop), ("mc", self._mc_loop),
+        for name, fn in (("heart", self._heart_loop), ("scheduler", self._scheduler_loop), ("live", self._live_loop), ("mc", self._mc_loop),
                          ("research", self._research_loop), ("hq", self._hq_loop), ("phone", self._phone_loop)):
             t = threading.Thread(target=self._guard(fn), name=name, daemon=True)
             t.start()
@@ -118,6 +120,16 @@ class Runtime:
                     self.stop.wait(60)
         return run
 
+    def paused(self) -> bool:
+        """Pause on the World screen: no autonomous work starts (jobs, follow-ups, simulations, research, the HQ's own rounds)."""
+        return not self.settings.get("scheduler", True)
+
+    def _heart_loop(self) -> None:
+        """Its own thread (audit 2026-10-30): the scheduler's beat was late whenever a job ran long, and that was taken for a sleep."""
+        while not self.stop.is_set():
+            self.beat()
+            self.stop.wait(HEART_EVERY_S)
+
     def beat(self) -> Optional[str]:
         """Called once a loop. A gap far longer than the loop's own pause means the PC slept (or the process was frozen): recover what was
         running, look for what arrived, and say so until the data is current again. Pure: the clock is the runtime's own, so tests move it."""
@@ -125,7 +137,7 @@ class Runtime:
         from pflab.hq import service
         now = self.clock()
         last, self._beat = self._beat, now
-        wake = None
+        wake, settle = None, None
         if last is not None and now - last > WAKE_GAP:
             mins = int((now - last).total_seconds() // 60)
             self.catching_up, self._woke_at = f"woke after {mins} min away", now
@@ -136,14 +148,18 @@ class Runtime:
                 wake = {"at": now.isoformat(timespec="seconds"), "away_min": mins, "recovered": "failed"}
             self.bump("health", "command")
         elif self.catching_up and self._woke_at is not None:
-            ok, _why = system.critical_fresh(self.cursor(), now)
-            if ok or now - self._woke_at > timedelta(hours=2):
-                self.catching_up = None
+            ok, why = system.critical_fresh(self.cursor(), now)
+            if ok:                                         # settled only on current data
+                self.catching_up, settle = None, {"settled_at": now.isoformat(timespec="seconds")}
                 self.bump("health", "command")
-        self._write_beat(now, wake)
+            elif now - self._woke_at > SETTLE_MAX:         # never a silent "settled": blocked, and by what
+                self.catching_up = None
+                settle = {"blocked_at": now.isoformat(timespec="seconds"), "blocked_by": str(why)[:300]}
+                self.bump("health", "command")
+        self._write_beat(now, wake, settle)
         return self.catching_up
 
-    def _write_beat(self, now: datetime, wake: Optional[dict]) -> None:
+    def _write_beat(self, now: datetime, wake: Optional[dict], settle: Optional[dict] = None) -> None:
         """`pm/app/heartbeat.json`: the last beat and the last wake with what was recovered, for `pflab verify --wake-check` (a sleep that
         really happened on this PC is the one thing a cloud test cannot do). Best effort: a full disk never stops the loop."""
         p = self.pm_dir / "app" / "heartbeat.json"
@@ -157,18 +173,21 @@ class Runtime:
             gap = (now - datetime.fromisoformat(str(old.get("at"))[:19])).total_seconds() if same and old.get("at") else 0.0
         except ValueError:
             gap = 0.0
-        try:
-            jobs = int(self.cursor().execute("SELECT count(*) FROM job_runs WHERE finished_at >= ? AND status IN ('ok', 'skipped')",
-                                             [now - timedelta(hours=1)]).fetchone()[0])
+        try:                                               # work is a job that finished well; a skip or a failure is not (audit 2026-10-30)
+            rows = self.cursor().execute("SELECT job, status FROM job_runs WHERE finished_at >= ? AND status IN ('ok', 'failed')",
+                                         [now - timedelta(hours=1)]).fetchall()
+            jobs = sum(1 for _, s in rows if s == "ok")
+            failed = sorted({j for j, s in rows if s == "failed"})
         except Exception:
             jobs = int(old.get("jobs_last_hour") or 0) if same else 0
+            failed = list(old.get("failed_last_hour") or []) if same else []
         doc = {"at": now.isoformat(timespec="seconds"), "pid": pid, "catching_up": self.catching_up,
                "last_wake": wake or old.get("last_wake"), "wakes": int(old.get("wakes", 0)) + (1 if wake else 0),
                "since": old.get("since") if same and old.get("since") else now.isoformat(timespec="seconds"),
                "beats": int(old.get("beats", 0)) + 1 if same else 1, "max_gap_s": max(float(old.get("max_gap_s") or 0) if same else 0.0, gap),
-               "jobs_last_hour": jobs}
-        if wake is None and old.get("last_wake") and self.catching_up is None and "settled_at" not in old.get("last_wake", {}):
-            doc["last_wake"] = {**old["last_wake"], "settled_at": now.isoformat(timespec="seconds")}     # the data caught up after that wake
+               "jobs_last_hour": jobs, "failed_last_hour": failed, "paused": self.paused()}
+        if wake is None and settle and old.get("last_wake"):
+            doc["last_wake"] = {**old["last_wake"], **settle}    # the data caught up after that wake, or did not and why
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(json.dumps(doc), encoding="utf-8")
@@ -177,7 +196,6 @@ class Runtime:
 
     def _scheduler_loop(self) -> None:
         while not self.stop.is_set():
-            self.beat()
             self.run_wanted()
             if self.settings.get("scheduler", True):
                 self.scheduler_once()
@@ -356,6 +374,9 @@ class Runtime:
 
     def _mc_loop(self) -> None:
         while not self.stop.is_set():
+            if self.paused():
+                self.stop.wait(600)
+                continue
             c = self.mc_cache()
             age = (self.clock() - datetime.fromisoformat(c["at"])).total_seconds() / 3600 if c else 1e9
             if age >= MC_MAX_AGE_H:
@@ -384,6 +405,9 @@ class Runtime:
         """S54c: the watch list every 6 hours, the ready plan every 12, price watches every 10 minutes."""
         from pflab.app import research as rs
         while not self.stop.is_set():
+            if self.paused():
+                self.stop.wait(600)
+                continue
             for name, hours, fn in (("watch", 6, rs.compute_watch), ("plan", 12, rs.compute_plan)):
                 c = rs.read_cache(self, name)
                 age = (self.clock() - datetime.fromisoformat(c["at"])).total_seconds() / 3600 if c else 1e9

@@ -40,6 +40,8 @@ def unattended_jobs(pm_dir: Path) -> List[str]:
     Telegram is switched on in Settings), so one switch holds or sends messages whether the window is open or not."""
     from pflab.app import settings as st
     s = st.load(Path(pm_dir))
+    if not s.get("scheduler", True):                       # paused on the World screen: the tick starts nothing either
+        return []
     return [j for j in st.jobs_for(s.get("preset", "full"), jobs.REGISTRY) if j != "outbox" or s.get("telegram_send")]
 
 

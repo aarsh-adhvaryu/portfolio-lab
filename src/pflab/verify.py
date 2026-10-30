@@ -591,6 +591,9 @@ def wake_check(ctx: Ctx, rep: Report) -> None:
     if w.get("recovered") == "failed":
         rep.add(WAKE, FAIL, f"a wake at {w.get('at')} was seen but recovery failed")
         return
+    if w.get("blocked_at"):                                        # the data never caught up: that wake is not a pass
+        rep.add(WAKE, FAIL, f"a wake at {w.get('at')} was seen, but the data was still not current by {w.get('blocked_at')}: {w.get('blocked_by')}")
+        return
     settled = bool(w.get("settled_at")) and d.get("catching_up") is None
     rep.add(WAKE, PASS if settled else NEEDS,
             f"wake seen at {w.get('at')} after {w.get('away_min')} min; recovered {w.get('recovered')}; " + ("data caught up" if settled else "still catching up"),
@@ -613,16 +616,21 @@ def hour_check(ctx: Ctx, rep: Report) -> None:
         rep.add(HOUR, NEEDS, "the app is not running now: the hour must be measured while it runs", "start Portfolio Lab and leave it an hour, then run this again")
         return
     up = (at - since).total_seconds() if since else 0
-    gap, jobs = float(d.get("max_gap_s") or 0), int(d.get("jobs_last_hour") or 0)
+    gap, jobs, failed = float(d.get("max_gap_s") or 0), int(d.get("jobs_last_hour") or 0), list(d.get("failed_last_hour") or [])
     if up < HOUR_S:
         rep.add(HOUR, NEEDS, f"running {int(up // 60)} min so far", f"leave it running; run `pflab verify --hour-check` after {int((HOUR_S - up) // 60) + 1} more minutes")
     elif gap > STALL_S:
         rep.add(HOUR, FAIL, f"up {int(up // 60)} min, but it stalled for {int(gap // 60)} min at one point (a sleep, a freeze or a hang)",
                 "keep the laptop awake and run the hour again (the app must be restarted for a new count)")
+    elif d.get("paused"):
+        rep.add(HOUR, NEEDS, f"up {int(up // 60)} min, but paused on the World screen: a paused hour is not a working hour", "press Resume and run the hour again")
     elif jobs < 1:
-        rep.add(HOUR, FAIL, f"up {int(up // 60)} min but no job finished in the last hour: it was alive, not working")
+        rep.add(HOUR, FAIL, f"up {int(up // 60)} min but no job finished well in the last hour: it was alive, not working"
+                + (f" (failed: {', '.join(failed)})" if failed else ""))
+    elif failed:
+        rep.add(HOUR, FAIL, f"up {int(up // 60)} min, {jobs} job run(s) finished well, but these failed in the last hour: {', '.join(failed)}")
     else:
-        rep.add(HOUR, PASS, f"up {int(up // 60)} min in one process, longest pause {int(gap)} s, {jobs} job run(s) finished in the last hour")
+        rep.add(HOUR, PASS, f"uptime: {int(up // 60)} min in one process, longest pause {int(gap)} s; work: {jobs} job run(s) finished well in the last hour, none failed")
 
 
 EVIDENCE = "acceptance.json"

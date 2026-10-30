@@ -106,6 +106,30 @@ def cycle(rt, collect: bool = True, get=None) -> dict:
     why = record.due(con, now)
     if why:
         out["record"] = record.run(con, now, proposal_draft(rt) if paid else None, why)
+    return health(out)
+
+
+def health(out: dict) -> dict:
+    """(audit 2026-10-30) The run says what really happened: a step that did not run, a test that crashed, or an experiment held by a missing
+    sandbox makes the job FAILED (jobs.py); an experiment waiting for data or history is `partial`, named, not a success in silence."""
+    failed, partial = {}, []
+    for k in ("seeded", "experiment", "forward", "hedge"):
+        v = out.get(k)
+        if isinstance(v, str) and v.startswith("not run"):
+            failed[k] = v
+    for cid, v in (out.get("tested") or {}).items():
+        if isinstance(v, str) and v.startswith("not run"):
+            failed[f"test {cid}"] = v
+    ex = out.get("experiment")
+    if isinstance(ex, dict):
+        if ex.get("status") == "not run" or (ex.get("status") == "waiting" and "sandbox" in str(ex.get("why", "")).lower()):
+            failed["experiment"] = f"experiment {ex.get('experiment')}: {ex.get('status')}: {str(ex.get('why'))[:200]}"
+        elif ex.get("status") == "waiting":
+            partial.append(f"experiment {ex.get('experiment')} waits: {str(ex.get('why'))[:200]}")
+    if partial:
+        out["partial"] = "; ".join(partial)
+    if failed:
+        out["failed"] = failed
     return out
 
 
@@ -115,7 +139,11 @@ def job(ctx) -> dict:
     if rt.settings.get("preset", "full") == "off":
         return {"skipped": True, "why": "preset off"}
     out = cycle(rt)
-    return {k: (v if isinstance(v, (int, float, str)) else str(v)[:300]) for k, v in out.items()}
+    failed = out.pop("failed", None)
+    res = {k: (v if isinstance(v, (int, float, str)) else str(v)[:300]) for k, v in out.items()}
+    if failed:
+        res["failed"] = failed                                   # the job fails with the steps that failed (service/jobs.py)
+    return res
 
 
 def status(con, limit: int = 8) -> str:
