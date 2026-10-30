@@ -1166,7 +1166,8 @@ function itemCard(it, privacy) {
   let body = '';
   if (r.error) body += `<span class="small down">${esc(r.error)}</span>`;
   if (r.note && !(r.checks || []).length) body += `<span class="small soft">${esc(r.note)}</span>`;
-  if ((r.checks || []).length) body += `<details ${r.failed ? 'open' : ''}><summary class="small">${it.status === 'in the ledger' ? '<span class="up">in your record</span> · ' : ''}${r.failed ? `<span class="warn">${r.failed} difference(s) with your files</span>` : `<span class="up">all ${r.checks.length} checks pass</span>`}${r.events !== undefined ? ` · ${r.events} entries` : ''}</summary>
+  if (it.status === 'in the ledger') body += `<span class="small"><span class="up">in your record</span>${r.events !== undefined ? ` · ${r.events} entries` : ''}${r.failed ? ` · <span class="warn">${r.failed} difference(s) with your files: see Needs from you</span>` : ''}</span>`;
+  else if ((r.checks || []).length) body += `<details ${r.failed ? 'open' : ''}><summary class="small">${it.status === 'in the ledger' ? '<span class="up">in your record</span> · ' : ''}${r.failed ? `<span class="warn">${r.failed} difference(s) with your files</span>` : `<span class="up">all ${r.checks.length} checks pass</span>`}${r.events !== undefined ? ` · ${r.events} entries` : ''}</summary>
     <div class="small" style="display:flex;flex-direction:column;gap:3px;margin-top:6px">${r.checks.map((c) => `<span><span class="${c.ok ? 'up' : 'down'}">${c.ok ? 'PASS' : 'FAIL'}</span> ${esc(c.name)}${c.ok || privacy ? '' : ` <span class="muted">${esc(detailText(c.detail).slice(0, 300))}</span>`}</span>`).join('')}
     ${(r.notes || []).length ? `<span class="muted">${r.notes.length} note(s)${privacy ? '' : ': ' + esc(r.notes.slice(0, 4).join(' · '))}</span>` : ''}</div></details>`;
   if (it.text) body += `<details><summary class="small">text read on this PC (${it.text.split('\n').length} lines)</summary><div class="small soft" style="white-space:pre-wrap;margin-top:6px;max-height:220px;overflow:auto">${esc(it.text)}</div></details>`;
@@ -1232,9 +1233,9 @@ function renderInbox(d) {
   drop.ondragleave = () => { drop.style.borderColor = ''; };
   drop.ondrop = (e) => { e.preventDefault(); drop.style.borderColor = ''; uploadAll([...e.dataTransfer.files], opts()); };
   document.querySelectorAll('[data-iact]').forEach((b) => { b.onclick = async () => {
-    if (b.dataset.iact === 'apply' && !confirm('Rebuild the ledger with this document and write it? Every check must pass again; a failure changes nothing.')) return;
+    if (b.dataset.iact === 'apply' && !confirm('Rebuild your record with this document now? (It also happens by itself within minutes.) What does not match is named in Needs from you.')) return;
     b.disabled = true;
-    try { const r = await post(`/api/inbox/${b.dataset.iid}/${b.dataset.iact}`); if (b.dataset.iact === 'research') { S.chat = r.chat_id; location.hash = '#/ai'; return; } }
+    try { const r = await post(`/api/inbox/${b.dataset.iid}/${b.dataset.iact}`); if (b.dataset.iact === 'research') { if (r.skipped) { alert(r.why); return; } S.chat = r.chat_id; location.hash = '#/ai'; return; } }
     catch (e) { S.inboxMsg = e.message; }
     load(true); }; });
   document.querySelectorAll('[data-idel]').forEach((b) => { b.onclick = async () => { if (!confirm('Remove this file from the inbox and delete it?')) return; try { await api(`/api/inbox/${b.dataset.idel}`, { method: 'DELETE' }); } catch (e) { S.inboxMsg = e.message; } load(true); }; });
