@@ -1,9 +1,9 @@
 """The documents the ledger is rebuilt from (S54d): The investor's commented `sources.toml`, plus `sources.app.toml` beside it
 for the documents added through the dashboard's inbox. His file is never rewritten; the app writes only its own.
 
-Overlay rules: list keys (zerodha.tradebooks, zerodha.contract_notes_xlsx, cas.files) are extended (no repeats);
-zerodha.funds_ledger is replaced (Console's ledger covers the whole period); a bank statement replaces that account's
-file (a statement downloaded from the start covers the whole period).
+Overlay rules: list keys (zerodha.tradebooks, zerodha.contract_notes_xlsx, cas.files) are extended (no repeats); a second Console funds
+ledger is added (zerodha.funds_ledgers) and a second bank statement of the same account is added (bank.files): the build joins them and keeps a line
+that sits in two files once, so periods may differ or overlap (2026-10-30; before, the last file silently replaced the first).
 """
 from __future__ import annotations
 
@@ -32,7 +32,16 @@ def merge(base: dict, over: dict) -> dict:
             out[sec][key] = cur + [p for p in add if p not in cur]
     fl = (over.get("zerodha") or {}).get("funds_ledger")
     if fl:
-        out.setdefault("zerodha", {})["funds_ledger"] = fl
+        cur = (out.get("zerodha") or {}).get("funds_ledger")
+        if cur and cur != fl:                                # a second Console ledger (another year) is added, not swapped for the first
+            z = out.setdefault("zerodha", {})
+            z["funds_ledgers"] = list(z.get("funds_ledgers") or []) + [p for p in [fl] if p not in (z.get("funds_ledgers") or [])]
+        else:
+            out.setdefault("zerodha", {})["funds_ledger"] = fl
+    fls = [p for p in (over.get("zerodha") or {}).get("funds_ledgers") or []]
+    if fls:                                                  # several Console ledgers (other years) all count
+        z = out.setdefault("zerodha", {})
+        z["funds_ledgers"] = list(z.get("funds_ledgers") or []) + [p for p in fls if p not in (z.get("funds_ledgers") or [])]
     ipos = list(out.get("ipo") or [])                       # S65: an IPO entered on the dashboard replaces one of the same id
     for i in over.get("ipo") or []:
         ipos = [x for x in ipos if x.get("ipo_id") != i["ipo_id"]] + [dict(i)]
@@ -48,11 +57,19 @@ def merge(base: dict, over: dict) -> dict:
         hit = next((i for i, x in enumerate(banks) if x.get("account") == b["account"]), None)
         if hit is None:
             banks.append(dict(b))
-        else:
-            banks[hit] = {**banks[hit], **b}
+        else:                                                # one account, several statements: all are kept (periods can differ or overlap)
+            files = _files_of(banks[hit])
+            files += [f for f in _files_of(b) if f not in files]
+            banks[hit] = {**banks[hit], **b, **({"file": files[0], "files": files} if files else {})}
     if banks:
         out["bank"] = banks
     return out
+
+
+def _files_of(b: dict) -> list:
+    """The statement files of one [[bank]] entry: `file` (the first) and `files` (all of them)."""
+    out = [b["file"]] if b.get("file") else []
+    return out + [f for f in (b.get("files") or []) if f not in out]
 
 
 def base(sources: Path) -> dict:
@@ -73,12 +90,25 @@ def with_document(over: dict, kind: str, path: str, account: Optional[str] = Non
         if path not in lst:
             lst.append(path)
     elif kind == "funds_ledger":
-        o.setdefault("zerodha", {})["funds_ledger"] = path
+        z = o.setdefault("zerodha", {})
+        have = ([z["funds_ledger"]] if z.get("funds_ledger") else []) + list(z.get("funds_ledgers") or [])
+        if not have:
+            z["funds_ledger"] = path
+        elif path not in have:
+            z["funds_ledgers"] = list(z.get("funds_ledgers") or []) + [path]
     elif kind == "bank":
         if not account:
             raise ValueError("a bank statement needs its account")
-        banks = [b for b in o.get("bank", []) if b.get("account") != account]
-        o["bank"] = banks + [{"account": account, "file": path}]
+        banks = list(o.get("bank", []))
+        hit = next((b for b in banks if b.get("account") == account), None)
+        if hit is None:
+            banks.append({"account": account, "file": path})
+        else:                                                # another statement of the same account is added, never swapped for the first
+            files = _files_of(hit)
+            if path not in files:
+                files.append(path)
+            hit.update(file=files[0], files=files)
+        o["bank"] = banks
     else:
         raise ValueError(f"not a ledger document: {kind}")
     return o
@@ -99,12 +129,15 @@ def dumps(over: dict) -> str:
                 lines.append(f"{key} = [" + ", ".join(_q(p) for p in z[key]) + "]")
         if z.get("funds_ledger"):
             lines.append(f"funds_ledger = {_q(z['funds_ledger'])}")
+        if z.get("funds_ledgers"):
+            lines.append("funds_ledgers = [" + ", ".join(_q(p) for p in z["funds_ledgers"]) + "]")
         lines.append("")
     c = over.get("cas") or {}
     if c.get("files"):
         lines += ["[cas]", "files = [" + ", ".join(_q(p) for p in c["files"]) + "]", ""]
     for b in over.get("bank") or []:
-        lines += ["[[bank]]", f"account = {_q(b['account'])}", f"file = {_q(b['file'])}", ""]
+        fl = _files_of(b)
+        lines += ["[[bank]]", f"account = {_q(b['account'])}", f"file = {_q(fl[0])}"] + (["files = [" + ", ".join(_q(p) for p in fl) + "]"] if len(fl) > 1 else []) + [""]
     for i in over.get("ipo") or []:
         lines += ["[[ipo]]"] + [f"{k} = {_v(i[k])}" for k in IPO_KEYS if i.get(k) not in (None, "")]
         lines += ["[ipo.bank_line]", f"date = {_v(i['bank_line']['date'])}", f"amount = {_v(i['bank_line']['amount'])}", ""]

@@ -60,7 +60,7 @@ def fake_builder(checks=(("all good", True, ""),), fail_write=False):
     return SimpleNamespace(build=build, write=write, seen=seen)
 
 
-def test_overlay_extends_lists_replaces_the_funds_ledger_and_a_banks_file(tmp_path):
+def test_overlay_extends_lists_and_adds_a_second_funds_ledger_and_a_second_bank_statement(tmp_path):
     base = tomllib.loads(SOURCES)
     over = srcs.with_document({}, "tradebook", "new/tradebook-B.csv")
     over = srcs.with_document(over, "tradebook", "new/tradebook-B.csv")              # no repeats
@@ -69,8 +69,8 @@ def test_overlay_extends_lists_replaces_the_funds_ledger_and_a_banks_file(tmp_pa
     over = srcs.with_document(over, "cas", "new/cas-2.pdf")
     m = srcs.merge(base, over)
     assert m["zerodha"]["tradebooks"] == ["new/tradebook-A.csv", "new/tradebook-B.csv"]
-    assert m["zerodha"]["funds_ledger"] == "new/ledger-B.xlsx" and m["zerodha"]["account"] == "zer"
-    assert m["bank"] == [{"account": "bank1", "file": "new/bank1-new.xls", "password_env": "BANK1_PW"}]
+    assert m["zerodha"]["funds_ledger"] != "new/ledger-B.xlsx" and m["zerodha"]["funds_ledgers"] == ["new/ledger-B.xlsx"] and m["zerodha"]["account"] == "zer"   # added, not swapped
+    assert m["bank"] == [{"account": "bank1", "file": "new/bank1-old.xls", "files": ["new/bank1-old.xls", "new/bank1-new.xls"], "password_env": "BANK1_PW"}]
     assert m["cas"]["files"] == ["new/cas-1.pdf", "new/cas-2.pdf"]
     assert base["zerodha"]["tradebooks"] == ["new/tradebook-A.csv"]                  # the base is not touched
     p = tmp_path / "sources.toml"
@@ -148,7 +148,7 @@ def test_a_bank_statement_needs_its_account(rt, monkeypatch):
     with pytest.raises(ValueError):
         ib.receive(rt, "statement.xls", b"z", hint="bank")
     ib.receive(rt, "statement.xls", b"z", hint="bank", account="bank1")
-    assert b.seen["src"]["bank"][0]["file"] == "new/statement.xls"
+    assert "new/statement.xls" in b.seen["src"]["bank"][0]["files"]
 
 
 def test_a_screenshot_is_read_summarised_and_its_image_deleted_later(rt, monkeypatch):
