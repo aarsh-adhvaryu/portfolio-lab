@@ -21,7 +21,6 @@ from typing import Dict, List, Optional
 SENSES = [("markets", "Market data", ["collect", "prices", "nav", "global", "backfill"], "prices, NAVs, world markets"),
           ("filings", "Filings and news", ["filings", "kg"], "company filings, news, the graph's intake"),
           ("broker", "Kite", ["tradecheck", "idle_cash"], "holdings, funds, trades"),
-          ("mail", "Mail", ["mail"], "statements and money emails"),
           ("us", "US sleeve", ["us_fx"], "USDINR rates")]
 ROUTINES = [("thinking", "Thinking rounds", ["hq", "conductor", "research", "analyst", "forecast", "comove", "scans", "twin", "companion", "learner"],
              "the brain, research, forecasts, the learner"),
@@ -267,11 +266,8 @@ def build(rt, now: Optional[datetime] = None) -> dict:
     _sec(out, errors, "bring", lambda: onboarding.bring_list(rt.cursor()), [])               # what he can bring, with what is already held
 
     def group_nodes(spec, zone):
-        from pflab.ingest import gmail
         res = []
         for gid, label, names, sub in spec:
-            if gid == "mail" and not gmail.enabled():                    # email is off: there is no mailbox to show
-                continue
             mine = [j for j in jb if j["job"] in names]
             if not mine:
                 continue

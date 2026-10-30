@@ -44,7 +44,7 @@ def test_a_fresh_profile_shows_every_agent_and_claims_nothing(rt):
     assert names == {a["name"] for a in roster.listing()}                                      # every agent has a place in the world
     assert w["counts"]["working"] == 0 and w["counts"]["down"] == 0 and w["counts"]["done_today"] == 0
     assert w["feed"] == [] and w["looking_into"] == {"investigations": [], "experiments": []}
-    assert {n["id"] for n in w["senses"]} == {"markets", "filings", "broker", "mail", "us"}
+    assert {n["id"] for n in w["senses"]} == {"markets", "filings", "broker", "us"}
     assert all(j["group"] != "other" for j in w["jobs"])                                       # every routine belongs to a node
     assert w["pulse"]["tone"] in ("late", "waiting", "ok") and "failed" not in w["pulse"]["verdict"]
 
@@ -54,14 +54,14 @@ def test_states_come_from_what_actually_happened(rt):
     _run(con, 1, "collect", "ok", 600)
     _run(con, 2, "prices", "ok", 590)
     _run(con, 3, "tradecheck", "failed", 12, "TokenException: no login")
-    _run(con, 4, "mail", "running", 1)
+    _run(con, 4, "us_fx", "running", 1)
     _task(con, 1, "research", "running", "Read AAA results")
     _task(con, 2, "calc", "done")
     _task(con, 3, "portfolio", "failed", "Refresh from Kite")
     _task(con, 4, "quant", "queued")
     w = world.build(rt, NOW)
     by = {n["id"]: n for n in w["senses"]}
-    assert by["mail"]["state"] == "working" and by["broker"]["state"] == "down"
+    assert by["us"]["state"] == "working" and by["broker"]["state"] == "down"
     assert by["markets"]["state"] in ("ok", "late") and by["markets"]["done_today"] >= 2
     ag = {a["id"]: a for a in w["agents"]}
     assert ag["research"]["state"] == "working" and ag["research"]["doing"] == "Read AAA results"
@@ -120,13 +120,13 @@ def test_a_run_that_skipped_because_it_needs_him_is_waiting_not_done(rt):
     """Found on the first real launch: Mail said 'done' while Gmail was not connected. A skip that waits on him or on data shows as waiting."""
     con = rt.cursor()
     t0 = NOW - timedelta(minutes=5)
-    con.execute("INSERT INTO job_runs (run_id, job, slot, started_at, finished_at, status, detail) VALUES (1,'mail',?,?,?,'skipped',?)",
-                [t0, t0, t0, '{"skipped": "Gmail not connected", "waiting": true, "why": "Gmail is not connected: wait for Connect Gmail"}'])
+    con.execute("INSERT INTO job_runs (run_id, job, slot, started_at, finished_at, status, detail) VALUES (1,'tradecheck',?,?,?,'skipped',?)",
+                [t0, t0, t0, '{"skipped": true, "waiting": true, "why": "no Zerodha account is set up yet: drop your statements in Inbox and files"}'])
     con.execute("INSERT INTO job_runs (run_id, job, slot, started_at, finished_at, status, detail) VALUES (2,'comove',?,?,?,'skipped',?)",
                 [t0, t0, t0, '{"skipped": true, "why": "the table is under 6 days old"}'])
     w = world.build(rt, NOW)
-    mail = next(j for j in w["jobs"] if j["job"] == "mail")
-    assert mail["state"] == "waiting" and mail["done_today"] is False and "Connect Gmail" in mail["why"]
+    tc = next(j for j in w["jobs"] if j["job"] == "tradecheck")
+    assert tc["state"] == "waiting" and tc["done_today"] is False and "Inbox and files" in tc["why"]
     comove = next(j for j in w["jobs"] if j["job"] == "comove")
     assert comove["state"] == "ok"                                                       # a harmless skip is still a finished round
 
@@ -135,10 +135,7 @@ def test_the_world_lists_what_to_bring_and_hides_the_mail_node_when_email_is_off
     w = world.build(rt, NOW)
     assert {b["id"] for b in w["bring"]} >= {"tradebook", "funds", "cas", "bank", "fd", "screens", "kite", "answers"}
     assert all(b["state"] in ("have", "missing") and b["what"] and b["where"] for b in w["bring"])
-    assert "mail" in {n["id"] for n in w["senses"]}                                          # (the suite switches email on for its own tests)
-    monkeypatch.delenv("PFLAB_MAIL", raising=False)
-    w2 = world.build(rt, NOW)
-    assert "mail" not in {n["id"] for n in w2["senses"]} and w2["errors"] == {}
+    assert "mail" not in {n["id"] for n in w["senses"]} and w["errors"] == {}                # email is gone
 
 
 def test_agent_hq_is_part_of_the_world_not_a_second_screen():

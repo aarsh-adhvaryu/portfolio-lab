@@ -734,14 +734,6 @@ def system_status(ctx: Ctx, a: dict) -> dict:
             "a recommendation prepared earlier is not current while `recommendations.current` is false"}
 
 
-def mail_facts(ctx: Ctx, a: dict) -> dict:
-    """What his money emails said (local model, guarded) and how each fact checked against Kite and the record."""
-    from pflab.ingest import mail_read
-    s = mail_read.summary(ctx.con, 15)
-    return {**s, "source": "ingest/mail_read.py: facts the local model read from his emails (a number or date kept only when the email states it), "
-            "checked by code: matched = in his record or Kite; pending = should still arrive; new = missing after the wait; conflict = differs"}
-
-
 def scans_tool(ctx: Ctx, a: dict) -> dict:
     """The saved scans with their tested label and the hits of their last run."""
     from pflab.quant import scan
@@ -1111,11 +1103,9 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
     Tool("propose_pot_idea", "journal", "Put a missed winner or a new listing into the opportunity pot: the reason in words; "
          "buy price, exit, stop and amount are computed by code. Needs the pot's limit applied by the investor.",
          {"symbol": SYMBOL, "reason": _s("why it belongs in the pot", 600)}, ("symbol", "reason"), propose_pot_idea),
-    Tool("system_status", "read", "Whether the system itself is working and in sync: connectors (Kite, Gmail, Telegram, the local model, the "
+    Tool("system_status", "read", "Whether the system itself is working and in sync: connectors (Kite, Telegram, the local model, the "
          "Claude API spend against his cap, the sandbox), how fresh each data source is, what is running, what failed, what needs him.",
          {}, (), system_status),
-    Tool("mail_facts", "read", "What his money emails said (trades, deposits, dividends, IPO allotments, bank alerts, corporate actions, "
-         "research) and whether his record or Kite has each: matched, pending, new, conflict.", {}, (), mail_facts),
     Tool("cases", "read", "Your investigations: each open question with its evidence (for / against / missing / stale), what it waits for, its decision "
          "and next review. Look here first in a case pass.", {"scope": _s("which", enum=["active", "all"])}, (), cases_tool),
     Tool("open_case", "journal", "Open an investigation for an unresolved question or opportunity you found (the same question is one case). State the "

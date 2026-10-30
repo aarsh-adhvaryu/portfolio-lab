@@ -3,7 +3,7 @@
 A stage is read from the stores each time it is asked, so it resumes by itself after a missing step is done (a password saved, Gmail
 connected, Docker started) and never claims more than the data shows:
 
-    record        the ledger has events, his accounts are approved, no statement waits for his press, Gmail's locked files are open
+    record        the ledger has events, his accounts are approved, no statement waits for his press, no dropped file is still locked
     reconciled    Kite's holdings equal the ledger's (the latest check's breaks), with the date of that check
     mail          read-only Gmail: connected and its last run succeeded (statements and money emails flow)
     history       market history from HISTORY_START to the last session: sessions held against sessions expected (holes counted)
@@ -157,9 +157,9 @@ def _record(rt, now: datetime) -> dict:
     waiting = con.execute("SELECT count(*) FROM inbox_items WHERE status IN ('awaiting setup', 'ready')").fetchone()[0]
     if waiting:
         todo.append(f"{waiting} statement(s) are checked and wait for your press ('Add everything to the ledger').")
-    locked = con.execute("SELECT count(*) FROM questions WHERE status='open' AND subject_key LIKE 'mail:locked:%'").fetchone()[0]
+    locked = con.execute("SELECT count(*) FROM questions WHERE status='open' AND subject_key LIKE 'inbox:locked:%'").fetchone()[0]
     if locked:
-        todo.append(f"{locked} sender(s) sent password-protected files: save the password in Settings > Keys.")
+        todo.append(f"{locked} dropped file(s) are password-protected: save the password in Settings > Keys, then drop them again.")
     state = DONE if not todo else PARTIAL
     return _stage("record", "Your record (ledger)", state, f"{n:,} events, the latest dated {last}", todo)
 
@@ -186,20 +186,6 @@ def _reconciled(rt, now: datetime) -> dict:
                   f"last successful check {str(last[0])[:16] if last else 'never'}; {breaks} break(s), {pend} trade(s) pending", todo)
 
 
-def _mail(rt, now: datetime) -> dict:
-    from pflab.app import system
-    from pflab.ingest import gmail
-    con = rt.cursor()
-    if not gmail.connected():
-        return _stage("mail", "Gmail (read-only)", TODO, "not connected", ["Do the one-time Google step (README step 5), then Settings > Connect Gmail."])
-    at = system._attempts(con, "mail")
-    if at["failed_at"]:
-        return _stage("mail", "Gmail (read-only)", PARTIAL, f"the latest run failed ({at['why']})", ["It tries again by itself; the reason is above."])
-    if at["ok"] is None:
-        return _stage("mail", "Gmail (read-only)", PARTIAL, "connected, no successful run yet", [])
-    gp = gaps(con, "mail")
-    return _stage("mail", "Gmail (read-only)", DONE if not gp else PARTIAL, f"last successful run {str(at['ok'])[:16]}; {len(gp)} message gap(s)",
-                  [g["detail"] for g in gp[:3]])
 
 
 def _holes_cached(rt, now: datetime) -> dict:
@@ -235,8 +221,7 @@ def _tools(rt, now: datetime) -> dict:
 
 def assess(rt, now: Optional[datetime] = None) -> dict:
     now = now or rt.clock()
-    from pflab.ingest import gmail
-    stages = [_record(rt, now), _reconciled(rt, now)] + ([_mail(rt, now)] if gmail.enabled() else []) + [_history(rt, now), _tools(rt, now)]
+    stages = [_record(rt, now), _reconciled(rt, now), _history(rt, now), _tools(rt, now)]
     ready = all(s["state"] == DONE for s in stages)
     done = sum(1 for s in stages if s["state"] == DONE) + 0.5 * sum(1 for s in stages if s["state"] == PARTIAL)
     return {"ready": ready, "percent": round(100 * done / len(stages)), "stages": stages,

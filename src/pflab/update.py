@@ -358,14 +358,32 @@ def rollback(root: Path, pm_dir: Path, run: Run = run_cmd, install: Optional[Cal
                 raise UpdateError(f"the rollback was not done: the earlier release's store could not be prepared safely "
                                   f"({type(e).__name__}: {str(e)[:200]}). Nothing was changed; the current store is kept whole "
                                   f"(a copy is also in {kept.name}).")
+    cur = str(app.get("tag", ""))
+    inst = install or (lambda p: default_install(p, run))
     _git(run, root, "checkout", "--detach", prev)
-    (install or (lambda p: default_install(p, run)))(root)
+    inst(root)
+    rebuilt_by = None
+    if cand is not None and merged is not None:
+        # audit F7: the tables computed from the events are rebuilt by the EARLIER release's own code (the one that will read them), in its own
+        # Python, and reconciled there. An earlier release without this command keeps the rebuild already made and checked above, and says so.
+        rc, out = run([_python(root), "-m", "pflab.update", "rebuild", str(cand)], root)
+        if rc == 0:
+            rebuilt_by = prev
+        elif "usage" in out.lower():
+            rebuilt_by = f"the newer code ({prev} has no rebuild command); checked against the events"
+        else:
+            try:                                            # nothing may change: back to the release that was running, the store untouched
+                _git(run, root, "checkout", "--detach", cur)
+                inst(root)
+            finally:
+                cand.unlink(missing_ok=True)
+            raise UpdateError(f"the rollback was not done: {prev} could not rebuild the store's figures ({out[-200:]}). "
+                              f"Nothing was changed; {cur} and its store are as they were.")
     if cand is not None:
         import os
         os.replace(cand, live)
-    cur = str(app.get("tag", ""))
     _set_release(root, prev, "", "")
-    note = f"back on {prev}"
+    note = f"back on {prev}" + (f"; holdings, cash and income rebuilt by {rebuilt_by} and checked against the events" if rebuilt_by else "")
     if kept:
         note += f"; the store is the backup from before the update"
         if merged and not merged.get("error"):
@@ -384,6 +402,10 @@ def rollback(root: Path, pm_dir: Path, run: Run = run_cmd, install: Optional[Cal
 def main(argv=None) -> int:
     """`python -m pflab.update rehearse <store copy>`: what the update's self-test runs with the NEW code."""
     argv = list(sys.argv[1:] if argv is None else argv)
+    if len(argv) == 2 and argv[0] == "rebuild":
+        r = rebuild_derived(Path(argv[1]))
+        print(f"rebuilt and reconciled: {r}")
+        return 0
     if len(argv) == 2 and argv[0] == "rehearse":
         r = rehearse(Path(argv[1]))
         print(f"migrated a copy to schema v{r['version']}: {r['tables']} tables, {r['rows']:,} rows")

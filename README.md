@@ -23,14 +23,8 @@ what remains: `docs/PLAN.md`; rules for Claude Code: `CLAUDE.md`.
    then proposes the accounts it found (bank and last four digits, and which saved password opens each file): press "Use these accounts", then "Add everything to the
    ledger" (one rebuild, written only when every check passes). Add each fixed deposit once in Setup's deposit form (checked against the bank's maturity amount).
    Answer what **Needs from you** asks (bank-label questions, IPO entries, FD certificates). Kite: the "Log in to Kite" button each trading morning (read-only).
-   **Gmail (read-only, once; about 10 minutes):** at console.cloud.google.com create a project; APIs and Services > Library > enable "Gmail API"; OAuth consent
-   screen > External, app name "Portfolio Lab", add your own address as a test user; Credentials > Create credentials > OAuth client ID > "Desktop app" > download
-   the JSON (leave it in Downloads: Connect moves it to `%USERPROFILE%\.pflab\gmail_client.json`). Then Settings > Connect Gmail (or `pflab mail connect`):
-   Google's page opens; approve "Read your email" only. The first look reads a year of mail at once; after that, once a day at 21:15. Statement
-   attachments (by content; everything else is dropped unread) come into the inbox like a file you drop; protected ones open with the passwords you saved (the file
-   is stored as it came, still locked). Files none opens are asked about once per sender, with a slot named after it in Settings > Keys (NSDL, SBI ...); saving it
-   tries again at once. Then Needs from you asks you to approve the accounts in Setup. The same daily run also reads what money emails say (trades, deposits, dividends, IPO allotments, bank alerts, research) with the model on this PC only, checks each fact against Kite and your record, and asks only about what is missing or disagrees; nothing is written to your record from an email. Testing-mode tokens expire after 7 days: publish the consent screen
-   ("In production", unverified is fine for yourself) to keep it connected.
+   **Locked files:** a password-protected file that none of your saved passwords opens is refused with one request in Needs from you: save its
+   password in Settings > Keys and passwords, then drop the same file again. There is no email reading: every file comes from your hand.
 6. **Switch it on.** Settings: Telegram on (held alerts are then delivered), the brain on "economy", preset "full". Close the window, then register the tick (every
    15 minutes, at logon, at wake): `powershell -ExecutionPolicy Bypass -File tools\register_tasks.ps1` (preview with `-WhatIf`). After that it runs, learns and asks by itself.
 
@@ -45,14 +39,13 @@ Before a candidate is merged and tagged, this PC checks it. One command (PowerSh
 `git -C D:\portfolio_lab fetch origin claude/wonderful-bardeen-z07h1e; git -C D:\portfolio_lab show origin/claude/wonderful-bardeen-z07h1e:tools/verify_candidate.ps1 | Set-Content -Encoding UTF8 $env:TEMP\verify_candidate.ps1; powershell -ExecutionPolicy Bypass -File $env:TEMP\verify_candidate.ps1`
 It clones the candidate into `D:\PortfolioLabApp\verify\candidate` and builds its own environment (`verify\venv`): your workshop's edited files, the app's `.venv` and the running app are never touched. Then `pflab verify` reports (also in `verify\report.txt`): the candidate commit and the installed tag; prerequisites; the sandbox containment probe in a real container (build the image once with `docker build -t pflab-sandbox:2 -f sandbox/Dockerfile .` from `verify\candidate`); read-only Kite and Gmail reads; the candidate's migrations on a copy of your record and an upgrade, write, rollback rehearsal on copies; a force-kill and restart drill of a headless worker; freshness and readiness on the copy; and a before and after proof that the live ledger file is unchanged. Telegram is checked as configured only: no test message is sent. It is resumable: do the steps it lists under "Next, in order" (log in to Kite, `pflab mail connect`, start Docker, stop the dashboard so the store can be copied) and run the same command again. Two things no program can do: after the first run, with the app open, sleep the laptop 5+ minutes, wake it, wait 2 minutes, then add `-WakeCheck`; and close Claude Code, leave the app running an hour, then `-WakeCheck` again (its heartbeat shows it kept going). `-LiveModel` adds one small model call through the app's privacy gate and budget; `-Offline` skips Kite and Gmail.
 
-**Email is off (his decision 2026-10-30):** you drop every statement, certificate and screenshot into Inbox and files by hand; passwords go in Settings > Keys and passwords; the World's "What to bring" lists what helps. Step 5's Gmail part below applies only if `PFLAB_MAIL=on` is set. An account you will not add now is left out on the coverage card (or named there), and added later by dropping its statement.
+**Email is removed (his decision 2026-10-30):** you drop every statement, certificate and screenshot into Inbox and files by hand; passwords go in Settings > Keys and passwords; the World's "What to bring" lists what helps. An account you will not add now is left out on the coverage card (or named there), and added later by dropping its statement.
 
 ## A fresh start (S67 local)
 Close the dashboard and the bot first. `pflab pm fresh --archive-to <a folder outside the profile and data folders> [--statements <folder>]` lists what it would do; add
 `--confirm start-fresh` to do it. It copies the profile (and the statements folder) as opaque bytes into the archive, checks every file's hash, moves the old profile aside
 (never deletes it), and makes a new EMPTY profile that does nothing until the "Portfolio Lab" icon is double-clicked (`pm/activation.json`; jobs, Gmail and Kite wait). Only the
-test counter and a reduced spend record are carried over. The old profile comes back only as a separate copy: `pflab pm restore <archive> <empty folder>`. The new profile's
-mail walk goes back through the mailbox in saved windows and says how far it has read; email alone is never called complete.
+test counter and a reduced spend record are carried over. The old profile comes back only as a separate copy: `pflab pm restore <archive> <empty folder>`. Files alone are never called complete: the inventory is yours to confirm.
 
 ## The workshop (development; not the app)
 A checkout of this repo without `release.toml` is the beta: `python -m venv .venv`, `.venv\Scripts\pip install -e ".[dev]"`, tests with

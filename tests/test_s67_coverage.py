@@ -1,166 +1,92 @@
-"""S67 local: discovery reaches every account the statements show (not only the ones set up), keeps what it cannot use as visible gaps, asks the
-investor once for the inventory, and refuses to say "complete" until every condition holds. The scenario of the brief: several banks, two accounts at one
-bank, an institution absent from the legacy setup, an overlapping copy, a statement older than 400 days, more messages than the old 1,500 cap, an
-unsupported document, a locked file and a month with no statement. A fake Gmail that honours the date window; synthetic mail; no network."""
+"""S67 local: what the system can say about his accounts, from the FILES he drops (email is gone, 2026-10-30) and the STATEMENT PERIODS the ledger
+build recorded (audit: transactions alone prove nothing). Accounts are found from what the files show, masked; a hole between statements, a late
+start and a stale end are named; the picture is complete only when every account is set up or left out, its statements run whole to a recent
+date, nothing is open, and he has confirmed the inventory. Synthetic."""
 from __future__ import annotations
 
-import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 import pytest
 
 from pflab.agents import questions
-from pflab.app import inbox as ib
-from pflab.app import runtime
-from pflab.ingest import coverage, gmail, sniff
+from pflab.app import readiness
+from pflab.ingest import coverage as cv
 from pflab.pm import store
-from tests.test_s67_mail_walk import WindowedGmail
 
-NOW = datetime(2026, 10, 29, 9, 0)
-BANKS = {"alpha": ("Alpha Bank", "1111"), "alpha2": ("Alpha Bank", "2222"), "beta": ("Beta Bank", "3333"), "newco": ("Newco Finance", "4444"), "oldco": ("Oldco Bank", "5555")}
-
-
-def fake_sniff(data, name, pw):
-    m = re.match(r"stmt_(\w+?)(?:_copy)?\.pdf", name)
-    if m and m.group(1) in BANKS:
-        bank, last4 = BANKS[m.group(1)]
-        return {"kind": "bank", "bank": bank, "last4": last4, "dp_ids": None}
-    return {"kind": "other", "bank": None, "last4": None, "dp_ids": None}
+NOW = datetime(2026, 10, 30, 18, 0)
 
 
 @pytest.fixture
-def rt(tmp_path, monkeypatch):
-    (tmp_path / "pm").mkdir()
-    con = store.connect(tmp_path / "l.duckdb")
-    monkeypatch.setattr(sniff, "passwords_from_secrets", lambda: [])
-    monkeypatch.setattr(sniff, "sniff", fake_sniff)
-    monkeypatch.setattr(sniff, "is_encrypted", lambda data, name: name.startswith("locked_"))
-    got = {}
-
-    def receive(rt_, name, data):
-        if "newco" in name or "oldco" in name or "alpha2" in name:         # accounts nobody set up: the real inbox refuses and asks
-            raise ValueError("which account is this bank statement for?")
-        dup = data in got.values()
-        if not dup:
-            got[name] = data
-        return {"duplicate": dup}
-    monkeypatch.setattr(ib, "receive", receive)
-    monkeypatch.setattr(ib, "_start", lambda rt_, iid: None)
-    monkeypatch.setenv("PFLAB_CHANNEL", "stable")
-    monkeypatch.setattr(gmail, "BATCH_MESSAGES", 500)
-    r = runtime.Runtime(tmp_path / "pm", tmp_path / "data", tmp_path, con=con, clock=lambda: NOW)
-    r.got = got
-    return r
+def con(tmp_path):
+    return store.connect(tmp_path / "l.duckdb")
 
 
-def mailbox():
-    today = NOW.date()
-    m = {f"n{k}": (today - timedelta(days=k % 900), []) for k in range(1700)}
-    m["s_alpha"] = (today - timedelta(days=10), [("stmt_alpha.pdf", b"A 2026-09")])
-    m["s_alpha_copy"] = (today - timedelta(days=10), [("stmt_alpha_copy.pdf", b"A 2026-09")])                 # a second mailbox's copy of the same file
-    m["s_alpha2"] = (today - timedelta(days=12), [("stmt_alpha2.pdf", b"A2 2026-09")])                        # two accounts at one bank
-    m["s_beta"] = (today - timedelta(days=200), [("stmt_beta.pdf", b"B 2026-04")])
-    m["s_newco"] = (today - timedelta(days=500), [("stmt_newco.pdf", b"N 2025-06")])                          # an institution the legacy setup never had
-    m["s_oldco"] = (today - timedelta(days=700), [("stmt_oldco.pdf", b"O 2024-11")])                          # older than 400 days
-    m["promo"] = (today - timedelta(days=30), [("promo.pdf", b"an offer")])                                   # unsupported
-    m["locked"] = (today - timedelta(days=45), [("locked_cas.pdf", b"%PDF locked")])                          # locked, no password
-    return m
+def _account(con, aid, kind, provider, ref):
+    con.execute("INSERT INTO accounts (account_id, kind, provider, dp_or_folio) VALUES (?,?,?,?)", [aid, kind, provider, ref])
 
 
-def read_everything(rt, g):
-    gmail.fetch(rt, g, now=NOW)
-    runs = 1
-    while not all(m["reached_horizon"] for m in gmail.coverage(rt.cursor(), NOW)) and runs < 40:
-        gmail.fetch(rt, g, now=NOW)
-        runs += 1
-    return runs
+def _period(con, aid, kind, first, last):
+    con.execute("INSERT INTO statement_periods (account_id, kind, file_sha, first_date, last_date, n_rows, built_at) VALUES (?,?,'sha',?,?,10,?)",
+                [aid, kind, first, last, NOW])
 
 
-def test_every_account_the_statements_show_is_found_including_ones_never_set_up_and_older_than_400_days(rt):
-    g = WindowedGmail(mailbox())
-    runs = read_everything(rt, g)
-    assert runs > 1
-    labels = {r["account"] for r in coverage.matrix(rt.cursor(), NOW)}
-    assert labels == {"Alpha Bank bank account ending 1111", "Alpha Bank bank account ending 2222", "Beta Bank bank account ending 3333",
-                      "Newco Finance bank account ending 4444", "Oldco Bank bank account ending 5555"}
-    rows = coverage.matrix(rt.cursor(), NOW)
-    assert all(r["state"] == "discovered, not set up" for r in rows)                                          # nothing was set up: nothing is claimed
-    assert not any(len(d) > 4 for r in rows for d in re.findall(r"\d{5,}", r["account"]))                    # masked: no long numbers
-    assert len([r for r in rows if "Alpha Bank" in r["account"]]) == 2                                        # two accounts at one bank stay two
-    n_alpha = rt.cursor().execute("SELECT n_files FROM account_candidates WHERE last4='1111'").fetchone()[0]
-    assert n_alpha == 2                                                                                       # the overlapping copy counts as a file of the same account, not a new account
+def test_accounts_are_found_from_the_files_and_shown_masked(con):
+    k = cv.note_account(con, {"kind": "bank", "bank": "SBI", "last4": "9001", "dp_ids": None}, "a file you dropped", NOW, "a")
+    cv.note_account(con, {"kind": "bank", "bank": "SBI", "last4": "9001", "dp_ids": None}, "a file you dropped", NOW, "b")      # the same account again
+    assert cv.note_account(con, {"kind": "other"}, "x", NOW) is None
+    rows = cv.matrix(con, NOW)
+    assert len(rows) == 1 and rows[0]["account"] == "SBI bank account ending 9001" and rows[0]["files_seen"] == 2 and rows[0]["key"] == k
+    assert "12345678" not in str(rows)
 
 
-def test_what_cannot_be_used_stays_visible_and_the_picture_is_never_complete_from_email_alone(rt):
-    g = WindowedGmail(mailbox())
-    read_everything(rt, g)
-    gk = {x["key"].split(":")[1] for x in coverage.gaps(rt.cursor())}
-    assert {"locked", "unsupported"} <= gk                                                                    # neither was silently dropped
-    s = coverage.status(rt.cursor(), NOW)
-    assert s["label"] == "partial" and s["open_gaps"] >= 2
-    assert any("not set up" in r for r in s["reasons"]) and any("you have not confirmed" in r for r in s["reasons"])
-    assert "email alone cannot show" in s["note"]
+def test_statement_periods_show_holes_a_late_start_and_a_stale_end():
+    ok = cv.statement_cover([(date(2026, 1, 1), date(2026, 3, 31)), (date(2026, 4, 1), date(2026, 10, 15))], date(2026, 1, 1), date(2026, 10, 30))
+    assert ok["holes"] == [] and not ok["stale"] and not ok["late_start"] and ok["from"] == date(2026, 1, 1) and ok["to"] == date(2026, 10, 15)
+    hole = cv.statement_cover([(date(2026, 1, 1), date(2026, 3, 31)), (date(2026, 6, 1), date(2026, 10, 15))], date(2026, 1, 1), date(2026, 10, 30))
+    assert hole["holes"] == ["2026-04-01 to 2026-05-31"]                                         # April and May: no statement covers them
+    old = cv.statement_cover([(date(2026, 1, 1), date(2026, 8, 31))], date(2026, 1, 1), date(2026, 10, 30))
+    assert old["stale"]
+    late = cv.statement_cover([(date(2026, 6, 1), date(2026, 10, 20))], date(2026, 1, 1), date(2026, 10, 30))
+    assert late["late_start"]
+    assert cv.statement_cover([], date(2026, 1, 1), date(2026, 10, 30))["from"] is None
 
 
-def test_the_inventory_is_one_grouped_question_naming_every_account_and_asking_for_what_is_absent(rt):
-    g = WindowedGmail(mailbox())
-    read_everything(rt, g)
-    gmail.fetch(rt, g, now=NOW)
-    qs = [t for _, a, t in questions.open_questions(rt.cursor()) if "every account I have found" in t]
-    assert len(qs) == 1                                                                                       # asked once, however many runs
-    t = qs[0]
-    for who in ("Alpha Bank bank account ending 1111", "Alpha Bank bank account ending 2222", "Newco Finance", "Oldco Bank"):
-        assert who in t
-    assert "NOT in this list" in t and "left out" in t and "email" not in t
+def test_an_account_is_verified_by_its_statements_not_by_activity(con):
+    _account(con, "SBI_9001", "bank", "SBI", "00009001")
+    rows = {r["account"]: r for r in cv.matrix(con, NOW)}
+    assert not rows["SBI (SBI_9001)"]["verified"] and "no statement of it" in rows["SBI (SBI_9001)"]["next"]
+    _period(con, "SBI_9001", "bank", date(2026, 4, 1), date(2026, 6, 30))
+    _period(con, "SBI_9001", "bank", date(2026, 8, 1), date(2026, 10, 25))
+    r = {r["account"]: r for r in cv.matrix(con, NOW)}["SBI (SBI_9001)"]
+    assert not r["verified"] and r["statement_holes"] == ["2026-07-01 to 2026-07-31"] and "no statement covers 2026-07-01 to 2026-07-31" in r["next"]
+    _period(con, "SBI_9001", "bank", date(2026, 7, 1), date(2026, 7, 31))                         # the July statement arrives
+    r = {r["account"]: r for r in cv.matrix(con, NOW)}["SBI (SBI_9001)"]
+    assert r["verified"] and r["covered_from"] == "2026-04-01" and r["covered_to"] == "2026-10-25" and r["next"] is None
 
 
-def test_complete_needs_the_walk_the_set_up_the_gaps_closed_and_his_confirmation_and_a_new_account_reopens_it(rt):
-    g = WindowedGmail(mailbox())
-    read_everything(rt, g)
-    con = rt.cursor()
-    # set up every account and clear the gaps, but do not confirm: still partial
-    for k, (bank, last4) in enumerate(BANKS.values(), 1):
-        con.execute("INSERT INTO accounts (account_id, kind, provider, dp_or_folio) VALUES (?, 'bank', ?, ?)", [f"B{k}", bank, f"00000{last4}"])
-        con.execute("INSERT INTO events (event_id, kind, account_id, trade_date, amount, ingested_at) VALUES (?, 'deposit', ?, DATE '2026-09-01', 1.0, now())", [k, f"B{k}"])
-    from pflab.app import readiness
-    for g_ in coverage.gaps(con):
-        readiness.close_gap(con, g_["key"], NOW)
-    s = coverage.status(con, NOW)
-    assert s["label"] == "partial" and s["reasons"] == ["you have not confirmed that this is every account and every file you have"]
-    coverage.confirm_inventory(con, NOW)
-    assert coverage.status(con, NOW)["label"] == "complete"
-    # a statement for an account nobody had listed turns up afterwards
-    coverage.note_account(con, {"kind": "bank", "bank": "Gamma Bank", "last4": "9999", "dp_ids": None}, "mail:x", NOW, "abc")
-    s2 = coverage.status(con, NOW)
-    assert s2["label"] == "partial" and any("not set up" in r for r in s2["reasons"]) and any("confirm again" in r for r in s2["reasons"])
+def test_complete_needs_set_up_or_left_out_whole_statements_nothing_open_and_his_confirmation(con):
+    _account(con, "SBI_9001", "bank", "SBI", "00009001")
+    _period(con, "SBI_9001", "bank", date(2026, 4, 1), date(2026, 10, 25))
+    cv.note_account(con, {"kind": "bank", "bank": "SBI", "last4": "9001", "dp_ids": None}, "a file you dropped", NOW, "a")   # the same account
+    k2 = cv.note_account(con, {"kind": "bank", "bank": "Old Bank", "last4": "9999", "dp_ids": None}, "a file you dropped", NOW, "b")
+    s = cv.status(con, NOW)
+    assert s["label"] == "partial" and any("not set up" in r for r in s["reasons"]) and any("not confirmed" in r for r in s["reasons"])
+    cv.leave_out(con, k2)                                                                         # inactive: he will add it later
+    readiness.open_gap(con, "coverage:locked:abc", "coverage", "a locked file", NOW)
+    cv.confirm_inventory(con, NOW)
+    assert cv.status(con, NOW)["label"] == "partial" and cv.status(con, NOW)["open_gaps"] == 1
+    readiness.close_gap(con, "coverage:locked:abc", NOW)
+    s = cv.status(con, NOW)
+    assert s["label"] == "complete" and s["left_out"] == ["Old Bank bank account ending 9999"]
+    cv.note_account(con, {"kind": "bank", "bank": "Third Bank", "last4": "1234", "dp_ids": None}, "a file you dropped", NOW, "c")
+    assert cv.status(con, NOW)["label"] == "partial" and any("confirm again" in r for r in cv.status(con, NOW)["reasons"])
 
 
-def test_a_month_with_no_activity_inside_an_accounts_history_is_listed_not_assumed_quiet(rt):
-    con = rt.cursor()
-    con.execute("INSERT INTO accounts (account_id, kind, provider, dp_or_folio) VALUES ('A1', 'bank', 'Alpha Bank', '00001111')")
-    for k, d in enumerate(("2026-08-05", "2026-10-02"), 1):
-        con.execute("INSERT INTO events (event_id, kind, account_id, trade_date, amount, ingested_at) VALUES (?, 'deposit', 'A1', CAST(? AS DATE), 1.0, now())", [k, d])
-    row = [r for r in coverage.matrix(con, NOW) if "A1" in r["account"]][0]
-    assert row["silent_months"] == ["2026-09"] and row["first_month"] == "2026-08" and row["last_month"] == "2026-10"
-    coverage.note_account(con, {"kind": "bank", "bank": "Alpha Bank", "last4": "1111", "dp_ids": None}, "mail:x", NOW, "f")
-    assert any("no activity" in r for r in coverage.status(con, NOW)["reasons"])
-
-
-def test_nothing_is_claimed_before_anything_is_read(rt):
-    s = coverage.status(rt.cursor(), NOW)
-    assert s["label"] == "nothing read yet" and s["accounts"] == 0
-    assert coverage.ask_inventory(rt.cursor(), NOW) is None                                                   # and nothing is asked about an empty inventory
-
-
-def test_the_screen_gets_the_coverage_and_only_his_press_confirms(rt):
-    from fastapi.testclient import TestClient
-    from pflab.app.server import create_app
-    g = WindowedGmail(mailbox())
-    read_everything(rt, g)
-    c = TestClient(create_app(rt))
-    d = c.get("/api/coverage").json()
-    assert d["status"]["label"] == "partial" and len(d["accounts"]) == 5 and d["gaps"] and d["mailboxes"][0]["reached_horizon"] is True
-    assert c.get("/api/system").json()["coverage"]["status"]["label"] == "partial"
-    assert not coverage.inventory_confirmed(rt.cursor())
-    r = c.post("/api/coverage/confirm").json()
-    assert r["ok"] and coverage.inventory_confirmed(rt.cursor()) and not any("not confirmed" in x for x in r["status"]["reasons"])
+def test_the_inventory_is_one_grouped_question_asked_once(con):
+    assert cv.ask_inventory(con, NOW) is None                                                    # nothing found yet: nothing to ask
+    cv.note_account(con, {"kind": "bank", "bank": "SBI", "last4": "9001", "dp_ids": None}, "a file you dropped", NOW, "a")
+    cv.note_account(con, {"kind": "cas", "bank": None, "last4": None, "dp_ids": "IN300999"}, "a file you dropped", NOW, "b")
+    q = cv.ask_inventory(con, NOW)
+    t = [t for _, _, t in questions.open_questions(con)][0]
+    assert q and "SBI bank account ending 9001" in t and "0999" in t and "NOT in this list" in t and "left out" in t and "email" not in t.lower()
+    assert cv.ask_inventory(con, NOW) is None                                                    # never twice

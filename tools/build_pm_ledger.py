@@ -64,6 +64,14 @@ def build(src: dict, root: Path) -> tuple:
     z = src["zerodha"]
     zer = z["account"]
     tbs = [tb.parse(str(root / p)) for p in z["tradebooks"]]
+    periods = []                                                         # each statement's own period, for the coverage (S67, audit)
+
+    def period(acc, kind, path, df, col="date"):
+        d = df[col] if len(df) else []
+        periods.append({"account_id": acc, "kind": kind, "file_sha": _sha(root / path), "first_date": min(d) if len(df) else None,
+                        "last_date": max(d) if len(df) else None, "n_rows": int(len(df))})
+    for p, t in zip(z["tradebooks"], tbs):
+        period(zer, "tradebook", p, t)
     ipo_rows = [r for t in tbs for r in t.attrs.get("ipo_allotments", [])]
     # a fresh download often overlaps an older one (S54d inbox): the same fill appears twice, so exact repeats go
     trades = pd.concat(tbs, ignore_index=True).drop_duplicates().sort_values(["date", "trade_id"], kind="mergesort")
@@ -78,6 +86,8 @@ def build(src: dict, root: Path) -> tuple:
     events += tev
     zfiles = [z["funds_ledger"]] + [p for p in z.get("funds_ledgers") or [] if p != z["funds_ledger"]]
     zdf = zl.parse_many([root / p for p in zfiles])                       # several Console ledgers (other years) are one ledger
+    for p in zfiles:
+        period(zer, "funds_ledger", p, zl.parse(root / p))
     events += zl.charge_events(zdf, zer, _sha(root / zfiles[0]))
     settle = dict(zip(zl.settlements(zdf)["date"], zl.settlements(zdf)["net"]))
     bad = [(n.trade_date, n.net_amount, settle.get(n.trade_date)) for n in cnotes
@@ -93,7 +103,9 @@ def build(src: dict, root: Path) -> tuple:
         for b in src["bank"]:                                           # one account may have several statement files (other periods)
             files = ([b["file"]] if b.get("file") else []) + [f for f in b.get("files") or [] if f != b.get("file")]
             for f in files:
-                by_acc.setdefault(b["account"], []).append(bank.parse(str(root / f), password=_pw(b.get("password_env"))))
+                one = bank.parse(str(root / f), password=_pw(b.get("password_env")))
+                period(b["account"], "bank", f, one)
+                by_acc.setdefault(b["account"], []).append(one)
         for acc_, frames in by_acc.items():
             stm[acc_] = bank.classify(bank.merge_parsed(frames), rules)
     stm, lab = bank_labels.auto_label(stm, zl.bank_flows(zdf))             # S65: own transfers and broker flows by code
@@ -187,7 +199,7 @@ def build(src: dict, root: Path) -> tuple:
             check(f"{acc} holdings = CAS {end}", br.empty, br[["isin", "a_value", "b_value", "note"]].to_dict("records"))
     for i in src.get("ipo", []):
         names.setdefault(i["isin"], {}).setdefault("symbol", i.get("symbol", "NSE"))
-    src = {**src, "_names": names, "_unlabelled": bank_labels.groups(stm)}
+    src = {**src, "_names": names, "_unlabelled": bank_labels.groups(stm), "_periods": periods}
     return log, led, checks, notes, src
 
 
@@ -204,6 +216,10 @@ def _write(con, log: EventLog, led: Ledger, src: dict) -> None:
                     [k, v["kind"], v.get("provider"), v.get("cas_dp"), v.get("dormant", False), v.get("read_only", False)])
     save_events(con, log)
     led.write_derived(con)
+    con.execute("DELETE FROM statement_periods")                         # the periods of the statements this (checked) build was made from
+    for p in src.get("_periods") or []:
+        con.execute("INSERT INTO statement_periods (account_id, kind, file_sha, first_date, last_date, n_rows, built_at) VALUES (?,?,?,?,?,?,now())",
+                    [p["account_id"], p["kind"], p["file_sha"], p["first_date"], p["last_date"], p["n_rows"]])
     held = sorted({isin for (_, isin), q in led.positions().items() if q})
     rows = []
     for isin in held:

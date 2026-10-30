@@ -44,7 +44,6 @@ def test_a_run_changes_nothing_of_his_names_the_candidate_and_asks_for_what_only
     monkeypatch.setattr(verify, "restart_drill", lambda ctx, rep, **k: rep.add("restart drill", verify.SKIP, "stubbed here"))
     from pflab.app import runtime as rtm
     monkeypatch.setattr(rtm, "token_valid", lambda now=None: False)
-    monkeypatch.setattr("pflab.ingest.gmail.connected", lambda: False)
     before = verify.fingerprint(app / "pm" / "ledger.duckdb")
     rep = verify.run(app, report=tmp_path / "out" / "report.txt", now=NOW)
     assert verify.fingerprint(app / "pm" / "ledger.duckdb") == before                              # the live ledger: same size, time, hash
@@ -54,7 +53,7 @@ def test_a_run_changes_nothing_of_his_names_the_candidate_and_asks_for_what_only
     assert rep.identity["candidate_schema"] == max(m[0] for m in store.MIGRATIONS) and rep.identity["installed_schema"] == max(m[0] for m in store.MIGRATIONS)
     assert by["migration rehearsal"].status == verify.PASS and by["rollback rehearsal"].status == verify.PASS
     assert by["sandbox (Docker)"].status == verify.NEEDS and "docker build -t pflab-sandbox:2" in by["sandbox (Docker)"].fix       # not passed on a mock
-    assert by["Gmail read"].status == verify.NEEDS and "pflab mail connect" in by["Gmail read"].fix
+    assert "Gmail read" not in by                                                                 # email is gone
     assert by["Kite read"].status == verify.NEEDS and by["Windows sleep and wake"].status == verify.NEEDS
     assert by["live model call"].status == verify.SKIP
     assert rep.verdict.startswith("CLOUD-TESTED CANDIDATE")

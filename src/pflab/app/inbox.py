@@ -100,6 +100,18 @@ def receive(rt, name: str, data: bytes, hint: str = "", account: Optional[str] =
             coverage.note_account(con, info, "a file you dropped", rt.clock(), sha[:12])       # S67: an account is recorded by what the file shows, wherever the file came from
         except Exception:
             pass                                            # the coverage list never stops a file from being received
+        from pflab.agents import questions
+        from pflab.app import readiness
+        if sniff.is_encrypted(data, safe) and not info.get("password_name"):
+            # (email is gone, 2026-10-30) a locked file none of his saved passwords opens: asked once, kept visible, not stored half-read
+            questions.ask(con, "inbox", f"inbox:locked:{sha[:12]}", f"'{safe}' is password-protected and none of your saved passwords opens it. Add its "
+                          "password in Settings > Keys and passwords (any name, for example the bank's), then drop the same file again.", rt.clock())
+            coverage.note_gap(con, "locked", sha[:12], f"{safe}: password-protected; none of the saved passwords opens it", rt.clock())
+            rt.bump("inbox")
+            raise ValueError("this file is password-protected and none of your saved passwords opens it: add its password in Settings > Keys and "
+                             "passwords, then drop it again")
+        questions.drop(con, f"inbox:locked:{sha[:12]}", rt.clock())                            # the same file, now opened: its request and gap close
+        readiness.close_gap(con, f"coverage:locked:{sha[:12]}", rt.clock())
         if info["kind"] in KIND_LABEL and info["kind"] != "other":
             kind = info["kind"]
         if kind == "bank" and not account:
@@ -413,6 +425,11 @@ def apply_all(rt) -> dict:
         srcs.save_overlay(sources, over)
         for it in items:
             _update(rt, it["id"], status="in the ledger", steps_json=json.dumps(_steps(it["kind"], 5)))
+        try:                                                # the accounts are known now: the one grouped inventory question (asked once)
+            from pflab.ingest import coverage
+            coverage.ask_inventory(con, rt.clock())
+        except Exception:
+            pass
         try:
             from pflab.ingest import bank_labels
             bank_labels.ask(con, src.get("_unlabelled") or [], rt.clock())

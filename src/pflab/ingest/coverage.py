@@ -1,20 +1,27 @@
 """What the system has found, what it has read, and what it cannot yet say (S67 local). Accounts are found from the statements themselves (bank and the
 last four digits, a depository id, a folio), not from a list typed beforehand, so an account the old setup never knew still appears. Every finding
-is kept even when nothing else can be done with it yet: an account that is not set up, a file that is locked, a document that no parser reads, a
-mail with no attachment. The picture is called complete only when ALL of this holds: the mailboxes were walked to their horizon, nothing is open as
-a gap, every discovered account is set up, and the investor has confirmed the inventory. Email alone can never prove that no account is missing, so
-the inventory is always put to him once, together with the other places an account might be.
+is kept even when nothing else can be done with it yet: an account that is not set up, a file that is locked, a document that no parser reads.
+
+An account counts as covered only by its STATEMENTS (audit 2026-10-30): the ledger build records the period of every statement file it was made from
+(`statement_periods`, written only when every balance check passed). A gap between two statements, a start later than the rest of the history and
+an end older than STALE_DAYS are named; transactions alone prove nothing. The picture is called complete only when ALL of this holds: nothing is
+open as a gap, every discovered account is set up (or left out by him), every set-up account's statements run without gaps to a recent date, and
+the investor has confirmed the inventory. Files alone can never prove that no account is missing, so the inventory is always his to confirm.
 
 Nothing here reads a statement's content beyond what `sniff` already returns (kind, bank, last four digits, depository ids). Accounts are shown masked.
 """
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional
 
 KIND_WORD = {"bank": "bank account", "cas": "demat / mutual fund account", "tradebook": "broker account", "contract_note": "broker account",
              "funds_ledger": "broker account", "fd_certificate": "fixed deposit", "gift_city": "broker account (GIFT City)"}
+GAP_DAYS = 7              # two statements further apart than this leave a stretch no statement covers
+STALE_DAYS = 45           # statements that end longer ago than this are behind
+LATE_START_DAYS = 31      # an account whose statements begin this much later than the rest: opened later, or its first statements are missing
+PERIOD_KIND = {"bank": "bank", "demat": "funds_ledger", "broker": "funds_ledger"}   # the statement that proves each account kind's money
 
 
 def label(kind: str, bank: Optional[str], last4: Optional[str], dp_ids: Optional[str] = None) -> str:
@@ -50,7 +57,7 @@ def note_account(con, info: dict, source: str, now: datetime, file_sha: str = ""
 
 
 def note_gap(con, kind: str, ref: str, detail: str, now: datetime) -> None:
-    """A file or message that cannot be used yet stays visible as a gap (locked | unsupported | link_only | no_attachment | period)."""
+    """A file that cannot be used yet stays visible as a gap (locked | unsupported | period)."""
     from pflab.app import readiness
     readiness.open_gap(con, f"coverage:{kind}:{ref}", "coverage", detail, now)
 
@@ -63,27 +70,40 @@ def _set_up(con) -> List[dict]:
     return [{"id": a, "kind": k, "provider": p, "ref": d, "closed": c} for a, k, p, d, c in rows]
 
 
-def _months(con, account: str) -> List[str]:
+def _d(x) -> Optional[date]:
+    if x is None:
+        return None
+    return x.date() if isinstance(x, datetime) else x
+
+
+def periods(con, account: str, kind: Optional[str] = None) -> List[tuple]:
+    """(first, last) of each statement of the account the last checked build was made from, oldest first."""
     try:
-        return [r[0] for r in con.execute("SELECT DISTINCT strftime(trade_date, '%Y-%m') FROM events WHERE account_id=? ORDER BY 1", [account]).fetchall()]
+        q = "SELECT first_date, last_date FROM statement_periods WHERE account_id=? AND first_date IS NOT NULL" + (" AND kind=?" if kind else "")
+        return sorted((_d(a), _d(b)) for a, b in con.execute(q + " ORDER BY first_date", [account] + ([kind] if kind else [])).fetchall())
     except Exception:
         return []
 
 
-def _between(months: List[str]) -> List[str]:
-    """Months between the first and last month with activity that have none. Either a quiet month or a missing statement: the system cannot tell
-    which from the ledger alone, so it lists them and does not call the account whole."""
-    if len(months) < 2:
-        return []
-    y, m = map(int, months[0].split("-"))
-    ey, em = map(int, months[-1].split("-"))
-    have, out = set(months), []
-    while (y, m) < (ey, em):
-        key = f"{y:04d}-{m:02d}"
-        if key not in have:
-            out.append(key)
-        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
-    return out
+def statement_cover(ps: List[tuple], earliest: Optional[date], today: date) -> dict:
+    """From statement periods: the stretch covered, every hole between statements, a late start and a stale end. Pure; tested by hand-made periods."""
+    if not ps:
+        return {"from": None, "to": None, "holes": [], "late_start": False, "stale": True}
+    holes, cur_from, cur_to = [], ps[0][0], ps[0][1]
+    for a, b in ps[1:]:
+        if a > cur_to + timedelta(days=GAP_DAYS):
+            holes.append(f"{cur_to + timedelta(days=1)} to {a - timedelta(days=1)}")
+        cur_to = max(cur_to, b)
+    return {"from": cur_from, "to": cur_to, "holes": holes,
+            "late_start": bool(earliest and cur_from > earliest + timedelta(days=LATE_START_DAYS)),
+            "stale": (today - cur_to).days > STALE_DAYS}
+
+
+def _earliest(con) -> Optional[date]:
+    try:
+        return _d(con.execute("SELECT min(first_date) FROM statement_periods").fetchone()[0])
+    except Exception:
+        return None
 
 
 def _same_institution(a: Optional[str], b: Optional[str]) -> bool:
@@ -97,17 +117,26 @@ def _same_kind(cand_kind: Optional[str], acc_kind: Optional[str]) -> bool:
 
 
 def matrix(con, now: datetime) -> List[dict]:
-    """One row per account the system knows of: how it was found, whether it is set up, the months with activity in the ledger, what is open against it."""
+    """One row per account the system knows of: how it was found, whether it is set up, what its statements cover, what is open against it."""
     out: List[dict] = []
     set_up = _set_up(con)
-    last4_up = {str(a["ref"] or "")[-4:] for a in set_up if a["ref"]}
-    by_last4 = {}
+    by_last4: Dict[str, list] = {}
+    earliest, today = _earliest(con), now.date()
     for a in set_up:
-        m = _months(con, a["id"])
-        silent = _between(m)
-        out.append({"account": f"{a['provider'] or a['kind']} ({a['id']})", "silent_months": silent, "state": "set up" + (", closed" if a["closed"] else ""), "found_in": "your setup",
-                    "months_with_activity": len(m), "first_month": m[0] if m else None, "last_month": m[-1] if m else None,
-                    "verified": bool(m), "files_seen": 0, "next": None if m else "no ledger activity yet: its statements have not been read"})
+        pk = PERIOD_KIND.get(a["kind"])
+        cov = statement_cover(periods(con, a["id"], pk), earliest, today) if pk else None
+        if cov is None:
+            nxt, ok = "no statement kind proves this account yet (its figures come from the other statements)", False
+        elif cov["from"] is None:
+            nxt, ok = "no statement of it has been read into the ledger yet", False
+        else:
+            bits = ([f"no statement covers {', '.join(cov['holes'][:3])}"] if cov["holes"] else []) + \
+                   ([f"statements end {cov['to']}: newer ones are missing"] if cov["stale"] else []) + \
+                   ([f"statements begin {cov['from']}, later than the rest: opened later, or the first ones are missing"] if cov["late_start"] else [])
+            nxt, ok = ("; ".join(bits) or None), not bits
+        out.append({"account": f"{a['provider'] or a['kind']} ({a['id']})", "state": "set up" + (", closed" if a["closed"] else ""), "found_in": "your setup",
+                    "covered_from": str(cov["from"]) if cov and cov["from"] else None, "covered_to": str(cov["to"]) if cov and cov["to"] else None,
+                    "statement_holes": (cov or {}).get("holes", []), "verified": ok, "files_seen": 0, "next": nxt})
         if a["ref"]:                                           # (audit F4) the last four digits alone are not an identity: kept with the institution and kind
             by_last4.setdefault(str(a["ref"])[-4:], []).append((out[-1], str(a["provider"] or "").lower(), a["kind"]))
     for ck, lab, n, srcs, st, l4, cbank, ckind in con.execute("SELECT cand_key, label, n_files, sources, state, last4, bank, kind FROM account_candidates "
@@ -116,8 +145,7 @@ def matrix(con, now: datetime) -> List[dict]:
             continue
         if st == LEFT_OUT:                                     # his choice: shown, never counted as a gap, never asked about
             out.append({"account": lab, "state": "left out by you (add later)", "found_in": srcs or "you said so", "files_seen": int(n),
-                        "months_with_activity": None, "verified": False, "key": ck,
-                        "next": "drop its statements in Inbox and files when you want it counted, or press Add back"})
+                        "verified": False, "key": ck, "next": "drop its statements in Inbox and files when you want it counted, or press Add back"})
             continue
         same = [r for r, prov, k in by_last4.get(l4 or "", []) if _same_institution(cbank, prov) and _same_kind(ckind, k)] if l4 else []
         if len(same) == 1:                                     # the same account as one that is set up: one row, with the files seen added
@@ -125,8 +153,7 @@ def matrix(con, now: datetime) -> List[dict]:
             row["files_seen"] += int(n)
             row["found_in"] = f"{row['found_in']}, {srcs}" if srcs else row["found_in"]
             continue
-        out.append({"account": lab, "state": "discovered, not set up", "found_in": srcs or "statements",
-                    "files_seen": int(n), "months_with_activity": None, "verified": False, "key": ck,
+        out.append({"account": lab, "state": "discovered, not set up", "found_in": srcs or "statements", "files_seen": int(n), "verified": False, "key": ck,
                     "next": "confirm it is yours in Setup, leave it out for now, or tell me it is not yours"})
     return out
 
@@ -162,12 +189,7 @@ def declare_left_out(con, text: str, now: datetime) -> Optional[str]:
 
 def gaps(con) -> List[dict]:
     from pflab.app import readiness
-    return [g for g in readiness.gaps(con) if g["key"].startswith(("coverage:", "mail:msg:"))]
-
-
-def mailboxes(con, now: datetime) -> List[dict]:
-    from pflab.ingest import gmail
-    return gmail.coverage(con, now)
+    return [g for g in readiness.gaps(con) if g["key"].startswith("coverage:")]
 
 
 CONFIRMED = "coverage:inventory:confirmed"
@@ -179,7 +201,7 @@ def inventory_confirmed(con) -> bool:
 
 
 def confirm_inventory(con, now: datetime) -> int:
-    """He says: this is every account, mailbox and export. Kept as a dated answer; adding an account later does not undo it, but a NEW account
+    """He says: this is every account and every file. Kept as a dated answer; adding an account later does not undo it, but a NEW account
     found after it opens the question again (the candidate is not in the confirmed list)."""
     from pflab.agents import memory
     keys = sorted(r[0] for r in con.execute("SELECT cand_key FROM account_candidates").fetchall())
@@ -197,54 +219,40 @@ def _confirmed_covers_all(con) -> bool:
 
 
 def status(con, now: datetime) -> dict:
-    """{label, reasons}: nothing read yet | discovery in progress | partial | complete. `complete` needs every condition; each missing one is a reason."""
-    mbs = mailboxes(con, now)
+    """{label, reasons}: nothing read yet | partial | complete. `complete` needs every condition; each missing one is a reason."""
     mx = matrix(con, now)
     gp = gaps(con)
     reasons: List[str] = []
-    if not mbs and not mx:
-        return {"label": "nothing read yet", "reasons": ["no statement has been read yet and no account has been found"], "accounts": 0, "mailboxes": 0, "open_gaps": 0,
+    if not mx:
+        return {"label": "nothing read yet", "reasons": ["no statement has been read yet and no account has been found"], "accounts": 0, "open_gaps": 0,
                 "left_out": []}
-    behind = [m for m in mbs if not m["reached_horizon"]]
-    if behind:
-        reasons.append(f"{len(behind)} mailbox(es) are still being read back through their history (reached {', '.join(m['read_back_to'] for m in behind)})")
     if gp:
-        reasons.append(f"{len(gp)} file(s) or message(s) could not be used and are listed")
+        reasons.append(f"{len(gp)} file(s) could not be used and are listed")
     un = [r for r in mx if r["state"] == "discovered, not set up"]
     if un:
         reasons.append(f"{len(un)} account(s) were found in statements but are not set up")
     unv = [r for r in mx if r["state"].startswith("set up") and not r["verified"]]
-    if unv:
-        reasons.append(f"{len(unv)} set-up account(s) have no ledger activity yet")
-    silent = [r for r in mx if r.get("silent_months")]
-    if silent:
-        reasons.append(f"{len(silent)} account(s) have months with no activity, which is either quiet or a missing statement: " +
-                       "; ".join(f"{r['account']}: {', '.join(r['silent_months'][:4])}" for r in silent[:3]))
+    for r in unv[:4]:
+        reasons.append(f"{r['account']}: {r['next']}")
+    if len(unv) > 4:
+        reasons.append(f"and {len(unv) - 4} more set-up account(s) whose statements do not yet cover their history")
     if not inventory_confirmed(con):
         reasons.append("you have not confirmed that this is every account and every file you have")
     elif not _confirmed_covers_all(con):
         reasons.append("an account was found after you confirmed the list: please confirm again")
-    if behind:
-        label_ = "discovery in progress"
-    elif reasons:
-        label_ = "partial"
-    else:
-        label_ = "complete"
-    return {"label": label_, "reasons": reasons, "accounts": len(mx), "mailboxes": len(mbs), "open_gaps": len(gp),
+    return {"label": "partial" if reasons else "complete", "reasons": reasons, "accounts": len(mx), "open_gaps": len(gp),
             "left_out": [r["account"] for r in mx if r["state"].startswith("left out")],
-            "note": ("email" if mbs else "files") + " alone cannot show that no account is missing: the inventory is always yours to confirm"}
+            "note": "files alone cannot show that no account is missing: the inventory is always yours to confirm"}
 
 
 def ask_inventory(con, now: datetime) -> Optional[int]:
-    """After discovery has something to show: ONE grouped question listing the masked inventory and asking for what is absent. None until there is an
-    inventory (or while the first walk has not finished a window), and never twice."""
+    """Once there is an inventory: ONE grouped question listing the masked accounts and asking for what is absent. Never twice."""
     from pflab.agents import questions
     mx = matrix(con, now)
-    mbs = mailboxes(con, now)
-    if not mx or (mbs and not all(m["reached_horizon"] for m in mbs)):
-        return None                                        # with a mailbox: asked when reading has gone as far back as it can, so the list is as full as it will be
+    if not mx:
+        return None
     lines = "; ".join(f"{r['account']} [{r['state']}]" for r in mx[:12])
     text = (f"Here is every account I have found so far: {lines}. Tell me in one reply: which of these are not yours or are closed; any account, "
             "broker, bank or deposit that is NOT in this list (or that you will add later: say so and it is written down as left out). "
-            "I keep reading in the meantime, and I will not call the picture complete until you confirm.")
+            "I will not call the picture complete until you confirm.")
     return questions.ask(con, "companion", "coverage:inventory", text[:1200], now)

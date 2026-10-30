@@ -308,14 +308,7 @@ def system(con, asof: date) -> Facts:
     return out
 
 
-def mail(con, asof: date) -> Facts:
-    from pflab.hq import tools as hq
-    c = _ctx(con)
-    if c is None:
-        return {"mail.unavailable": "the email facts are not reachable from here"}
-    out: Facts = {}
-    _flat("mail", {k: v for k, v in hq.mail_facts(c, {}).items() if k != "source"}, out)
-    return out
+
 
 
 def research(con, asof: date) -> Facts:
@@ -354,10 +347,8 @@ TOOLS: List[Tool] = [
          "year's tax", taxplan),
     Tool("context", "knowledge", "recent news, filings and results about a named company; why a stock moved", context,
          uses_question=True),
-    Tool("system", "system", "whether the system itself is working and in sync: Kite, Gmail, Telegram, the local model, the Claude API, the "
+    Tool("system", "system", "whether the system itself is working and in sync: Kite, Telegram, the local model, the Claude API, the "
          "sandbox, how fresh each data source is, what is running, what failed, what is being researched, what needs the investor, "
          "whether recommendations are current", system),
-    Tool("mail", "mail", "what his money emails said (trades, deposits, dividends, IPO allotments, bank alerts) and whether his record "
-         "or Kite has each one", mail),
 ]
 BY_NAME = {t.name: t for t in TOOLS}

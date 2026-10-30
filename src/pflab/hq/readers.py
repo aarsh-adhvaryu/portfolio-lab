@@ -22,7 +22,7 @@ from pflab.hq import governor as gv
 from pflab.hq import llm
 
 DOC_CHARS = 12_000
-KINDS = ("filing", "result", "article", "dataset", "email")     # S66: research emails naming no id of his (ingest/mail_read.py)
+KINDS = ("filing", "result", "article", "dataset", "email")     # "email": documents of that kind from before email was removed (2026-10-30)
 MAT_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["material", "why"],      # S61 slider
               "properties": {"material": {"type": "string", "enum": ["yes", "no", "unsure"]}, "why": {"type": "string"}}}
 SYSTEM = (

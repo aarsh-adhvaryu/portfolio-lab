@@ -27,9 +27,8 @@ KEYWORDS = {
     "risk": r"risk|monte|simulat|fall|crash|drawdown|worst|chance",
     "tax": r"\btax|regime|refund|advance",
     "context": r"news|why|filing|announce|result|happen|moved|fell|rose",
-    "system": r"working|in sync|status|connected|kite login|gmail|telegram|docker|sandbox|stale|fresh|up to date|failing|failed|broken|"
+    "system": r"working|in sync|status|connected|kite login|telegram|docker|sandbox|stale|fresh|up to date|failing|failed|broken|"
               r"researching|investigat|running now|catching up|everything ok",
-    "mail": r"e-?mails?|\bmail\b|did .{0,30}(arrive|come through)|alert from my bank",
 }
 SYSTEM = ("You answer the investor's questions about his own portfolio using ONLY the FACTS given. Rules: every number you "
           "write must appear in FACTS exactly as given (rupees as given, fractions may be written as percents); do "

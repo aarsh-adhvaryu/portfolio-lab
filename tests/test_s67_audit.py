@@ -150,3 +150,79 @@ def test_verify_returns_success_only_when_accepted():
     assert verify.exit_code(rep2) == 2
     rep2.add("x", verify.FAIL)
     assert verify.exit_code(rep2) == 1
+
+
+def _vctx(tmp_path, now):
+    from pflab import verify
+    pm = tmp_path / "pm"
+    (pm / "app").mkdir(parents=True, exist_ok=True)
+    return verify.Ctx(tmp_path, tmp_path, pm, tmp_path / "data", now, tmp_path / "t")
+
+
+def test_acceptance_evidence_adds_up_across_runs_and_a_later_skip_never_erases_a_pass(tmp_path):
+    from pflab import verify
+    ctx = _vctx(tmp_path, NOW)
+    first = verify.Report(started="2026-10-30 18:00")
+    first.identity = {"candidate_commit": "abc123"}
+    first.add("store", verify.PASS)
+    first.add("sandbox (Docker)", verify.PASS)
+    first.add(verify.WAKE, verify.NEEDS, "sleep it")
+    first.add(verify.HOUR, verify.NEEDS, "an hour")
+    c1 = verify.accumulate(ctx, first)
+    assert verify.exit_code(c1) == 2
+    wake = verify.Report(started="2026-10-30 19:00")
+    wake.identity = {"candidate_commit": "abc123"}
+    wake.add(verify.WAKE, verify.PASS, "wake seen")
+    wake.add("sandbox (Docker)", verify.SKIP, "not checked in this run")
+    c2 = verify.accumulate(ctx, wake)
+    by = {c.name: c.status for c in c2.checks}
+    assert by == {"store": verify.PASS, "sandbox (Docker)": verify.PASS, verify.WAKE: verify.PASS, verify.HOUR: verify.NEEDS}
+    hour = verify.Report(started="2026-10-30 20:00")
+    hour.identity = {"candidate_commit": "abc123"}
+    hour.add(verify.HOUR, verify.PASS, "an hour, working")
+    c3 = verify.accumulate(ctx, hour)
+    assert verify.exit_code(c3) == 0 and c3.verdict.startswith("ACCEPTED")                       # every piece of evidence, from three runs
+    bad = verify.Report(started="2026-10-30 21:00")
+    bad.identity = {"candidate_commit": "abc123"}
+    bad.add("store", verify.FAIL, "broke")
+    assert verify.exit_code(verify.accumulate(ctx, bad)) == 1                                   # a later failure replaces a pass
+    other = verify.Report(started="2026-10-30 22:00")
+    other.identity = {"candidate_commit": "def456"}
+    other.add("store", verify.PASS)
+    assert [c.name for c in verify.accumulate(ctx, other).checks] == ["store"]                   # another candidate starts a new record
+
+
+def test_the_hour_check_reads_uptime_stalls_and_work_from_the_heartbeat(tmp_path):
+    import json
+    import os
+    from datetime import timedelta
+    from pflab import verify
+    ctx = _vctx(tmp_path, NOW)
+    hb = ctx.pm_live / "app" / "heartbeat.json"
+
+    def beat(up_min, gap_s, jobs):
+        hb.write_text(json.dumps({"at": NOW.isoformat(), "pid": os.getpid(), "since": (NOW - timedelta(minutes=up_min)).isoformat(),
+                                  "max_gap_s": gap_s, "jobs_last_hour": jobs}), encoding="utf-8")
+        rep = verify.Report()
+        verify.hour_check(ctx, rep)
+        return rep.checks[-1]
+    assert beat(70, 45, 12).status == verify.PASS
+    assert beat(20, 45, 12).status == verify.NEEDS
+    assert beat(70, 900, 12).status == verify.FAIL                                              # it stalled (a sleep or a hang)
+    assert beat(70, 45, 0).status == verify.FAIL                                                # alive but doing nothing
+
+
+def test_the_heartbeat_records_its_start_its_longest_pause_and_the_work_done(tmp_path):
+    import json
+    from datetime import timedelta
+    from pflab.app import runtime
+    con = store.connect(tmp_path / "l.duckdb")
+    (tmp_path / "pm").mkdir()
+    t = {"now": NOW}
+    rt = runtime.Runtime(tmp_path / "pm", tmp_path / "data", tmp_path, con=con, clock=lambda: t["now"])
+    con.execute("INSERT INTO job_runs (run_id, job, slot, started_at, finished_at, status) VALUES (1, 'collect', ?, ?, ?, 'ok')", [NOW, NOW, NOW])
+    rt._write_beat(NOW, None)
+    t["now"] = NOW + timedelta(seconds=90)
+    rt._write_beat(t["now"], None)
+    d = json.loads((tmp_path / "pm" / "app" / "heartbeat.json").read_text(encoding="utf-8"))
+    assert d["since"] == NOW.isoformat(timespec="seconds") and d["beats"] == 2 and d["max_gap_s"] == 90 and d["jobs_last_hour"] == 1

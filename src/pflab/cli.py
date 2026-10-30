@@ -248,15 +248,12 @@ def main(argv=None):
     thp.add_argument("--asof", type=_d, default=date.today())
     sub.add_parser("drift", help="re-test every adopted rule on the data since it was fixed (S46)")
     sub.add_parser("inbox", help="read every file dropped into PFLAB_PM_DIR/inbox into the knowledge graph")
-    mlp = sub.add_parser("mail", help="S65: read-only Gmail: connect once (browser), fetch statements now, status")
-    mlp.add_argument("action", choices=["connect", "fetch", "status"])
-    mlp.add_argument("--client", help="the Google client file (default: gmail_client.json in the .pflab folder of your user folder)")
-    mlp.add_argument("--days", type=int, default=40, help="fetch: how far back to look")
     vp = sub.add_parser("verify", help="S67: local acceptance of a candidate release: prerequisites, sandbox, connector reads, migration and rollback "
                                         "rehearsal on copies, a restart drill; changes nothing of yours, prints a sanitized report")
     vp.add_argument("--app", help="the installed app's folder (default: from release.toml, else PFLAB_PM_DIR)")
     vp.add_argument("--report", help="write the report here (and a .json beside it)")
     vp.add_argument("--wake-check", action="store_true", help="only: did the app see and recover from a real sleep?")
+    vp.add_argument("--hour-check", action="store_true", help="only: has the app run an hour on its own, without stalling, doing work?")
     vp.add_argument("--live-model", action="store_true", help="also one small model call through the privacy gate and the budget")
     vp.add_argument("--offline", action="store_true", help="do not contact Kite or Gmail")
     upp = sub.add_parser("update", help="S65: the installed app updates to the newest release tag (store backed up first), or --rollback")
@@ -285,14 +282,12 @@ def main(argv=None):
         from pathlib import Path as _P
 
         from pflab import verify
-        rep = verify.run(_P(a.app) if a.app else None, report=_P(a.report) if a.report else None, wake=a.wake_check, model=a.live_model,
+        rep = verify.run(_P(a.app) if a.app else None, report=_P(a.report) if a.report else None, wake=a.wake_check, hour=a.hour_check, model=a.live_model,
                          offline=a.offline)
         print(rep.text())
         return verify.exit_code(rep)
     if a.cmd == "update":
         return _update(a)
-    if a.cmd == "mail":
-        return _mail(a)
     if a.cmd == "learner":
         return _learner(a)
     if a.cmd == "forecast":
@@ -503,31 +498,7 @@ def _llm(a) -> int:
     return 0
 
 
-def _mail(a) -> int:
-    """pflab mail connect|fetch|status: read-only Gmail (ingest/gmail.py). connect opens Google's page in the browser once."""
-    from pflab import release
-    from pflab.data import data_dir
-    from pflab.hq.desk import Desk
-    from pflab.ingest import gmail
-    from pflab.pm import store
-    try:
-        if a.action == "connect":
-            print(f"connected {gmail.connect(a.client)} (read-only: nothing can be sent, deleted or changed)")
-            return 0
-        if a.action == "status":
-            con = store.connect(read_only=True)
-            try:
-                n = con.execute("SELECT count(*), coalesce(sum(kept), 0), max(seen_at) FROM mail_seen").fetchone()
-            except Exception:                           # a store not yet migrated to v41 (a read-only open does not migrate)
-                n = (0, 0, None)
-            print(f"Gmail {'connected' if gmail.connected() else 'NOT connected'}; {n[0]} message(s) looked at, {n[1]} file(s) kept, last {n[2]}")
-            return 0
-        rt = Desk(store.connect(), store.pm_dir(), data_dir(), release.ROOT)
-        print(gmail.fetch(rt, days=a.days))
-        return 0
-    except (gmail.MailError, __import__("pflab.guard", fromlist=["OutwardBlocked"]).OutwardBlocked) as e:
-        print(f"refused: {e}")
-        return 1
+
 
 
 def _update(a) -> int:
