@@ -375,39 +375,6 @@ def _us_fx(ctx: Ctx) -> dict:
 register(Job("us_fx", Daily(7, 25, weekdays_only=False), _us_fx, "US sleeve: USDINR rates into the store"))
 
 
-def _mail_on() -> Tuple[bool, str]:
-    from pflab.ingest import gmail
-    return gmail.enabled(), "email is off: you add every file by hand in Inbox and files"
-
-
-def _mail(ctx: Ctx) -> dict:
-    """S65: read-only Gmail: new statement attachments into the inbox (ingest/gmail.py); asks once to be connected.
-    S66: then what the money emails SAY, read by the local model and checked against his record (ingest/mail_read.py)."""
-    from pflab import guard
-    from pflab.hq import desk, models
-    from pflab.ingest import gmail, mail_read
-    if guard.blocked("mail"):
-        return {"skipped": "the workshop does not read his mail"}
-    if not gmail.connected():
-        gmail.ask_to_connect(ctx.con, ctx.now)
-        return {"skipped": "Gmail not connected (asked once in Needs from you)", "waiting": True, "why": "Gmail is not connected: statements and money emails wait for Connect Gmail in Settings"}
-    rt, sess = desk.from_ctx(ctx), gmail.session()
-    out = gmail.fetch(rt, sess)
-    try:
-        out["read"] = mail_read.run(rt, sess, models.model_id("mail_reading"))
-    except Exception as e:                                   # the local model off, say: the emails are read at the next try
-        out["read"] = f"not read: {type(e).__name__}: {str(e)[:160]}"
-        out["failed"] = {"mail_reading": out["read"]}        # S67: the attachments came; the reading did not: the run is a failed one
-    if out.get("errors") and out["errors"] >= out.get("messages", 0):                 # every message tried failed: the run did not read mail
-        out.setdefault("failed", {})["fetch"] = f"{out['errors']} message(s) could not be fetched or stored"
-    return out
-
-
-register(Job("mail", Daily(21, 15, weekdays_only=False), _mail, "read-only Gmail, once a day: statements that arrived by email into the "
-             "inbox (checked, then your press); what money emails say, read on this PC and checked against your record",
-             cooldown_minutes=180, enabled_fn=lambda ctx: _mail_on()))
-
-
 def _backfill(ctx: Ctx) -> dict:
     """S67: market history fills itself, in steps of about 90 seconds (newest sessions first), so a first run needs no long command and
     an interruption costs nothing. The readiness stages and the known gaps are brought up to date with it."""

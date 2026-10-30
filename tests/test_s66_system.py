@@ -50,18 +50,14 @@ def test_needs_groups_the_same_kind_of_request(rt):
 
 
 def test_the_picture_reads_the_whole_system(rt, monkeypatch):
-    from pflab.ingest import gmail                                                    # the real keys folder must not decide this test
-    monkeypatch.setattr(gmail, "connected", lambda: False)
-    monkeypatch.setattr(gmail, "has_client", lambda: True)
     con = rt.cursor()
     con.execute("INSERT INTO job_runs (run_id, job, started_at, finished_at, status, detail) VALUES (1, 'filings', ?, ?, 'ok', "
                 "'{\"filings\": 3, \"names\": 2, \"alerts_queued\": 0}')", [NOW - timedelta(minutes=5), NOW - timedelta(minutes=4)])
     con.execute("INSERT INTO job_runs (run_id, job, started_at, status) VALUES (2, 'collect', ?, 'running')", [NOW - timedelta(minutes=1)])
     p = system.picture(rt, NOW)
     names = {c["id"]: c for c in p["connectors"]}
-    assert set(names) == {"kite", "gmail", "telegram", "local", "api", "sandbox", "release"}
+    assert set(names) == {"kite", "telegram", "local", "api", "sandbox", "release"}                 # email is gone (2026-10-30)
     assert names["local"]["state"] == system.OK and names["kite"]["state"] == system.WARN and names["kite"]["action"] == "kite"
-    assert names["gmail"]["action"] == "gmail"
     assert p["work"]["running"] == [{"job": "collect", "since": "20:59"}]
     assert p["work"]["recent"][0]["says"].startswith("checked company filings: 3 for 2")
     assert p["tools"]["total"] == len(tl.TOOLS) and p["tools"]["read"] >= 20
@@ -69,12 +65,11 @@ def test_the_picture_reads_the_whole_system(rt, monkeypatch):
 
 
 def test_the_assistant_can_read_the_system_and_the_emails(rt):
-    assert {"system_status", "mail_facts"} <= set(tl.TOOLS) and all(tl.TOOLS[n].kind == "read" for n in ("system_status", "mail_facts"))
+    assert "system_status" in tl.TOOLS and tl.TOOLS["system_status"].kind == "read" and "mail_facts" not in tl.TOOLS
     from types import SimpleNamespace
     ctx = SimpleNamespace(rt=rt, now=NOW, con=rt.cursor())
     s = tl.system_status(ctx, {})
     assert s["verdict"] and s["connectors"] and "source" in s
-    assert tl.mail_facts(ctx, {})["counts"] == {}
 
 
 def test_a_run_left_running_by_a_stopped_process_is_due_again_at_the_next_start(rt):

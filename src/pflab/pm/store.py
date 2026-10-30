@@ -682,6 +682,16 @@ MIGRATIONS = [
         dp_ids VARCHAR, label VARCHAR NOT NULL, n_files INTEGER NOT NULL, sources VARCHAR, state VARCHAR NOT NULL
     );
     """),
+    # 2026-10-30: his decision, email is gone from the system: the tables the mail code kept are dropped (a fresh start's archive keeps the old copy).
+    # And each statement's period, recorded by the ledger build (which writes only when every balance check passed): coverage is judged from these.
+    (50, "no_mail_statement_periods_s67", """
+    DROP TABLE IF EXISTS mail_seen;
+    DROP TABLE IF EXISTS mail_facts;
+    DROP TABLE IF EXISTS mail_scan;
+    CREATE TABLE statement_periods (
+        account_id VARCHAR NOT NULL, kind VARCHAR NOT NULL, file_sha VARCHAR, first_date DATE, last_date DATE, n_rows INTEGER, built_at TIMESTAMP NOT NULL
+    );
+    """),
 ]
 
 

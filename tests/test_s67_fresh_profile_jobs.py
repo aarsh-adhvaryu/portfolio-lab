@@ -79,20 +79,21 @@ def test_kite_still_shows_what_you_hold_before_any_statement_has_set_up_an_accou
     assert [r.isin for r in t["positions"].itertuples()] == ["INE000A01011"]
 
 
-def test_email_is_off_by_default_and_nothing_asks_to_connect_it(ctx, monkeypatch):
-    from pflab.agents import questions
-    from pflab.ingest import gmail
-    from pflab.app import system
-    monkeypatch.delenv("PFLAB_MAIL", raising=False)
-    assert gmail.enabled() is False and gmail.connected() is False and gmail.coverage(ctx.con, NOW) == []
-    assert gmail.ask_to_connect(ctx.con, NOW) is None and questions.open_questions(ctx.con) == []
-    ok, why = jobs.REGISTRY["mail"].enabled_fn(ctx)
-    assert ok is False and "by hand" in why
-    assert jobs.run_job(ctx, jobs.REGISTRY["mail"]).status == "skipped"
-    from pflab.app import runtime
+def test_email_is_gone_no_job_no_connector_no_tool_no_screen(ctx):
+    """His decision 2026-10-30: email is removed, not switched off. Nothing reads, asks about or shows a mailbox."""
+    import importlib.util
+    from pathlib import Path
+    from pflab.agents import questions, tools as at
+    from pflab.app import runtime, system
+    from pflab.hq import tools as ht
+    assert importlib.util.find_spec("pflab.ingest.gmail") is None and importlib.util.find_spec("pflab.ingest.mail_read") is None
+    assert "mail" not in jobs.REGISTRY and "mail_facts" not in ht.TOOLS and "mail" not in at.BY_NAME
     rt = runtime.Runtime(ctx.pm_dir, ctx.data_root, ctx.repo, con=ctx.con, clock=lambda: NOW)
-    g = next(c for c in system.picture(rt, NOW)["connectors"] if c["id"] == "gmail")
-    assert g["state"] == system.OFF and "by hand" in g["line"] and g["action"] is None
+    assert "gmail" not in {c["id"] for c in system.picture(rt, NOW)["connectors"]} and questions.open_questions(ctx.con) == []
+    static = Path(__file__).resolve().parents[1] / "src" / "pflab" / "app" / "static"
+    assert "/api/mail" not in (static / "app.js").read_text(encoding="utf-8") and "gmail" not in (static / "app.js").read_text(encoding="utf-8").lower()
+    tables = {t for (t,) in ctx.con.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='main'").fetchall()}
+    assert not {"mail_seen", "mail_facts", "mail_scan"} & tables and "statement_periods" in tables
 
 
 def test_an_account_can_be_left_out_and_is_never_a_gap_or_a_question(ctx):
@@ -136,3 +137,24 @@ def test_the_bring_list_is_computed_from_what_is_in_inbox_and_says_what_is_missi
     items = {b["id"]: b for b in onboarding.bring_list(ctx.con)}
     assert items["tradebook"]["state"] == "have" and items["funds"]["state"] == "missing"
     assert "email" not in onboarding.WELCOME.lower() and "left out" in onboarding.WELCOME
+
+
+def test_a_locked_file_no_saved_password_opens_is_asked_once_and_closes_when_it_opens(ctx, monkeypatch):
+    """Email used to ask for passwords; with it gone, a locked file dropped by hand asks itself, and the same file opening closes it."""
+    from pflab.agents import questions
+    from pflab.app import inbox as ib, readiness, runtime
+    from pflab.ingest import sniff
+    rt = runtime.Runtime(ctx.pm_dir, ctx.data_root, ctx.repo, con=ctx.con, clock=lambda: NOW)
+    monkeypatch.setattr(ib, "_start", lambda *a, **k: None)
+    monkeypatch.setattr(sniff, "is_encrypted", lambda data, name: True)
+    monkeypatch.setattr(sniff, "sniff", lambda data, name, pw=None: {"kind": "other", "bank": None, "last4": None, "dp_ids": None})
+    import pytest
+    with pytest.raises(ValueError, match="password-protected"):
+        ib.receive(rt, "statement.pdf", b"%PDF-1.4 locked")
+    assert len(questions.open_questions(ctx.con)) == 1 and readiness.gaps(ctx.con, "coverage")
+    monkeypatch.setattr(sniff, "sniff", lambda data, name, pw=None: {"kind": "bank", "bank": "SBI", "last4": "9001", "dp_ids": None, "password_name": "PFLAB_SBI_PASSWORD"})
+    try:
+        ib.receive(rt, "statement.pdf", b"%PDF-1.4 locked")                                       # the same file after the password was saved
+    except ValueError:
+        pass                                                                                    # (which bank account: asked separately)
+    assert not any("password-protected" in t for _, _, t in questions.open_questions(ctx.con)) and not readiness.gaps(ctx.con, "coverage")

@@ -151,8 +151,22 @@ class Runtime:
             old = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
         except (OSError, ValueError):
             old = {}
-        doc = {"at": now.isoformat(timespec="seconds"), "pid": __import__("os").getpid(), "catching_up": self.catching_up,
-               "last_wake": wake or old.get("last_wake"), "wakes": int(old.get("wakes", 0)) + (1 if wake else 0)}
+        pid = __import__("os").getpid()
+        same = old.get("pid") == pid                       # the same process: the hour check adds up its beats; a new process starts again
+        try:
+            gap = (now - datetime.fromisoformat(str(old.get("at"))[:19])).total_seconds() if same and old.get("at") else 0.0
+        except ValueError:
+            gap = 0.0
+        try:
+            jobs = int(self.cursor().execute("SELECT count(*) FROM job_runs WHERE finished_at >= ? AND status IN ('ok', 'skipped')",
+                                             [now - timedelta(hours=1)]).fetchone()[0])
+        except Exception:
+            jobs = int(old.get("jobs_last_hour") or 0) if same else 0
+        doc = {"at": now.isoformat(timespec="seconds"), "pid": pid, "catching_up": self.catching_up,
+               "last_wake": wake or old.get("last_wake"), "wakes": int(old.get("wakes", 0)) + (1 if wake else 0),
+               "since": old.get("since") if same and old.get("since") else now.isoformat(timespec="seconds"),
+               "beats": int(old.get("beats", 0)) + 1 if same else 1, "max_gap_s": max(float(old.get("max_gap_s") or 0) if same else 0.0, gap),
+               "jobs_last_hour": jobs}
         if wake is None and old.get("last_wake") and self.catching_up is None and "settled_at" not in old.get("last_wake", {}):
             doc["last_wake"] = {**old["last_wake"], "settled_at": now.isoformat(timespec="seconds")}     # the data caught up after that wake
         try:

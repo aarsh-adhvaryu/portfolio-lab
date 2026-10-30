@@ -150,7 +150,6 @@ def connectors(rt, now: datetime) -> List[dict]:
     from pflab.agents import sandbox as sb
     from pflab.app import readiness
     from pflab.app import runtime as rtm
-    from pflab.ingest import gmail
     from pflab.pm import secrets_setup as ss
     con = rt.cursor()
     out = []
@@ -171,33 +170,6 @@ def connectors(rt, now: datetime) -> List[dict]:
     out.append({"id": "kite", "name": "Kite", "state": k[0], "line": k[1], "action": k[2]})
 
     # Gmail: a saved token is not a working mailbox; the state is the last mail run
-    if not gmail.enabled():
-        out.append({"id": "gmail", "name": "Email", "state": OFF, "line": "not used: you add every statement and file by hand in Inbox and files", "action": None})
-    elif gmail.connected():
-        f = {st: n for st, n in con.execute("SELECT status, count(*) FROM mail_facts WHERE kind <> 'other' GROUP BY status").fetchall()}
-        ma = _attempts(con, "mail")
-        seen = con.execute("SELECT count(*), max(seen_at) FROM mail_seen").fetchone()
-        odd = (f.get("conflict", 0) or 0) + (f.get("new", 0) or 0)
-        base = f"{seen[0]} mails looked at" + (f", last {str(seen[1])[:16]}" if seen[1] else "")
-        if ma["failed_at"]:
-            g = (WARN, f"saved login, but the latest read failed ({ma['why']}); {base}; showing what was read before")
-        elif ma["ok"] is None:
-            g = (WARN, "connected; no successful read yet")
-        elif now - ma["ok"] > timedelta(days=2):
-            g = (WARN, f"connected, but not read since {str(ma['ok'])[:16]} (it should run daily); {base}")
-        elif readiness.gaps(con, "mail"):
-            gp = readiness.gaps(con, "mail")
-            g = (WARN, f"{base}; {len(gp)} message(s) could not be read ({gp[0]['detail'][:70]}); they are tried again, the rest arrived")
-        elif odd:
-            g = (WARN, f"{base}; {odd} email fact(s) not in your record")
-        else:
-            g = (OK, f"{base}; {f.get('matched', 0)} email facts matched your record")
-        out.append({"id": "gmail", "name": "Gmail (read-only)", "state": g[0], "line": g[1], "action": None})
-    else:
-        out.append({"id": "gmail", "name": "Gmail (read-only)", "state": WARN if gmail.has_client() else OFF,
-                    "line": "not connected: press Connect so statements and money emails arrive by themselves" if gmail.has_client()
-                            else "not connected: do the one-time Google step (README step 5), then Connect", "action": "gmail"})
-
     # Telegram: switched on is not delivering; look at what the outbox could and could not send
     tg = bool(rt.settings.get("telegram_send"))
     held = con.execute("SELECT count(*) FROM outbox WHERE status='pending'").fetchone()[0]
@@ -281,7 +253,7 @@ def _d(x) -> Optional[date]:
 
 
 JOB_OF = {"Close prices": "prices", "Fund NAVs": "nav", "Gold rates": "nav", "Company filings": "filings", "News": "kg",
-          "Kite snapshot": "tradecheck", "Email": "mail"}
+          "Kite snapshot": "tradecheck"}
 
 
 def freshness(rt, now: datetime) -> List[dict]:
@@ -320,10 +292,6 @@ def freshness(rt, now: datetime) -> List[dict]:
     add("Kite snapshot", snap, "clock", ok=3, stale=10, line=f"holdings read from Kite {str(snap)[:16]}" if snap else "never logged in")
     mc = rt.mc_cache()
     add("Fall-limit simulation", (datetime.fromisoformat(str(mc["at"])[:19]) if mc and mc.get("at") else None), "clock", ok=7, stale=30)
-    from pflab.ingest import gmail
-    if gmail.connected():
-        ok_at = _attempts(con, "mail")["ok"]                      # only a SUCCESSFUL run is a read: a failed one does not refresh this
-        add("Email", ok_at, "clock", ok=2, stale=5, line=f"last successful read {str(ok_at)[:16]}" if ok_at else "not read yet")
     try:
         from pflab.pm import today
         td = today.build(con, now.date())["today"]
@@ -354,7 +322,6 @@ SAY = {
     "hq": lambda d: ("the brain thought: nothing new" if "nothing new" in str(d.get("brain", "")) else "the brain ran a pass and wrote to its journal"),
     "conductor": lambda d: f"checked the system's own state: {_n(d, 'ok')} fine, {_n(d, 'warn')} to watch, {_n(d, 'asked')} question(s)",
     "outbox": lambda d: f"messages: {_n(d, 'sent')} sent, {_n(d, 'still_pending')} held",
-    "mail": lambda d: "read your email" + (f": {_n(d, 'kept')} statement file(s) kept" if d.get("kept") else ": nothing new"),
     "twin": lambda d: "updated the scoreboard (your book against the paper books)",
     "plans": lambda d: "worked out ready plans for the next money",
     "forecast": lambda d: "scored and made price-range forecasts",
@@ -428,7 +395,7 @@ def needs(con, limit: int = 6) -> dict:
             groups[g]["names"].append(re.sub(r".*sheet for (\S+).*", r"\1", text) if g == "tijori" else "")
             continue
         groups[g] = {"id": qid, "agent": agent, "count": 1, "at": str(at)[:16], "title": _first(text), "names": [re.sub(r".*sheet for (\S+).*", r"\1", text)] if g == "tijori" else [],
-                     "go": {"mail": "settings", "inbox": "inbox", "tijori": "inbox"}.get(g.split(":")[0], "inbox")}
+                     "go": {"inbox": "inbox", "tijori": "inbox"}.get(g.split(":")[0], "inbox")}
     out = []
     for g in groups.values():
         if g["count"] > 1 and g["names"] and g["names"][0]:
@@ -595,10 +562,6 @@ def processing(rt) -> List[dict]:
             return "?"
     return [
         {"what": "His statements, ledger, tax lots and bank details", "where": "this PC", "model": "code", "sends": "nothing: they never leave"},
-        {"what": "What his money emails say (trades, deposits, dividends, alerts)", "where": "this PC", "model": model("mail_reading"),
-         "sends": "nothing: read by the local model only; each fact checked by code"},
-        {"what": "Research or corporate-action emails that name none of his ids", "where": "cloud, after a check", "model": model("materiality"),
-         "sends": "a redacted copy, only if the mail reader cleared it and it passes the identity check again at send time"},
         {"what": "Public filings, results and news", "where": "cloud", "model": model("materiality"), "sends": "the public document"},
         {"what": "Ask (local)", "where": "this PC", "model": model("routing"), "sends": "nothing"},
         {"what": "The brain's passes and investigations", "where": "cloud", "model": model("brain"),
@@ -613,9 +576,9 @@ def _coverage(con, now: datetime) -> dict:
     """The account / source / period picture: what was found, how far back each mailbox was read, what is open, and why it is not called complete."""
     try:
         from pflab.ingest import coverage
-        return {"status": coverage.status(con, now), "accounts": coverage.matrix(con, now), "gaps": coverage.gaps(con)[:20], "mailboxes": coverage.mailboxes(con, now)}
+        return {"status": coverage.status(con, now), "accounts": coverage.matrix(con, now), "gaps": coverage.gaps(con)[:20]}
     except Exception:
-        return {"status": {"label": "nothing read yet", "reasons": []}, "accounts": [], "gaps": [], "mailboxes": []}
+        return {"status": {"label": "nothing read yet", "reasons": []}, "accounts": [], "gaps": []}
 
 
 def _onboarding(con) -> dict:

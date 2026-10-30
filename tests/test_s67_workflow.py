@@ -14,10 +14,9 @@ from pflab.agents import tradecheck as tc
 from pflab.app import inbox as ib
 from pflab.app import readiness as rd
 from pflab.app import runtime, system
-from pflab.ingest import gmail, sniff
+from pflab.ingest import sniff
 from pflab.ledger.events import Event, EventLog, save
 from pflab.pm import store
-from tests.test_s65_gmail import FakeGmail, LEDGER, TRADEBOOK  # noqa: F401
 
 NOW = datetime(2026, 11, 4, 21, 0)
 AAA = "INE000A01011"
@@ -32,63 +31,6 @@ def rt(tmp_path, monkeypatch):
     monkeypatch.setattr(system, "_ollama", lambda: {"up": True, "models": ["qwen3:8b-q8_0", "nomic-embed-text:latest"]})
     return runtime.Runtime(tmp_path / "pm", tmp_path / "data", tmp_path, con=con, clock=lambda: NOW)
 
-
-MAILS = {"m1": (("Console", "Mon"), [("tb.csv", TRADEBOOK, False)]), "m2": (("bank", "Tue"), [("ledger.xlsx", LEDGER, False)]),
-         "m3": (("Console", "Wed"), [("tb2.csv", TRADEBOOK + b"DEF,INE1,2026-10-28,buy,2,3,4\n", False)])}
-
-
-def test_repeat_input_creates_no_duplicates_and_a_new_message_adds_only_itself(rt):
-    g = FakeGmail(dict(list(MAILS.items())[:2]))
-    a = gmail.fetch(rt, g, now=NOW)
-    assert a["kept"] == 2 and a["errors"] == 0
-    g2 = FakeGmail(dict(MAILS))
-    b = gmail.fetch(rt, g2, now=NOW)
-    assert b["messages"] == 1 and b["kept"] == 1                                 # only the new one; the first two were seen
-    again = gmail.fetch(rt, FakeGmail(dict(MAILS)), now=NOW)
-    assert again["messages"] == 0
-    con = rt.cursor()
-    assert con.execute("SELECT count(*) FROM inbox_items").fetchone()[0] == 3
-    assert con.execute("SELECT count(*) - count(DISTINCT sha) FROM inbox_items").fetchone()[0] == 0     # no file twice
-    # the same attachment arriving in a second message is the same file, not a second one
-    dup = FakeGmail({"m9": (("Console", "Thu"), [("tb-copy.csv", TRADEBOOK, False)])})
-    gmail.fetch(rt, dup, now=NOW)
-    assert con.execute("SELECT count(*) FROM inbox_items").fetchone()[0] == 3
-
-
-def test_a_message_that_cannot_be_stored_is_a_counted_gap_and_the_others_still_arrive(rt, monkeypatch):
-    real = ib.receive
-
-    def flaky(rt_, name, data, *a, **k):
-        if name == "ledger.xlsx":
-            raise OSError("disk is full")
-        return real(rt_, name, data, *a, **k)
-    monkeypatch.setattr(ib, "receive", flaky)
-    g = FakeGmail(dict(MAILS))
-    out = gmail.fetch(rt, g, now=NOW)
-    assert out["errors"] == 1 and out["kept"] == 2                               # m1 and m3 arrived; m2 did not stop them
-    con = rt.cursor()
-    assert [x["key"] for x in rd.gaps(con, "mail")] == ["mail:msg:m2"] and "disk is full" in rd.gaps(con)[0]["detail"]
-    assert con.execute("SELECT count(*) FROM mail_seen WHERE msg_id='m2'").fetchone()[0] == 0     # not marked seen: it is retried
-    monkeypatch.setattr(ib, "receive", real)                                      # the disk has room again
-    out = gmail.fetch(rt, g, now=NOW)
-    assert out["kept"] == 1 and out["errors"] == 0 and rd.gaps(con, "mail") == []   # the retry stored it and closed the gap
-    monkeypatch.setattr(ib, "receive", flaky)
-    g4 = FakeGmail({"m4": (("bank", "Fri"), [("ledger.xlsx", LEDGER + b"x", False)])})
-    for _ in range(rd.GAP_TRIES + 2):
-        gmail.fetch(rt, g4, now=NOW)
-    gp = rd.gaps(con, "mail")
-    assert gp and gp[0]["attempts"] == rd.GAP_TRIES                              # three tries, then left visible and no longer retried
-
-
-def test_a_failing_fetch_listing_fails_the_mail_job_not_silently(rt, monkeypatch):
-    class Down(FakeGmail):
-        def get(self, url, params=None, timeout=None):
-            return SimpleNamespace(status_code=401, json=lambda: {})
-    with pytest.raises(gmail.MailError, match="401"):
-        gmail.fetch(rt, Down({}), now=NOW)
-
-
-# --- questions about differences close themselves ----------------------------------------------------------------------------------------------
 
 def _store_with_ledger(tmp_path):
     con = store.connect(tmp_path / "t.duckdb")
@@ -127,7 +69,7 @@ def test_readiness_reflects_reconciled_coverage_and_resumes_after_a_missing_step
     st = {s["key"]: s for s in rd.assess(rt, NOW)["stages"]}
     assert st["record"]["state"] == rd.PARTIAL and any("Approve the accounts" in t for t in st["record"]["todo"])
     (rt.pm_dir / "sources.toml").write_text("[sources]\n", encoding="utf-8")                  # the missing step is done
-    con.execute("INSERT INTO questions (q_id, created_at, agent, subject_key, text, status) VALUES (1, ?, 'mail', 'mail:locked:NSDL', 't', 'open')", [NOW])
+    con.execute("INSERT INTO questions (q_id, created_at, agent, subject_key, text, status) VALUES (1, ?, 'inbox', 'inbox:locked:abc123', 't', 'open')", [NOW])
     st = {s["key"]: s for s in rd.assess(rt, NOW)["stages"]}
     assert st["record"]["state"] == rd.PARTIAL and "password" in st["record"]["todo"][0]
     con.execute("UPDATE questions SET status='dropped' WHERE q_id=1")

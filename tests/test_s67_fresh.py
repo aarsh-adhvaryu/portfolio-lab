@@ -45,7 +45,7 @@ def test_the_old_profile_is_archived_verified_and_moved_and_the_new_one_is_empty
     assert r["done"] and r["verified"] >= 3 and fresh.verify_archive(r["archive"])["ok"]
     assert pm.exists() and (pm / "ledger.duckdb").exists() and "profile_20261029" in r["archive"]
     new = duckdb.connect(str(pm / "ledger.duckdb"), read_only=True)
-    for t in ("accounts", "events", "instruments", "prices", "hq_cases", "hq_suggestions", "kg_docs", "mail_seen", "known_gaps"):
+    for t in ("accounts", "events", "instruments", "prices", "hq_cases", "hq_suggestions", "kg_docs", "known_gaps"):
         assert new.execute(f"SELECT count(*) FROM {t}").fetchone()[0] == 0, t               # no personal or company state carried
     assert new.execute("SELECT count(*) FROM learn_tests").fetchone()[0] == 1                 # the counter survives: no spent test is reopened
     assert new.execute("SELECT cost_inr FROM api_calls").fetchall() == [(42.5,)]               # and so does what was spent

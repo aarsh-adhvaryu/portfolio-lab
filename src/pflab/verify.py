@@ -159,7 +159,11 @@ def fingerprint(path: Path) -> Optional[dict]:
     return {"size": st.st_size, "mtime_ns": st.st_mtime_ns, "sha256": h.hexdigest()}
 
 
-def identity(ctx: Ctx, rep: Report) -> None:
+WAKE, HOUR = "Windows sleep and wake", "independent of the coding assistant"
+HOUR_S, STALL_S = 3600, 600          # the one-hour run: an hour of uptime with no stall longer than ten minutes, and work done in it
+
+
+def identity(ctx: Ctx, rep: Report, full: bool = True) -> None:
     from pflab import release
     from pflab.pm import store
     cand_schema = max(m[0] for m in store.MIGRATIONS)
@@ -181,7 +185,9 @@ def identity(ctx: Ctx, rep: Report) -> None:
                     "candidate_describe": _git(ctx.code_root, "describe", "--tags", "--always", run=ctx.run),
                     "installed_tag": installed_tag, "installed_schema": installed_schema, "candidate_schema": cand_schema}
     is_installed = release.is_app(ctx.code_root)
-    if is_installed:
+    if is_installed and not full:                            # the wake and hour checks are about the installed app itself: that is what they read
+        rep.add("candidate identity", INFO, f"the installed app itself, {commit[:12]} ({installed_tag or 'tag unknown'})")
+    elif is_installed:
         rep.add("candidate identity", FAIL, "this code is the INSTALLED app's own clone: a check of the old installation validates nothing about a candidate",
                 "run tools\\verify_candidate.ps1: it makes an isolated checkout of the candidate and runs this from there")
     elif not commit:
@@ -288,14 +294,13 @@ def sandbox_checks(ctx: Ctx, rep: Report) -> None:
 
 def connectors(ctx: Ctx, rep: Report) -> None:
     from pflab.app import runtime as rtm
-    from pflab.ingest import gmail
     from pflab.pm import secrets as sec
     try:
         secrets = sec.load()
     except Exception:
         secrets = None
     if ctx.offline:
-        for n in ("Kite read", "Gmail read"):
+        for n in ("Kite read",):
             rep.add(n, SKIP, "offline run: no connector was contacted")
     else:
         kite_py = "<app>\\app\\.venv\\Scripts\\python tools\\kite_login.py"
@@ -312,19 +317,6 @@ def connectors(ctx: Ctx, rep: Report) -> None:
                 rep.add("Kite read", PASS, f"read-only: {n} holding row(s) and the funds were read (values not shown)")
             except Exception as e:
                 rep.add("Kite read", FAIL, f"{type(e).__name__}: {str(e)[:120]}", "log in to Kite again; if it persists the read-only wrapper or the key is wrong")
-        if not gmail.enabled():
-            rep.add("Gmail read", SKIP, "email is off by design: every file is added by hand in Inbox and files")
-        elif not gmail.connected():
-            rep.add("Gmail read", NEEDS, "Gmail is not connected (an OAuth step in the browser only you can do)",
-                    "README step 5 (the Google client file), then `pflab mail connect` (or Settings > Connect Gmail), then run this again")
-        else:
-            try:
-                sess = gmail.session()
-                gmail.profile(sess)
-                ids = gmail.message_ids(sess, gmail.QUERY.format(days=40), limit=5)
-                rep.add("Gmail read", PASS, f"read-only: the mailbox answered; {len(ids)} recent statement message(s) visible (contents not read)")
-            except Exception as e:
-                rep.add("Gmail read", FAIL, f"{type(e).__name__}: {str(e)[:120]}", "reconnect Gmail (`pflab mail connect`); a testing-mode token expires after 7 days")
     tg = bool(secrets and secrets.has("telegram", "token") and secrets.has("telegram", "chat_id"))
     rep.add("Telegram", PASS if tg else NEEDS, "configured; NO test message is sent by this check (a local sink is used for tests)" if tg else "token or chat id missing",
             "" if tg else "pflab setup secrets --only telegram")
@@ -571,38 +563,109 @@ def wake_check(ctx: Ctx, rep: Report) -> None:
     """After the laptop has REALLY slept with the app open: did the app see the wake, recover, and catch up? Reads the heartbeat file the app wrote."""
     p = ctx.pm_live / "app" / "heartbeat.json"
     if not p.exists():
-        rep.add("sleep and wake", NEEDS, "the app has written no heartbeat yet (it was not running, or is an older version)",
+        rep.add(WAKE, NEEDS, "the app has written no heartbeat yet (it was not running, or is an older version)",
                 "start Portfolio Lab, leave it open, sleep the laptop for at least 5 minutes, wake it, wait 2 minutes, run `pflab verify --wake-check`")
         return
     try:
         d = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        rep.add("sleep and wake", FAIL, "heartbeat.json cannot be read")
+        rep.add(WAKE, FAIL, "heartbeat.json cannot be read")
         return
     try:                                                           # liveness: an old settled heartbeat from a stopped app proves nothing now
         age = (ctx.now - datetime.fromisoformat(str(d.get("at"))[:19])).total_seconds()
     except (TypeError, ValueError):
-        rep.add("sleep and wake", FAIL, "the heartbeat has no readable time")
+        rep.add(WAKE, FAIL, "the heartbeat has no readable time")
         return
     from pflab._lock import _alive
     if age > HEARTBEAT_MAX_AGE_S or not _alive(str(d.get("pid", ""))):
-        rep.add("sleep and wake", NEEDS,
+        rep.add(WAKE, NEEDS,
                 f"the last beat was {int(age // 60)} min ago" + (" and its process is gone" if not _alive(str(d.get("pid", ""))) else "")
                 + ": this is an old heartbeat, not evidence about the app now",
                 "start Portfolio Lab, leave it open, then run `pflab verify --wake-check` again")
         return
     w = d.get("last_wake")
     if not w:
-        rep.add("sleep and wake", NEEDS, f"no wake has been seen yet (last beat {d.get('at')})",
+        rep.add(WAKE, NEEDS, f"no wake has been seen yet (last beat {d.get('at')})",
                 "with the app open, sleep the laptop for at least 5 minutes, wake it, wait 2 minutes, run `pflab verify --wake-check`")
         return
     if w.get("recovered") == "failed":
-        rep.add("sleep and wake", FAIL, f"a wake at {w.get('at')} was seen but recovery failed")
+        rep.add(WAKE, FAIL, f"a wake at {w.get('at')} was seen but recovery failed")
         return
     settled = bool(w.get("settled_at")) and d.get("catching_up") is None
-    rep.add("sleep and wake", PASS if settled else NEEDS,
+    rep.add(WAKE, PASS if settled else NEEDS,
             f"wake seen at {w.get('at')} after {w.get('away_min')} min; recovered {w.get('recovered')}; " + ("data caught up" if settled else "still catching up"),
             "" if settled else "wait a few minutes with the app open, then run `pflab verify --wake-check` again")
+
+
+def hour_check(ctx: Ctx, rep: Report) -> None:
+    """The one-hour run without the coding assistant, from what the app itself wrote: the same process up for an hour, never stalled longer than
+    STALL_S (a sleep counts as a stall), and jobs finished within the last hour. Run it after the hour; it is evidence, not a promise."""
+    p = ctx.pm_live / "app" / "heartbeat.json"
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        at = datetime.fromisoformat(str(d.get("at"))[:19])
+        since = datetime.fromisoformat(str(d.get("since"))[:19]) if d.get("since") else None
+    except (OSError, ValueError, TypeError):
+        rep.add(HOUR, NEEDS, "no heartbeat from the app yet (or an older version that does not record its start)", "start Portfolio Lab from its icon and leave it an hour")
+        return
+    from pflab._lock import _alive
+    if (ctx.now - at).total_seconds() > HEARTBEAT_MAX_AGE_S or not _alive(str(d.get("pid", ""))):
+        rep.add(HOUR, NEEDS, "the app is not running now: the hour must be measured while it runs", "start Portfolio Lab and leave it an hour, then run this again")
+        return
+    up = (at - since).total_seconds() if since else 0
+    gap, jobs = float(d.get("max_gap_s") or 0), int(d.get("jobs_last_hour") or 0)
+    if up < HOUR_S:
+        rep.add(HOUR, NEEDS, f"running {int(up // 60)} min so far", f"leave it running; run `pflab verify --hour-check` after {int((HOUR_S - up) // 60) + 1} more minutes")
+    elif gap > STALL_S:
+        rep.add(HOUR, FAIL, f"up {int(up // 60)} min, but it stalled for {int(gap // 60)} min at one point (a sleep, a freeze or a hang)",
+                "keep the laptop awake and run the hour again (the app must be restarted for a new count)")
+    elif jobs < 1:
+        rep.add(HOUR, FAIL, f"up {int(up // 60)} min but no job finished in the last hour: it was alive, not working")
+    else:
+        rep.add(HOUR, PASS, f"up {int(up // 60)} min in one process, longest pause {int(gap)} s, {jobs} job run(s) finished in the last hour")
+
+
+EVIDENCE = "acceptance.json"
+
+
+def _binding(ctx: Ctx, rep: Report) -> dict:
+    from pflab import activation
+    try:
+        prof = activation.read(ctx.pm_live).get("profile", "")
+    except Exception:
+        prof = ""
+    return {"commit": rep.identity.get("candidate_commit"), "pm": str(ctx.pm_live), "profile": prof}
+
+
+def accumulate(ctx: Ctx, rep: Report) -> Report:
+    """The acceptance record grows across runs (audit): the full check, then the sleep check, then the hour check each add their evidence to ONE
+    record bound to the candidate, the profile and its folder. A later pass replaces an earlier pending; a later skip or pending never erases a
+    pass; a later failure replaces a pass. A different candidate or profile starts a new record."""
+    p = ctx.pm_live / "app" / EVIDENCE
+    bind = _binding(ctx, rep)
+    try:
+        old = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        old = {}
+    prev = {c["name"]: c for c in old.get("checks", [])} if old.get("binding") == bind else {}
+    rank = {FAIL: 3, PASS: 2, INFO: 1, NEEDS: 0, SKIP: 0}
+    merged = dict(prev)
+    for c in rep.checks:
+        o = prev.get(c.name)
+        if o is None or c.status == FAIL or rank.get(c.status, 0) >= rank.get(o["status"], 0) or o["status"] == FAIL and c.status == PASS:
+            merged[c.name] = {**c.__dict__, "at": rep.started}
+        # else: an earlier pass stands against a later skip or pending
+    out = Report(started=rep.started)
+    out.identity = dict(rep.identity, evidence_from=sorted({m.get("at", rep.started) for m in merged.values()}))
+    for c in merged.values():
+        out.add(c["name"], c["status"], c.get("detail", ""), c.get("fix", ""))
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({"binding": bind, "checks": [{**c.__dict__, "at": merged[c.name].get("at")} for c in out.checks]}, indent=1, default=str),
+                     encoding="utf-8")
+    except OSError:
+        pass
+    return out
 
 
 def live_model(ctx: Ctx, rep: Report) -> None:
@@ -645,7 +708,7 @@ def live_unchanged(ctx: Ctx, rep: Report, before: Optional[dict]) -> None:
 # --- the run ---------------------------------------------------------------------------------------------------------------------------------
 
 def run(app: Optional[Path] = None, *, report: Optional[Path] = None, wake: bool = False, model: bool = False, offline: bool = False,
-        now: Optional[datetime] = None, drill_python: Optional[str] = None, skip: tuple = ()) -> Report:
+        now: Optional[datetime] = None, drill_python: Optional[str] = None, skip: tuple = (), hour: bool = False, keep: bool = True) -> Report:
     from pflab import release
     from pflab.data import data_dir
     from pflab.pm import store
@@ -664,15 +727,18 @@ def run(app: Optional[Path] = None, *, report: Optional[Path] = None, wake: bool
     before = fingerprint(ctx.live_db)
     saved_env = {k: os.environ.get(k) for k in ("PFLAB_PM_DIR", "PFLAB_DATA_DIR")}
     try:
-        identity(ctx, rep)
-        if not wake and ctx.live_db.exists():
+        identity(ctx, rep, full=not (wake or hour))
+        if not (wake or hour) and ctx.live_db.exists():
             try:                                           # from here every default-path read (budget, stock list, targets) goes to the COPY
                 os.environ["PFLAB_PM_DIR"] = str(ctx.pm_copy())
             except OSError:
                 pass                                       # the store is held by the app: the migration check says so and asks him to stop it
         os.environ["PFLAB_DATA_DIR"] = str(ctx.data)
-        if wake:
-            wake_check(ctx, rep)
+        if wake or hour:
+            if wake:
+                wake_check(ctx, rep)
+            if hour:
+                hour_check(ctx, rep)
         else:
             steps = [("prerequisites", prerequisites), ("configuration", configuration), ("local model", local_model),
                      ("sandbox", sandbox_checks), ("connectors", connectors), ("migration", migration_and_rollback),
@@ -694,11 +760,14 @@ def run(app: Optional[Path] = None, *, report: Optional[Path] = None, wake: bool
                 live_model(ctx, rep)
             else:
                 rep.add("live model call", SKIP, "not asked for (add --live-model for one small call through the privacy gate and the budget)")
-            rep.add("Windows sleep and wake", NEEDS, "cannot be done by a program: it needs the laptop to really sleep",
+            rep.add(WAKE, NEEDS, "cannot be done by a program: it needs the laptop to really sleep",
                     "with the app open: sleep the laptop 5+ minutes, wake it, wait 2 minutes, run `pflab verify --wake-check`")
-            rep.add("independent of the coding assistant", NEEDS, "only you can close it", "close Claude Code and the terminal, leave Portfolio Lab running one hour, "
-                    "then run `pflab verify --wake-check` (the heartbeat shows it kept beating)")
-        live_unchanged(ctx, rep, before)
+            rep.add(HOUR, NEEDS, "only you can close it", "close Claude Code and the terminal, leave Portfolio Lab running one hour (laptop awake), "
+                    "then run `pflab verify --hour-check`")
+        if not (wake or hour):
+            live_unchanged(ctx, rep, before)
+        if keep:
+            rep = accumulate(ctx, rep)
     finally:
         for k, v in saved_env.items():
             if v is None:
@@ -727,10 +796,11 @@ def main(argv=None) -> int:
     ap.add_argument("--app", help="the installed app's folder (default: from release.toml, else PFLAB_PM_DIR)")
     ap.add_argument("--report", help="write the sanitized report here (and a .json beside it)")
     ap.add_argument("--wake-check", action="store_true", help="only: did the app see and recover from a real sleep? (run it after sleeping the laptop)")
+    ap.add_argument("--hour-check", action="store_true", help="only: has the app run an hour on its own, without stalling, doing work?")
     ap.add_argument("--live-model", action="store_true", help="also make one small model call through the privacy gate and the budget")
     ap.add_argument("--offline", action="store_true", help="do not contact Kite or Gmail")
     a = ap.parse_args(argv)
-    rep = run(Path(a.app) if a.app else None, report=Path(a.report) if a.report else None, wake=a.wake_check, model=a.live_model, offline=a.offline)
+    rep = run(Path(a.app) if a.app else None, report=Path(a.report) if a.report else None, wake=a.wake_check, hour=a.hour_check, model=a.live_model, offline=a.offline)
     print(rep.text())
     return exit_code(rep)
 

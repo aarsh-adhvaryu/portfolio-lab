@@ -367,29 +367,6 @@ def create_app(rt) -> FastAPI:
         rt.bump("hq")
         return out
 
-    @app.get("/api/mail")
-    def mail_status():
-        """S65: read-only Gmail: connected or not, what was fetched."""
-        from pflab.ingest import gmail
-        n = rt.cursor().execute("SELECT count(*), coalesce(sum(kept), 0), max(seen_at) FROM mail_seen").fetchone()
-        from pflab.ingest import mail_read
-        return {"enabled": gmail.enabled(), "connected": gmail.connected(), "client_file": gmail.has_client(), "messages": n[0], "kept": int(n[1]),
-                "facts": json.loads(json.dumps(mail_read.summary(rt.cursor(), 12), default=str)),
-                "last": str(n[2]) if n[2] else None}
-
-    @app.post("/api/mail/connect")
-    def mail_connect():
-        """Opens Google's read-only consent page in the browser on this PC; the token is saved when he approves."""
-        from pflab.ingest import gmail
-        if not gmail.enabled():
-            raise HTTPException(400, "email is off: you add every file by hand in Inbox and files")
-        try:
-            who = gmail.connect()
-            rt.request_run("mail")                          # the first look starts now, not at the next hour
-            return {"connected": who}
-        except gmail.MailError as e:
-            raise HTTPException(400, str(e))
-
     @app.get("/api/twin")
     def twin_api():
         """S65: the scoreboard (plan/twin.py): four books, the same money on the same days; values until 60 sessions."""
@@ -513,8 +490,6 @@ def create_app(rt) -> FastAPI:
             asked = ss.password_names(srcs.load(rt.pm_dir / "sources.toml"))
         except Exception:
             asked = []
-        from pflab.ingest import gmail
-        asked = sorted(set(asked) | set(gmail.passwords_wanted(rt.cursor())))       # S65: senders whose emailed files are locked
         return {"status": ss.status(), "passwords_asked": asked, "fields": {s: [[k, what] for k, what, _ in fs] for s, fs in ss.FIELDS.items()}}
 
     @app.post("/api/secrets")
@@ -525,9 +500,6 @@ def create_app(rt) -> FastAPI:
             done = ss.set_values({(section, key): value})
         except ss.SetupError as e:
             raise HTTPException(400, str(e))
-        from pflab.ingest import gmail
-        if section == "passwords" and gmail.connected():
-            rt.request_run("mail")                          # a new statement password: the locked mail is tried again at once
         return {"set": done}
 
     @app.get("/api/us")

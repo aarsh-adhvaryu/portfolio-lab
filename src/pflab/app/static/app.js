@@ -162,7 +162,7 @@ function taxPlanPanel(t) {
 /* S66: the system as one picture (app/system.py): is it working, in sync, and what does it need from you */
 const SDOT = { ok: 'var(--up)', warn: 'var(--warn)', down: 'var(--down)', off: 'var(--muted)' };
 const sdot = (st) => `<span class="conn" style="background:${SDOT[st] || SDOT.off};flex:0 0 auto"></span>`;
-const GOTO = { kite: 'kite', gmail: 'gmail', settings: '#/settings', inbox: '#/inbox' };
+const GOTO = { kite: 'kite', settings: '#/settings', inbox: '#/inbox' };
 function systemHero(s) {
   if (!s) return '<div class="panel"><span class="small muted">Reading the system…</span></div>';
   const run = s.work.running.length ? `<span class="chip warn pulse">working: ${esc(s.work.running.map((r) => r.job.replace(/_/g, ' ')).join(', '))}</span>` : '<span class="chip muted">idle: nothing is due</span>';
@@ -171,7 +171,7 @@ function systemHero(s) {
   return `<div class="panel" style="display:flex;flex-direction:column;gap:12px;border-color:${s.state === 'ok' ? 'var(--line)' : s.state === 'down' ? 'var(--down)' : 'var(--warn-line)'}">
     <div class="row wrapr" style="gap:12px;justify-content:space-between"><div class="row" style="gap:10px">${sdot(s.state)}<b style="font-size:16px">The system: ${esc(s.verdict)}</b></div>${run}</div>
     ${rec}
-    <div class="row wrapr" style="gap:8px">${s.connectors.map((c) => `<span class="chip" title="${esc(c.line)}" style="display:flex;gap:6px;align-items:center">${sdot(c.state)}<b>${esc(c.name)}</b><span class="muted">${esc(c.line.length > 56 ? c.line.slice(0, 54) + '…' : c.line)}</span>${c.action ? `<a href="#" data-sysgo="${esc(c.action)}" class="small">${c.action === 'kite' ? 'Log in' : c.action === 'gmail' ? 'Connect' : 'Open'}</a>` : ''}</span>`).join('')}</div>
+    <div class="row wrapr" style="gap:8px">${s.connectors.map((c) => `<span class="chip" title="${esc(c.line)}" style="display:flex;gap:6px;align-items:center">${sdot(c.state)}<b>${esc(c.name)}</b><span class="muted">${esc(c.line.length > 56 ? c.line.slice(0, 54) + '…' : c.line)}</span>${c.action ? `<a href="#" data-sysgo="${esc(c.action)}" class="small">${c.action === 'kite' ? 'Log in' : 'Open'}</a>` : ''}</span>`).join('')}</div>
   </div>`;
 }
 function needsCard(s) {
@@ -246,7 +246,7 @@ function coverageCard(s) {
   const c = s && s.coverage;
   const o = s && s.onboarding;
   const newHere = o && o.say ? `<div class="small warn" style="padding:4px 0">${esc(o.say)}</div>` : '';
-  if (!c || (!c.accounts.length && !c.mailboxes.length)) {
+  if (!c || !c.accounts.length) {
     return newHere ? `<section class="panel" style="flex:1 1 380px;display:flex;flex-direction:column;gap:4px"><span class="lbl">What I know about you</span>${newHere}${(o.unknown || []).map((u) => `<div class="tiny muted">Not yet known: ${esc(u)}</div>`).join('')}</section>` : '';
   }
   const st = c.status;
@@ -255,10 +255,9 @@ function coverageCard(s) {
     <div class="row" style="justify-content:space-between"><span class="lbl">Accounts found and what I can say about them</span><span class="small ${tone}">${esc(st.label)}</span></div>
     ${newHere}
     ${c.accounts.map((a) => `<div style="padding:3px 0;border-bottom:1px solid var(--line2)"><div class="row" style="gap:8px"><b style="font-size:13px;flex:1">${esc(a.account)}</b><span class="tiny muted">${esc(a.state)}</span></div>
-      <div class="tiny muted">${a.first_month ? 'activity ' + esc(a.first_month) + ' to ' + esc(a.last_month) + (a.silent_months && a.silent_months.length ? '; no activity in ' + esc(a.silent_months.slice(0, 4).join(', ')) : '') : 'no ledger activity yet'}${a.next ? ' · ' + esc(a.next) : ''}</div>${a.key ? `<div class="row" style="gap:6px;padding-top:3px">${a.state.startsWith('left out')
+      <div class="tiny muted">${a.covered_from ? 'statements ' + esc(a.covered_from) + ' to ' + esc(a.covered_to) + (a.statement_holes && a.statement_holes.length ? '; not covered: ' + esc(a.statement_holes.slice(0, 3).join(', ')) : '') : (a.state.startsWith('set up') ? 'no statement read yet' : '')}${a.next ? ' · ' + esc(a.next) : ''}</div>${a.key ? `<div class="row" style="gap:6px;padding-top:3px">${a.state.startsWith('left out')
         ? `<button class="btn" data-covback="${esc(a.key)}" style="font-size:11px;padding:2px 8px">Add back</button>`
         : `<button class="btn" data-covleave="${esc(a.key)}" style="font-size:11px;padding:2px 8px">Leave out for now</button>`}</div>` : ''}</div>`).join('')}
-    ${c.mailboxes.map((m) => `<div class="tiny muted">Mailbox read back to ${esc(m.read_back_to)}${m.reached_horizon ? ' (the furthest I look: ' + Math.round(m.horizon_days / 365) + ' years)' : ' (still reading)'}; mail with no file or only a link is not checked here.</div>`).join('')}
     ${c.gaps.length ? `<div class="tiny warn">${c.gaps.length} file(s) or message(s) I could not use are listed, not forgotten.</div>` : ''}
     ${(st.reasons || []).map((r) => `<div class="tiny warn">${esc(r)}</div>`).join('')}
     <div class="row wrapr" style="gap:6px"><input class="inp" id="covDecl" placeholder="An account I have but will add later (its bank and what it is)" style="flex:1 1 220px;font-size:12px"><button class="btn" id="covDeclGo" style="font-size:12px;padding:3px 9px">Leave it out for now</button></div>
@@ -294,7 +293,7 @@ function askCard(s) {
     <div class="row" style="justify-content:space-between"><span class="lbl">Ask the system</span><a href="#/ai" class="small">AI centre</a></div>
     <div class="row"><label for="quickAsk" style="position:absolute;left:-9999px">Question</label><input id="quickAsk" class="inp" placeholder="Ask about your portfolio, a company, a plan, or the system itself…"><button class="btn primary" id="quickSend">Ask</button></div>
     <div class="row wrapr" style="gap:6px">${asks.map((a) => `<button class="btn" data-ask="${esc(a)}" style="font-size:12px;padding:5px 10px">${esc(a)}</button>`).join('')}</div>
-    <span class="tiny muted">${t ? `One assistant with ${t.total} tools (${t.read || 0} read-only, the rest journal or ask you first); it reads Kite, your record, Gmail's facts, filings and the system's own state, and can never place an order. ` : ''}Local first; nothing leaves the PC unless a question needs the API and fits your cap.</span>
+    <span class="tiny muted">${t ? `One assistant with ${t.total} tools (${t.read || 0} read-only, the rest journal or ask you first); it reads Kite, your record, filings and the system's own state, and can never place an order. ` : ''}Local first; nothing leaves the PC unless a question needs the API and fits your cap.</span>
     ${processingNote(s)}
   </section>`;
 }
@@ -313,7 +312,6 @@ function wireSystem() {
   document.querySelectorAll('[data-sysgo]').forEach((a) => { a.onclick = async (e) => {
     e.preventDefault(); const g = a.dataset.sysgo;
     if (g === 'kite') return kiteLogin();
-    if (g === 'gmail') { a.textContent = 'waiting for Google…'; try { await post('/api/mail/connect', {}); alert('Connected (read-only). I am reading a year of your statement emails now; what I need appears in Needs you.'); } catch (er) { alert(er.message); } S.sys = null; return load(true); }
     location.hash = GOTO[g] || '#/settings'; }; });
   document.querySelectorAll('[data-ask]').forEach((b) => { b.onclick = () => { $('quickAsk').value = b.dataset.ask; $('quickSend').click(); }; });
 }
@@ -538,7 +536,6 @@ function renderSettings(s) {
       <a class="btn primary" href="#/setup" style="align-self:flex-start">Open Setup</a></section>
     <section class="panel" style="flex:1 1 420px" id="releaseP"><span class="lbl">This release</span><span class="small muted">loading…</span></section>
     <section class="panel" style="flex:1 1 420px" id="featuresP"><span class="lbl">Beta features</span><span class="small muted">loading…</span></section>
-    <section class="panel" style="flex:1 1 420px" id="mailP"><span class="lbl">Gmail (read-only)</span><span class="small muted">loading…</span></section>
     <section class="panel" style="flex:1 1 420px" id="secretsP"><span class="lbl">Keys and passwords</span><span class="small muted">loading…</span></section>
     <section class="panel" style="flex:1 1 640px" id="modelsP"><span class="lbl">Models: one per job</span><span class="small muted">loading…</span></section>
     <section class="panel" style="flex:1 1 420px"><span class="lbl">Never, whatever the settings</span>
@@ -555,7 +552,6 @@ function renderSettings(s) {
   renderRelease();
   renderFeatures(redraw);
   renderSecrets();
-  renderMail();
   renderModels(redraw);
 }
 /* S65: which release this is; updating needs the store free, so the launcher does it at each start (pflab update) */
@@ -630,23 +626,6 @@ function renderSetup(d) {
   $('suSave').onclick = async () => {
     const banks = [...document.querySelectorAll('#suBanks .row')].map((r) => ({ name: r.querySelector('.bn').value, bank: r.querySelector('.bb').value, last4: r.querySelector('.bl').value, password_name: r.querySelector('.bp').value })).filter((b) => b.name || b.last4);
     try { await post('/api/setup', { start: $('suStart').value, broker: { account: $('suBroker').value, cas_dp: $('suDp').value }, banks }); load(true); } catch (e) { alert(e.message); }
-  };
-}
-/* S65: read-only Gmail (ingest/gmail.py): statements that arrive by email go to the inbox by themselves */
-async function renderMail() {
-  const el = $('mailP'); if (!el) return;
-  let d; try { d = await api('/api/mail'); } catch (e) { el.innerHTML = `<span class="lbl">Gmail (read-only)</span><span class="small warn">${esc(e.message)}</span>`; return; }
-  if (d.enabled === false) { el.innerHTML = '<span class="lbl">Email</span><span class="small muted">Not used. You drop every statement, deposit certificate and screenshot into Inbox and files by hand; nothing reads your mailbox.</span>'; return; }
-  el.innerHTML = `<span class="lbl">Gmail (read-only)</span>` + (d.connected
-    ? `<span class="small up">Connected. ${d.messages} message(s) looked at, ${d.kept} statement file(s) brought in${d.last ? ', last ' + esc(d.last.slice(0, 16)) : ''}. It can never send, delete or change mail.</span>`
-      + (d.facts && d.facts.latest.length ? `<span class="small muted">What your emails said (read on this PC; checked against your record): ${Object.entries(d.facts.counts).map(([k, n]) => n + ' ' + esc(k)).join(', ')}</span>
-        <div class="scroll"><table><tbody>${d.facts.latest.map((f) => `<tr><td class="small">${esc(f.received)}</td><td>${esc(f.says)}</td><td class="small ${f.status === 'matched' ? 'up' : f.status === 'conflict' || f.status === 'new' ? 'warn' : 'muted'}">${esc(f.status)}: ${esc(f.detail || '')}</td></tr>`).join('')}</tbody></table></div>` : '')
-    : `<span class="small muted">${d.client_file ? 'Ready: press Connect, approve read-only access in the browser.' : 'First the one-time Google step in README (the downloaded client_secret file is picked up from Downloads).'}</span>`
-      + (d.client_file ? '<button class="btn primary" id="mailGo" style="align-self:flex-start">Connect Gmail</button>' : ''));
-  if ($('mailGo')) $('mailGo').onclick = async () => {
-    $('mailGo').textContent = 'Waiting for your approval in the browser…';
-    try { await post('/api/mail/connect', {}); alert('Connected (read-only). I am reading a year of your statement emails now; what I need from you will appear in Needs from you.'); renderMail(); }
-    catch (e) { alert(e.message); renderMail(); }
   };
 }
 /* S65: keys and passwords go to %USERPROFILE%\.pflab\secrets.toml; the form is write-only (a value is never shown or sent back) */
@@ -867,7 +846,7 @@ function renderAI(d) {
     <div class="panel" style="display:flex;flex-direction:column;gap:6px">
       <span class="lbl">What the assistant can reach</span>
       ${sy ? sy.connectors.map((c) => `<div class="row" style="gap:8px;align-items:flex-start">${sdot(c.state)}<b class="small" style="flex:0 0 auto">${esc(c.name)}</b><span class="tiny muted" style="flex:1;text-align:right">${esc(c.line)}</span></div>`).join('')
-        + `<span class="tiny muted" style="border-top:1px solid var(--line2);padding-top:6px">${sy.tools.total} tools: ${sy.tools.read || 0} read-only (portfolio, Kite, filings, forecasts, Gmail facts, the system's own state), ${sy.tools.journal || 0} that write its journal, ${sy.tools.action || 0} that ask you first. No tool places an order. ${sy.verdict.charAt(0).toUpperCase() + sy.verdict.slice(1)}.</span>` : '<span class="small muted">Reading the system…</span>'}
+        + `<span class="tiny muted" style="border-top:1px solid var(--line2);padding-top:6px">${sy.tools.total} tools: ${sy.tools.read || 0} read-only (portfolio, Kite, filings, forecasts, the system's own state), ${sy.tools.journal || 0} that write its journal, ${sy.tools.action || 0} that ask you first. No tool places an order. ${sy.verdict.charAt(0).toUpperCase() + sy.verdict.slice(1)}.</span>` : '<span class="small muted">Reading the system…</span>'}
     </div>
     <div class="panel" style="display:flex;flex-direction:column;gap:10px">
       <div class="row" style="justify-content:space-between"><span class="lbl">The system asks you</span><span class="small warn">${d.questions.length} open</span></div>

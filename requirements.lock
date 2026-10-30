@@ -27,8 +27,6 @@ docstring_parser==0.18.0
 duckdb==1.5.5
 et_xmlfile==2.0.0
 fastapi==0.159.1
-google-auth==2.62.0
-google-auth-oauthlib==1.5.0
 h11==0.16.0
 htmldate==1.11.0
 httpcore==1.0.9

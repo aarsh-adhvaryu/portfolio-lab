@@ -41,23 +41,6 @@ def _job(con, rid, job, when, status, detail=None):
 
 # --- a failed operation is never "last good" ---------------------------------------------------------------------------------------------
 
-def test_a_failed_mail_run_does_not_refresh_the_email_time_or_keep_gmail_green(rt, monkeypatch):
-    from pflab.ingest import gmail
-    monkeypatch.setattr(gmail, "connected", lambda: True)                            # a token file exists
-    con = rt.cursor()
-    _job(con, 1, "mail", NOW - timedelta(days=3), "ok", "{}")
-    _job(con, 2, "mail", NOW - timedelta(hours=1), "failed", "MailError: Gmail answered 401 for messages")
-    fr = {f["name"]: f for f in system.freshness(rt, NOW)}
-    assert fr["Email"]["latest"] == str((NOW - timedelta(days=3)).date())             # the failed run did not move it
-    assert fr["Email"]["retained"] and fr["Email"]["state"] in (system.WARN, system.DOWN) and "refresh failed" in fr["Email"]["line"]
-    assert "401" in fr["Email"]["line"]
-    gm = {c["id"]: c for c in system.connectors(rt, NOW)}["gmail"]
-    assert gm["state"] == system.WARN and "latest read failed" in gm["line"]           # a saved login is not a working mailbox
-    _job(con, 3, "mail", NOW - timedelta(minutes=5), "ok", "{}")
-    gm = {c["id"]: c for c in system.connectors(rt, NOW)}["gmail"]
-    assert gm["state"] == system.OK                                                    # only a success turns it green again
-
-
 def test_kite_is_green_only_when_a_read_worked_not_when_a_login_exists(rt, monkeypatch):
     monkeypatch.setattr(runtime, "token_valid", lambda now=None: True)
     con = rt.cursor()
@@ -129,13 +112,12 @@ def _desk(rt, tmp_path):
     return hdesk.Desk(rt.cursor(), rt.pm_dir, rt.data_root, tmp_path, None, {"brain": "economy", "preset": "full"}, clock=lambda: NOW)
 
 
-def test_system_status_and_mail_facts_work_in_the_dashboard_and_in_the_background(rt, tmp_path):
+def test_system_status_works_in_the_dashboard_and_in_the_background(rt, tmp_path):
     d = _desk(rt, tmp_path)
     for who in (rt, d):
         ctx = SimpleNamespace(rt=who, now=NOW, con=who.cursor())
         s = tl.system_status(ctx, {})
         assert s["verdict"] and s["connectors"] and "recommendations" in s and "tasks" in s and "being_researched" in s
-        assert tl.mail_facts(ctx, {})["counts"] == {}
     a, b = system.picture(rt, NOW), system.picture(d, NOW)
     assert [c["state"] for c in a["connectors"]] == [c["state"] for c in b["connectors"]] and a["verdict"] == b["verdict"]
 
@@ -146,8 +128,6 @@ def test_the_ask_centre_answers_a_system_question_from_the_same_tool(rt, tmp_pat
         out = chat.answer(who, who.cursor(), "Is everything working and in sync?", "ask")
         assert "system" in out["route"][1] or any("tool: system" in r for r in out["route"]), out["route"]
         assert "connector" in out["text"] or "system.verdict" in out["text"] or "working" in out["text"]
-    out = chat.answer(rt, rt.cursor(), "Did my bank emails arrive?", "ask")
-    assert any("tool: mail" in r for r in out["route"])
 
 
 def test_a_follow_up_sees_the_chat_and_the_open_work(rt, tmp_path):
@@ -249,27 +229,8 @@ def test_an_email_goes_out_only_with_clearance_and_a_fresh_identity_check(rt, tm
     assert not egress.DOC_KINDS.count("email")                                         # email is still not a public kind
 
 
-def test_the_mail_reader_stamps_the_clearance_the_readers_check(rt, tmp_path):
-    from pflab.ingest import mail_read as mr
-    rt.cursor().execute("INSERT INTO lots VALUES (1, 'ZERODHA', ?, DATE '2026-01-05', 10, 100, 'listed_equity', 1)", [AAA])
-    meta = {"from": "Research <desk@research.example>", "subject": "Alphaco Industries results: research note"}
-    text = "Alphaco Industries beat estimates; margins widened."
-    import pflab.plan.guards as gd
-    gd_orig = gd.stock_list
-    gd.stock_list = lambda path=None: []
-    try:
-        did = mr._public(rt, "m9", meta, text, {"kind": "research"}, egress.load(rt.cursor()))
-    finally:
-        gd.stock_list = gd_orig
-    assert did
-    attrs = json.loads(rt.cursor().execute("SELECT attrs_json FROM kg_docs WHERE doc_id=?", [did]).fetchone()[0])
-    assert attrs["cleared"] == hashlib.sha256(text.encode()).hexdigest() and "mail reader" in attrs["provenance"]
-
-
 def test_the_screen_says_what_stays_on_this_pc_and_what_goes_to_the_cloud(rt):
     p = {x["what"]: x for x in system.processing(rt)}
-    assert p["What his money emails say (trades, deposits, dividends, alerts)"]["where"] == "this PC"
+    assert not any("email" in k.lower() for k in p)                                              # email is gone (2026-10-30)
     assert "never leave" in p["His statements, ledger, tax lots and bank details"]["sends"]
-    assert p["Research or corporate-action emails that name none of his ids"]["where"].startswith("cloud")
-    assert "redacted" in p["Research or corporate-action emails that name none of his ids"]["sends"]
     assert system.picture(rt, NOW)["processing"]

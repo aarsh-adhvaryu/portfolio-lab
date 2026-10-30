@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from pflab import activation
-from pflab.ingest import gmail, kite
+from pflab.ingest import kite
 from pflab.service import jobs
 
 
@@ -52,8 +52,6 @@ def test_a_pending_profile_runs_no_job_and_reaches_no_mailbox_or_broker(tmp_path
     fake = SimpleNamespace(name="probe", enabled_fn=None, fn=lambda c: ran.append(1) or {})
     r = jobs.run_job(ctx, fake)
     assert r.status == "skipped" and "first launch" in r.detail and ran == []
-    with pytest.raises(activation.ActivationPending):
-        gmail.session()
     assert kite.client(SimpleNamespace(get=lambda *a: "x")) is None
     activation.activate(tmp_path, via="icon")
     assert not activation.is_pending()                                          # the same folder, now opened by the icon

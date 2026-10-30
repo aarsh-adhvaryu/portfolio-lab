@@ -166,3 +166,29 @@ def test_the_release_file_is_not_an_edit(world):
     publish(world.work, "two", "v2026.10.15")
     assert g(world.app, "status", "--porcelain") == ""                                          # release.toml is ignored by git
     assert up.update(world.app, world.pm, install=ok_install, selftest=good)["updated"]
+
+
+def test_a_rollback_rebuilds_with_the_earlier_release_and_undoes_itself_when_that_fails(world):
+    """Audit F7: the figures computed from the events are rebuilt by the release that will read them; if it cannot, nothing changes."""
+    publish(world.work, "two", "v2026.10.15")
+    up.update(world.app, world.pm, install=ok_install, selftest=good, now=NOW)
+    con = duckdb.connect(str(world.pm / "ledger.duckdb"))
+    con.execute("INSERT INTO record VALUES ('after the update')")
+    con.close()
+    seen = []
+
+    def failing(cmd, cwd):
+        if "rebuild" in cmd:
+            seen.append(cmd)
+            return 1, "Traceback: the old code could not rebuild"
+        return up.run_cmd(cmd, cwd)
+    with pytest.raises(up.UpdateError, match="Nothing was changed"):
+        up.rollback(world.app, world.pm, run=failing, install=ok_install, now=datetime(2026, 10, 29, 8, 0, 0))
+    assert seen and seen[0][1:4] == ["-m", "pflab.update", "rebuild"]                            # asked of the earlier release's own Python
+    assert up.checked_out(world.app) == "v2026.10.15" and (world.app / "version.txt").read_text(encoding="utf-8") == "two"
+    assert notes(world.pm) == ["before", "after the update"] and not (world.pm / "ledger.rollback_candidate.duckdb").exists()
+
+    def old_release(cmd, cwd):                                                                  # a release from before the command existed
+        return (2, "usage: python -m pflab.update rehearse <store copy>") if "rebuild" in cmd else up.run_cmd(cmd, cwd)
+    r = up.rollback(world.app, world.pm, run=old_release, install=ok_install, now=datetime(2026, 10, 29, 8, 5, 0))
+    assert r["to"] == "v2026.10.01" and "rebuilt by the newer code" in r["note"]
