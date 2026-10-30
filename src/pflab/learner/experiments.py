@@ -307,12 +307,16 @@ def _run(con, eid: int, root: Path, now: datetime, writer, sandbox, frame, clock
     base = {"development": score_period(df, always, tp.DEV), "validation": score_period(df, always, tp.VAL)}
     if not any(a["kind"] == "baseline" for a in attempts(con, eid)):
         _attempt(con, eid, 0, now, "baseline", "ok", note=COMPARATOR, result=base)
-    kept, spent_s, cost = None, 0.0, 0.0
-    done = sum(1 for a in attempts(con, eid) if a["kind"] == "candidate" and a["status"] in ("kept", "rejected"))
+    # (audit) the budget survives a restart: every attempt number used (kept, rejected, crashed or duplicate), the money and the seconds already
+    # spent are read back from the record, so an interrupted run resumes inside the SAME budget instead of a fresh one
+    prior = [a for a in attempts(con, eid) if a["kind"] != "baseline"]
+    tried = max((int(a["n"]) for a in prior), default=0)
+    cost = sum(float(a.get("cost_inr") or 0.0) for a in prior)
+    used_s = sum(float(a.get("seconds") or 0.0) for a in prior)
+    kept, spent_s = None, 0.0
     crashes = 0
-    tried = done
     while tried < max_attempts and kept is None:
-        if clock() - t_start > TOTAL_WALL_S:
+        if clock() - t_start + used_s > TOTAL_WALL_S:
             break
         if cost > MAX_COST_INR:
             break
@@ -320,7 +324,8 @@ def _run(con, eid: int, root: Path, now: datetime, writer, sandbox, frame, clock
         feedback, outcome = "", None
         for rep in range(REPAIRS + 1):
             reply = writer(prompt(con, eid, dataset, history) + (f"\nYOUR LAST TRY FAILED TO RUN: {feedback}\nFix only that." if feedback else ""))
-            cost += float(getattr(writer, "last_cost", 0.0) or 0.0)
+            step_cost = float(getattr(writer, "last_cost", 0.0) or 0.0)
+            cost += step_cost
             try:
                 code, why_w = parse_reply(reply)
                 smoke = [{"date": d.isoformat(), "close": float(c)} for d, c in zip(df["date"][:60], df["close"][:60])]      # trusted rows, not the model's
@@ -336,7 +341,7 @@ def _run(con, eid: int, root: Path, now: datetime, writer, sandbox, frame, clock
                 break
             feedback = "; ".join(r.problems)[:400] or "no signals were returned"
             _attempt(con, eid, tried + 1, now, "repair" if rep else "candidate", "crash", code=getattr(spec, "code", None), error=feedback,
-                     seconds=r.seconds, contained=r.contained)
+                     seconds=r.seconds, contained=r.contained, cost=step_cost)
         if outcome is None:                                       # crashed through its repairs: counts toward the attempts, not the tests
             crashes += 1
             tried += 1
@@ -363,7 +368,7 @@ def _run(con, eid: int, root: Path, now: datetime, writer, sandbox, frame, clock
                        n_dev=dev["n_months"], t_dev=dev["t"], t_val=val["t"], threshold_dev=bar, passed=ok, note=f"experiment:{eid}")
         res = {"development": dev, "validation": val, "dev_bar": round(bar, 3), "tests_in_family": n_tests, "why": why, "baseline": base}
         _attempt(con, eid, tried + 1, now, "candidate", "kept" if ok else "rejected", code=spec.code, note=spec.explain, result=res,
-                 seconds=r.seconds, contained=r.contained, cost=0.0)
+                 seconds=r.seconds, contained=r.contained, cost=step_cost)
         tried += 1
         spent_s += r.seconds or 0.0
         if ok:
