@@ -60,9 +60,15 @@ def gate(rt):
     return egress.load(rt.cursor())
 
 
+def paused(rt) -> bool:
+    """Pause (World screen) holds every autonomous start: jobs, readers, the brain, the keeper, agents' hand-offs (audit 2026-10-30).
+    What is already running finishes; what he orders himself still runs."""
+    return not rt.settings.get("scheduler", True)
+
+
 def paid_allowed(rt) -> bool:
     from pflab.agents import analyst as an
-    return rt.settings.get("preset", "full") in ("full", "marathon") and an.config()["cap"] > 0
+    return not paused(rt) and rt.settings.get("preset", "full") in ("full", "marathon") and an.config()["cap"] > 0
 
 
 def read_now(rt, limit: int = 40) -> dict:
@@ -174,6 +180,7 @@ def round_(rt, stop=None, attended: bool = True) -> dict:
     from pflab.hq import board, keeper, messenger, roster, security, watcher
     out: dict = {}
     preset = rt.settings.get("preset", "full")
+    hold = paused(rt)
 
     def part(name, fn):
         try:
@@ -182,7 +189,12 @@ def round_(rt, stop=None, attended: bool = True) -> dict:
             out[name] = f"failed: {type(e).__name__}: {str(e)[:200]}"
             out.setdefault("failed", {})[name] = out[name][len("failed: "):]
 
-    part("board", lambda: board.run_all(rt, roster.runners(), deliver(rt), max_n=20 if attended else 8, stop=stop))
+    part("board", lambda: board.run_all(rt, roster.runners(), deliver(rt), max_n=20 if attended else 8, stop=stop, his_only=hold))
+    if hold:                                                     # paused: his own orders and the safety checks only
+        part("reminders", lambda: messenger.due(rt))
+        part("security", lambda: security.egress(rt))
+        out["paused"] = True
+        return out
     from pflab.hq import cases
     part("cases", lambda: len(cases.sweep(rt.cursor(), rt.clock())))     # S67: what a waiting investigation needed may have arrived (free, code only)
     if rt.settings.get("drop_watch", True):
@@ -211,6 +223,8 @@ def tick_job(ctx) -> dict:
     rt = desk.from_ctx(ctx)
     if rt.settings.get("preset", "full") == "off":
         return {"skipped": True, "why": "preset off"}
+    if paused(rt):
+        return {"skipped": True, "why": "paused"}
     start(rt)
     out = {}
     try:

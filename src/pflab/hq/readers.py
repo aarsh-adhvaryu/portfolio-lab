@@ -160,6 +160,8 @@ def pending(con, asof: date, held: Sequence[str], listed: Sequence[str], days: i
         [since]).fetchall()}
     out = []
     for doc_id, kind, pub, title, source, url, attrs, text_path, about in sorted(rows, key=lambda r: r[2], reverse=True):
+        if kind == "dataset" and not shareable(attrs):
+            continue                                       # (audit 2026-10-30) an upload not explicitly shareable is never selected
         about = [i for i in about if i in isins]
         if kind == "article" and not any(kb.is_about(title, names.get(i, [])) for i in about):
             continue                                       # a passing mention is not about the company
@@ -173,6 +175,15 @@ def pending(con, asof: date, held: Sequence[str], listed: Sequence[str], days: i
     rank = {"result": 0, "filing": 1, "dataset": 2, "email": 3, "article": 4}
     out.sort(key=lambda r: (not r["held"], rank[r["kind"]], -r["published"].timestamp()))
     return out[:limit]
+
+
+def shareable(attrs) -> bool:
+    """An upload may go to a provider only when the inbox explicitly judged it shareable; missing or false means private."""
+    try:
+        a = attrs if isinstance(attrs, dict) else json.loads(attrs or "{}")
+    except ValueError:
+        return False
+    return a.get("shareable") is True
 
 
 def params(text: str) -> dict:
@@ -230,6 +241,11 @@ def read_one(con, row: dict, client, gate, now: datetime, mode: str, cfg: Option
         except Withheld as e:
             return withhold(con, row, now, str(e))
         kinds, private = (), text                       # checked as private text, in full
+    elif row["kind"] == "dataset":
+        if not shareable(row.get("attrs")):
+            return withhold(con, row, now, "a file you uploaded that is not marked shareable: it stays on this PC")
+        text = doc_text(row)
+        kinds, private = (row["kind"],), text           # even a shareable upload is checked as private text, in full
     else:
         text, kinds, private = doc_text(row), (row["kind"],), ""
     sent = llm.call(con, "reader", params(text), client, now=now, mode=mode, private_text=private, gate=gate,

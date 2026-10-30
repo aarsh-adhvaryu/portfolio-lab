@@ -320,7 +320,7 @@ def dataset_docs(con, isin: str, per: int = 4) -> List[Doc]:
             """SELECT d.published_at, d.title, d.source, d.attrs_json FROM kg_edges e JOIN kg_docs d ON d.doc_id = e.src
                WHERE e.dst = ? AND d.kind = 'dataset' ORDER BY d.published_at DESC LIMIT 20""", [f"company:{isin}"]).fetchall():
         a = json.loads(attrs or "{}")
-        if not a.get("shareable") or len(out) >= per:
+        if a.get("shareable") is not True or len(out) >= per:     # explicitly shareable only (audit 2026-10-30)
             continue
         body = a.get("text") or ""
         if a.get("table") and Path(a["table"]).exists():

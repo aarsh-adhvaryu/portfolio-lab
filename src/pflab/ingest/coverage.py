@@ -247,7 +247,11 @@ def status(con, now: datetime) -> dict:
                 "left_out": []}
     if gp:
         reasons.append(f"{len(gp)} file(s) could not be used and are listed")
-    un = [r for r in mx if r["state"] == "discovered, not set up"]
+    from pflab.app import readiness
+    diffs = readiness.gaps(con, "ledger")                    # (audit 2026-10-30) a record that does not yet agree with the statements is not complete
+    if diffs:
+        reasons.append(f"{len(diffs)} difference(s) between the record and the statements are still open")
+    un =[r for r in mx if r["state"] == "discovered, not set up"]
     if un:
         reasons.append(f"{len(un)} account(s) were found in statements but are not set up")
     unv = [r for r in mx if r["state"].startswith("set up") and not r["verified"]]

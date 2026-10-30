@@ -62,6 +62,18 @@ def body_check(params: Dict[str, Any], gate: egress.Gate) -> None:
         raise egress.EgressBlocked("not sent: the request carries " + ", ".join(found))
 
 
+def _outgoing_text(p: Dict[str, Any]) -> str:
+    """Every text block of the messages as they would be counted and sent."""
+    out = []
+    for m in p.get("messages") or []:
+        c = m.get("content")
+        if isinstance(c, str):
+            out.append(c)
+        elif isinstance(c, list):
+            out += [b.get("text", "") for b in c if isinstance(b, dict)]
+    return "\n".join(out)
+
+
 def _count_kwargs(p: Dict[str, Any]) -> Dict[str, Any]:
     return {k: p[k] for k in ("model", "system", "messages", "tools", "thinking") if k in p}
 
@@ -73,6 +85,8 @@ def call(con, agent: str, params: Dict[str, Any], client, *, now: datetime, mode
     input the count cannot see (a page web fetch will read, at its cap), priced as the worst case."""
     cfg = cfg or an.config()
     egress.check(private_text, gate, doc_kinds)
+    if any(k in ("dataset", "email") for k in doc_kinds):  # (audit 2026-10-30) an upload is never sent on its kind alone
+        egress.check(_outgoing_text(params), gate)
     body_check(params, gate)
     model = params["model"]
     n_in = int(client.messages.count_tokens(**_count_kwargs(params)).input_tokens) + int(extra_in)

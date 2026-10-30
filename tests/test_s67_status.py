@@ -234,3 +234,37 @@ def test_the_screen_says_what_stays_on_this_pc_and_what_goes_to_the_cloud(rt):
     assert not any("email" in k.lower() for k in p)                                              # email is gone (2026-10-30)
     assert "never leave" in p["His statements, ledger, tax lots and bank details"]["sends"]
     assert system.picture(rt, NOW)["processing"]
+
+
+def test_a_private_or_unmarked_upload_causes_zero_provider_calls_not_even_token_counting(rt, tmp_path, monkeypatch):
+    """Audit 2026-10-30, priority 1: an uploaded note marked non-shareable reached token counting AND message creation at the provider.
+    A private or unmarked upload must make zero provider calls; a shareable one is checked in full before anything is counted."""
+    con = rt.cursor()
+    monkeypatch.setattr(store, "pm_dir", lambda: tmp_path)
+    (tmp_path / "api_budget.toml").write_text("[api]\nmonthly_cap_rupees = 2500\ndev_monthly_cap_rupees = 100\nask_above_rupees = 50\nadopted = true\n", encoding="utf-8")
+    gate = egress.load(con)
+    seen = []
+
+    class Rec:
+        def __init__(self):
+            self.messages = SimpleNamespace(count_tokens=lambda **kw: seen.append(("count", json.dumps(kw, default=str))) or SimpleNamespace(input_tokens=600),
+                                            create=lambda **kw: seen.append(("create", json.dumps(kw, default=str))) or _json_msg(READ))
+    secret = "Alphaco holding note. PAN ABCDE1234F, address 12 Example Lane, flat no 4."
+    priv = g.doc(con, "dataset", "upload:private", NOW, "Alphaco private note", source="inbox", attrs={"shareable": False, "text": secret})
+    unmarked = g.doc(con, "dataset", "upload:unmarked", NOW, "Alphaco unmarked note", source="inbox", attrs={"text": secret})
+    for d in (priv, unmarked):
+        g.edge(con, d, "about", f"company:{AAA}", NOW, "inbox")
+    assert readers.pending(con, NOW.date(), [AAA], [], stock_list=[]) == []                   # never selected
+    rep = readers.run(con, NOW.date(), Rec(), gate, NOW, "economy", [AAA], [], stock_list=[])
+    assert rep["read"] == 0 and seen == []                                                    # zero calls of any kind
+    row = {"doc_id": priv, "kind": "dataset", "published": NOW, "title": "Alphaco private note", "source": "inbox", "url": "",
+           "attrs": json.dumps({"shareable": False, "text": secret}), "text_path": None, "isins": [AAA], "held": True}
+    out = readers.read_one(con, row, Rec(), gate, NOW, "economy", CFG)                        # even if something hands it over directly
+    assert out["withheld"] and seen == []
+    leaky = {**row, "doc_id": "d:x", "attrs": json.dumps({"shareable": True, "text": secret})}
+    with pytest.raises(egress.EgressBlocked):                                                 # shareable but carrying a PAN: stopped before counting
+        readers.read_one(con, leaky, Rec(), gate, NOW, "economy", CFG)
+    assert seen == []
+    clean = {**row, "doc_id": "d:y", "attrs": json.dumps({"shareable": True, "text": "Alphaco quarterly revenue table from a public export."})}
+    readers.read_one(con, clean, Rec(), gate, NOW, "economy", CFG)
+    assert [k for k, _ in seen] == ["count", "create"]                                        # a truly shareable upload still works
