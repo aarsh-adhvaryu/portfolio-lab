@@ -4,7 +4,7 @@
 
 const TABS = [
   ['world', 'World'], ['command', 'Command centre'], ['portfolio', 'Portfolio'], ['watch', 'Watch list'], ['ai', 'AI centre'],
-  ['hq', 'Agent HQ'], ['inbox', 'Inbox and files'], ['research', 'Research and plans'], ['sims', 'Simulations'],
+  ['inbox', 'Inbox and files'], ['research', 'Research and plans'], ['sims', 'Simulations'],
   ['graph', 'Knowledge graph'], ['schedule', 'Schedule']];
 const GEAR = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>';
 const POWER = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>';
@@ -688,7 +688,6 @@ async function renderModels(redraw) {
   el.querySelectorAll('[data-mjob]').forEach((b) => { b.onclick = async () => {
     S.settings = await post('/api/settings', { models: { [b.dataset.mjob]: b.dataset.m } }); redraw(); }; });
 }
-/* ---------- Agent HQ (S59): order any agent, the board, spend against the limits, the brain's journal ---------- */
 const BRAIN_MODES = [['off', 'Off'], ['economy', 'Economy'], ['normal', 'Normal']];
 const TASK_CLS = { done: 'up', failed: 'down', running: 'warn', queued: 'muted', held: 'warn', needs_approval: 'warn', waiting: 'warn', retry: 'warn', dismissed: 'muted' };
 const inr = (x) => '₹' + Number(x || 0).toLocaleString('en-IN', { maximumFractionDigits: x < 10 ? 2 : 0 });
@@ -696,135 +695,10 @@ function meter(used, cap) {
   const f = cap > 0 ? Math.min(1, used / cap) : 0;
   return `<div class="bar" style="height:6px"><i style="width:${(f * 100).toFixed(0)}%;${f > 0.8 ? 'background:var(--warn)' : ''}"></i></div>`;
 }
-/* The office (S59, the investor's picture): rooms of agents around the brain, drawn in isometric SVG from the same data. */
-const ROOMS = [
-  { id: 'front', name: 'Front desk', icon: 'F', color: '#F59E0B', agents: ['receptionist', 'messenger', 'watcher'] },
-  { id: 'research', name: 'Research', icon: 'R', color: '#3B82F6', agents: ['research', 'web', 'reader', 'fetch'] },
-  { id: 'analysis', name: 'Analysis', icon: 'A', color: '#14B8A6', agents: ['analysis', 'graph', 'cleanup'] },
-  { id: 'maths', name: 'Maths', icon: 'M', color: '#22C55E', agents: ['calc', 'quant'] },
-  { id: 'sim', name: 'Simulation', icon: 'S', color: '#8B5CF6', agents: ['sim'] },
-  { id: 'portfolio', name: 'Portfolio', icon: 'P', color: '#EF4444', agents: ['portfolio', 'ask'] },
-  { id: 'memory', name: 'Memory', icon: 'K', color: '#EC4899', agents: ['memory'] }];
-const SHIRTS = ['#60A5FA', '#F472B6', '#FBBF24', '#34D399', '#A78BFA', '#FB923C', '#F87171', '#38BDF8'];
-function shade(hex, f) {             /* f > 0 towards white, f < 0 towards black */
-  const n = parseInt(hex.slice(1), 16), c = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-  return '#' + c.map((v) => Math.round(f >= 0 ? v + (255 - v) * f : v * (1 + f)).toString(16).padStart(2, '0')).join('');
-}
-const pts = (a) => a.map((p) => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
-const poly = (a, fill, extra = '') => `<polygon points="${pts(a)}" fill="${fill}" ${extra}/>`;
-function isoBox(P, x, y, z, w, d, h, top, left, right) {
-  return poly([P(x, y, z + h), P(x + w, y, z + h), P(x + w, y + d, z + h), P(x, y + d, z + h)], top)
-    + poly([P(x, y + d, z), P(x + w, y + d, z), P(x + w, y + d, z + h), P(x, y + d, z + h)], left)
-    + poly([P(x + w, y, z), P(x + w, y + d, z), P(x + w, y + d, z + h), P(x + w, y, z + h)], right);
-}
-function agentState(d, name) {
-  const mine = d.tasks.filter((t) => t.to === name);
-  return { running: mine.some((t) => t.status === 'running'), queued: mine.filter((t) => t.status === 'queued').length };
-}
-function drawRoom(room, ox, oy, d) {
-  const s = 17, R = 5, H = 4.2, c = room.color, k = s / 12.5;
-  const P = (x, y, z) => [ox + (x - y) * 0.866 * s, oy + (x + y) * 0.5 * s - z * s];
-  const st = room.agents.map((a) => agentState(d, a));
-  const busy = st.filter((x) => x.running).length, waiting = st.reduce((n, x) => n + x.queued, 0);
-  let g = isoBox(P, -R, -R, -0.7, 2 * R, 2 * R, 0.7, shade(c, 0.72), shade(c, -0.3), shade(c, -0.45));
-  g += poly([P(-R + 1, -R + 1, 0.01), P(R - 1, -R + 1, 0.01), P(R - 1, R - 1, 0.01), P(-R + 1, R - 1, 0.01)], shade(c, 0.82));
-  g += poly([P(-R, -R, 0), P(R, -R, 0), P(R, -R, H), P(-R, -R, H)], shade(c, -0.02));                 // back wall
-  g += poly([P(-R, -R - 0.3, H), P(R, -R - 0.3, H), P(R, -R, H), P(-R, -R, H)], shade(c, 0.35));
-  g += poly([P(-R, -R, 0), P(-R, R, 0), P(-R, R, H), P(-R, -R, H)], shade(c, -0.2));                  // side wall
-  g += poly([P(-R - 0.3, -R, H), P(-R, -R, H), P(-R, R, H), P(-R - 0.3, R, H)], shade(c, 0.3));
-  g += poly([P(-3.6, -R + 0.05, 1.4), P(-0.4, -R + 0.05, 1.4), P(-0.4, -R + 0.05, 3.5), P(-3.6, -R + 0.05, 3.5)], '#111827');
-  const chart = [0, 0.5, 0.3, 0.9, 0.7, 1.4, 1.2, 1.7].map((v, i) => P(-3.3 + i * 0.38, -R + 0.06, 1.8 + v));
-  g += `<polyline points="${pts(chart)}" fill="none" stroke="${shade(c, 0.4)}" stroke-width="1.6"/>`;
-  g += isoBox(P, 1.2, -R + 0.1, 2.3, 2.8, 0.5, 0.18, '#E5E7EB', '#9CA3AF', '#CBD5E1');                // shelf and books
-  ['#F87171', '#60A5FA', '#FBBF24', '#34D399'].forEach((b, i) => { g += isoBox(P, 1.4 + i * 0.55, -R + 0.15, 2.48, 0.35, 0.35, 0.6, b, shade(b, -0.25), shade(b, -0.4)); });
-  g += isoBox(P, -R + 0.5, R - 1.3, 0, 0.8, 0.8, 0.7, '#A16207', '#713F12', '#854D0E');               // plant
-  const leaf = P(-R + 0.9, R - 0.9, 1.6);
-  g += `<circle cx="${leaf[0]}" cy="${leaf[1]}" r="${9 * k}" fill="#16A34A"/><circle cx="${leaf[0] - 5 * k}" cy="${leaf[1] + 3 * k}" r="${6 * k}" fill="#22C55E"/>`;
-  const slots = [[0.9, -1.9], [-1.9, 0.6], [2.2, 1.6]];
-  room.agents.forEach((name, k) => {
-    const [x, y] = slots[k], on = st[k].running, wait = st[k].queued;
-    g += isoBox(P, x - 1.2, y - 0.55, 0, 2.4, 1.1, 1.0, '#F3F4F6', '#9CA3AF', '#D1D5DB');                // desk
-    g += isoBox(P, x - 0.7, y - 0.5, 1.0, 1.4, 0.12, 0.95, on ? shade(c, 0.2) : '#1F2937', '#111827', '#374151');   // screen
-    g += isoBox(P, x - 0.35, y + 0.95, 0, 0.7, 0.7, 0.55, '#374151', '#1F2937', '#4B5563');            // chair
-    const q = P(x, y + 1.3, 0.55), shirt = SHIRTS[(name.length * 7 + k * 3) % SHIRTS.length];
-    g += `<g class="${on ? 'bob' : ''}" data-agentdot="${esc(name)}"><title>${esc(name)}${on ? ': working' : wait ? `: ${wait} waiting` : ': idle'}</title>
-      <ellipse cx="${q[0]}" cy="${q[1] - 9 * k}" rx="${6 * k}" ry="${8.5 * k}" fill="${shirt}"/><circle cx="${q[0]}" cy="${q[1] - 21 * k}" r="${4.6 * k}" fill="#F1C27D"/>
-      <path d="M${q[0] - 4.6 * k},${q[1] - 22 * k} a${4.6 * k},${4.6 * k} 0 0 1 ${9.2 * k},0 z" fill="#3F2A1D"/>
-      ${on ? `<circle cx="${q[0] + 10 * k}" cy="${q[1] - 30 * k}" r="${3.5 * k}" fill="var(--up)" class="pulse"/>` : wait ? `<circle cx="${q[0] + 10 * k}" cy="${q[1] - 30 * k}" r="${3.5 * k}" fill="var(--warn)"/>` : ''}</g>`;
-  });
-  const lamp = P(R - 0.8, R - 0.8, 0);
-  g += `<line x1="${lamp[0]}" y1="${lamp[1]}" x2="${lamp[0]}" y2="${lamp[1] - 34 * k}" stroke="#9CA3AF" stroke-width="2"/><circle cx="${lamp[0]}" cy="${lamp[1] - 36 * k}" r="${5 * k}" fill="#FEF3C7" class="${busy ? 'pulse' : ''}"/>`;
-  const top = P(-R, -R, H), w = 214;
-  const dots = room.agents.map((a, k) => `<circle cx="${top[0] + w / 2 - 14 - k * 11}" cy="${top[1] - 30}" r="4.5" fill="${st[k].running ? 'var(--up)' : st[k].queued ? 'var(--warn)' : 'var(--line)'}"/>`).join('');
-  g += `<g transform="translate(0,0)"><rect x="${top[0] - w / 2}" y="${top[1] - 50}" width="${w}" height="40" rx="10" style="fill:var(--panel);stroke:var(--line)"/>
-    <rect x="${top[0] - w / 2 + 8}" y="${top[1] - 43}" width="26" height="26" rx="7" fill="${c}"/><text x="${top[0] - w / 2 + 21}" y="${top[1] - 25}" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">${room.icon}</text>
-    <text x="${top[0] - w / 2 + 42}" y="${top[1] - 32}" font-size="14" font-weight="700" style="fill:var(--text)">${esc(room.name)}</text>
-    <text x="${top[0] - w / 2 + 42}" y="${top[1] - 18}" font-size="11" style="fill:var(--muted)">${room.agents.length} agent${room.agents.length > 1 ? 's' : ''} · ${busy ? `${busy} running` : waiting ? `${waiting} waiting` : 'idle'}</text>${dots}</g>`;
-  return { svg: `<g class="room" data-room="${room.id}" style="cursor:pointer">${g}</g>`, busy: busy + waiting };
-}
-function officeSVG(d) {
-  const W = 1320, Hh = 1010, cx = 660, cy = 520, rx = 480, ry = 330;
-  const at = ROOMS.map((r, i) => { const a = -Math.PI / 2 + (i + 0.5) * 2 * Math.PI / ROOMS.length;   // a gap at the top for the brain's beam
-    return { r, x: cx + rx * Math.cos(a), y: cy + 30 + ry * Math.sin(a) }; });
-  const drawn = at.map((p) => ({ ...p, ...drawRoom(p.r, p.x, p.y, d) }));
-  const stars = Array.from({ length: 70 }, (_, i) => `<circle cx="${(i * 397) % W}" cy="${(i * 211) % Hh}" r="${i % 5 ? 0.9 : 1.6}" style="fill:var(--muted)" opacity="${0.12 + (i % 4) * 0.06}"/>`).join('');
-  const roads = drawn.map((p) => { const path = `M${cx},${cy} L${p.x.toFixed(1)},${(p.y + 20).toFixed(1)}`;
-    return `<path d="${path}" style="stroke:var(--line2)" stroke-width="12" stroke-linecap="round" fill="none"/>
-      <path d="${path}" stroke="${p.busy ? p.r.color : 'rgba(148,163,184,.35)'}" stroke-width="${p.busy ? 2.4 : 1.4}" stroke-dasharray="6 8" fill="none" class="${p.busy ? 'flow' : ''}"/>
-      ${p.busy ? `<g><circle r="4.5" fill="${p.r.color}"><animateMotion dur="2.6s" repeatCount="indefinite" path="${path}"/></circle></g>` : ''}`; }).join('');
-  const b = d.brain, passes = b.journal.filter((p) => p.role === 'brain' && p.status === 'done').length;
-  const thinking = d.tasks.some((t) => t.to === 'brain' && (t.status === 'running' || t.status === 'queued'));
-  const brainSvg = `<g class="room" data-room="brain" style="cursor:pointer">
-    <ellipse cx="${cx}" cy="${cy}" rx="215" ry="118" fill="url(#hqFloor)" stroke="rgba(96,165,250,.35)"/>
-    ${[172, 128, 86].map((r, i) => `<ellipse cx="${cx}" cy="${cy}" rx="${r}" ry="${r * 0.54}" fill="none" stroke="#60A5FA" stroke-opacity="${0.55 - i * 0.12}" stroke-width="2" stroke-dasharray="${8 + i * 4} ${10 + i * 3}" class="spin"/>`).join('')}
-    <rect x="${cx - 8}" y="${cy - 330}" width="16" height="274" fill="url(#hqBeam)"/>
-    <circle cx="${cx}" cy="${cy - 56}" r="40" fill="url(#hqOrb)" filter="url(#hqGlow)" class="${thinking ? 'pulse' : ''}"/>
-    <rect x="${cx - 128}" y="${cy - 392}" width="256" height="56" rx="12" style="fill:var(--panel);stroke:var(--line)"/>
-    <text x="${cx}" y="${cy - 368}" text-anchor="middle" font-size="15" font-weight="700" letter-spacing="3" style="fill:var(--text)">THE BRAIN</text>
-    <text x="${cx}" y="${cy - 347}" text-anchor="middle" font-size="12" style="fill:var(--muted)">${b.mode === 'off' ? 'off' : `${esc(b.mode)} · ${b.shadow ? 'shadow' : 'acting'}`} · ${passes} pass${passes === 1 ? '' : 'es'} · ${d.predictions.length} prediction${d.predictions.length === 1 ? '' : 's'}</text></g>`;
-  const order = drawn.slice().sort((a, c) => a.y - c.y);
-  const back = order.filter((p) => p.y < cy), front = order.filter((p) => p.y >= cy);
-  return `<svg viewBox="0 0 ${W} ${Hh}" width="100%" role="img" aria-label="The agents' office around the brain" style="display:block">
-    <defs><radialGradient id="hqFloor"><stop offset="0" stop-color="#1E3A8A" stop-opacity=".9"/><stop offset="1" stop-color="#0B1220" stop-opacity=".95"/></radialGradient>
-      <radialGradient id="hqOrb"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".45" stop-color="#BFDBFE"/><stop offset="1" stop-color="#3B82F6"/></radialGradient>
-      <linearGradient id="hqBeam" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#93C5FD" stop-opacity="0"/><stop offset="1" stop-color="#DBEAFE" stop-opacity=".85"/></linearGradient>
-      <filter id="hqGlow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="9" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
-    ${stars}${roads}${back.map((p) => p.svg).join('')}${brainSvg}${front.map((p) => p.svg).join('')}</svg>`;
-}
-function ago(ts) {
-  const t = Date.parse(String(ts).replace(' ', 'T'));
-  if (Number.isNaN(t)) return '';
-  const m = Math.round((Date.now() - t) / 60000);
-  return m < 1 ? 'now' : m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`;
-}
-function feed(d) {
-  const items = [
-    ...d.tasks.filter((t) => t.status !== 'queued' && t.status !== 'running').map((t) => ({ at: t.finished || t.created, room: ROOMS.find((r) => r.agents.includes(t.to)),
-      title: t.title, text: (t.result || '').split('\n')[0], cls: TASK_CLS[t.status] })),
-    ...d.brain.journal.filter((p) => p.role === 'brain' && p.note).map((p) => ({ at: p.at, title: 'The brain', text: priv(p.note.split('. ')[0]), cls: 'up' })),
-    ...d.readings.filter((r) => r.material === 'yes').map((r) => ({ at: r.at, room: ROOMS[1], title: 'Readers', text: r.summary || r.title, cls: 'warn' }))];
-  items.sort((a, c) => String(c.at).localeCompare(String(a.at)));
-  return items.slice(0, 7).map((x) => `<div class="row" style="gap:10px;align-items:flex-start;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:9px 11px">
-    <span style="flex:0 0 26px;height:26px;border-radius:8px;background:${x.room ? x.room.color : '#3B82F6'};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px">${x.room ? x.room.icon : 'B'}</span>
-    <div style="flex:1;min-width:0"><div class="row" style="justify-content:space-between;gap:6px"><b class="small">${esc(x.title)}</b><span class="tiny muted">${esc(ago(x.at))}</span></div>
-    <div class="tiny soft" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(String(x.text || '').slice(0, 140))}</div></div></div>`).join('');
-}
-function roomPanel(d, id) {
-  if (id === 'brain') return '';
-  const room = ROOMS.find((r) => r.id === id);
-  if (!room) return '';
-  const by = Object.fromEntries(d.agents.map((a) => [a.name, a]));
-  return `<div class="panel" style="display:flex;flex-direction:column;gap:8px;border-color:${room.color}">
-    <div class="row" style="justify-content:space-between"><span class="lbl">${esc(room.name)}</span><button class="btn" style="min-height:24px;padding:2px 8px" id="hqRoomX">Close</button></div>
-    ${room.agents.map((n) => { const a = by[n] || { title: n, does: '', model: '' }, s = agentState(d, n);
-      return `<div style="display:flex;flex-direction:column;gap:3px;padding:6px 0;border-top:1px solid var(--line2)">
-        <div class="row" style="justify-content:space-between"><b class="small">${esc(a.title)}</b><span class="tiny ${s.running ? 'up' : s.queued ? 'warn' : 'muted'}">${s.running ? 'working' : s.queued ? `${s.queued} waiting` : 'idle'}</span></div>
-        <span class="tiny soft">${esc(a.does)}</span><span class="tiny muted">${esc(a.model)}${a.month ? ` · ${inr(a.month)} this month` : ''}${a.last ? ` · last #${a.last.id} ${esc(a.last.status)}` : ''}</span>
-        <div><button class="btn" style="min-height:26px;padding:2px 10px" data-hqpick="${esc(n)}">Order</button></div></div>`; }).join('')}</div>`;
-}
+/* The agents' controls (S59, now part of the World): order any agent, the board, spend against the limits, the brain's journal, suggestions, reminders.
+   hqParts builds the panels from GET /api/hq; hqWire attaches their buttons. The World (world.js) shows them under its map. */
 const priv = (s) => S.settings.privacy ? String(s || '').replace(/(Rs\.?|₹|INR)\s?[\d,]+(\.\d+)?(\s?(crore|lakh))?/gi, '₹•••••') : s;   // privacy mode in words too
-const HQ_VIEWS = [['office', 'Office'], ['tasks', 'Tasks'], ['brain', 'Brain'], ['agents', 'Agents and spend']];
-function renderHQ(d) {
+function hqParts(d) {
   const sp = d.spend, b = d.brain;
   const opts = d.agents.map((a) => `<option value="${esc(a.name)}" ${(S.hqAgent || 'receptionist') === a.name ? 'selected' : ''}>${esc(a.title)}</option>`).join('');
   const tasks = d.tasks.map((t) => `<tr><td class="num">#${t.id}</td><td class="small">${esc(t.from === 'investor' ? 'you' : t.from)} → <b>${esc(t.title)}</b>${t.hops ? ` <span class="tiny muted">hop ${t.hops}</span>` : ''}${t.channel !== 'dashboard' ? ` <span class="tiny muted">${esc(t.channel)}</span>` : ''}</td>
@@ -850,7 +724,7 @@ function renderHQ(d) {
         <div class="row wrapr" style="gap:6px"><label for="hqA" style="position:absolute;left:-9999px">Agent</label><select id="hqA" class="inp" style="flex:0 1 auto">${opts}</select>
           <label for="hqT" style="position:absolute;left:-9999px">What to do</label><input id="hqT" class="inp" style="flex:1 1 300px" placeholder="what to do (the receptionist routes plain words; on Telegram: /calc, /sim, /web …)"><button class="btn primary" id="hqGo">Send</button></div>
         ${S.hqMsg ? `<span class="small warn">${esc(S.hqMsg)}</span>` : ''}
-        <span class="tiny muted">Answers appear on the Tasks board; orders from Telegram are answered there too. Agents hand work to each other up to 3 hops; a longer chain goes to the brain.</span>
+        <span class="tiny muted">Answers appear on the board below; orders from Telegram are answered there too. Agents hand work to each other up to 3 hops; a longer chain goes to the brain.</span>
       </div>`;
   const boardP = `<section class="panel" style="display:flex;flex-direction:column;gap:6px"><span class="lbl">The board</span>
         ${tasks ? `<div class="scroll"><table><thead><tr><th>#</th><th>Who</th><th>Task and answer</th><th>Status</th><th>Cost</th><th>When</th></tr></thead><tbody>${tasks}</tbody></table></div>` : '<span class="small muted">No tasks yet. Order an agent above, or message the bot.</span>'}
@@ -896,47 +770,25 @@ function renderHQ(d) {
         ${d.reminders.length ? d.reminders.map((r) => `<div class="small row" style="justify-content:space-between"><span>${esc(r.due.slice(5))} · ${esc(r.text)}</span><button class="btn" style="min-height:26px;padding:2px 8px" data-hqrem="${r.id}">Cancel</button></div>`).join('') : '<span class="small muted">No reminder (say "remind me to … tomorrow at 9").</span>'}
         <span class="tiny muted">Drop folder: ${esc(d.drop.folder)} · ${d.drop.on ? 'watched' : 'not watched (Settings)'}</span>
       </div>`;
-  const view = S.hqView || 'office';
   const running = d.tasks.filter((t) => t.status === 'running').length, waiting = d.tasks.filter((t) => t.status === 'queued').length;
-  const head = `<div class="row wrapr" style="justify-content:space-between;gap:10px;margin-bottom:12px">
-    <div class="row" style="gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px">${HQ_VIEWS.map(([k, n]) => `<button class="btn ${view === k ? 'primary' : ''}" style="border:0;min-height:30px" data-hqview="${k}">${n}${k === 'tasks' && (running + waiting) ? ` <span class="tiny">${running + waiting}</span>` : ''}</button>`).join('')}</div>
-    <div class="row wrapr" style="gap:8px"><span class="chip"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${running ? 'var(--up)' : 'var(--muted)'};margin-right:6px"></span>${d.agents.length} agents · ${running} running${waiting ? ` · ${waiting} waiting` : ''}</span>
-      <span class="chip">API ${inr(sp.month)} of ${inr(sp.cap)}</span></div></div>`;
-  const models = `<div class="row wrapr tiny muted" style="gap:6px">runs on ${['local qwen3 8B', 'Haiku 5.5', 'Sonnet 5.5', 'Opus 5.5', 'code'].map((m) => `<span class="chip">${m}</span>`).join('')}</div>`;
-  let body;
-  if (view === 'office') {
-    body = `<div class="cols"><section class="stack" style="flex:3 1 720px"><div class="panel" style="padding:8px;background:radial-gradient(ellipse at center, var(--panel2), var(--bg))">${officeSVG(d)}</div>${models}</section>
-      <section class="stack" style="flex:1 1 340px">${roomPanel(d, S.hqRoom)}${orderP}<div class="panel" style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Latest</span>${feed(d) || '<span class="small muted">Nothing yet.</span>'}</div></section></div>`;
-  } else if (view === 'tasks') {
-    body = `<div class="stack">${orderP}${boardP}</div>`;
-  } else if (view === 'brain') {
-    body = `<div class="cols"><section class="stack" style="flex:2 1 560px">${brainP}</section><section class="stack" style="flex:1 1 380px">${sugP}${predsP}${followP}${readersP}</section></div>`;
-  } else {
-    body = `<div class="cols"><section class="stack" style="flex:2 1 640px">${agentsP}</section><section class="stack" style="flex:1 1 380px">${spendP}${remP}</section></div>`;
-  }
-  $('screen').innerHTML = head + body;
-  const on = (id, ev, fn) => { const el = $(id); if (el) el[ev] = fn; };
-  document.querySelectorAll('[data-hqview]').forEach((x) => { x.onclick = () => { S.hqView = x.dataset.hqview; renderHQ(d); }; });
-  document.querySelectorAll('[data-room]').forEach((x) => { x.onclick = () => {
-    if (x.dataset.room === 'brain') { S.hqView = 'brain'; } else { S.hqRoom = S.hqRoom === x.dataset.room ? null : x.dataset.room; }
-    renderHQ(d); }; });
-  on('hqRoomX', 'onclick', () => { S.hqRoom = null; renderHQ(d); });
-  on('hqA', 'onchange', () => { S.hqAgent = $('hqA').value; });
-  const send = async () => { const text = $('hqT').value.trim(); S.hqMsg = '';
-    try { await post('/api/hq/order', { agent: $('hqA').value, text }); $('hqT').value = ''; } catch (e) { S.hqMsg = e.message; }
-    load(true); };
+  return { orderP, boardP, agentsP, spendP, brainP, predsP, sugP, followP, readersP, remP, running, waiting };
+}
+/* The buttons inside the agents' panels. `again` re-reads /api/hq and redraws whatever shows them. */
+function hqWire(root, again) {
+  const on = (id, ev, fn) => { const el = root.querySelector('#' + id); if (el) el[ev] = fn; };
+  on('hqA', 'onchange', () => { S.hqAgent = root.querySelector('#hqA').value; });
+  const send = async () => { const text = root.querySelector('#hqT').value.trim(); S.hqMsg = '';
+    try { await post('/api/hq/order', { agent: root.querySelector('#hqA').value, text }); root.querySelector('#hqT').value = ''; } catch (e) { S.hqMsg = e.message; }
+    again(); };
   on('hqGo', 'onclick', send);
   on('hqT', 'onkeydown', (e) => { if (e.key === 'Enter') send(); });
-  document.querySelectorAll('[data-hqpick]').forEach((b) => { b.onclick = () => { S.hqAgent = b.dataset.hqpick;
-    if (!$('hqA')) { S.hqView = 'office'; renderHQ(d); }
-    $('hqA').value = S.hqAgent; $('hqT').focus(); }; });
-  document.querySelectorAll('[data-hqbrain]').forEach((x) => { x.onclick = async () => { S.settings = await post('/api/settings', { brain: x.dataset.hqbrain }); load(true); }; });
-  document.querySelectorAll('[data-hqmark]').forEach((x) => { x.onclick = async () => { await post(`/api/hq/passes/${x.dataset.hqmark}/mark`, { mattered: x.dataset.v === 'true' }); load(true); }; });
-  document.querySelectorAll('[data-hqsug]').forEach((x) => { x.onclick = async () => { await post(`/api/hq/suggestions/${x.dataset.hqsug}/answer`, { answer: x.dataset.v }); load(true); }; });
-  document.querySelectorAll('[data-hqrem]').forEach((x) => { x.onclick = async () => { await post(`/api/hq/reminders/${x.dataset.hqrem}/cancel`); load(true); }; });
-  on('hqThink', 'onclick', async () => { try { await post('/api/hq/order', { agent: 'brain', text: '' }); } catch (e) { S.hqMsg = e.message; } load(true); });
-  clearTimeout(S.hqT);                            // a task running: follow it every 5 s
-  if (d.tasks.some((t) => t.status === 'queued' || t.status === 'running')) S.hqT = setTimeout(() => { if (S.screen === 'hq') load(false); }, 5000);
+  root.querySelectorAll('[data-hqpick]').forEach((b) => { b.onclick = () => { S.hqAgent = b.dataset.hqpick; const a = root.querySelector('#hqA');
+    if (a) { a.value = S.hqAgent; root.querySelector('#hqT').focus(); } }; });
+  root.querySelectorAll('[data-hqbrain]').forEach((x) => { x.onclick = async () => { S.settings = await post('/api/settings', { brain: x.dataset.hqbrain }); again(); }; });
+  root.querySelectorAll('[data-hqmark]').forEach((x) => { x.onclick = async () => { await post(`/api/hq/passes/${x.dataset.hqmark}/mark`, { mattered: x.dataset.v === 'true' }); again(); }; });
+  root.querySelectorAll('[data-hqsug]').forEach((x) => { x.onclick = async () => { await post(`/api/hq/suggestions/${x.dataset.hqsug}/answer`, { answer: x.dataset.v }); again(); }; });
+  root.querySelectorAll('[data-hqrem]').forEach((x) => { x.onclick = async () => { await post(`/api/hq/reminders/${x.dataset.hqrem}/cancel`); again(); }; });
+  on('hqThink', 'onclick', async () => { try { await post('/api/hq/order', { agent: 'brain', text: '' }); } catch (e) { S.hqMsg = e.message; } again(); });
 }
 /* ---------- AI centre (54b) ---------- */
 const MODES = [['auto', 'Auto', 'local first; then the agents; then Opus only when needed, each step with its reason (your data stays here)'],
@@ -1711,7 +1563,6 @@ async function load(force = false) {
       else if (screen === 'ai') { const d = await api('/api/ai' + (S.chat ? '?chat=' + S.chat : '')); if (fresh()) { S.chat = d.chat_id; renderAI(d); } }
       else if (screen === 'watch') { const d = await api('/api/watch'); if (fresh()) keepInputs(() => renderWatch(d)); }
       else if (screen === 'inbox') { const d = await api('/api/inbox'); if (fresh()) keepInputs(() => renderInbox(d)); }
-      else if (screen === 'hq') { const d = await api('/api/hq'); if (fresh()) keepInputs(() => renderHQ(d)); }
       else if (screen === 'research') { const d = await api('/api/research' + (S.rsel ? '?isin=' + encodeURIComponent(S.rsel) : '')); if (fresh()) keepInputs(() => renderResearch(d)); }
     }
   } catch (e) {
@@ -1727,7 +1578,7 @@ function route() {
 }
 const TOPICS = { world: ['hq', 'inbox', 'activity', 'health', 'command', 'settings'], command: null, portfolio: ['live', 'portfolio', 'settings'], watch: ['watch', 'live', 'settings'],
   research: ['research', 'watch', 'settings'], ai: ['chat', 'notifications', 'settings', 'inbox'], schedule: ['activity', 'notes', 'sims', 'settings'],
-  inbox: ['inbox', 'settings'], sims: ['sims', 'settings'], graph: ['settings'], hq: ['hq', 'inbox', 'settings'],
+  inbox: ['inbox', 'settings'], sims: ['sims', 'settings'], graph: ['settings'],
   settings: ['settings', 'kite'], setup: ['inbox', 'settings'] };
 function listen() {
   const es = new EventSource('/api/events');

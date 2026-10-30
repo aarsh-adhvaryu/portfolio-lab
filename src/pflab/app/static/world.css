@@ -98,3 +98,13 @@ nav.tabs a.on{background:linear-gradient(180deg,rgba(96,165,250,.22),rgba(96,165
 .panel{border-radius:14px;box-shadow:0 1px 0 rgba(255,255,255,.03) inset,0 6px 22px rgba(0,0,0,.18)}
 :root[data-theme="light"] .panel{box-shadow:0 4px 16px rgba(15,23,42,.06)}
 .logo{box-shadow:0 0 18px rgba(96,165,250,.45)}
+
+/* the agents' controls under the map (the old Agent HQ screen, now part of the World) */
+.world .askrow select{background:rgba(127,160,210,.08);border:1px solid var(--w-edge);color:var(--w-ink);border-radius:12px;padding:10px 8px;font-size:13px;max-width:130px}
+.world .orderbox{display:flex;gap:8px;margin-top:6px}.world .orderbox input{flex:1;min-width:0}
+.world .bench{padding:0 0 12px}.world .bench #wbench{padding:0 12px}
+.world .bench .panel{background:transparent;border:1px solid var(--w-edge);border-radius:12px}
+.world .bench .stack{display:flex;flex-direction:column;gap:10px}
+.world .bench .scroll{overflow:auto;max-height:420px}
+.world .bench select.inp,.world .bench input.inp,.world .insp input.inp{background:rgba(127,160,210,.08);border:1px solid var(--w-edge);color:var(--w-ink);border-radius:10px;padding:8px 10px;font-size:13px}
+.world .bench th,.world .bench td{text-align:left}.world .bench td.num,.world .bench th.num{text-align:right}

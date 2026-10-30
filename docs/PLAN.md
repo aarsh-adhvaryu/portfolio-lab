@@ -66,7 +66,7 @@ names and ids before every push (CLAUDE.md). Work on a branch `pm/sN-<slug>`, me
 **Pending him:** the one-time Google step (README step 5) then Settings > Connect Gmail; the 10 bank-label questions; the companion's proposals.
 **Next, in order:** (1) the first real Gmail run: expect small fixes in `ingest/gmail.py` and `ingest/mail_read.py` (built and tested on a fake mailbox and four invented emails only);
 (2) the tick installs a waiting update by itself when it ends (today an update is refused while the tick or the window holds the record);
-(3) the `plans` job (13.6 min cold) and the news step of `collect`; (4) the other screens (Agent HQ, Portfolio, Schedule) in the style of the new Command centre;
+(3) the `plans` job (13.6 min cold) and the news step of `collect`; (4) the other screens (Portfolio, Schedule; Agent HQ is now inside the World) in the style of the new Command centre;
 (5) route simple local questions in the chat to `system_status` and `mail_facts` (the brain already has them).
 
 ## S67 completion cycle (cloud session 2026-10-29, branch `claude/wonderful-bardeen-z07h1e`; Sonnet 5.5 is the development model only)

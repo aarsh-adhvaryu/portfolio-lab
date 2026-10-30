@@ -80,3 +80,20 @@ def test_the_world_draws_updates_in_place_opens_the_inspector_and_pauses(server,
     assert "st-down" in after["mail"]                                                                                         # the failure showed up by itself
     assert after["pause"] == "Resume the system" and "Paused" in after["verdict"]
     assert rt.settings["scheduler"] is False
+
+
+def test_an_order_given_from_an_agents_panel_reaches_the_board_and_the_old_tab_is_gone(server, tmp_path):
+    """What Agent HQ used to do, from the World: click an agent, give it an order, and it is on the board (and shown there)."""
+    rt, port = server
+    steps = [
+        ("document.querySelector('[data-nid=\"a:calc\"]').dispatchEvent(new MouseEvent('click', {bubbles: true})); 1", 0.6),            # 0: open Calculation
+        ("var t = document.getElementById('wio-t'); t.value = 'Drawdown of the Nifty 50 since 2020'; document.getElementById('wio-go').click(); 1", 1.5),   # 1: order it
+        ("document.getElementById('wbench').innerText", 0.2),                                                                          # 2: the board shows it
+        ("[...document.querySelectorAll('#tabs a')].map(a => a.textContent).join('|')", 0.1),                                          # 3: the tab bar
+    ]
+    errors, res = _edge.shoot(f"http://127.0.0.1:{port}/#/world", str(tmp_path / "order.png"), 1500, 1000, 5, steps)
+    assert errors == [], errors
+    row = rt.cursor().execute("SELECT to_agent, text, from_agent FROM hq_tasks").fetchall()
+    assert row == [("calc", "Drawdown of the Nifty 50 since 2020", "investor")], row
+    assert "Drawdown of the Nifty 50" in res[2]
+    assert "Agent HQ" not in res[3] and res[3].startswith("World|")

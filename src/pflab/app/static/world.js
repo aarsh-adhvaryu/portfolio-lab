@@ -1,6 +1,19 @@
 /* The World (S67 local): the whole system as one living map, with the checklist that says what is running, what is done and what is not.
    Built once, then patched in place every few seconds, so motion never restarts. Data: GET /api/world (app/world.py). Plain words only. */
-const W = { sel: null, filter: 'all', sig: '', pos: {}, last: null, at: 0, timer: null };
+const W = { sel: null, filter: 'all', sig: '', pos: {}, last: null, at: 0, timer: null, hq: null, hqAt: 0, hqErr: '', bench: 'board', html: {}, note: '' };
+const BENCH = [['board', 'The board'], ['brain', 'The brain'], ['advice', 'Suggestions and readings'], ['agents', 'Agents and spend'], ['reminders', 'Reminders']];
+/* Put html into an element only when it changed, and keep what is being typed inside it (a 5 s refresh must never eat a sentence). */
+function wset(id, html, after) {
+  const el = $(id); if (!el || W.html[id] === html) return;
+  W.html[id] = html;
+  const vals = {}; let focus = null;
+  el.querySelectorAll('input[id], select[id]').forEach((i) => { if (i.value) vals[i.id] = i.value; });
+  if (document.activeElement && el.contains(document.activeElement) && document.activeElement.id) focus = document.activeElement.id;
+  el.innerHTML = html;
+  Object.entries(vals).forEach(([k, v]) => { const i = $(k); if (i && !i.value) i.value = v; });
+  if (focus && $(focus)) { const i = $(focus); i.focus(); if (i.setSelectionRange && i.value && i.type === 'text') i.setSelectionRange(i.value.length, i.value.length); }
+  if (after) after(el);
+}
 const WSTATE = { working: 'working now', ok: 'done', late: 'due', down: 'failed', waiting: 'waiting', idle: 'idle' };
 const WICON = { working: '●', ok: '✓', late: '!', down: '✕', waiting: '◔', idle: '·' };
 const CX = 640, CY = 372, RING = 215;
@@ -60,13 +73,17 @@ function wInspector(d) {
   if (id === 'brain') {
     const l = n.last;
     body = `<div class="k">Mode: ${esc(n.mode || '')} · ${n.passes_today || 0} pass(es) today${n.using_tool ? ' · using ' + esc(n.using_tool) + ' now' : ''}</div>
-      ${l ? `<div class="k">Last pass #${l.id} at ${esc(l.at)}: ${esc(l.status)} (${esc(l.trigger)})${l.cost_inr ? ', Rs ' + l.cost_inr : ''}${l.error ? ' · ' + esc(l.error) : ''}</div>` : '<div class="k">No pass yet.</div>'}`;
+      ${l ? `<div class="k">Last pass #${l.id} at ${esc(l.at)}: ${esc(l.status)} (${esc(l.trigger)})${l.cost_inr ? ', Rs ' + l.cost_inr : ''}${l.error ? ' · ' + esc(l.error) : ''}</div>` : '<div class="k">No pass yet.</div>'}
+      <div class="k row wrapr" style="gap:6px;margin-top:6px">${BRAIN_MODES.map(([k, nm]) => `<button class="btn ${n.mode === k ? 'primary' : ''}" data-hqbrain="${k}">${nm}</button>`).join('')}<button class="btn" id="hqThink">Think now</button></div>
+      <div class="age">How often it may think. The journal and its predictions are under "The brain" below.</div>`;
   } else if (n.jobs) {
     body = `<div class="k">${esc(n.sub || '')} · ${n.done_today}/${n.of} done today</div><table><tr><th>Routine</th><th>When</th><th>State</th><th>Last</th></tr>
       ${n.jobs.map((j) => `<tr class="st-${j.state}"><td>${esc(j.job.replace(/_/g, ' '))}</td><td>${esc(j.when)}</td><td><span class="pill">${esc(WSTATE[j.state])}</span></td><td>${esc(j.last ? j.last.at.slice(5) + (j.last.status !== 'ok' ? ' ' + j.last.status : '') : 'never')}${j.last && j.last.detail ? '<div class="age">' + esc(j.last.detail) + '</div>' : ''}</td></tr>`).join('')}</table>`;
   } else if (n.does !== undefined) {
     body = `<div class="k">${esc(n.does)}</div><div class="k">${n.running} running · ${n.waiting} waiting · ${n.done_24h} done and ${n.failed_24h} failed in the last day${n.last_done ? ' · last done ' + esc(n.last_done) : ''}</div>
-      ${n.doing ? `<div class="k">Doing: ${esc(n.doing)}</div>` : ''}`;
+      ${n.doing ? `<div class="k">Doing: ${esc(n.doing)}</div>` : ''}
+      <div class="orderbox"><input id="wio-t" class="inp" placeholder="Give ${esc(n.label)} an order…" aria-label="Order for ${esc(n.label)}"><button class="btn primary" id="wio-go">Send</button></div>
+      <div class="age" id="wio-m">${esc(W.note)}</div>`;
   } else {
     const dt = n.detail || {};
     body = `<div class="k">${esc(n.sub || '')}</div>${Object.entries(dt).map(([k, v]) => `<div class="k">${esc(k.replace(/_/g, ' '))}: ${esc(typeof v === 'object' ? JSON.stringify(v) : String(v))}</div>`).join('')}`;
@@ -79,12 +96,14 @@ function wShell(d) {
     <div class="map" id="wmap"><div class="wtitle"><b>The world</b><span id="wupd">live</span></div>${buildWorld(d)}
       <div class="legend"><span><i style="background:var(--w-working)"></i>working now</span><span><i style="background:var(--w-ok)"></i>done</span><span><i style="background:var(--w-late)"></i>due</span>
       <span><i style="background:var(--w-wait)"></i>waiting</span><span><i style="background:var(--w-down)"></i>failed</span><span><i style="background:var(--w-idle)"></i>idle</span></div></div>
-    <div class="below" id="wbelow"></div></div>
+    <div class="below" id="wbelow"></div>
+    <section class="glass bench"><div class="panelh"><b>Orders, the board, the brain and the money</b><span class="age" id="wbage"></span></div><div class="tabsm" id="wbtabs"></div><div id="wbench"></div></section></div>
     <aside>
       <section class="glass pulsecard"><div class="orbrow"><div class="orb" id="worb"></div><div><div class="verdict" id="wverdict"></div><div class="age" id="wsys"></div></div></div>
         <div class="counts" id="wcounts"></div>
         <div class="ctrl"><button class="btn" id="wpause"></button><span class="age" style="align-self:center">Pause stops new routines; running work finishes.</span></div>
-        <div class="askrow"><input id="wask" placeholder="Tell the AI what you want, or ask what it is doing…" aria-label="Ask the AI"><button class="btn primary" id="wsend">Ask</button></div></section>
+        <div class="askrow"><select id="wto" aria-label="Who to ask"><option value="">The AI (chat)</option>${(d.agents || []).map((a) => `<option value="${esc(a.id.replace(/^a:/, ''))}">${esc(a.label)}</option>`).join('')}</select>
+          <input id="wask" placeholder="Tell the AI what you want, or ask what it is doing…" aria-label="Ask the AI"><button class="btn primary" id="wsend">Send</button></div><div class="age" id="wmsg"></div></section>
       <div id="winsp"></div>
       <section class="glass"><div class="panelh"><b>Is everything running? Is it done?</b><span class="age" id="wchk"></span></div><div class="tabsm" id="wtabs"></div><div class="checks" id="wchecks"></div></section>
       <section class="glass"><div class="panelh"><b>Live activity</b><span class="age">newest first</span></div><div class="feed" id="wfeed"></div></section>
@@ -143,16 +162,50 @@ function patchWorld(d) {
   const p = d.pulse; $('worb').className = 'orb ' + (p.tone === 'ok' ? '' : p.tone); $('wverdict').textContent = p.verdict;
   $('wsys').textContent = (p.catching_up ? p.catching_up + ' · ' : '') + (p.system_verdict || '');
   const pb = $('wpause'); pb.textContent = p.paused ? 'Resume the system' : 'Pause the system'; pb.className = 'btn' + (p.paused ? ' primary' : '');
-  wCounts(d); wChecks(d); wFeed(d); wBelow(d); $('winsp').innerHTML = wInspector(d);
-  const cl = $('wclose'); if (cl) cl.onclick = () => { W.sel = null; patchWorld(d); };
+  wCounts(d); wChecks(d); wFeed(d); wBelow(d);
+  wset('winsp', wInspector(d), (el) => {
+    const cl = el.querySelector('#wclose'); if (cl) cl.onclick = () => { W.sel = null; W.html.winsp = null; patchWorld(d); };
+    hqWire(el, () => fetchHq(true));
+    const go = el.querySelector('#wio-go'), tx = el.querySelector('#wio-t');
+    const order = async () => { const text = tx.value.trim(); if (!text) return;
+      try { await post('/api/hq/order', { agent: W.sel.replace(/^a:/, ''), text }); tx.value = ''; W.note = 'Sent. The answer will appear on the board.'; } catch (e) { W.note = e.message.slice(0, 120); }
+      const m = $('wio-m'); if (m) m.textContent = W.note; fetchHq(true); };
+    if (go) { go.onclick = order; tx.onkeydown = (e) => { if (e.key === 'Enter') order(); }; }
+  });
+  wBench();
+}
+/* The agents' own controls (order, board, brain, suggestions, spend, reminders) live under the map: one place, no second screen. */
+function wBench() {
+  const hq = W.hq, tabs = BENCH.map(([k, l]) => {
+    const busy = k === 'board' && hq ? hq.tasks.filter((t) => t.status === 'running' || t.status === 'queued').length : 0;
+    return `<button class="${W.bench === k ? 'on' : ''}" data-bt="${k}">${l}${busy ? ` <span class="tiny">${busy}</span>` : ''}</button>`; }).join('');
+  wset('wbtabs', tabs, (el) => el.querySelectorAll('button').forEach((b) => { b.onclick = () => { W.bench = b.dataset.bt; W.html.wbtabs = null; W.html.wbench = null; wBench(); }; }));
+  const age = $('wbage'); if (age) age.textContent = W.hqErr ? 'not loaded: ' + W.hqErr : hq ? `${hq.agents.length} agents · ${hq.tasks.filter((t) => t.status === 'running').length} running` : 'loading…';
+  if (!hq) { wset('wbench', '<div class="d" style="padding:10px;color:var(--w-dim)">' + (W.hqErr ? esc(W.hqErr) : 'Loading…') + '</div>'); return; }
+  const p = hqParts(hq), b = W.bench;
+  const body = b === 'board' ? `<div class="stack">${p.orderP}${p.boardP}</div>`
+    : b === 'brain' ? `<div class="stack">${p.brainP}${p.predsP}</div>`
+    : b === 'advice' ? `<div class="stack">${p.sugP}${p.followP}${p.readersP}</div>`
+    : b === 'agents' ? `<div class="stack">${p.agentsP}${p.spendP}</div>` : `<div class="stack">${p.remP}</div>`;
+  wset('wbench', body, (el) => hqWire(el, () => fetchHq(true)));
+}
+async function fetchHq(force) {
+  if (S.screen !== 'world' || document.hidden) return;
+  if (!force && Date.now() - W.hqAt < 9000) return;
+  W.hqAt = Date.now();
+  try { W.hq = await api('/api/hq'); W.hqErr = ''; } catch (e) { W.hqErr = e.message.slice(0, 80); }
+  W.html.wbench = null; W.html.wbtabs = null; W.html.winsp = null;     // the data moved: redraw those three (typed text is kept)
+  if (W.last) patchWorld(W.last);
 }
 function wfix(d) {            /* agent ids get a prefix: "graph" is both an agent and a memory */
   return { ...d, agents: (d.agents || []).filter((a) => a.id !== 'brain').map((a) => ({ ...a, id: 'a:' + a.id })) };   /* the brain is the centre */
 }
 function renderWorld(d0) {
   const d = wfix(d0), sig = wsig(d), host = $('screen');
-  if (!host.querySelector('.world') || W.sig !== sig) { W.sig = sig; host.innerHTML = wShell(d); wireWorld(); }
+  const fresh = !host.querySelector('.world') || W.sig !== sig;
+  if (fresh) { W.sig = sig; W.html = {}; host.innerHTML = wShell(d); wireWorld(); }
   patchWorld(d);
+  if (fresh) fetchHq(true);
   if (!W.timer) W.timer = setInterval(worldTick, 5000);
 }
 function wireWorld() {
@@ -161,11 +214,16 @@ function wireWorld() {
     g.onclick = pick; g.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } };
   });
   $('wpause').onclick = async () => { try { await post('/api/world/pause', { paused: !W.last.pulse.paused }); } catch (er) { alert(er.message); } worldTick(); };
-  const ask = async () => { const q = $('wask').value.trim(); if (!q) return; const r = await post('/api/chats/0/messages', { text: q, mode: 'auto' }); S.chat = r.chat_id; S.mode = 'auto'; location.hash = '#/ai'; };
+  const ask = async () => { const q = $('wask').value.trim(), to = $('wto').value; if (!q) return;
+    try {
+      if (!to) { const r = await post('/api/chats/0/messages', { text: q, mode: 'auto' }); S.chat = r.chat_id; S.mode = 'auto'; location.hash = '#/ai'; return; }
+      await post('/api/hq/order', { agent: to, text: q }); $('wask').value = '';
+      $('wmsg').textContent = 'Sent. The answer will appear on the board below.'; W.bench = 'board'; fetchHq(true); worldTick();
+    } catch (e) { $('wmsg').textContent = e.message.slice(0, 140); } };
   $('wsend').onclick = ask; $('wask').onkeydown = (e) => { if (e.key === 'Enter') ask(); };
 }
 async function worldTick() {
   if (S.screen !== 'world' || document.hidden) return;
-  try { patchWorld(wfix(await api('/api/world'))); } catch (e) { const u = $('wupd'); if (u) u.textContent = 'not reachable: ' + e.message.slice(0, 60); }
+  try { const d = wfix(await api('/api/world')); fetchHq(false); patchWorld(d); } catch (e) { const u = $('wupd'); if (u) u.textContent = 'not reachable: ' + e.message.slice(0, 60); }
 }
 setInterval(() => { const u = $('wupd'); if (u && S.screen === 'world' && W.at) u.textContent = `live · updated ${Math.max(0, Math.round((Date.now() - W.at) / 1000))} s ago`; }, 1000);
