@@ -70,6 +70,23 @@ def test_status_names_what_is_missing_and_is_remembered(monkeypatch):
     assert sb.status(missing, now=410.0)["ok"] is True                              # inside the cache window the last answer stands
 
 
+def test_docker_just_started_and_still_listing_its_images_is_not_called_a_missing_image(monkeypatch):
+    """Seen on the first real launch: `docker info` answered, `image inspect` failed once, the image was there. One more look settles it."""
+    monkeypatch.setattr(sb, "RETRY_S", 0.01)
+    answers = iter([1, 0])
+
+    class Slow(Docker):
+        def __call__(self, cmd, **kw):
+            if cmd[:3] == ["docker", "image", "inspect"]:
+                self.calls.append(cmd)
+                return SimpleNamespace(returncode=next(answers), stdout=b"", stderr=b"")
+            return super().__call__(cmd, **kw)
+    d = Slow()
+    assert sb.status(d, now=500.0, force=True) == {"ok": True, "why": ""}
+    assert sum(c[:3] == ["docker", "image", "inspect"] for c in d.calls) == 2
+    assert "is not built" in sb.status(Docker(image=1), now=600.0, force=True)["why"]      # a really missing image is still named
+
+
 def test_the_uncontained_setting_is_refused_in_an_installed_app_and_never_chosen_by_itself(monkeypatch):
     monkeypatch.setenv("PFLAB_SANDBOX", "local")
     assert isinstance(sb.pick(), sb.Local) and sb.Local.contained is False           # the workshop's explicit setting (and the suite's)

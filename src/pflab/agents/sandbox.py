@@ -32,6 +32,7 @@ IMAGE = "pflab-sandbox:2"
 RUNNER = Path(__file__).with_name("workshop_runner.py")
 CACHE_S = 600                      # `available()` is remembered this long
 PROBE_S = 5
+RETRY_S = 4                        # one more look at the image list before calling it missing
 MAX_OUT = 1_000_000                # bytes of out.json read back from a run
 
 _cache: dict = {"at": 0.0, "ok": False, "why": ""}
@@ -216,6 +217,9 @@ def _docker_ready(runner: Callable, image: str):
         return False, "Docker Desktop is not running"
     try:
         img = runner(["docker", "image", "inspect", image], capture_output=True, timeout=PROBE_S)
+        if img.returncode != 0 and RETRY_S:                 # Docker Desktop answers `info` a little before it lists its images (seen right after a start)
+            time.sleep(RETRY_S)
+            img = runner(["docker", "image", "inspect", image], capture_output=True, timeout=PROBE_S)
     except Exception as e:
         return False, f"Docker did not answer ({type(e).__name__})"
     if img.returncode != 0:

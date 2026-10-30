@@ -41,7 +41,8 @@ def universe(con, stock_list: List[dict]) -> pd.DataFrame:
                        list(rows)).fetchall() if rows else []
     for isin, sym, name, sector in inst:
         rows[isin].update({"symbol": rows[isin]["symbol"] or sym, "name": name, "sector": sector})
-    return pd.DataFrame(rows.values())
+    # always these columns, even with no holdings and no list (a fresh profile): callers select u["isin"] without checking
+    return pd.DataFrame(list(rows.values())).reindex(columns=["isin", "symbol", "name", "sector", "scrip", "aliases"])
 
 
 def aliases(u: pd.DataFrame) -> Dict[str, List[str]]:

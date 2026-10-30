@@ -65,10 +65,20 @@ def jobs_view(rt, now: datetime) -> List[dict]:
         when = f"daily {s.hour:02d}:{s.minute:02d}" if hasattr(s, "hour") else f"every {getattr(s, 'minutes', '?')} min"
         lr = latest.get(r["job"])
         why = str(r["why"])
+        waiting_on = None                                   # a run that skipped because it needs him or data (`"waiting": true`) is waiting, not done
+        if lr and lr[0] == "skipped":
+            try:
+                d = json.loads(lr[3] or "{}")
+                if isinstance(d, dict) and d.get("waiting"):
+                    waiting_on = str(d.get("why") or d.get("skipped") or "waiting")[:140]
+            except ValueError:
+                pass
         if lr and lr[0] == "running":
             state = "working"
         elif waiting_icon:
             state = "waiting"
+        elif waiting_on:
+            state, why = "waiting", waiting_on
         elif lr and lr[0] == "failed" and (r["last_success"] is None or lr[1] > r["last_success"]):
             state = "down"
         elif r["due"]:
@@ -83,7 +93,7 @@ def jobs_view(rt, now: datetime) -> List[dict]:
                     "last_success": str(r["last_success"])[:16] if r["last_success"] else None,
                     "last": lr and {"status": lr[0], "at": str(lr[1])[:16], "seconds": round((lr[2] - lr[1]).total_seconds(), 1) if lr[2] else None,
                                     "detail": None if lr[0] == "ok" else (lr[3] or "")[:160]},
-                    "done_today": bool(r["last_success"] and r["last_success"].date() == now.date())})
+                    "done_today": bool(r["last_success"] and r["last_success"].date() == now.date() and not waiting_on)})
     return out
 
 

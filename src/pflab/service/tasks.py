@@ -71,7 +71,7 @@ def _filings(ctx: Ctx) -> dict:
     # S44: the stock list (PFLAB_PM_DIR/stock_list.toml) is the watchlist now; configs/watchlist.toml still counts
     names = filings.targets(_holdings(ctx), filings.load_watchlist() + [s["isin"] for s in gd.stock_list()])
     if not filings.alerts_enabled(names):
-        return {"skipped": True, "why": "no holdings and no watchlist: alerts are off"}
+        return {"skipped": True, "waiting": True, "why": "no holdings and no watchlist yet: alerts start when there is a company to watch"}
     days = ctx.lookback_days("filings", minimum=2, cap=10)
     end = ctx.now.date()
     bse_announcements.collect(end - timedelta(days=days), end, ctx.data_root)
@@ -157,6 +157,10 @@ def _tradecheck_enabled(ctx: Ctx) -> Tuple[bool, str]:
 def _tradecheck(ctx: Ctx) -> dict:
     """S43 trade-check agent: Kite trades and holdings against the ledger; new questions go to Telegram."""
     from pflab.agents import tradecheck as tc
+    try:
+        tc.zerodha_account(ctx.con)
+    except LookupError:                                    # a new profile has no accounts until the statements are read: waiting, not broken
+        return {"skipped": True, "waiting": True, "why": "no Zerodha account is set up yet: drop your statements in Inbox and files, then press Use these accounts in Setup"}
     rep = tc.check(ctx.con, _kite(ctx), ctx.now.date(), now=ctx.now)
     if rep.asked or not rep.breaks.empty:
         tgm.enqueue(ctx.con, rep.render(), "tradecheck", dedup_key=f"tradecheck:{ctx.now.date()}:{sorted(rep.asked)}",
@@ -376,7 +380,7 @@ def _mail(ctx: Ctx) -> dict:
         return {"skipped": "the workshop does not read his mail"}
     if not gmail.connected():
         gmail.ask_to_connect(ctx.con, ctx.now)
-        return {"skipped": "Gmail not connected (asked once in Needs from you)"}
+        return {"skipped": "Gmail not connected (asked once in Needs from you)", "waiting": True, "why": "Gmail is not connected: statements and money emails wait for Connect Gmail in Settings"}
     rt, sess = desk.from_ctx(ctx), gmail.session()
     out = gmail.fetch(rt, sess)
     try:
@@ -463,10 +467,15 @@ def _companion(ctx: Ctx) -> dict:
     limits held to; open pot ideas scored."""
     from pflab.hq import stocks
     from pflab.plan import companion
+    from pflab.plan import targets as tg
     try:
         index = stocks.index_series(ctx.data_root)
     except Exception:
         index = None
+    try:
+        tg.load()
+    except tg.TargetsNotSet:                               # his to set, never ours: waiting for him, not a failure
+        return {"skipped": True, "waiting": True, "why": "your targets are not set yet: it makes no plan until you set them (it proposes, you say yes)"}
     return companion.run(ctx.con, ctx.data_root, ctx.now.date(), ctx.now, index)
 
 

@@ -116,6 +116,21 @@ def test_it_reads_and_never_writes(rt):
     assert counts() == before
 
 
+def test_a_run_that_skipped_because_it_needs_him_is_waiting_not_done(rt):
+    """Found on the first real launch: Mail said 'done' while Gmail was not connected. A skip that waits on him or on data shows as waiting."""
+    con = rt.cursor()
+    t0 = NOW - timedelta(minutes=5)
+    con.execute("INSERT INTO job_runs (run_id, job, slot, started_at, finished_at, status, detail) VALUES (1,'mail',?,?,?,'skipped',?)",
+                [t0, t0, t0, '{"skipped": "Gmail not connected", "waiting": true, "why": "Gmail is not connected: wait for Connect Gmail"}'])
+    con.execute("INSERT INTO job_runs (run_id, job, slot, started_at, finished_at, status, detail) VALUES (2,'comove',?,?,?,'skipped',?)",
+                [t0, t0, t0, '{"skipped": true, "why": "the table is under 6 days old"}'])
+    w = world.build(rt, NOW)
+    mail = next(j for j in w["jobs"] if j["job"] == "mail")
+    assert mail["state"] == "waiting" and mail["done_today"] is False and "Connect Gmail" in mail["why"]
+    comove = next(j for j in w["jobs"] if j["job"] == "comove")
+    assert comove["state"] == "ok"                                                       # a harmless skip is still a finished round
+
+
 def test_agent_hq_is_part_of_the_world_not_a_second_screen():
     """The World is the one place for the agents: no Agent HQ tab, no old office drawing, and every control it had is still reachable from the World."""
     static = Path(__file__).resolve().parents[1] / "src" / "pflab" / "app" / "static"
