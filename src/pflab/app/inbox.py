@@ -537,13 +537,42 @@ def summarise(rt, iid: int, llm=None) -> dict:
     return res
 
 
+# Words that name an exchange, a depository or a registrar as often as a listed company: alone they never make a text "about" that company
+VENUE_WORDS = {"nse", "bse", "mcx", "cdsl", "nsdl", "cams", "kfintech", "kfin"}
+
+
+def companies_in(con, text: str) -> List[str]:
+    """The listed companies a text is about, by their names in the record (free, on this PC). A rulebook or a notice names none."""
+    from pflab.kg import build as kb
+    from pflab.plan import guards as gd
+    isins = [i for (i,) in con.execute("SELECT DISTINCT isin FROM instruments WHERE isin LIKE 'INE%'").fetchall()]
+    if not isins:
+        return []
+    names = kb.names_for(con, isins, gd.stock_list())
+    found = []
+    for isin, ns in names.items():
+        ns = [n for n in ns if n and n.strip().lower() not in VENUE_WORDS]
+        if ns and kb.is_about(text, ns, k=400):
+            sym = con.execute("SELECT coalesce(symbol, name) FROM instruments WHERE isin=? LIMIT 1", [isin]).fetchone()
+            found.append((sym[0] if sym else None) or isin)
+    return sorted(set(found))
+
+
 def research(rt, iid: int) -> dict:
-    """The screenshot's text as a deep-research question (news to verify); the egress gate decides what may leave."""
+    """A screenshot's text as a deep-research question, only when it is about a company (2026-10-30: a rulebook was sent to Opus and checked
+    against unrelated filings). A free check on this PC first: no company named, nothing is sent and nothing is spent."""
     from pflab.app import chat
     it = _item(rt, iid)
     if not it.get("text"):
         raise ValueError("no text read from this file")
-    q = "Check this news against exchange filings and research it: " + " ".join(it["text"].split())[:900]
+    text = " ".join(it["text"].split())
+    names = companies_in(rt.cursor(), text)
+    if not names:
+        msg = ("Nothing to research: this text names no company (it reads like a general notice or a rule). Nothing was sent and nothing was "
+               "spent. To have a rule explained, ask it in the AI centre with Web search.")
+        _to_chat(rt, it, msg, ["checked on this PC"])
+        return {"skipped": True, "why": msg}
+    q = f"Check this news about {', '.join(names[:3])} against its exchange filings and research it: " + text[:900]
     return chat.post(rt, it.get("chat_id") or 0, q, "deep")
 
 

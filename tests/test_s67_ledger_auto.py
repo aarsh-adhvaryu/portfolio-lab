@@ -155,3 +155,27 @@ def test_money_the_broker_spent_with_no_source_in_the_files_is_funded_and_named_
     by = {n: (ok, d) for n, ok, d in checks}
     assert by["every rupee Zerodha spent has a source in your files"][0] is False and "2026-09-03 100.00" in by["every rupee Zerodha spent has a source in your files"][1]
     assert any(e.ref.startswith("unexplained_funding:") for e in log)
+
+
+def test_research_spends_nothing_on_a_text_that_names_no_company_and_names_the_company_when_there_is_one(tmp_path, monkeypatch):
+    """Found on his first use: a broker's rulebook was sent to Opus and checked against unrelated filings (Rs 1.76, nothing learned)."""
+    from pflab.app import chat
+    (tmp_path / "pm").mkdir()
+    con = store.connect(tmp_path / "l.duckdb")
+    con.execute("""INSERT INTO instruments (isin, key_kind, asset_class, tax_class, listed, symbol, name, source, built_at)
+                   VALUES ('INE000Z01011', 'isin', 'equity', 'listed_equity', TRUE, 'ZEDCO', 'Zedco Consultancy Services Limited', 'synthetic', now()),
+                          ('INE000N01011', 'isin', 'equity', 'listed_equity', TRUE, 'NSE', 'National Stock Exchange of India Limited', 'synthetic', now())""")
+    monkeypatch.setattr("pflab.plan.guards.stock_list", lambda path=None: [])
+    rt = runtime.Runtime(tmp_path / "pm", tmp_path / "data", tmp_path, con=con, clock=lambda: NOW)
+    sent = []
+    monkeypatch.setattr(chat, "post", lambda rt_, cid, q, mode, approved=False: sent.append((q, mode)) or {"chat_id": 1})
+    texts = iter(["Important: stocks under surveillance move to the T2T segment; check the NSE and BSE lists; price band 5%.",
+                  "Zedco Consultancy Services announces its second interim dividend of Rs 12 per share."])
+    monkeypatch.setattr(ib, "ocr", lambda rt_, path: next(texts))
+    monkeypatch.setattr(ib, "_start", lambda rt_, iid: ib._process(rt_, iid))
+    a = ib.receive(rt, "rules.png", b"\x89PNG rules")
+    r = ib.research(rt, a["id"])
+    assert r["skipped"] and "names no company" in r["why"] and sent == []                     # nothing sent, nothing spent; "NSE" the venue is not NSE the company
+    b = ib.receive(rt, "dividend.png", b"\x89PNG dividend")
+    ib.research(rt, b["id"])
+    assert len(sent) == 1 and sent[0][1] == "deep" and "about ZEDCO" in sent[0][0]
