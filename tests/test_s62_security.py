@@ -216,3 +216,20 @@ def test_the_app_does_not_run_the_suite_and_closes_an_old_false_alert(con, tmp_p
     out = sec.tests(rt, run=lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not run")))
     assert out["ok"] and out["skipped"]
     assert con.execute("SELECT count(*) FROM questions WHERE status='open' AND subject_key LIKE 'security:tests:%'").fetchone()[0] == 0
+
+
+def test_a_job_failure_that_has_cleared_closes_its_own_security_item(con, tmp_path, monkeypatch):
+    """Found on the first real launch: six 'job failed' items stayed open after the jobs were fixed and ran fine."""
+    from pflab.service import health
+    rt = _desk(con, tmp_path)
+    failing = [health.Item("job:kg", "FAIL", "last run failed at 30-Oct 10:35: KeyError: 'isin'"), health.Item("job:research", "FAIL", "KeyError")]
+    monkeypatch.setattr(health, "check", lambda ctx: failing)
+    sec.flows(rt)
+    keys = lambda: sorted(k for (k,) in con.execute("SELECT subject_key FROM questions WHERE status='open' AND subject_key LIKE 'security:flows:health:%'").fetchall())  # noqa: E731
+    assert len(keys()) == 2
+    failing.pop(0)                                                                         # kg ran fine since
+    out = sec.flows(rt)
+    assert out["health_cleared"] == 1 and len(keys()) == 1 and "job:research" in keys()[0]
+    failing.clear()
+    sec.flows(rt)
+    assert keys() == []

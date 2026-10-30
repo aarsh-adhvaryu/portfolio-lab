@@ -450,7 +450,7 @@ def _sandbox_probe(ctx: Ctx) -> dict:
 
 
 register(Job("sandbox", Daily(6, 40, weekdays_only=False), _sandbox_probe, "proves the calculation sandbox is contained (no network, read-only, killed at its limit)",
-             cooldown_minutes=360, enabled_fn=_sandbox_enabled))
+             cooldown_minutes=30, enabled_fn=_sandbox_enabled))                  # a failed proof is looked at again in half an hour (Docker may just be starting)
 
 
 def _twin(ctx: Ctx) -> dict:

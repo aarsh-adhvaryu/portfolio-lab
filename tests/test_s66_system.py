@@ -49,7 +49,10 @@ def test_needs_groups_the_same_kind_of_request(rt):
     assert "3 company sheets" in tij["title"] and "AAA" in tij["title"] and "CCC" in tij["title"]
 
 
-def test_the_picture_reads_the_whole_system(rt):
+def test_the_picture_reads_the_whole_system(rt, monkeypatch):
+    from pflab.ingest import gmail                                                    # the real keys folder must not decide this test
+    monkeypatch.setattr(gmail, "connected", lambda: False)
+    monkeypatch.setattr(gmail, "has_client", lambda: True)
     con = rt.cursor()
     con.execute("INSERT INTO job_runs (run_id, job, started_at, finished_at, status, detail) VALUES (1, 'filings', ?, ?, 'ok', "
                 "'{\"filings\": 3, \"names\": 2, \"alerts_queued\": 0}')", [NOW - timedelta(minutes=5), NOW - timedelta(minutes=4)])

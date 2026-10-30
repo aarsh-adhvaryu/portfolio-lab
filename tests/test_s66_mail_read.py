@@ -133,6 +133,35 @@ def test_a_run_reads_checks_asks_and_feeds_the_readers(rt):
     assert s["counts"]["matched"] == 1 and s["latest"][0]["says"]
 
 
+def test_many_emails_make_one_question_per_kind_and_notices_without_a_quantity_make_none(rt):
+    """Found on the first real launch: 30 near-identical questions ("IPO allotment: ? JPL" again and again) buried the few that matter."""
+    mails, replies = {}, {}
+    rows = [("12.0", "JPL"), ("12.0", "JPL"), ("16.0", "JPL"), (None, "JPL"), (None, "JPL"), (None, None), (None, "NSE"), ("21.0", "NSE")]
+    for i, (qty, who) in enumerate(rows):
+        subj = f"IPO allotment notice {i}"
+        body = f"Allotment: {qty or ''} shares of {who or ''} allotted on 27-Oct-2026."      # the guard keeps only what the email states
+        mails[f"m{i}"] = ("Registrar <ipo@registrar.example>", subj, body, "text/plain", datetime(2026, 10, 27, 9, i))
+        f = {"kind": "ipo_allotment", "date": "2026-10-27"}
+        if qty:
+            f["quantity"] = float(qty)
+        if who:
+            f["symbol"] = who
+        replies[subj] = [f]
+    mr.run(rt, FakeGmail(mails), "qwen3:8b-q8_0", NOW, chat=model(replies))
+    con = rt.cursor()
+    asked = [t for _, _, t in questions.open_questions(con)]
+    assert len(asked) == 1 and "3 IPO allotments" in asked[0]                                  # 12 JPL (twice, once), 16 JPL, 21 NSE
+    assert "?" not in asked[0].split("not in your record")[1].split("If they")[0]              # never a placeholder in the list
+    assert "nothing is written to your record" in asked[0]
+    again = mr.run(rt, FakeGmail(mails), "qwen3:8b-q8_0", NOW, chat=model(replies))
+    assert again["emails"] == 0 and len(questions.open_questions(con)) == 1                    # no second copy
+    mr.regroup(con, NOW)
+    assert len(questions.open_questions(con)) == 1
+    con.execute("INSERT INTO questions VALUES (99, ?, 'mail', 'mailfact:7', 'An email says: old style', 'open', NULL, NULL)", [NOW])
+    mr.regroup(con, NOW)                                                                       # a profile that already holds the old per-email ones is tidied
+    assert [t for _, _, t in questions.open_questions(con)] == asked
+
+
 def test_a_model_failure_leaves_the_email_for_tomorrow_and_the_workshop_never_reads(rt, monkeypatch):
     mails = {"m1": ("b", "Dividend credited", "Rs 120 credited", "text/plain", datetime(2026, 11, 2))}
 
