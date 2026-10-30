@@ -75,7 +75,7 @@ def test_a_new_activated_profile_is_welcomed_once_and_the_unknowns_shrink_as_it_
     qid = onboarding.welcome(con, now)
     assert qid and onboarding.welcome(con, now) is None                           # asked once, never repeated
     text = questions.open_questions(con)[0][2]
-    assert "I know nothing about you yet" in text and "will not guess" in text and "other mailbox" in text
+    assert "I know nothing about you yet" in text and "will not guess" in text and "left out" in text and "What to bring" in text
     b = onboarding.briefing(con)
     assert b["new"] and len(b["unknown"]) == 3 and b["say"].startswith("I am new here")
     questions.answer(con, qid, "PhD in 2028; keep 3 lakh as cash; 30 percent fall", now)

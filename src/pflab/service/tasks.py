@@ -159,8 +159,13 @@ def _tradecheck(ctx: Ctx) -> dict:
     from pflab.agents import tradecheck as tc
     try:
         tc.zerodha_account(ctx.con)
-    except LookupError:                                    # a new profile has no accounts until the statements are read: waiting, not broken
-        return {"skipped": True, "waiting": True, "why": "no Zerodha account is set up yet: drop your statements in Inbox and files, then press Use these accounts in Setup"}
+    except LookupError:                                    # a new profile has no Zerodha account until the statements are read
+        kite = _kite(ctx)
+        if kite is None:
+            return {"skipped": True, "waiting": True, "why": "no Kite login today and no Zerodha account set up yet: log in to Kite, and drop your statements in Inbox and files"}
+        from pflab.pm import today                         # Kite's own view still shows what you hold: kept, labelled as not yet matched to your statements
+        snap = today.record(ctx.con, kite, today.KITE_ONLY, ctx.now)
+        return {"snapshot": snap, "kite_only": True, "note": "holdings read from Kite; they are matched to your statements once a Zerodha account is set up in Setup"}
     rep = tc.check(ctx.con, _kite(ctx), ctx.now.date(), now=ctx.now)
     if rep.asked or not rep.breaks.empty:
         tgm.enqueue(ctx.con, rep.render(), "tradecheck", dedup_key=f"tradecheck:{ctx.now.date()}:{sorted(rep.asked)}",
@@ -370,6 +375,11 @@ def _us_fx(ctx: Ctx) -> dict:
 register(Job("us_fx", Daily(7, 25, weekdays_only=False), _us_fx, "US sleeve: USDINR rates into the store"))
 
 
+def _mail_on() -> Tuple[bool, str]:
+    from pflab.ingest import gmail
+    return gmail.enabled(), "email is off: you add every file by hand in Inbox and files"
+
+
 def _mail(ctx: Ctx) -> dict:
     """S65: read-only Gmail: new statement attachments into the inbox (ingest/gmail.py); asks once to be connected.
     S66: then what the money emails SAY, read by the local model and checked against his record (ingest/mail_read.py)."""
@@ -395,7 +405,7 @@ def _mail(ctx: Ctx) -> dict:
 
 register(Job("mail", Daily(21, 15, weekdays_only=False), _mail, "read-only Gmail, once a day: statements that arrived by email into the "
              "inbox (checked, then your press); what money emails say, read on this PC and checked against your record",
-             cooldown_minutes=180))
+             cooldown_minutes=180, enabled_fn=lambda ctx: _mail_on()))
 
 
 def _backfill(ctx: Ctx) -> dict:

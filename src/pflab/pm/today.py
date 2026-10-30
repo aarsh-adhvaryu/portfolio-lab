@@ -59,11 +59,20 @@ def record(con, kite, account: str, now: datetime) -> dict:
     return {"snap_id": sid, "rows": len(rows), "missing": missing}
 
 
+KITE_ONLY = "KITE"          # the account label of a snapshot taken before any statement has set up a Zerodha account
+
+
 def broker(con) -> Optional[str]:
     from pflab.agents.tradecheck import zerodha_account
     try:
         return zerodha_account(con)
     except LookupError:
+        # no statement has set the account up yet: what Kite itself shows is still the best picture there is, and it says whose it is
+        try:
+            if con.execute("SELECT 1 FROM kite_snapshots WHERE account_id=? LIMIT 1", [KITE_ONLY]).fetchone():
+                return KITE_ONLY
+        except Exception:
+            pass
         return None
 
 

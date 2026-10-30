@@ -263,10 +263,15 @@ def build(rt, now: Optional[datetime] = None) -> dict:
     _sec(out, errors, "guard_nodes", lambda: guards_view(rt, now, pic), [])
     _sec(out, errors, "feed", lambda: feed(rt, now), [])
     _sec(out, errors, "looking_into", lambda: looking_into(rt, now), {"investigations": [], "experiments": []})
+    from pflab.app import onboarding
+    _sec(out, errors, "bring", lambda: onboarding.bring_list(rt.cursor()), [])               # what he can bring, with what is already held
 
     def group_nodes(spec, zone):
+        from pflab.ingest import gmail
         res = []
         for gid, label, names, sub in spec:
+            if gid == "mail" and not gmail.enabled():                    # email is off: there is no mailbox to show
+                continue
             mine = [j for j in jb if j["job"] in names]
             if not mine:
                 continue

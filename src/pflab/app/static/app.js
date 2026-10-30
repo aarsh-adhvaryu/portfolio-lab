@@ -255,11 +255,14 @@ function coverageCard(s) {
     <div class="row" style="justify-content:space-between"><span class="lbl">Accounts found and what I can say about them</span><span class="small ${tone}">${esc(st.label)}</span></div>
     ${newHere}
     ${c.accounts.map((a) => `<div style="padding:3px 0;border-bottom:1px solid var(--line2)"><div class="row" style="gap:8px"><b style="font-size:13px;flex:1">${esc(a.account)}</b><span class="tiny muted">${esc(a.state)}</span></div>
-      <div class="tiny muted">${a.first_month ? 'activity ' + esc(a.first_month) + ' to ' + esc(a.last_month) + (a.silent_months && a.silent_months.length ? '; no activity in ' + esc(a.silent_months.slice(0, 4).join(', ')) : '') : 'no ledger activity yet'}${a.next ? ' · ' + esc(a.next) : ''}</div></div>`).join('')}
+      <div class="tiny muted">${a.first_month ? 'activity ' + esc(a.first_month) + ' to ' + esc(a.last_month) + (a.silent_months && a.silent_months.length ? '; no activity in ' + esc(a.silent_months.slice(0, 4).join(', ')) : '') : 'no ledger activity yet'}${a.next ? ' · ' + esc(a.next) : ''}</div>${a.key ? `<div class="row" style="gap:6px;padding-top:3px">${a.state.startsWith('left out')
+        ? `<button class="btn" data-covback="${esc(a.key)}" style="font-size:11px;padding:2px 8px">Add back</button>`
+        : `<button class="btn" data-covleave="${esc(a.key)}" style="font-size:11px;padding:2px 8px">Leave out for now</button>`}</div>` : ''}</div>`).join('')}
     ${c.mailboxes.map((m) => `<div class="tiny muted">Mailbox read back to ${esc(m.read_back_to)}${m.reached_horizon ? ' (the furthest I look: ' + Math.round(m.horizon_days / 365) + ' years)' : ' (still reading)'}; mail with no file or only a link is not checked here.</div>`).join('')}
     ${c.gaps.length ? `<div class="tiny warn">${c.gaps.length} file(s) or message(s) I could not use are listed, not forgotten.</div>` : ''}
     ${(st.reasons || []).map((r) => `<div class="tiny warn">${esc(r)}</div>`).join('')}
-    ${st.label !== 'complete' ? '<div class="row"><button class="btn" id="covConfirm" style="font-size:12px;padding:3px 9px">This is every account, mailbox and export</button></div>' : ''}
+    <div class="row wrapr" style="gap:6px"><input class="inp" id="covDecl" placeholder="An account I have but will add later (its bank and what it is)" style="flex:1 1 220px;font-size:12px"><button class="btn" id="covDeclGo" style="font-size:12px;padding:3px 9px">Leave it out for now</button></div>
+    ${st.label !== 'complete' ? '<div class="row"><button class="btn" id="covConfirm" style="font-size:12px;padding:3px 9px">This is every account and every file I have</button></div>' : ''}
     <span class="tiny muted">${esc(st.note || '')}</span>
   </section>`;
 }
@@ -298,8 +301,12 @@ function askCard(s) {
 function wireSystem() {
   const seen = document.getElementById('seen');
   if (seen) seen.onclick = async () => { try { await post('/api/system/seen', {}); } catch (er) { alert(er.message); } S.sys = null; load(true); };
+  document.querySelectorAll('[data-covleave]').forEach((b) => { b.onclick = async () => { try { await post('/api/coverage/leave_out', { key: b.dataset.covleave }); } catch (er) { alert(er.message); } S.sys = null; load(true); }; });
+  document.querySelectorAll('[data-covback]').forEach((b) => { b.onclick = async () => { try { await post('/api/coverage/add_back', { key: b.dataset.covback }); } catch (er) { alert(er.message); } S.sys = null; load(true); }; });
+  const cd = document.getElementById('covDeclGo');
+  if (cd) cd.onclick = async () => { const t = document.getElementById('covDecl').value.trim(); if (!t) return; try { await post('/api/coverage/leave_out', { text: t }); } catch (er) { alert(er.message); } S.sys = null; load(true); };
   const cc = document.getElementById('covConfirm');
-  if (cc) cc.onclick = async () => { if (!confirm('Confirm that these are all your accounts, mailboxes and exports? I will ask again if I find another.')) return; try { await post('/api/coverage/confirm', {}); } catch (er) { alert(er.message); } S.sys = null; load(true); };
+  if (cc) cc.onclick = async () => { if (!confirm('Confirm that these are all your accounts and files? I will ask again if I find another.')) return; try { await post('/api/coverage/confirm', {}); } catch (er) { alert(er.message); } S.sys = null; load(true); };
   document.querySelectorAll('[data-hrel]').forEach((b) => { b.onclick = async () => { try { await post('/api/hq/tasks/' + b.dataset.hrel + '/release', {}); } catch (er) { alert(er.message); } S.sys = null; load(true); }; });
   document.querySelectorAll('[data-hdis]').forEach((b) => { b.onclick = async () => { const why = prompt('Why dismiss it?', 'not wanted'); if (why === null) return; try { await post('/api/hq/tasks/' + b.dataset.hdis + '/dismiss', { reason: why }); } catch (er) { alert(er.message); } S.sys = null; load(true); }; });
   document.querySelectorAll('[data-case]').forEach((a) => { a.onclick = async (e) => { e.preventDefault(); try { showCase(await api('/api/cases/' + a.dataset.case)); } catch (er) { alert(er.message); } }; });
@@ -629,6 +636,7 @@ function renderSetup(d) {
 async function renderMail() {
   const el = $('mailP'); if (!el) return;
   let d; try { d = await api('/api/mail'); } catch (e) { el.innerHTML = `<span class="lbl">Gmail (read-only)</span><span class="small warn">${esc(e.message)}</span>`; return; }
+  if (d.enabled === false) { el.innerHTML = '<span class="lbl">Email</span><span class="small muted">Not used. You drop every statement, deposit certificate and screenshot into Inbox and files by hand; nothing reads your mailbox.</span>'; return; }
   el.innerHTML = `<span class="lbl">Gmail (read-only)</span>` + (d.connected
     ? `<span class="small up">Connected. ${d.messages} message(s) looked at, ${d.kept} statement file(s) brought in${d.last ? ', last ' + esc(d.last.slice(0, 16)) : ''}. It can never send, delete or change mail.</span>`
       + (d.facts && d.facts.latest.length ? `<span class="small muted">What your emails said (read on this PC; checked against your record): ${Object.entries(d.facts.counts).map(([k, n]) => n + ' ' + esc(k)).join(', ')}</span>

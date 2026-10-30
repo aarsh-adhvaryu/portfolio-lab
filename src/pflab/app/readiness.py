@@ -235,7 +235,8 @@ def _tools(rt, now: datetime) -> dict:
 
 def assess(rt, now: Optional[datetime] = None) -> dict:
     now = now or rt.clock()
-    stages = [_record(rt, now), _reconciled(rt, now), _mail(rt, now), _history(rt, now), _tools(rt, now)]
+    from pflab.ingest import gmail
+    stages = [_record(rt, now), _reconciled(rt, now)] + ([_mail(rt, now)] if gmail.enabled() else []) + [_history(rt, now), _tools(rt, now)]
     ready = all(s["state"] == DONE for s in stages)
     done = sum(1 for s in stages if s["state"] == DONE) + 0.5 * sum(1 for s in stages if s["state"] == PARTIAL)
     return {"ready": ready, "percent": round(100 * done / len(stages)), "stages": stages,

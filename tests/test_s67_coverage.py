@@ -111,7 +111,7 @@ def test_the_inventory_is_one_grouped_question_naming_every_account_and_asking_f
     t = qs[0]
     for who in ("Alpha Bank bank account ending 1111", "Alpha Bank bank account ending 2222", "Newco Finance", "Oldco Bank"):
         assert who in t
-    assert "NOT in this list" in t and "other email address" in t and "only download as a file" in t
+    assert "NOT in this list" in t and "left out" in t and "email" not in t
 
 
 def test_complete_needs_the_walk_the_set_up_the_gaps_closed_and_his_confirmation_and_a_new_account_reopens_it(rt):
@@ -126,7 +126,7 @@ def test_complete_needs_the_walk_the_set_up_the_gaps_closed_and_his_confirmation
     for g_ in coverage.gaps(con):
         readiness.close_gap(con, g_["key"], NOW)
     s = coverage.status(con, NOW)
-    assert s["label"] == "partial" and s["reasons"] == ["you have not confirmed that this is every account, mailbox and export"]
+    assert s["label"] == "partial" and s["reasons"] == ["you have not confirmed that this is every account and every file you have"]
     coverage.confirm_inventory(con, NOW)
     assert coverage.status(con, NOW)["label"] == "complete"
     # a statement for an account nobody had listed turns up afterwards
