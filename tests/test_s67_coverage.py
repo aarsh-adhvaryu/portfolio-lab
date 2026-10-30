@@ -90,3 +90,12 @@ def test_the_inventory_is_one_grouped_question_asked_once(con):
     t = [t for _, _, t in questions.open_questions(con)][0]
     assert q and "SBI bank account ending 9001" in t and "0999" in t and "NOT in this list" in t and "left out" in t and "email" not in t.lower()
     assert cv.ask_inventory(con, NOW) is None                                                    # never twice
+
+
+def test_a_statement_listing_two_demats_that_are_both_set_up_adds_no_row(con):
+    _account(con, "ZER", "broker", "Zerodha", "12000001")
+    _account(con, "DEMAT_IN300999", "demat", "another depository", "IN300999")
+    con.execute("INSERT INTO account_candidates (cand_key, first_seen, last_seen, kind, bank, last4, dp_ids, label, n_files, sources, state) "
+                "VALUES ('old', ?, ?, 'cas', NULL, NULL, '12000001,IN300999', 'demat (depository id ending 0999)', 3, 'a file you dropped', 'discovered')", [NOW, NOW])
+    rows = cv.matrix(con, NOW)
+    assert len(rows) == 2 and not any(r["state"] == "discovered, not set up" for r in rows)

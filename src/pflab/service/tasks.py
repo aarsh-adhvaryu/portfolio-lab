@@ -329,8 +329,19 @@ def _summary(which: str):
         cal = mcal.load()
         if not cal.is_trading_day(ctx.now.date()):
             return {"skipped": True, "why": cal.why_closed(ctx.now.date())}
+        # (2026-10-30) after a restart the missed slots catch up; a summary hours late is noise (an "evening summary" arrived at 14:15)
+        slot = SUMMARY_SLOT[which]
+        due = ctx.now.replace(hour=slot[0], minute=slot[1], second=0, microsecond=0)
+        if due > ctx.now:
+            due -= timedelta(days=1)
+        if (ctx.now - due).total_seconds() > SUMMARY_LATE_H * 3600:
+            return {"skipped": True, "why": f"the {which} summary is {int((ctx.now - due).total_seconds() // 3600)} h late: not sent (the next one carries the news)"}
         return summary.send(ctx.con, ctx.now.date(), ctx.now, which, cal, ctx.data_root)
     return run
+
+
+SUMMARY_SLOT = {"morning": (9, 0), "evening": (21, 45)}
+SUMMARY_LATE_H = 3
 
 
 register(Job("summary_morning", Daily(9, 0), _summary("morning"), "Telegram morning summary (trading days)"))

@@ -179,3 +179,20 @@ def test_research_spends_nothing_on_a_text_that_names_no_company_and_names_the_c
     b = ib.receive(rt, "dividend.png", b"\x89PNG dividend")
     ib.research(rt, b["id"])
     assert len(sent) == 1 and sent[0][1] == "deep" and "about ZEDCO" in sent[0][0]
+
+
+def test_a_summary_hours_late_after_a_restart_is_not_sent(tmp_path, monkeypatch):
+    """Seen 2026-10-30: after restarts, the morning and the evening summary both arrived at 14:15."""
+    from pflab.conductor import calendar as mcal
+    from pflab.service import jobs, summary
+    import pflab.service.tasks  # noqa: F401
+    sent = []
+    monkeypatch.setattr(summary, "send", lambda *a, **k: sent.append(a[3]) or {"sent": True})
+    monkeypatch.setattr(mcal, "load", lambda: type("C", (), {"is_trading_day": lambda self, d: True, "why_closed": lambda self, d: ""})())
+    con = store.connect(tmp_path / "l.duckdb")
+    at = lambda h, m: jobs.Ctx(con, datetime(2026, 10, 30, h, m), tmp_path, tmp_path, tmp_path)   # noqa: E731
+    assert jobs.REGISTRY["summary_evening"].fn(at(14, 15))["skipped"]                         # yesterday's evening summary, 16 h late
+    assert jobs.REGISTRY["summary_morning"].fn(at(14, 15))["skipped"]                         # this morning's, 5 h late
+    jobs.REGISTRY["summary_morning"].fn(at(9, 20))
+    jobs.REGISTRY["summary_evening"].fn(at(22, 0))
+    assert sent == ["morning", "evening"]

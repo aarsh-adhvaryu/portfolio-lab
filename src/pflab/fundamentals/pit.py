@@ -283,6 +283,9 @@ def save(con, dq: pd.DataFrame, source: str, now: Optional[datetime] = None, bas
     n0 = con.execute("SELECT count(*) FROM quarterly_results").fetchone()[0]
     d = dq.copy()
     d["source"], d["fetched_at"], d["basis"] = source, now, basis
+    # the same quarter twice in ONE batch (BSE lists a re-filed result again) is not covered by ON CONFLICT: DuckDB refuses the commit
+    # (seen 2026-10-30, the guards job failed). The first copy is kept, as a stored quarter is.
+    d = d.drop_duplicates(["scrip_code", "quarter_end", "basis"], keep="first")
     cols = ["scrip_code", "quarter_end", "audited", *FIELDS, "usable_from", "date_source", "source", "fetched_at",
             "basis"]
     con.register("_q", d[cols])

@@ -165,6 +165,8 @@ def matrix(con, now: datetime) -> List[dict]:
             row = con.execute("SELECT dp_ids FROM account_candidates WHERE cand_key=?", [ck]).fetchone()
             dps_c = [x.strip().upper() for x in str((row or [None])[0] or "").split(",") if x.strip()]
             same = list({id(by_dp[d]): by_dp[d] for d in dps_c if d in by_dp}.values())
+            if dps_c and all(d in by_dp for d in dps_c):
+                same = same[:1]                            # one statement listing several demats that are ALL set up: nothing new, one row
         if len(same) == 1:                                     # the same account as one that is set up: one row, with the files seen added
             row = same[0]
             row["files_seen"] += int(n)
