@@ -287,3 +287,15 @@ def test_the_same_code_again_is_not_a_new_variant_and_is_not_counted(con, tmp_pa
     st = [a["status"] for a in ex.attempts(con, eid) if a["kind"] == "candidate"]
     assert st == ["rejected", "duplicate", "duplicate"] and r["status"] == "rejected"
     assert counter.n_tests(con) == n0 + 1                                                    # only the one evaluated variant counted
+
+
+def test_an_interrupted_run_resumes_inside_the_same_budget(con, tmp_path):
+    """Audit: crashes and duplicates used attempts during a run but a restart counted only kept/rejected ones, and time and money began again."""
+    eid = _reg(con, tmp_path)
+    w = Writer(CODE_BROKEN)
+    ex.run(con, eid, tmp_path, NOW, w, frame=_series())                                       # every attempt crashed: the budget is used up
+    con.execute("UPDATE learn_experiments SET status='registered' WHERE exp_id=?", [eid])     # as if the process had died and the run were resumed
+    w2 = Writer(CODE_ALWAYS)
+    ex.run(con, eid, tmp_path, NOW, w2, frame=_series())
+    assert w2.prompts == []                                                                  # no fresh budget: nothing more was tried
+    assert max(a["n"] for a in ex.attempts(con, eid)) == ex.MAX_ATTEMPTS
