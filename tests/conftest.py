@@ -23,6 +23,12 @@ def _stable_channel(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _mail_on_for_its_own_tests(monkeypatch):
+    """The product has email OFF (2026-10-30); the tests of the mail code switch it on, and the tests of the off state delete this variable."""
+    monkeypatch.setenv("PFLAB_MAIL", "on")
+
+
+@pytest.fixture(autouse=True)
 def _no_backup_decision(monkeypatch):
     """Tests never read the investor's own backup decision in configs/service.toml (S58b); a test that needs one sets it."""
     from pflab.service import backup

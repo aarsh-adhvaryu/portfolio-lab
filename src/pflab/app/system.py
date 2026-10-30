@@ -171,7 +171,9 @@ def connectors(rt, now: datetime) -> List[dict]:
     out.append({"id": "kite", "name": "Kite", "state": k[0], "line": k[1], "action": k[2]})
 
     # Gmail: a saved token is not a working mailbox; the state is the last mail run
-    if gmail.connected():
+    if not gmail.enabled():
+        out.append({"id": "gmail", "name": "Email", "state": OFF, "line": "not used: you add every statement and file by hand in Inbox and files", "action": None})
+    elif gmail.connected():
         f = {st: n for st, n in con.execute("SELECT status, count(*) FROM mail_facts WHERE kind <> 'other' GROUP BY status").fetchall()}
         ma = _attempts(con, "mail")
         seen = con.execute("SELECT count(*), max(seen_at) FROM mail_seen").fetchone()

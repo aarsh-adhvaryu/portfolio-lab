@@ -308,6 +308,27 @@ def create_app(rt) -> FastAPI:
         rt.bump("health")
         return {"ok": True, "status": coverage.status(rt.cursor(), rt.clock())}
 
+    @app.post("/api/coverage/leave_out")
+    def coverage_leave_out(key: str = Body(None), text: str = Body(None)):
+        """His choice: leave an account out for now (a found one by its key, or one he names that no file shows). A file or Add back brings it in later."""
+        from pflab.ingest import coverage
+        con = rt.cursor()
+        if key:
+            coverage.leave_out(con, key)
+        elif text:
+            coverage.declare_left_out(con, text, rt.clock())
+        else:
+            raise HTTPException(400, "name the account")
+        rt.bump("health")
+        return {"ok": True}
+
+    @app.post("/api/coverage/add_back")
+    def coverage_add_back(key: str = Body(..., embed=True)):
+        from pflab.ingest import coverage
+        coverage.add_back(rt.cursor(), key)
+        rt.bump("health")
+        return {"ok": True}
+
     @app.post("/api/system/seen")
     def system_seen():
         """He has looked: what changed is counted from now (app/system.py `changed_since`)."""
@@ -352,7 +373,7 @@ def create_app(rt) -> FastAPI:
         from pflab.ingest import gmail
         n = rt.cursor().execute("SELECT count(*), coalesce(sum(kept), 0), max(seen_at) FROM mail_seen").fetchone()
         from pflab.ingest import mail_read
-        return {"connected": gmail.connected(), "client_file": gmail.has_client(), "messages": n[0], "kept": int(n[1]),
+        return {"enabled": gmail.enabled(), "connected": gmail.connected(), "client_file": gmail.has_client(), "messages": n[0], "kept": int(n[1]),
                 "facts": json.loads(json.dumps(mail_read.summary(rt.cursor(), 12), default=str)),
                 "last": str(n[2]) if n[2] else None}
 
@@ -360,6 +381,8 @@ def create_app(rt) -> FastAPI:
     def mail_connect():
         """Opens Google's read-only consent page in the browser on this PC; the token is saved when he approves."""
         from pflab.ingest import gmail
+        if not gmail.enabled():
+            raise HTTPException(400, "email is off: you add every file by hand in Inbox and files")
         try:
             who = gmail.connect()
             rt.request_run("mail")                          # the first look starts now, not at the next hour

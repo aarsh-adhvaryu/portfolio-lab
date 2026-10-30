@@ -39,6 +39,8 @@ def note_account(con, info: dict, source: str, now: datetime, file_sha: str = ""
         srcs = set(str(r[1] or "").split(",")) | {source}
         con.execute("UPDATE account_candidates SET last_seen=?, n_files=?, sources=? WHERE cand_key=?",
                     [now, int(r[0]) + (1 if file_sha else 0), ",".join(sorted(s for s in srcs if s)), k])
+        if file_sha:                                            # he gave a file for an account he had left out: he wants it counted now
+            con.execute("UPDATE account_candidates SET state='discovered' WHERE cand_key=? AND state='left_out'", [k])
     else:
         con.execute("INSERT INTO account_candidates (cand_key, first_seen, last_seen, kind, bank, last4, dp_ids, label, n_files, sources, state) "
                     "VALUES (?,?,?,?,?,?,?,?,?,?, 'discovered')",
@@ -98,8 +100,13 @@ def matrix(con, now: datetime) -> List[dict]:
                     "verified": bool(m), "files_seen": 0, "next": None if m else "no ledger activity yet: its statements have not been read"})
         if a["ref"]:
             by_last4[str(a["ref"])[-4:]] = out[-1]
-    for k, lab, n, srcs, st, l4 in con.execute("SELECT cand_key, label, n_files, sources, state, last4 FROM account_candidates ORDER BY first_seen").fetchall():
+    for ck, lab, n, srcs, st, l4 in con.execute("SELECT cand_key, label, n_files, sources, state, last4 FROM account_candidates ORDER BY first_seen").fetchall():
         if st == "not_mine":
+            continue
+        if st == LEFT_OUT:                                     # his choice: shown, never counted as a gap, never asked about
+            out.append({"account": lab, "state": "left out by you (add later)", "found_in": srcs or "you said so", "files_seen": int(n),
+                        "months_with_activity": None, "verified": False, "key": ck,
+                        "next": "drop its statements in Inbox and files when you want it counted, or press Add back"})
             continue
         if l4 and l4 in by_last4:                              # the same account as one that is set up: one row, with the files seen added
             row = by_last4[l4]
@@ -107,9 +114,38 @@ def matrix(con, now: datetime) -> List[dict]:
             row["found_in"] = f"{row['found_in']}, {srcs}" if srcs else row["found_in"]
             continue
         out.append({"account": lab, "state": "discovered, not set up", "found_in": srcs or "statements",
-                    "files_seen": int(n), "months_with_activity": None, "verified": False,
-                    "next": "confirm it is yours in Setup, or tell me it is not"})
+                    "files_seen": int(n), "months_with_activity": None, "verified": False, "key": ck,
+                    "next": "confirm it is yours in Setup, leave it out for now, or tell me it is not yours"})
     return out
+
+
+LEFT_OUT = "left_out"
+
+
+def leave_out(con, key: str) -> bool:
+    """His choice: an account he will not add now (inactive, no login, little in it). It stays listed, is never a gap or a question, and comes back when he
+    gives a statement for it or presses Add back."""
+    n = con.execute("SELECT count(*) FROM account_candidates WHERE cand_key=? AND state<>?", [key, LEFT_OUT]).fetchone()[0]
+    con.execute("UPDATE account_candidates SET state=? WHERE cand_key=?", [LEFT_OUT, key])
+    return bool(n)
+
+
+def add_back(con, key: str) -> bool:
+    n = con.execute("SELECT count(*) FROM account_candidates WHERE cand_key=? AND state=?", [key, LEFT_OUT]).fetchone()[0]
+    con.execute("UPDATE account_candidates SET state='discovered' WHERE cand_key=? AND state=?", [key, LEFT_OUT])
+    return bool(n)
+
+
+def declare_left_out(con, text: str, now: datetime) -> Optional[str]:
+    """An account he has but that no file of his shows (it never will, or not now): written down as left out, so the inventory is honest about it."""
+    text = " ".join(str(text or "").split())[:60]
+    if not text:
+        return None
+    k = key_of("declared", text.lower(), None, None)
+    if not con.execute("SELECT 1 FROM account_candidates WHERE cand_key=?", [k]).fetchone():
+        con.execute("INSERT INTO account_candidates (cand_key, first_seen, last_seen, kind, bank, last4, dp_ids, label, n_files, sources, state) "
+                    "VALUES (?,?,?,'declared',NULL,NULL,NULL,?,0,'you said so',?)", [k, now, now, text, LEFT_OUT])
+    return k
 
 
 def gaps(con) -> List[dict]:
@@ -144,7 +180,7 @@ def _confirmed_covers_all(con) -> bool:
     if not r:
         return False
     listed = set(str(r[0]).rsplit(": ", 1)[-1].split(",")) if ": " in str(r[0]) else set()
-    now_keys = {k[0] for k in con.execute("SELECT cand_key FROM account_candidates WHERE state <> 'not_mine'").fetchall()}
+    now_keys = {k[0] for k in con.execute("SELECT cand_key FROM account_candidates WHERE state NOT IN ('not_mine', 'left_out')").fetchall()}
     return now_keys <= listed
 
 
@@ -155,7 +191,8 @@ def status(con, now: datetime) -> dict:
     gp = gaps(con)
     reasons: List[str] = []
     if not mbs and not mx:
-        return {"label": "nothing read yet", "reasons": ["no mailbox has been walked and no account has been found"], "accounts": 0, "mailboxes": 0, "open_gaps": 0}
+        return {"label": "nothing read yet", "reasons": ["no statement has been read yet and no account has been found"], "accounts": 0, "mailboxes": 0, "open_gaps": 0,
+                "left_out": []}
     behind = [m for m in mbs if not m["reached_horizon"]]
     if behind:
         reasons.append(f"{len(behind)} mailbox(es) are still being read back through their history (reached {', '.join(m['read_back_to'] for m in behind)})")
@@ -172,7 +209,7 @@ def status(con, now: datetime) -> dict:
         reasons.append(f"{len(silent)} account(s) have months with no activity, which is either quiet or a missing statement: " +
                        "; ".join(f"{r['account']}: {', '.join(r['silent_months'][:4])}" for r in silent[:3]))
     if not inventory_confirmed(con):
-        reasons.append("you have not confirmed that this is every account, mailbox and export")
+        reasons.append("you have not confirmed that this is every account and every file you have")
     elif not _confirmed_covers_all(con):
         reasons.append("an account was found after you confirmed the list: please confirm again")
     if behind:
@@ -182,7 +219,8 @@ def status(con, now: datetime) -> dict:
     else:
         label_ = "complete"
     return {"label": label_, "reasons": reasons, "accounts": len(mx), "mailboxes": len(mbs), "open_gaps": len(gp),
-            "note": "email alone cannot show that no account is missing: the inventory is always yours to confirm"}
+            "left_out": [r["account"] for r in mx if r["state"].startswith("left out")],
+            "note": ("email" if mbs else "files") + " alone cannot show that no account is missing: the inventory is always yours to confirm"}
 
 
 def ask_inventory(con, now: datetime) -> Optional[int]:
@@ -191,10 +229,10 @@ def ask_inventory(con, now: datetime) -> Optional[int]:
     from pflab.agents import questions
     mx = matrix(con, now)
     mbs = mailboxes(con, now)
-    if not mx or not mbs or not all(m["reached_horizon"] for m in mbs):
-        return None                                        # asked when reading has gone as far back as email can take it, so the list is as full as it will be
+    if not mx or (mbs and not all(m["reached_horizon"] for m in mbs)):
+        return None                                        # with a mailbox: asked when reading has gone as far back as it can, so the list is as full as it will be
     lines = "; ".join(f"{r['account']} [{r['state']}]" for r in mx[:12])
     text = (f"Here is every account I have found so far: {lines}. Tell me in one reply: which of these are not yours or are closed; any account, "
-            "broker, bank or deposit that is NOT in this list; any other email address that receives statements; and any statement you can "
-            "only download as a file (not by email). I keep reading in the meantime, and I will not call the picture complete until you confirm.")
+            "broker, bank or deposit that is NOT in this list (or that you will add later: say so and it is written down as left out). "
+            "I keep reading in the meantime, and I will not call the picture complete until you confirm.")
     return questions.ask(con, "companion", "coverage:inventory", text[:1200], now)

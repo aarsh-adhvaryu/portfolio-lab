@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import os
 import re
 import shutil
 from datetime import date, datetime, timedelta
@@ -56,8 +57,14 @@ def token_path() -> Path:
     return home() / "gmail_token.json"
 
 
+def enabled() -> bool:
+    """Email is OFF (his decision 2026-10-30: he drops every statement and file by hand). Nothing reads, asks about or shows a mailbox unless this
+    is switched on deliberately with PFLAB_MAIL=on; the code stays, tested, for the day he wants it back."""
+    return os.environ.get("PFLAB_MAIL", "").strip().lower() in ("1", "on", "yes", "true")
+
+
 def connected() -> bool:
-    return token_path().exists()
+    return enabled() and token_path().exists()
 
 
 def downloaded_client() -> Optional[Path]:
@@ -153,6 +160,8 @@ def coverage(con, now: datetime) -> list:
     """Per mailbox: how far back it has been read. Honest about what email alone cannot show: a mailbox walked to the horizon has had
     its ATTACHMENTS read; statements that only came as a link, or with no file, were not looked for here."""
     out = []
+    if not enabled():
+        return out
     for mb, oldest, complete, scanned, upd in con.execute("SELECT mailbox, oldest, complete, scanned, updated_at FROM mail_scan ORDER BY mailbox").fetchall():
         out.append({"mailbox": mb, "read_back_to": str(oldest), "reached_horizon": bool(complete), "messages": int(scanned),
                     "horizon_days": HORIZON_DAYS, "link_only_or_no_file_mail_checked": False, "updated": str(upd)[:16]})
@@ -327,6 +336,8 @@ def fetch(rt, sess=None, days: int = 40, now: Optional[datetime] = None) -> dict
 
 def ask_to_connect(con, now: datetime) -> Optional[int]:
     from pflab.agents import questions
+    if not enabled():
+        return None
     return questions.ask(con, AGENT, "mail:connect",
                          "Connect Gmail so your statements arrive by themselves (read-only: I can never send, delete or change anything). "
                          "Then I read a year of your statement emails, ask for any file password I need, and propose your accounts in Setup "

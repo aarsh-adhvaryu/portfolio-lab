@@ -312,7 +312,9 @@ def connectors(ctx: Ctx, rep: Report) -> None:
                 rep.add("Kite read", PASS, f"read-only: {n} holding row(s) and the funds were read (values not shown)")
             except Exception as e:
                 rep.add("Kite read", FAIL, f"{type(e).__name__}: {str(e)[:120]}", "log in to Kite again; if it persists the read-only wrapper or the key is wrong")
-        if not gmail.connected():
+        if not gmail.enabled():
+            rep.add("Gmail read", SKIP, "email is off by design: every file is added by hand in Inbox and files")
+        elif not gmail.connected():
             rep.add("Gmail read", NEEDS, "Gmail is not connected (an OAuth step in the browser only you can do)",
                     "README step 5 (the Google client file), then `pflab mail connect` (or Settings > Connect Gmail), then run this again")
         else:

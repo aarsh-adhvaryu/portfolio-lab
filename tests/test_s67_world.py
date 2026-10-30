@@ -131,6 +131,16 @@ def test_a_run_that_skipped_because_it_needs_him_is_waiting_not_done(rt):
     assert comove["state"] == "ok"                                                       # a harmless skip is still a finished round
 
 
+def test_the_world_lists_what_to_bring_and_hides_the_mail_node_when_email_is_off(rt, monkeypatch):
+    w = world.build(rt, NOW)
+    assert {b["id"] for b in w["bring"]} >= {"tradebook", "funds", "cas", "bank", "fd", "screens", "kite", "answers"}
+    assert all(b["state"] in ("have", "missing") and b["what"] and b["where"] for b in w["bring"])
+    assert "mail" in {n["id"] for n in w["senses"]}                                          # (the suite switches email on for its own tests)
+    monkeypatch.delenv("PFLAB_MAIL", raising=False)
+    w2 = world.build(rt, NOW)
+    assert "mail" not in {n["id"] for n in w2["senses"]} and w2["errors"] == {}
+
+
 def test_agent_hq_is_part_of_the_world_not_a_second_screen():
     """The World is the one place for the agents: no Agent HQ tab, no old office drawing, and every control it had is still reachable from the World."""
     static = Path(__file__).resolve().parents[1] / "src" / "pflab" / "app" / "static"

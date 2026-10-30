@@ -94,8 +94,12 @@ def receive(rt, name: str, data: bytes, hint: str = "", account: Optional[str] =
     kind = classify(safe, hint)
     info: dict = {}
     if not hint:                                            # S65: the content decides, the name is only the fallback
-        from pflab.ingest import sniff
+        from pflab.ingest import coverage, sniff
         info = sniff.sniff(data, safe, sniff.passwords_from_secrets())
+        try:
+            coverage.note_account(con, info, "a file you dropped", rt.clock(), sha[:12])       # S67: an account is recorded by what the file shows, wherever the file came from
+        except Exception:
+            pass                                            # the coverage list never stops a file from being received
         if info["kind"] in KIND_LABEL and info["kind"] != "other":
             kind = info["kind"]
         if kind == "bank" and not account:
