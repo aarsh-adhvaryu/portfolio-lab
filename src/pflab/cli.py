@@ -288,7 +288,7 @@ def main(argv=None):
         rep = verify.run(_P(a.app) if a.app else None, report=_P(a.report) if a.report else None, wake=a.wake_check, model=a.live_model,
                          offline=a.offline)
         print(rep.text())
-        return 1 if any(c.status == verify.FAIL for c in rep.checks) else 0
+        return verify.exit_code(rep)
     if a.cmd == "update":
         return _update(a)
     if a.cmd == "mail":
@@ -1065,7 +1065,10 @@ def _pm(a) -> int:
         from pathlib import Path
         from pflab.pm import fresh as frm
         try:
-            r = frm.fresh(store.pm_dir(), Path(a.archive_to), date.today(), a.confirm, {"statements": Path(a.statements)} if a.statements else None)
+            from pflab.data import data_dir
+            repo = Path(__file__).resolve().parents[2]
+            r = frm.fresh(store.pm_dir(), Path(a.archive_to), date.today(), a.confirm, {"statements": Path(a.statements)} if a.statements else None,
+                          inputs=frm.old_inputs(repo, data_dir()))
         except (RuntimeError, FileNotFoundError, FileExistsError, ValueError) as e:
             print(f"refused: {e}")
             return 1

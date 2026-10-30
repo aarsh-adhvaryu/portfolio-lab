@@ -197,12 +197,14 @@ def _run_claimed(rt, agents: Dict[str, Callable], deliver, con, tid: int, now: d
     elif transient:
         rep.text += f" (attempt {t['attempts']} of {MAX_ATTEMPTS}: no more tries)"
     fin = None if rep.status in ("waiting", "retry") else rt.clock()
-    con.execute("UPDATE hq_tasks SET status=?, result=?, result_json=?, cost_inr=?, finished_at=?, next_review_at=?, waiting_on=?, "
-                "progress=? WHERE task_id=?",
-                [rep.status, rep.text[:20000], json.dumps({"route": rep.route, **rep.data}, default=str), rep.cost or None,
-                 fin, nxt, waiting_on, str(rep.data.get("progress") or "")[:300] or None, tid])
-    for agent, text in rep.then:
-        post(con, agent, text, rt.clock(), frm=t["to"], parent=tid, dedup_key=f"then:{tid}:{agent}:{hashlib.sha1(text.encode()).hexdigest()[:10]}")
+    from pflab.pm.store import transaction
+    with transaction(con):                                 # the answer and the hand-offs it names are saved together or not at all (audit F6)
+        con.execute("UPDATE hq_tasks SET status=?, result=?, result_json=?, cost_inr=?, finished_at=?, next_review_at=?, waiting_on=?, "
+                    "progress=? WHERE task_id=?",
+                    [rep.status, rep.text[:20000], json.dumps({"route": rep.route, **rep.data}, default=str), rep.cost or None,
+                     fin, nxt, waiting_on, str(rep.data.get("progress") or "")[:300] or None, tid])
+        for agent, text in rep.then:
+            post(con, agent, text, rt.clock(), frm=t["to"], parent=tid, dedup_key=f"then:{tid}:{agent}:{hashlib.sha1(text.encode()).hexdigest()[:10]}")
     t = get(con, tid)
     if deliver is not None and t["channel"] != "dashboard" and t["status"] in ("done", "failed", "needs_approval"):
         try:

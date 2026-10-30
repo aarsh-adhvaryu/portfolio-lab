@@ -86,6 +86,16 @@ def _between(months: List[str]) -> List[str]:
     return out
 
 
+def _same_institution(a: Optional[str], b: Optional[str]) -> bool:
+    a, b = str(a or "").strip().lower(), str(b or "").strip().lower()
+    return bool(a and b and (a in b or b in a))                 # an unknown institution never matches: it stays its own row for him to confirm
+
+
+def _same_kind(cand_kind: Optional[str], acc_kind: Optional[str]) -> bool:
+    bankish = {"bank", "fd_certificate"}
+    return (cand_kind in bankish) == (acc_kind in ("bank", "fd", "deposit"))
+
+
 def matrix(con, now: datetime) -> List[dict]:
     """One row per account the system knows of: how it was found, whether it is set up, the months with activity in the ledger, what is open against it."""
     out: List[dict] = []
@@ -98,9 +108,10 @@ def matrix(con, now: datetime) -> List[dict]:
         out.append({"account": f"{a['provider'] or a['kind']} ({a['id']})", "silent_months": silent, "state": "set up" + (", closed" if a["closed"] else ""), "found_in": "your setup",
                     "months_with_activity": len(m), "first_month": m[0] if m else None, "last_month": m[-1] if m else None,
                     "verified": bool(m), "files_seen": 0, "next": None if m else "no ledger activity yet: its statements have not been read"})
-        if a["ref"]:
-            by_last4[str(a["ref"])[-4:]] = out[-1]
-    for ck, lab, n, srcs, st, l4 in con.execute("SELECT cand_key, label, n_files, sources, state, last4 FROM account_candidates ORDER BY first_seen").fetchall():
+        if a["ref"]:                                           # (audit F4) the last four digits alone are not an identity: kept with the institution and kind
+            by_last4.setdefault(str(a["ref"])[-4:], []).append((out[-1], str(a["provider"] or "").lower(), a["kind"]))
+    for ck, lab, n, srcs, st, l4, cbank, ckind in con.execute("SELECT cand_key, label, n_files, sources, state, last4, bank, kind FROM account_candidates "
+                                                              "ORDER BY first_seen").fetchall():
         if st == "not_mine":
             continue
         if st == LEFT_OUT:                                     # his choice: shown, never counted as a gap, never asked about
@@ -108,8 +119,9 @@ def matrix(con, now: datetime) -> List[dict]:
                         "months_with_activity": None, "verified": False, "key": ck,
                         "next": "drop its statements in Inbox and files when you want it counted, or press Add back"})
             continue
-        if l4 and l4 in by_last4:                              # the same account as one that is set up: one row, with the files seen added
-            row = by_last4[l4]
+        same = [r for r, prov, k in by_last4.get(l4 or "", []) if _same_institution(cbank, prov) and _same_kind(ckind, k)] if l4 else []
+        if len(same) == 1:                                     # the same account as one that is set up: one row, with the files seen added
+            row = same[0]
             row["files_seen"] += int(n)
             row["found_in"] = f"{row['found_in']}, {srcs}" if srcs else row["found_in"]
             continue
