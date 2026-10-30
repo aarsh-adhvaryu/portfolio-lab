@@ -182,6 +182,27 @@ def load_rules(path: Path = RULES_PATH, local: Optional[Path] = None) -> List[di
     return [dict(r, _rx=[re.compile(p, re.I) for p in r["patterns"]]) for r in rules]
 
 
+def merge_parsed(frames: List[pd.DataFrame]) -> pd.DataFrame:
+    """Several statements of ONE account (different periods, possibly overlapping) as one chronological statement. A line that appears in two files
+    (same date, description, amount and running balance, counted per occurrence so a real repeat is kept) is kept once. The opening balance is the
+    earliest file's. A gap between files is not hidden: the closing-balance check at the build fails and names it."""
+    if len(frames) == 1:
+        return frames[0]
+    key = ["date", "description", "debit", "credit", "balance"]
+    tagged = []
+    for f in frames:
+        t = f.copy()
+        t["_n"] = t.groupby(key).cumcount()                  # the nth identical line WITHIN a file; a line in two files is the same line
+        tagged.append(t)
+    out = pd.concat(tagged, ignore_index=True).drop_duplicates(key + ["_n"], keep="first")
+    first = min(frames, key=lambda f: (f["date"].min() if len(f) else pd.Timestamp.max.date()))
+    out = out.sort_values("date", kind="stable").drop(columns="_n").reset_index(drop=True)
+    out.attrs.update(frames[-1].attrs)
+    if "opening_balance" in first.attrs:
+        out.attrs["opening_balance"] = first.attrs["opening_balance"]
+    return out
+
+
 def classify(df: pd.DataFrame, rules: Optional[List[dict]] = None) -> pd.DataFrame:
     rules = rules if rules is not None else load_rules()
     cats, ids = [], []

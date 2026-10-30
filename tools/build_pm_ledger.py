@@ -76,8 +76,9 @@ def build(src: dict, root: Path) -> tuple:
     check("every trade has a contract note", not rep["without_note"] and not rep["note_trades_not_in_tradebook"],
           f"{rep['with_fees']} trades with levies; missing {rep['without_note']}")
     events += tev
-    zdf = zl.parse(root / z["funds_ledger"])
-    events += zl.charge_events(zdf, zer, _sha(root / z["funds_ledger"]))
+    zfiles = [z["funds_ledger"]] + [p for p in z.get("funds_ledgers") or [] if p != z["funds_ledger"]]
+    zdf = zl.parse_many([root / p for p in zfiles])                       # several Console ledgers (other years) are one ledger
+    events += zl.charge_events(zdf, zer, _sha(root / zfiles[0]))
     settle = dict(zip(zl.settlements(zdf)["date"], zl.settlements(zdf)["net"]))
     bad = [(n.trade_date, n.net_amount, settle.get(n.trade_date)) for n in cnotes
            if settle.get(n.trade_date) is None or abs(settle[n.trade_date] - n.net_amount) > TOL]
@@ -88,8 +89,13 @@ def build(src: dict, root: Path) -> tuple:
     stm = {}
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        for b in src["bank"]:
-            stm[b["account"]] = bank.classify(bank.parse(str(root / b["file"]), password=_pw(b.get("password_env"))), rules)
+        by_acc: dict = {}
+        for b in src["bank"]:                                           # one account may have several statement files (other periods)
+            files = ([b["file"]] if b.get("file") else []) + [f for f in b.get("files") or [] if f != b.get("file")]
+            for f in files:
+                by_acc.setdefault(b["account"], []).append(bank.parse(str(root / f), password=_pw(b.get("password_env"))))
+        for acc_, frames in by_acc.items():
+            stm[acc_] = bank.classify(bank.merge_parsed(frames), rules)
     stm, lab = bank_labels.auto_label(stm, zl.bank_flows(zdf))             # S65: own transfers and broker flows by code
     notes.append(f"labels by code: {lab['own_pairs']} own transfers, {lab['broker']} broker flows")
     skip = set()

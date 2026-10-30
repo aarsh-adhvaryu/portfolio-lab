@@ -73,6 +73,24 @@ def parse(path: Union[str, Path]) -> pd.DataFrame:
     return df
 
 
+def parse_many(paths) -> pd.DataFrame:
+    """Several Console ledgers (other years, or overlapping ranges) as one: a row in two files (same date, particulars, voucher, amounts and balance,
+    counted per occurrence) is kept once; the opening balance is the earliest file's and the closing balance the latest file's."""
+    frames = [parse(p) for p in paths]
+    if len(frames) == 1:
+        return frames[0]
+    key = ["date", "particulars", "voucher", "debit", "credit", "balance"]
+    frames.sort(key=lambda f: (f["date"].min() if len(f) else date.max, f["date"].max() if len(f) else date.max))
+    tagged = []
+    for f in frames:
+        t = f.copy()
+        t["_n"] = t.groupby(key).cumcount()
+        tagged.append(t)
+    out = pd.concat(tagged, ignore_index=True).drop_duplicates(key + ["_n"], keep="first").drop(columns="_n").reset_index(drop=True)
+    out.attrs.update(opening=frames[0].attrs["opening"], closing=frames[-1].attrs["closing"])
+    return out
+
+
 def charge_events(df: pd.DataFrame, account: str, source_doc_sha: str = "") -> List[Event]:
     """Journal-entry debits as `charge` events (ref names the charge; a credit journal is refused: it would be
     a reversal this importer does not model)."""
