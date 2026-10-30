@@ -93,38 +93,36 @@ def test_classify(name, kind):
     assert ib.classify(name) == kind
 
 
-def test_a_statement_is_checked_then_written_only_on_ok(rt, monkeypatch):
+def test_a_statement_is_recognised_and_the_record_is_built_with_it_by_itself(rt, monkeypatch):
+    """(2026-10-30) No dry run per file and no press: the file is recognised, and one build of the whole record writes it (the ledger job)."""
     b = fake_builder()
     monkeypatch.setattr(ib, "_builder", lambda rt: b)
     r = ib.receive(rt, "tradebook-B.csv", b"a,b\n1,2\n")
     it = ib._item(rt, r["id"])
-    assert r["kind"] == "tradebook" and it["status"] == "ready" and it["result"]["events"] == 2
-    assert (rt.repo / "new" / "tradebook-B.csv").exists()
-    assert b.seen["src"]["zerodha"]["tradebooks"] == ["new/tradebook-A.csv", "new/tradebook-B.csv"]
-    assert not srcs.overlay_path(rt.pm_dir / "sources.toml").exists()                # a dry run writes nothing
+    assert r["kind"] == "tradebook" and it["status"] == "ready" and "rebuilt with it" in it["result"]["note"]
+    assert (rt.repo / "new" / "tradebook-B.csv").exists() and not srcs.overlay_path(rt.pm_dir / "sources.toml").exists()   # nothing written yet
     assert ib.receive(rt, "copy.csv", b"a,b\n1,2\n", hint="tradebook")["duplicate"]  # the same bytes: not twice
-    out = ib.apply(rt, r["id"])
-    assert out["events"] == 2 and ib._item(rt, r["id"])["status"] == "in the ledger"
+    out = ib.build_now(rt)
+    assert out["written"] and out["events"] == 2 and ib._item(rt, r["id"])["status"] == "in the ledger"
+    assert b.seen["src"]["zerodha"]["tradebooks"] == ["new/tradebook-A.csv", "new/tradebook-B.csv"]
     assert rt.cursor().execute("SELECT text FROM app_notes WHERE note_id=999").fetchone() == ("written",)
     assert srcs.load_overlay(rt.pm_dir / "sources.toml")["zerodha"]["tradebooks"] == ["new/tradebook-B.csv"]
     with pytest.raises(ValueError):
         ib.remove(rt, r["id"])                                                       # part of the ledger now
 
 
-def test_failing_checks_or_a_failed_write_change_nothing(rt, monkeypatch):
+def test_a_difference_is_written_and_named_but_a_failed_write_changes_nothing(rt, monkeypatch):
     monkeypatch.setattr(ib, "_builder", lambda rt: fake_builder(checks=[("cash = statement", False, "off by 5")]))
     r = ib.receive(rt, "ledger-B.xlsx", b"x")
-    it = ib._item(rt, r["id"])
-    assert it["status"] == "checks failed" and it["result"]["failed"] == 1
-    assert [s["state"] for s in it["steps"]][:3] == ["done", "done", "failed"]
-    with pytest.raises(ValueError):
-        ib.apply(rt, r["id"])
+    out = ib.build_now(rt)
+    assert out["written"] and out["failed"] == 1 and ib._item(rt, r["id"])["status"] == "in the ledger"        # built anyway, the difference named
+    assert any("cash = statement" in t for _, _, t in __import__("pflab.agents.questions", fromlist=["x"]).open_questions(rt.cursor()))
+    rt.cursor().execute("DELETE FROM app_notes")
     monkeypatch.setattr(ib, "_builder", lambda rt: fake_builder(fail_write=True))
-    r = ib.receive(rt, "ledger-C.xlsx", b"y")
+    ib.receive(rt, "ledger-C.xlsx", b"y")
     with pytest.raises(RuntimeError):
-        ib.apply(rt, r["id"])
-    assert rt.cursor().execute("SELECT count(*) FROM app_notes").fetchone()[0] == 0   # rolled back
-    assert not srcs.overlay_path(rt.pm_dir / "sources.toml").exists()
+        ib.build_now(rt)
+    assert rt.cursor().execute("SELECT count(*) FROM app_notes").fetchone()[0] == 0   # rolled back whole
 
 
 def test_a_file_already_in_place_is_never_deleted(rt, monkeypatch):
@@ -148,6 +146,7 @@ def test_a_bank_statement_needs_its_account(rt, monkeypatch):
     with pytest.raises(ValueError):
         ib.receive(rt, "statement.xls", b"z", hint="bank")
     ib.receive(rt, "statement.xls", b"z", hint="bank", account="bank1")
+    ib.build_now(rt)
     assert "new/statement.xls" in b.seen["src"]["bank"][0]["files"]
 
 

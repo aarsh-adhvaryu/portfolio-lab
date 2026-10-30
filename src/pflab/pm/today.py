@@ -62,6 +62,19 @@ def record(con, kite, account: str, now: datetime) -> dict:
 KITE_ONLY = "KITE"          # the account label of a snapshot taken before any statement has set up a Zerodha account
 
 
+def kite_held(con) -> set:
+    """ISINs Kite showed in its latest snapshot (holdings and funds): before his statements are read the ledger is empty, and filings, news and
+    research must still follow the companies he holds (2026-10-30)."""
+    try:
+        r = con.execute("SELECT max(snap_id) FROM kite_snapshots").fetchone()[0]
+        if r is None:
+            return set()
+        return {i for (i,) in con.execute("SELECT DISTINCT isin FROM kite_snapshots WHERE snap_id=? AND kind IN ('holding','fund') AND isin LIKE 'IN%' "
+                                           "AND qty > 0", [r]).fetchall()}
+    except Exception:
+        return set()
+
+
 def broker(con) -> Optional[str]:
     from pflab.agents.tradecheck import zerodha_account
     try:

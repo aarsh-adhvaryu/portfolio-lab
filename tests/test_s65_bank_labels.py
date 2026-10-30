@@ -28,7 +28,7 @@ def test_equal_amounts_in_two_accounts_within_two_days_are_his_own_transfer():
     a = stmt([(date(2026, 9, 1), "TRANSFER-X 111", 50_000.0, 0.0), (date(2026, 9, 5), "SOMETHING ELSE", 700.0, 0.0)])
     b = stmt([(date(2026, 9, 2), "BY TRANSFER-Y 222", 0.0, 50_000.0), (date(2026, 9, 9), "LATE", 0.0, 700.0)])   # 4 days: not a pair
     out, rep = bl.auto_label({"A": a, "B": b})
-    assert rep == {"own_pairs": 1, "broker": 0}
+    assert rep == {"own_pairs": 1, "broker": 0, "card_spend": 0}
     assert list(out["A"]["category"]) == ["own_transfer", "unclassified"] and list(out["B"]["category"]) == ["own_transfer", "unclassified"]
     assert out["A"]["rule_id"].iloc[0] == "auto_own"
     assert [t for t in a["category"]] == ["unclassified"] * 2                        # the input is not changed
@@ -63,16 +63,16 @@ def test_what_is_left_is_grouped_and_only_what_matters_is_asked():
     assert "BIG PERSON" in text and "salary, own, family, spend, refund, other" in text
 
 
-def test_no_more_than_ten_questions_are_open_at_once():
+def test_no_more_than_a_few_questions_are_open_at_once():
     names = "ALPHA BRAVO CHARLIE DELTA ECHO FOXTROT GOLF HOTEL INDIA JULIET KILO LIMA MIKE NOVEMBER OSCAR PAPA".split()
-    a = stmt([(date(2026, 9, 1), f"UPI-{n}-x@ybl-1-NA", 0.0, 10_000.0) for n in names])
+    a = stmt([(date(2026, 9, 1), f"UPI-{n}-x@ybl-1-NA", 0.0, 30_000.0) for n in names])
     con = duckdb.connect(":memory:")
     store.migrate(con)
     assert len(bl.ask(con, bl.groups({"A": a}), NOW)) == bl.MAX_OPEN
 
 
 def test_an_answer_becomes_a_rule_that_classifies_the_next_statement(tmp_path):
-    a = stmt([(date(2026, 9, 4), "UPI-BIG PERSON-y@ybl-1-NA", 0.0, 60_000.0), (date(2026, 9, 6), "UPI-ACME TRADERS-x@ybl-1-NA", 5_000.0, 0.0)])
+    a = stmt([(date(2026, 9, 4), "UPI-BIG PERSON-y@ybl-1-NA", 0.0, 60_000.0), (date(2026, 9, 6), "UPI-ACME TRADERS-x@ybl-1-NA", 25_000.0, 0.0)])
     con = duckdb.connect(":memory:")
     store.migrate(con)
     for q in bl.ask(con, bl.groups({"A": a}), NOW):
@@ -86,7 +86,7 @@ def test_an_answer_becomes_a_rule_that_classifies_the_next_statement(tmp_path):
 
 
 def test_a_debit_called_salary_is_other_and_an_unknown_word_writes_nothing(tmp_path):
-    a = stmt([(date(2026, 9, 6), "UPI-ACME TRADERS-x@ybl-1-NA", 9_000.0, 0.0), (date(2026, 9, 7), "UPI-GLOBEX CORP-x@ybl-1-NA", 9_000.0, 0.0)])
+    a = stmt([(date(2026, 9, 6), "UPI-ACME TRADERS-x@ybl-1-NA", 29_000.0, 0.0), (date(2026, 9, 7), "UPI-GLOBEX CORP-x@ybl-1-NA", 29_000.0, 0.0)])
     con = duckdb.connect(":memory:")
     store.migrate(con)
     qs = bl.ask(con, bl.groups({"A": a}), NOW)

@@ -288,7 +288,7 @@ function processingNote(s) {
 }
 function askCard(s) {
   const t = s ? s.tools : null;
-  const asks = ['Is everything working and in sync?', 'What needs me today?', 'What did my emails say?', 'How is my portfolio against my targets?'];
+  const asks = ['Is everything working and in sync?', 'What needs me today?', 'What is still missing from my record?', 'How is my portfolio against my targets?'];
   return `<section class="panel" style="flex:1 1 520px;display:flex;flex-direction:column;gap:10px">
     <div class="row" style="justify-content:space-between"><span class="lbl">Ask the system</span><a href="#/ai" class="small">AI centre</a></div>
     <div class="row"><label for="quickAsk" style="position:absolute;left:-9999px">Question</label><input id="quickAsk" class="inp" placeholder="Ask about your portfolio, a company, a plan, or the system itself…"><button class="btn primary" id="quickSend">Ask</button></div>
@@ -588,7 +588,7 @@ function renderSetup(d) {
       ${accts ? `<div class="scroll"><table><thead><tr><th>Name</th><th>Kind</th><th>Bank</th><th>Ends</th></tr></thead><tbody>${accts}</tbody></table></div>` : ''}</section>
     <section class="panel" style="flex:1 1 420px"><span class="lbl">Files still needed</span>${need}</section>
     <section class="panel" style="flex:1 1 100%"><span class="lbl">By hand · an IPO allotment, or a holding with no history here</span>
-      <span class="small muted">Check rebuilds the ledger as a dry run and shows every cross-check. Add to the ledger writes it, only when all checks pass.</span>
+      <span class="small muted">Your record is built from every statement by itself, a minute after a file arrives; what does not match is named under Needs from you with what closes it.</span>
       <div class="row wrapr" style="gap:6px" id="ipoF">${[['ipo_id', 'IPO id'], ['funding_account', 'paid from (account name)'], ['demat_account', 'demat account name'], ['isin', 'ISIN'], ['symbol', 'symbol'], ['qty', 'shares allotted'], ['price', 'issue price'], ['allot_date', 'allotment date'], ['bank_date', 'bank line date'], ['bank_amount', 'bank line amount']].map(([k, p]) => `<input class="inp" data-f="${k}" placeholder="${p}" style="flex:0 0 150px">`).join('')}
         <button class="btn" data-ledger="ipo" data-write="0">Check IPO</button><button class="btn primary" data-ledger="ipo" data-write="1">Add IPO to the ledger</button></div>
       <div class="row wrapr" style="gap:6px" id="costF">${[['account', 'account name'], ['isin', 'ISIN'], ['cost_per_unit', 'cost per unit'], ['acquired', 'acquired on (date)'], ['basis', 'what the cost is based on']].map(([k, p]) => `<input class="inp" data-f="${k}" placeholder="${p}" style="flex:0 0 ${k === 'basis' ? 260 : 150}px">`).join('')}
@@ -815,7 +815,7 @@ function renderAI(d) {
   const msgs = d.messages.map((m) => { const h = msgHtml(m, prevQ); if (m.role === 'me') prevQ = m.text; return h; }).join('');
   const sel = d.agents[S.agent || 0] || d.agents[0];
   const sy = S.sys, qs = S.allq ? d.questions : d.questions.slice(0, 4);
-  const asks = ['Is everything working and in sync?', 'What needs me today?', 'What did my emails say?', 'How is my portfolio against my targets?', 'What changed since yesterday?'];
+  const asks = ['Is everything working and in sync?', 'What needs me today?', 'What is still missing from my record?', 'How is my portfolio against my targets?', 'What changed since yesterday?'];
   $('screen').innerHTML = `
   <div class="cols" style="align-items:stretch">
   <section class="panel" style="flex:3 1 760px;display:flex;flex-wrap:wrap;padding:0;overflow:hidden">
@@ -1153,13 +1153,21 @@ function pastedFiles(e) {
   const items = [...(e.clipboardData ? e.clipboardData.items : [])].filter((i) => i.kind === 'file');
   return items.map((i, n) => { const f = i.getAsFile(); return f.name && f.name !== 'image.png' ? f : new File([f], `screenshot-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}${n ? '-' + n : ''}.png`, { type: f.type }); });
 }
+function detailText(d) {
+  /* a check's detail: text, or a list of differences (each a row with fields): readable either way */
+  if (typeof d === 'string') return d;
+  if (Array.isArray(d)) return d.map((x) => (x && typeof x === 'object') ? Object.entries(x).map(([k, v]) => `${k} ${v}`).join(', ') : String(x)).join('; ');
+  if (d && typeof d === 'object') return Object.entries(d).map(([k, v]) => `${k} ${v}`).join(', ');
+  return String(d ?? '');
+}
 function itemCard(it, privacy) {
   const steps = it.steps.map((x, i, a) => `<span class="row" style="gap:4px"><span class="tiny" style="color:${STEP_COL[x.state]}">${x.state === 'done' ? '✓' : x.state === 'failed' ? '✗' : '○'} ${esc(x.name)}</span>${i < a.length - 1 ? '<span class="muted tiny">→</span>' : ''}</span>`).join('');
   const r = it.result || {};
   let body = '';
   if (r.error) body += `<span class="small down">${esc(r.error)}</span>`;
-  if (r.checks) body += `<details ${r.failed ? 'open' : ''}><summary class="small">${r.failed ? `<span class="down">${r.failed} of ${r.checks.length} checks fail</span>` : `<span class="up">all ${r.checks.length} checks pass</span>`} · ${r.events} events</summary>
-    <div class="small" style="display:flex;flex-direction:column;gap:3px;margin-top:6px">${r.checks.map((c) => `<span><span class="${c.ok ? 'up' : 'down'}">${c.ok ? 'PASS' : 'FAIL'}</span> ${esc(c.name)}${c.ok || privacy ? '' : ` <span class="muted">${esc(String(c.detail).slice(0, 300))}</span>`}</span>`).join('')}
+  if (r.note && !(r.checks || []).length) body += `<span class="small soft">${esc(r.note)}</span>`;
+  if ((r.checks || []).length) body += `<details ${r.failed ? 'open' : ''}><summary class="small">${it.status === 'in the ledger' ? '<span class="up">in your record</span> · ' : ''}${r.failed ? `<span class="warn">${r.failed} difference(s) with your files</span>` : `<span class="up">all ${r.checks.length} checks pass</span>`}${r.events !== undefined ? ` · ${r.events} entries` : ''}</summary>
+    <div class="small" style="display:flex;flex-direction:column;gap:3px;margin-top:6px">${r.checks.map((c) => `<span><span class="${c.ok ? 'up' : 'down'}">${c.ok ? 'PASS' : 'FAIL'}</span> ${esc(c.name)}${c.ok || privacy ? '' : ` <span class="muted">${esc(detailText(c.detail).slice(0, 300))}</span>`}</span>`).join('')}
     ${(r.notes || []).length ? `<span class="muted">${r.notes.length} note(s)${privacy ? '' : ': ' + esc(r.notes.slice(0, 4).join(' · '))}</span>` : ''}</div></details>`;
   if (it.text) body += `<details><summary class="small">text read on this PC (${it.text.split('\n').length} lines)</summary><div class="small soft" style="white-space:pre-wrap;margin-top:6px;max-height:220px;overflow:auto">${esc(it.text)}</div></details>`;
   if (r.summary) body += `<div class="small" style="background:var(--panel2);border-radius:8px;padding:8px 10px;line-height:1.5">${tags(esc(r.summary))}${r.checked ? '' : ' <span class="tiny muted">(no checked summary)</span>'}</div>`;

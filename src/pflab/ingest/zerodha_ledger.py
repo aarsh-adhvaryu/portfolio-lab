@@ -110,5 +110,7 @@ def bank_flows(df: pd.DataFrame) -> pd.DataFrame:
 def settlements(df: pd.DataFrame) -> pd.DataFrame:
     """Net settlement per day (+ receivable / - payable), to check against the contract notes."""
     s = df[df["voucher"] == "Book Voucher"]
+    if s.empty:                                                  # a period with no trade settlements (only pay-ins, say)
+        return pd.DataFrame({"date": pd.Series([], dtype=object), "net": pd.Series([], dtype=float)})
     return s.groupby("date").apply(lambda g: (g["credit"] - g["debit"]).sum(), include_groups=False) \
         .rename("net").reset_index()

@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import re
 import sys
 import warnings
 from datetime import date
@@ -54,6 +55,17 @@ def _pw(env):
     return s.get("passwords", env) if s.has("passwords", env) else None
 
 
+def _isins_by_symbol() -> dict:
+    """Symbol -> ISIN from the exchange's recent daily files (an IPO row in the tradebook carries no ISIN)."""
+    try:
+        from pflab.data import bhavcopy
+        df = bhavcopy.load(date.today() - pd.Timedelta(days=60), None, series=None)
+        df = df.sort_values("date")
+        return {str(s).upper(): i for s, i in zip(df["symbol"], df["isin"]) if isinstance(i, str) and i}
+    except Exception:
+        return {}
+
+
 def build(src: dict, root: Path) -> tuple:
     events, checks, notes = [], [], []
 
@@ -63,36 +75,50 @@ def build(src: dict, root: Path) -> tuple:
     # --- Zerodha: trades, contract-note levies, other charges --------------------------------------------
     z = src["zerodha"]
     zer = z["account"]
-    tbs = [tb.parse(str(root / p)) for p in z["tradebooks"]]
+    tbs = [tb.parse(str(root / p)) for p in z.get("tradebooks") or []]
     periods = []                                                         # each statement's own period, for the coverage (S67, audit)
 
     def period(acc, kind, path, df, col="date"):
         d = df[col] if len(df) else []
         periods.append({"account_id": acc, "kind": kind, "file_sha": _sha(root / path), "first_date": min(d) if len(df) else None,
                         "last_date": max(d) if len(df) else None, "n_rows": int(len(df))})
-    for p, t in zip(z["tradebooks"], tbs):
+    for p, t in zip(z.get("tradebooks") or [], tbs):
         period(zer, "tradebook", p, t)
     ipo_rows = [r for t in tbs for r in t.attrs.get("ipo_allotments", [])]
     # a fresh download often overlaps an older one (S54d inbox): the same fill appears twice, so exact repeats go
-    trades = pd.concat(tbs, ignore_index=True).drop_duplicates().sort_values(["date", "trade_id"], kind="mergesort")
-    names = {r.isin: {"symbol": r.symbol} for r in trades.itertuples()}
     tax = lambda isin: ins.classify(isin, instrument_type="STK")[1]
-    tev, _ = tb.to_events(trades.reset_index(drop=True), zer, tax_class_of=tax,
-                          source_doc_sha=",".join(_sha(root / p) for p in z["tradebooks"]))
+    if tbs:
+        trades = pd.concat(tbs, ignore_index=True).drop_duplicates().sort_values(["date", "trade_id"], kind="mergesort")
+        names = {r.isin: {"symbol": r.symbol} for r in trades.itertuples()}
+        tev, _ = tb.to_events(trades.reset_index(drop=True), zer, tax_class_of=tax,
+                              source_doc_sha=",".join(_sha(root / p) for p in z["tradebooks"]))
+    else:                                                                # (2026-10-30) no tradebook yet: the rest is still built
+        names, tev = {}, []
+        check("a Console tradebook is given", False, "no tradebook yet: trades are not in the ledger")
     cnotes = list({n.number: n for p in z.get("contract_notes_xlsx", []) for n in cn.parse_xlsx(root / p)}.values())
     tev, rep = cn.apply_fees(tev, cnotes)
     check("every trade has a contract note", not rep["without_note"] and not rep["note_trades_not_in_tradebook"],
           f"{rep['with_fees']} trades with levies; missing {rep['without_note']}")
     events += tev
-    zfiles = [z["funds_ledger"]] + [p for p in z.get("funds_ledgers") or [] if p != z["funds_ledger"]]
-    zdf = zl.parse_many([root / p for p in zfiles])                       # several Console ledgers (other years) are one ledger
+    zfiles = ([z["funds_ledger"]] if z.get("funds_ledger") else []) + [p for p in z.get("funds_ledgers") or [] if p != z.get("funds_ledger")]
+    zdf = zl.parse_many([root / p for p in zfiles]) if zfiles else None   # several Console ledgers (other years) are one ledger
     for p in zfiles:
         period(zer, "funds_ledger", p, zl.parse(root / p))
-    events += zl.charge_events(zdf, zer, _sha(root / zfiles[0]))
-    settle = dict(zip(zl.settlements(zdf)["date"], zl.settlements(zdf)["net"]))
-    bad = [(n.trade_date, n.net_amount, settle.get(n.trade_date)) for n in cnotes
-           if settle.get(n.trade_date) is None or abs(settle[n.trade_date] - n.net_amount) > TOL]
-    check("contract-note nets = Console settlements", not bad and len(settle) == len(cnotes), f"{len(cnotes)} days; off: {bad}")
+    if zdf is not None:
+        events += zl.charge_events(zdf, zer, _sha(root / zfiles[0]))
+        settle = dict(zip(zl.settlements(zdf)["date"], zl.settlements(zdf)["net"]))
+        # (2026-10-30) compared only where BOTH files speak: a funds ledger from June and contract notes from April are not a difference
+        lo = max([min(zdf["date"])] + ([min(n.trade_date for n in cnotes)] if cnotes else []))
+        hi = min([max(zdf["date"])] + ([max(n.trade_date for n in cnotes)] if cnotes else []))
+        both = [n for n in cnotes if lo <= n.trade_date <= hi]
+        settle_both = {d: v for d, v in settle.items() if lo <= d <= hi}
+        bad = [(n.trade_date, n.net_amount, settle_both.get(n.trade_date)) for n in both
+               if settle_both.get(n.trade_date) is None or abs(settle_both[n.trade_date] - n.net_amount) > TOL]
+        check("contract-note nets = Console settlements", not bad and len(settle_both) == len(both),
+              f"{len(both)} day(s) in both files' period ({lo} to {hi}); off: {bad}")
+    else:
+        check("a Console funds ledger is given", False, "no funds ledger yet: Zerodha's cash comes from the bank transfers alone")
+    no_flows = pd.DataFrame({"date": pd.Series([], dtype=object), "amount": pd.Series([], dtype=float)})
 
     # --- banks ------------------------------------------------------------------------------------------------
     rules = bank.load_rules(local=store.pm_dir() / bank.LOCAL_RULES_NAME)
@@ -108,7 +134,7 @@ def build(src: dict, root: Path) -> tuple:
                 by_acc.setdefault(b["account"], []).append(one)
         for acc_, frames in by_acc.items():
             stm[acc_] = bank.classify(bank.merge_parsed(frames), rules)
-    stm, lab = bank_labels.auto_label(stm, zl.bank_flows(zdf))             # S65: own transfers and broker flows by code
+    stm, lab = bank_labels.auto_label(stm, zl.bank_flows(zdf) if zdf is not None else no_flows)             # S65: own transfers and broker flows by code
     notes.append(f"labels by code: {lab['own_pairs']} own transfers, {lab['broker']} broker flows")
     skip = set()
     for p in bank.pair_own_transfers(stm):
@@ -131,7 +157,27 @@ def build(src: dict, root: Path) -> tuple:
             notes.append(f"IPO {i['ipo_id']}: {i['assumed']}")
     listed = {(r["symbol"], r["date"], float(r["qty"])) for r in ipo_rows}
     want = {(i.get("symbol", "NSE"), i["allot_date"], float(i["qty"])) for i in src.get("ipo", [])}
-    check("tradebook IPO rows all recorded", listed <= want, f"tradebook {sorted(listed)}")
+    # An allotment in the tradebook that he has not entered in Setup's IPO form is still his: booked on the broker account at the IPO price
+    # (funded by a deposit there, so no cash is invented), its ISIN found from the exchange's own list by symbol, and named so he can link
+    # its bank payment later. Before 2026-10-30 such a row blocked the whole ledger.
+    auto, pending_ipo = set(), []
+    isin_by_symbol = _isins_by_symbol()
+    for r in ipo_rows:
+        k = (r["symbol"], r["date"], float(r["qty"]))
+        if k in want:
+            continue
+        isin = isin_by_symbol.get(str(r["symbol"]).upper())
+        if not isin:
+            pending_ipo.append(r)                              # resolved from the depository statements below, or named
+            continue
+        cost = round(float(r["qty"]) * float(r["price"]), 2)
+        events.append(Event("deposit", zer, r["date"], amount=cost, ref=f"ipo_unlinked:{r['symbol']}:{r['date']}:fund"))
+        events.append(Event("buy", zer, r["date"], isin=isin, qty=float(r["qty"]), price=float(r["price"]), ref=f"ipo_unlinked:{r['symbol']}:{r['date']}",
+                            tax_class=tax(isin)))
+        names.setdefault(isin, {}).setdefault("symbol", r["symbol"])
+        auto.add(k)
+        notes.append(f"IPO {r['symbol']} x {float(r['qty']):g} at {float(r['price']):,.2f} on {r['date']}: booked from the tradebook; its bank payment is not "
+                     "linked (Setup's IPO form links it)")
 
     for acc, df in stm.items():
         ev, rep = bank.to_events(df, acc, broker_account=zer, existing_refs=skip, source_doc_sha=_sha(root / next(
@@ -140,8 +186,27 @@ def build(src: dict, root: Path) -> tuple:
         un = [u for u in rep["unclassified"] if "credit" in u]
         notes.append(f"{acc}: {len(df)} lines; {len(un)} unclassified credits listed")
 
+    # Zerodha's own ledger is the truth for its cash. A pay-in or payout it shows that no bank statement shows (another bank, or a period not
+    # given) is booked on the Zerodha account and named; the bank side stays a visible difference. Before 2026-10-30 one missing bank
+    # statement left Zerodha's cash negative and refused the whole ledger.
+    seen = sorted((e.date, e.amount if e.counter_account == zer else -e.amount) for e in events
+                  if e.kind == "cash_transfer" and zer in (e.account_id, e.counter_account))
+    used, unmatched = [False] * len(seen), []
+    fl = zl.bank_flows(zdf) if zdf is not None else no_flows
+    for d, a in sorted(zip(fl["date"], fl["amount"])):
+        hit = next((k for k, (d2, a2) in enumerate(seen) if not used[k] and abs(a - a2) < TOL and abs((d - d2).days) <= 2), None)
+        if hit is None:
+            unmatched.append((d, float(a)))
+        else:
+            used[hit] = True
+    for n, (d, a) in enumerate(unmatched):
+        events.append(Event("deposit" if a > 0 else "withdrawal", zer, d, amount=round(abs(a), 2), ref=f"console_flow:{d}:{n}"))
+    if unmatched:
+        notes.append(f"{len(unmatched)} Zerodha pay-in(s)/payout(s) booked from the Console ledger; no bank statement given shows them: "
+                     + ", ".join(f"{d} {a:+,.2f}" for d, a in unmatched[:6]))
+
     # --- depository statements: dormant-demat opening lots and holdings checks -----------------------------
-    cas_cfg = src["cas"]
+    cas_cfg = src.get("cas") or {"files": []}
     dp_alias = {v["cas_dp"]: k for k, v in src["accounts"].items() if v.get("cas_dp")}
     snaps = []
     for f in cas_cfg["files"]:
@@ -154,7 +219,18 @@ def build(src: dict, root: Path) -> tuple:
                 names.setdefault(r.isin, {})["name"] = r.name
         end = pd.to_datetime(c.statement_period.to, dayfirst=True).date()
         snaps.append((end, snap))
-    first_end, first = snaps[0]
+        try:                                                             # each demat this statement covers, for the coverage
+            beg = pd.to_datetime(c.statement_period.from_, dayfirst=True).date()
+        except Exception:
+            beg = end.replace(day=1)
+        for acc in sorted(set(snap["account"].dropna())) or sorted(set(alias.values()) - {None}):
+            periods.append({"account_id": acc, "kind": "cas", "file_sha": _sha(root / f), "first_date": beg, "last_date": end, "n_rows": int(len(snap))})
+    if not snaps:                                                       # (2026-10-30) no depository statement yet: built without opening lots
+        check("a depository statement (CAS) is given", False, "no CAS yet: holdings from before the tradebooks are not in the ledger")
+        first_end, first = date.min, pd.DataFrame({"account": pd.Series([], dtype=object), "isin": pd.Series([], dtype=object),
+                                                   "qty": pd.Series([], dtype=float), "name": pd.Series([], dtype=object)})
+    else:
+        first_end, first = snaps[0]
     read_only = [k for k, v in src["accounts"].items() if v.get("read_only")]
     # [[opening_cost]] in sources.toml: cost and acquisition date for a holding with no history here (e.g. bonds
     # received from a relative: the previous owner's cost and date carry over); each entry states its basis
@@ -165,8 +241,51 @@ def build(src: dict, root: Path) -> tuple:
     opening, unknown = casm.opening_events(first[first["account"].isin(read_only)], src["start"], cost_of=cost_of)
     events += opening
     notes += unknown
+    # Shares an active demat already held before the tradebooks begin: the first CAS minus what the trades since the start explain is what
+    # was there at the start. Opened at the start at cost 0 (or his [[opening_cost]]) and listed, never guessed (S67, 2026-10-30).
+    active = [a for a in set(first["account"].dropna()) if a not in read_only]
+    net: dict = {}
+    for e in events:
+        if e.kind in ("buy", "sell") and e.account_id in active and e.date <= first_end:
+            net[(e.account_id, e.isin)] = net.get((e.account_id, e.isin), 0.0) + (e.qty if e.kind == "buy" else -e.qty)
+    pre = first[first["account"].isin(active)].copy()
+    pre["qty"] = [round(float(r.qty) - net.get((r.account, r.isin), 0.0), 6) for r in pre.itertuples()]
+    pre = pre[pre["qty"] > 1e-9]
+    if len(pre):
+        qty.update({(r.account, r.isin): r.qty for r in pre.itertuples()})
+        held_before, unknown2 = casm.opening_events(pre, src["start"], cost_of=cost_of)
+        events += held_before
+        notes += unknown2
     notes += [f"{o['account']} {o['isin']}: opening cost {float(o['cost_per_unit']):,.2f} a unit from {o['acquired']} "
               f"({o.get('basis', 'basis not stated')})" for o in oc.values()]
+
+    # An IPO whose symbol the exchange list does not know yet: the first depository statement after the allotment shows exactly that many more
+    # shares of ONE security on the broker's demat than the trades explain; that is its ISIN. Anything less certain is named, not guessed.
+    for r in pending_ipo:
+        isin = None
+        for end, snap in sorted(snaps, key=lambda x: x[0]):
+            if end < r["date"]:
+                continue
+            have: dict = {}
+            for e in events:
+                if e.kind in ("buy", "sell") and e.account_id == zer and e.date <= end:
+                    have[e.isin] = have.get(e.isin, 0.0) + (e.qty if e.kind == "buy" else -e.qty)
+            mine = snap[snap["account"] == zer].groupby("isin")["qty"].sum()
+            fits = [i for i, q in mine.items() if abs(float(q) - have.get(i, 0.0) - float(r["qty"])) < 1e-6]
+            isin = fits[0] if len(fits) == 1 else None
+            break
+        if not isin:
+            notes.append(f"IPO {r['symbol']} x {float(r['qty']):g} on {r['date']}: its security could not be told from the files; add it in Setup's IPO form")
+            continue
+        cost = round(float(r["qty"]) * float(r["price"]), 2)
+        events.append(Event("deposit", zer, r["date"], amount=cost, ref=f"ipo_unlinked:{r['symbol']}:{r['date']}:fund"))
+        events.append(Event("buy", zer, r["date"], isin=isin, qty=float(r["qty"]), price=float(r["price"]), ref=f"ipo_unlinked:{r['symbol']}:{r['date']}",
+                            tax_class=tax(isin)))
+        names.setdefault(isin, {}).setdefault("symbol", r["symbol"])
+        auto.add((r["symbol"], r["date"], float(r["qty"])))
+        notes.append(f"IPO {r['symbol']} x {float(r['qty']):g} at {float(r['price']):,.2f} on {r['date']}: booked from the tradebook (security from the "
+                     "depository statement); its bank payment is not linked (Setup's IPO form links it)")
+    check("tradebook IPO rows all recorded", listed <= (want | auto), f"tradebook {sorted(listed - want - auto)}")
 
     # Within a day the ledger orders by kind, then insertion: put each day's inflows (deposits, income) before
     # transfers out of the same account, the end-of-day view a statement gives.
@@ -174,23 +293,41 @@ def build(src: dict, root: Path) -> tuple:
     log = EventLog()
     for e in sorted(events, key=lambda e: (e.date, inflow(e))):
         log.append(e)
-    led = Ledger.replay(log)
+    # (2026-10-30) money the broker spent that no file of his explains (an older tradebook with no funds ledger for that time, say) is funded
+    # by a named deposit on the day it was short, so the rest of the record is still built; the difference says how much and when.
+    from pflab.ledger.cash import CashError
+    unexplained = []
+    for _ in range(400):
+        try:
+            led = Ledger.replay(log)
+            break
+        except CashError as e:
+            m = re.match(r"(\S+): balance would be (-?[\d.]+) on (\d{4}-\d{2}-\d{2})", str(e))
+            if not m or m.group(1) != zer:
+                raise
+            d, short = date.fromisoformat(m.group(3)), round(-float(m.group(2)) + 0.005, 2)
+            unexplained.append((d, short))
+            events.append(Event("deposit", zer, d, amount=short, ref=f"unexplained_funding:{d}:{len(unexplained)}"))
+            log = EventLog()
+            for ev_ in sorted(events, key=lambda e: (e.date, inflow(e))):
+                log.append(ev_)
+    else:
+        raise RuntimeError("the record could not be balanced: too many unexplained fundings")
+    check("every rupee Zerodha spent has a source in your files", not unexplained,
+          "funded with no file showing where from: " + ", ".join(f"{d} {a:,.2f}" for d, a in unexplained[:8]))
 
     # --- checks against every source --------------------------------------------------------------------------
     zc = led.cash_balance(zer)
-    check("Zerodha cash = Console closing balance", abs(zc - zdf.attrs["closing"]) <= TOL,
-          f"ledger {zc:,.2f} vs Console {zdf.attrs['closing']:,.2f}")
+    if zdf is not None:
+        check("Zerodha cash = Console closing balance", abs(zc - zdf.attrs["closing"]) <= TOL,
+              f"ledger {zc:,.2f} vs Console {zdf.attrs['closing']:,.2f}")
     for acc, df in stm.items():
         r = bank.check_closing_balance(df, led, acc)
         check(f"{acc} cash = statement closing", abs(r["ledger_cash"] - r["statement_closing"]) <= TOL,
               f"ledger {r['ledger_cash']:,.2f} vs statement {r['statement_closing']:,.2f}")
-    flows = zl.bank_flows(zdf)
-    moved = sorted((e.date, e.amount if e.counter_account == zer else -e.amount) for e in log
-                   if e.kind == "cash_transfer" and zer in (e.account_id, e.counter_account))
-    check("Console pay-ins/payouts = bank broker transfers",
-          len(moved) == len(flows) and all(abs(a - b) < TOL and abs((d1 - d2).days) <= 2
-                                           for (d1, a), (d2, b) in zip(moved, sorted(zip(flows["date"], flows["amount"])))),
-          f"bank {moved} vs Console {list(zip(flows['date'], flows['amount']))}")
+    if zdf is not None:                                                  # the ones no bank statement shows were booked above: named here
+        check("every Zerodha pay-in and payout is in a bank statement", not unmatched,
+              "not in any bank statement given: " + ", ".join(f"{d} {a:+,.2f}" for d, a in unmatched))
     for end, snap in snaps:
         pos = Ledger.replay(log, upto=end).positions()
         for acc in sorted(set(snap["account"].dropna())):
@@ -199,6 +336,7 @@ def build(src: dict, root: Path) -> tuple:
             check(f"{acc} holdings = CAS {end}", br.empty, br[["isin", "a_value", "b_value", "note"]].to_dict("records"))
     for i in src.get("ipo", []):
         names.setdefault(i["isin"], {}).setdefault("symbol", i.get("symbol", "NSE"))
+    periods.append({"account_id": "*", "kind": "start", "file_sha": None, "first_date": src["start"], "last_date": src["start"], "n_rows": 0})
     src = {**src, "_names": names, "_unlabelled": bank_labels.groups(stm), "_periods": periods}
     return log, led, checks, notes, src
 
@@ -213,7 +351,8 @@ def _write(con, log: EventLog, led: Ledger, src: dict) -> None:
     con.execute("DELETE FROM accounts")
     for k, v in src["accounts"].items():
         con.execute("INSERT INTO accounts (account_id, kind, provider, dp_or_folio, dormant, read_only) VALUES (?,?,?,?,?,?)",
-                    [k, v["kind"], v.get("provider"), v.get("cas_dp"), v.get("dormant", False), v.get("read_only", False)])
+                    [k, v["kind"], v.get("provider") or v.get("bank"), v.get("cas_dp") or v.get("last4"),      # a bank's last four: its identity
+                     v.get("dormant", False), v.get("read_only", False)])
     save_events(con, log)
     led.write_derived(con)
     con.execute("DELETE FROM statement_periods")                         # the periods of the statements this (checked) build was made from

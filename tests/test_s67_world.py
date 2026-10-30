@@ -44,7 +44,7 @@ def test_a_fresh_profile_shows_every_agent_and_claims_nothing(rt):
     assert names == {a["name"] for a in roster.listing()}                                      # every agent has a place in the world
     assert w["counts"]["working"] == 0 and w["counts"]["down"] == 0 and w["counts"]["done_today"] == 0
     assert w["feed"] == [] and w["looking_into"] == {"investigations": [], "experiments": []}
-    assert {n["id"] for n in w["senses"]} == {"markets", "filings", "broker", "us"}
+    assert {n["id"] for n in w["senses"]} == {"markets", "filings", "broker", "record", "us"}
     assert all(j["group"] != "other" for j in w["jobs"])                                       # every routine belongs to a node
     assert w["pulse"]["tone"] in ("late", "waiting", "ok") and "failed" not in w["pulse"]["verdict"]
 

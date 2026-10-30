@@ -85,15 +85,14 @@ def test_the_setup_endpoints(rt):
     assert c.post("/api/setup", json=ANSWERS).status_code == 400                                              # not replaced
 
 
-def test_a_first_setup_fills_up_file_by_file_and_nothing_is_built_until_it_is_complete(rt, monkeypatch):
+def test_a_first_file_is_recognised_without_building_and_the_build_comes_once_per_burst(rt, monkeypatch):
+    """(2026-10-30) Dropping a file never runs a build of its own (a burst of files would build again and again); the ledger job builds
+    once from everything, and a missing file is a difference, not a wait."""
     su.write(rt.pm_dir / "sources.toml", ANSWERS)
-    built = []
-    monkeypatch.setattr(ib, "_builder", lambda rt: (_ for _ in ()).throw(AssertionError("built too early")))
+    monkeypatch.setattr(ib, "_builder", lambda rt: (_ for _ in ()).throw(AssertionError("built on drop")))
     tb = b"symbol,isin,trade_date,trade_type,quantity,price,trade_id\nABC,INE0,2026-01-01,buy,1,2,3\n"
     got = ib.receive(rt, "download.csv", tb)                                                                   # recognised by content
     assert got["kind"] == "tradebook"
     item = ib._item(rt, got["id"])
-    assert item["status"] == "ready" and "still waiting for" in item["result"]["notes"][0] and item["result"]["failed"] == 0
-    out = ib.apply(rt, got["id"])
-    assert out["events"] == 0 and any("funds ledger" in w for w in out["waiting_for"]) and ib._item(rt, got["id"])["status"] == "kept"
-    assert srcs.load_overlay(rt.pm_dir / "sources.toml")["zerodha"]["tradebooks"] and not built                # kept in the overlay
+    assert item["status"] == "ready" and "rebuilt with it" in item["result"]["note"]
+    assert not srcs.overlay_path(rt.pm_dir / "sources.toml").exists()                                           # nothing written on drop

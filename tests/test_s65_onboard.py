@@ -88,24 +88,25 @@ def fake_builder(checks=(("all good", True, ""),)):
     return SimpleNamespace(build=build, write=write, seen=seen)
 
 
-def test_one_press_builds_the_ledger_from_every_document_when_all_checks_pass(rt, monkeypatch):
+def test_the_record_is_built_from_what_is_there_and_rebuilt_as_more_arrives(rt, monkeypatch):
+    """(2026-10-30) A missing document no longer holds the whole record back: it is built from what is there, with the difference named,
+    and built again when the rest arrives."""
     drop_all(rt)
     ib.receive(rt, "cas.csv", b"x")                                                 # not a ledger file by content: other
     su.write(rt.pm_dir / "sources.toml", su.infer(rt.cursor(), NOW.date())["answers"])
     ib.attach_waiting(rt)
     con = rt.cursor()
     con.execute("UPDATE inbox_items SET status='ready' WHERE status='working'")
-    assert ib.apply_all(rt)["waiting_for"] == ["depository CAS from 2026-04-01"]        # nothing written while a document is missing
+    monkeypatch.setattr(ib, "_builder", lambda rt: fake_builder((("a depository statement (CAS) is given", False, "no CAS yet"),)))
+    r = ib.apply_all(rt)
+    assert r["written"] and r["failed"] == 1                                          # built now, the missing CAS named
     iid = con.execute("SELECT max(item_id) FROM inbox_items").fetchone()[0] + 1
     con.execute("INSERT INTO inbox_items (item_id, name, kind, path, sha, status, created_at, updated_at) VALUES (?, 'c.pdf', 'cas', ?, 's', 'ready', ?, ?)",
                 [iid, str(rt.repo / "new" / "c.pdf"), NOW, NOW])
-    monkeypatch.setattr(ib, "_builder", lambda rt: fake_builder((("bank cash = statement", False, "off"),)))
-    r = ib.apply_all(rt)
-    assert r["written"] is False and r["failed"] == 1
     fb = fake_builder()
     monkeypatch.setattr(ib, "_builder", lambda rt: fb)
     r = ib.apply_all(rt)
-    assert r["written"] and r["documents"] == 5 and fb.seen["written"] == 1
+    assert r["written"] and r["documents"] == 1 and fb.seen["written"] == 1
     assert {s for (s,) in con.execute("SELECT status FROM inbox_items WHERE kind IN ('bank','tradebook','funds_ledger','cas')").fetchall()} == {"in the ledger"}
     over = srcs.load_overlay(rt.pm_dir / "sources.toml")
     assert {b["account"] for b in over["bank"]} == {"SBI_5678", "HDFC_9012"} and over["cas"]["files"]

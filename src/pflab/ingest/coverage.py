@@ -21,11 +21,13 @@ KIND_WORD = {"bank": "bank account", "cas": "demat / mutual fund account", "trad
 GAP_DAYS = 7              # two statements further apart than this leave a stretch no statement covers
 STALE_DAYS = 45           # statements that end longer ago than this are behind
 LATE_START_DAYS = 31      # an account whose statements begin this much later than the rest: opened later, or its first statements are missing
-PERIOD_KIND = {"bank": "bank", "demat": "funds_ledger", "broker": "funds_ledger"}   # the statement that proves each account kind's money
+PERIOD_KIND = {"bank": ("bank",), "demat": ("cas", "funds_ledger"), "broker": ("funds_ledger", "cas")}   # the statements that prove each kind
 
 
 def label(kind: str, bank: Optional[str], last4: Optional[str], dp_ids: Optional[str] = None) -> str:
     """Masked: a bank name and the last four digits only, never a full number."""
+    if kind == "cas" and not bank:                              # a depository statement names the demat, not a bank
+        return f"demat account (depository id ending {str(dp_ids)[-4:]})" if dp_ids else "demat account"
     who = (bank or "unknown institution").strip()[:40]
     tail = f" ending {last4}" if last4 else (f" (depository id ending {str(dp_ids)[-4:]})" if dp_ids else "")
     return f"{who} {KIND_WORD.get(kind, kind)}{tail}"
@@ -40,6 +42,10 @@ def note_account(con, info: dict, source: str, now: datetime, file_sha: str = ""
     kind = info.get("kind")
     if kind in (None, "other") or not (info.get("bank") or info.get("last4") or info.get("dp_ids")):
         return None
+    dps = [d.strip().upper() for d in str(info.get("dp_ids") or "").split(",") if d.strip()]
+    if kind == "cas" and len(dps) > 1:                          # one statement covering two demats is two accounts, not one blurred one
+        keys = [note_account(con, {**info, "dp_ids": d}, source, now, file_sha) for d in dps]
+        return keys[0]
     k = key_of(kind, info.get("bank"), info.get("last4"), info.get("dp_ids"))
     r = con.execute("SELECT n_files, sources FROM account_candidates WHERE cand_key=?", [k]).fetchone()
     if r:
@@ -76,11 +82,13 @@ def _d(x) -> Optional[date]:
     return x.date() if isinstance(x, datetime) else x
 
 
-def periods(con, account: str, kind: Optional[str] = None) -> List[tuple]:
-    """(first, last) of each statement of the account the last checked build was made from, oldest first."""
+def periods(con, account: str, kinds=None) -> List[tuple]:
+    """(first, last) of each statement of the account the last checked build was made from, oldest first. `kinds`: the statement kinds that count."""
+    kinds = (kinds,) if isinstance(kinds, str) else tuple(kinds or ())
     try:
-        q = "SELECT first_date, last_date FROM statement_periods WHERE account_id=? AND first_date IS NOT NULL" + (" AND kind=?" if kind else "")
-        return sorted((_d(a), _d(b)) for a, b in con.execute(q + " ORDER BY first_date", [account] + ([kind] if kind else [])).fetchall())
+        q = "SELECT first_date, last_date FROM statement_periods WHERE account_id=? AND first_date IS NOT NULL"
+        q += (f" AND kind IN ({','.join('?' * len(kinds))})" if kinds else "")
+        return sorted((_d(a), _d(b)) for a, b in con.execute(q + " ORDER BY first_date", [account] + list(kinds)).fetchall())
     except Exception:
         return []
 
@@ -100,8 +108,10 @@ def statement_cover(ps: List[tuple], earliest: Optional[date], today: date) -> d
 
 
 def _earliest(con) -> Optional[date]:
+    """Where his history is meant to begin: the start of his setup (recorded by the build), else the earliest statement."""
     try:
-        return _d(con.execute("SELECT min(first_date) FROM statement_periods").fetchone()[0])
+        r = con.execute("SELECT max(first_date) FROM statement_periods WHERE kind='start'").fetchone()[0]
+        return _d(r) if r else _d(con.execute("SELECT min(first_date) FROM statement_periods WHERE kind <> 'start'").fetchone()[0])
     except Exception:
         return None
 
@@ -121,6 +131,7 @@ def matrix(con, now: datetime) -> List[dict]:
     out: List[dict] = []
     set_up = _set_up(con)
     by_last4: Dict[str, list] = {}
+    by_dp: Dict[str, dict] = {}
     earliest, today = _earliest(con), now.date()
     for a in set_up:
         pk = PERIOD_KIND.get(a["kind"])
@@ -139,6 +150,8 @@ def matrix(con, now: datetime) -> List[dict]:
                     "statement_holes": (cov or {}).get("holes", []), "verified": ok, "files_seen": 0, "next": nxt})
         if a["ref"]:                                           # (audit F4) the last four digits alone are not an identity: kept with the institution and kind
             by_last4.setdefault(str(a["ref"])[-4:], []).append((out[-1], str(a["provider"] or "").lower(), a["kind"]))
+            if a["kind"] in ("demat", "broker"):
+                by_dp[str(a["ref"]).strip().upper()] = out[-1]          # a depository id is a full identity on its own
     for ck, lab, n, srcs, st, l4, cbank, ckind in con.execute("SELECT cand_key, label, n_files, sources, state, last4, bank, kind FROM account_candidates "
                                                               "ORDER BY first_seen").fetchall():
         if st == "not_mine":
@@ -148,6 +161,10 @@ def matrix(con, now: datetime) -> List[dict]:
                         "verified": False, "key": ck, "next": "drop its statements in Inbox and files when you want it counted, or press Add back"})
             continue
         same = [r for r, prov, k in by_last4.get(l4 or "", []) if _same_institution(cbank, prov) and _same_kind(ckind, k)] if l4 else []
+        if not same:
+            row = con.execute("SELECT dp_ids FROM account_candidates WHERE cand_key=?", [ck]).fetchone()
+            dps_c = [x.strip().upper() for x in str((row or [None])[0] or "").split(",") if x.strip()]
+            same = list({id(by_dp[d]): by_dp[d] for d in dps_c if d in by_dp}.values())
         if len(same) == 1:                                     # the same account as one that is set up: one row, with the files seen added
             row = same[0]
             row["files_seen"] += int(n)

@@ -67,7 +67,7 @@ def test_readiness_reflects_reconciled_coverage_and_resumes_after_a_missing_step
     con.execute("INSERT INTO accounts (account_id, kind, provider) VALUES ('ZER', 'demat', 'Zerodha')")
     save(con, EventLog([Event("deposit", "ZER", date(2026, 10, 1), amount=1000.0)]))
     st = {s["key"]: s for s in rd.assess(rt, NOW)["stages"]}
-    assert st["record"]["state"] == rd.PARTIAL and any("Approve the accounts" in t for t in st["record"]["todo"])
+    assert st["record"]["state"] == rd.PARTIAL and any("set up from your files" in t for t in st["record"]["todo"])
     (rt.pm_dir / "sources.toml").write_text("[sources]\n", encoding="utf-8")                  # the missing step is done
     con.execute("INSERT INTO questions (q_id, created_at, agent, subject_key, text, status) VALUES (1, ?, 'inbox', 'inbox:locked:abc123', 't', 'open')", [NOW])
     st = {s["key"]: s for s in rd.assess(rt, NOW)["stages"]}

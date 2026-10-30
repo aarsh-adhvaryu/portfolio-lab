@@ -155,6 +155,11 @@ def start(rt) -> dict:
         out["welcome"] = onboarding.welcome(con, now)
     except Exception:
         out["welcome"] = None
+    try:                                                   # his choices (targets, watch list, API cap) come back if a fresh start left them
+        from pflab.pm import fresh
+        out["choices_restored"] = fresh.restore_missing_choices(rt.pm_dir)
+    except Exception:
+        out["choices_restored"] = []
     try:                                                   # requests for files he has already dropped close at start too
         from pflab.app import inbox
         out["requests_closed"] = inbox.close_met_requests(rt)

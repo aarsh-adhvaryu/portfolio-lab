@@ -47,6 +47,7 @@ the workshop; their data collection always runs. Code: `release.py`, `guard.py`,
 | analyst | 01:00 daily | API analyst: collect last night's batch, submit today's queue |
 | research | 23:30 weekdays | material changes, briefs, digest |
 | tradecheck | every 15 min 08-22 | Kite holdings, funds, today's trades: differences from the ledger asked |
+| ledger | every 15 min, and a minute after a statement arrives | his record builds itself: accounts set up from the files if nobody did, every statement read into one ledger and written; what does not match is a named difference with what closes it (2026-10-30) |
 | guards | 20:45 weekdays | surveillance and safety checks on the stock list; dip and FD alerts |
 | outbox | every 15 min weekdays | deliver queued Telegram messages (held until he switches Telegram on) |
 | backup | 23:30 daily | copy and verify the ledger |
