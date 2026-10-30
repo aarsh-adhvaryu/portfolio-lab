@@ -199,3 +199,12 @@ def test_store_round_trip_and_first_usable_date_sticks(tmp_path):
     assert len(got) == 8 and set(got["usable_from"]) == {date(2026, 10, 6)}
     r = pit.ratios(pit.last_quarters(got, SCRIP, date(2026, 10, 6), 8))
     assert r["revenue_ttm"] == pytest.approx(pit.ratios(q)["revenue_ttm"])
+
+
+def test_the_same_quarter_twice_in_one_batch_is_stored_once_not_a_failed_commit(tmp_path):
+    """Seen 2026-10-30: BSE listed a re-filed result twice in one fetch; DuckDB refused the whole commit and the guards job failed."""
+    import pandas as pd
+    con = store.connect(tmp_path / "l.duckdb")
+    first = pit.date_quarters(real_quarters(), first_seen=date(2026, 10, 6))
+    doubled = pd.concat([first, first.iloc[[0]]], ignore_index=True)
+    assert pit.save(con, doubled, "bse_results") == len(first)

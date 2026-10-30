@@ -1185,6 +1185,9 @@ function itemCard(it, privacy) {
     <div class="row wrapr" style="gap:6px;justify-content:space-between"><span class="tiny muted">${esc(String(it.created).slice(0, 16))}${it.cleaned ? ' · image deleted, text kept' : ''}</span><span class="row" style="gap:6px">${acts.join('')}</span></div></div>`;
 }
 function renderInbox(d) {
+  /* (2026-10-30) a file already read into the record or the graph leaves the main list: what is left is what still needs a look */
+  const isDone = (it) => ['in the ledger', 'in the graph', 'in the store'].includes(it.status) || (it.kind === 'screenshot' && it.status === 'read');
+  const active = (d.items || []).filter((it) => !isDone(it)), done = (d.items || []).filter(isDone);
   const privacy = !!S.settings.privacy;
   const kinds = [['', 'Recognise it'], ['tradebook', 'Console tradebook'], ['contract_note', 'Contract notes'], ['funds_ledger', 'Console funds ledger'], ['cas', 'Depository CAS'], ['bank', 'Bank statement'], ['screenshot', 'Screenshot'], ['market', 'Market-data export'], ['other', 'Other']];
   $('screen').innerHTML = `
@@ -1200,8 +1203,11 @@ function renderInbox(d) {
         ${S.inboxMsg ? `<span class="small warn">${esc(S.inboxMsg)}</span>` : ''}
       </div>
       <div class="panel" style="display:flex;flex-direction:column;gap:10px">
-        <div class="row" style="justify-content:space-between"><span class="lbl">Files</span><span class="small muted">${d.items.length} shown · newest first</span></div>
-        ${d.items.map((it) => itemCard(it, privacy)).join('') || '<span class="small muted">Nothing yet.</span>'}
+        <div class="row" style="justify-content:space-between"><span class="lbl">Files</span><span class="small muted">${active.length} need a look or are being read · ${done.length} done</span></div>
+        ${active.map((it) => itemCard(it, privacy)).join('') || '<span class="small muted">Nothing waiting: every file is read.</span>'}
+        ${done.length ? `<details><summary class="small">Done (${done.length}): read into your record or the knowledge graph. Nothing to do; kept for the record and its rebuilds.</summary>
+          <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">${done.map((it) => `<div class="small row" style="justify-content:space-between;gap:8px;border-bottom:1px solid var(--line2);padding:3px 0">
+            <span>${esc(it.name)} <span class="muted">· ${esc(it.label)}</span></span><span class="tiny up">${esc(it.status === 'read' ? 'read' : it.status)}</span></div>`).join('')}</div></details>` : ''}
       </div>
     </section>
     <section class="stack" style="flex:1 1 360px">
@@ -1486,6 +1492,65 @@ function layout(nodes, edges, W, H) {
   }
   return E;
 }
+/* The knowledge graph in 3-D (2026-10-30, his ask): the same nodes and links as the flat map, laid out in space. Drag to turn, wheel to zoom,
+   click a dot for its documents. Plain canvas: no library, nothing fetched. It turns slowly by itself until touched. */
+const G3 = { yaw: 0.6, pitch: 0.35, zoom: 1, auto: true, raf: 0 };
+function layout3d(nodes, E) {
+  const n = nodes.length || 1, k = 90;
+  nodes.forEach((v, i) => { const t = i * 2.39996, z = 1 - 2 * (i + 0.5) / n, r = Math.sqrt(1 - z * z) * 150;
+    v.X = Math.cos(t) * r; v.Y = Math.sin(t) * r; v.Z = z * 150; });
+  for (let step = 0, temp = 30; step < 260; step++, temp *= 0.985) {
+    const f = nodes.map(() => [0, 0, 0]);
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+      const a = nodes[i], b = nodes[j], dx = a.X - b.X, dy = a.Y - b.Y, dz = a.Z - b.Z, d2 = dx * dx + dy * dy + dz * dz + 0.01, rep_ = k * k / d2;
+      f[i][0] += dx * rep_; f[i][1] += dy * rep_; f[i][2] += dz * rep_; f[j][0] -= dx * rep_; f[j][1] -= dy * rep_; f[j][2] -= dz * rep_; }
+    E.forEach(([i, j]) => { const a = nodes[i], b = nodes[j], dx = a.X - b.X, dy = a.Y - b.Y, dz = a.Z - b.Z, d = Math.sqrt(dx * dx + dy * dy + dz * dz) + 0.01, att = d / (k * 2.5);
+      f[i][0] -= dx * att; f[i][1] -= dy * att; f[i][2] -= dz * att; f[j][0] += dx * att; f[j][1] += dy * att; f[j][2] += dz * att; });
+    nodes.forEach((v, i) => { f[i][0] -= v.X * 0.08; f[i][1] -= v.Y * 0.08; f[i][2] -= v.Z * 0.08; });   /* a pull to the centre: separate groups stay in view */
+    nodes.forEach((v, i) => { const m = Math.hypot(...f[i]) || 1, s_ = Math.min(m, temp) / m; v.X += f[i][0] * s_; v.Y += f[i][1] * s_; v.Z += f[i][2] * s_; });
+  }
+  /* centred and scaled to a fixed sphere, so the camera always sees all of it (a free layout can end far bigger than the view) */
+  const cx = nodes.reduce((a, v) => a + v.X, 0) / n, cy_ = nodes.reduce((a, v) => a + v.Y, 0) / n, cz = nodes.reduce((a, v) => a + v.Z, 0) / n;
+  const far = Math.max(1, ...nodes.map((v) => Math.hypot(v.X - cx, v.Y - cy_, v.Z - cz)));
+  nodes.forEach((v) => { v.X = (v.X - cx) / far * 170; v.Y = (v.Y - cy_) / far * 170; v.Z = (v.Z - cz) / far * 170; });
+}
+function draw3d(cv, nodes, E, rad) {
+  const ctx = cv.getContext('2d'), W = cv.width, H = cv.height, cy = Math.cos(G3.yaw), sy = Math.sin(G3.yaw), cp = Math.cos(G3.pitch), sp = Math.sin(G3.pitch);
+  const css = getComputedStyle(document.body), line = css.getPropertyValue('--line').trim() || '#334', text = css.getPropertyValue('--text').trim() || '#ddd';
+  nodes.forEach((v) => { const x = v.X * cy - v.Z * sy, z1 = v.X * sy + v.Z * cy, y = v.Y * cp - z1 * sp, z = v.Y * sp + z1 * cp, per = 520 / (520 + z) * G3.zoom;
+    v.sx = W / 2 + x * per * 1.6; v.sy = H / 2 + y * per * 1.6; v.sz = z; v.sp = per; });
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = 'rgba(148,163,184,0.45)'; ctx.globalAlpha = 1;
+  E.forEach(([i, j, w]) => { ctx.lineWidth = Math.min(3, 0.6 + Math.log1p(w) / 2); ctx.beginPath(); ctx.moveTo(nodes[i].sx, nodes[i].sy); ctx.lineTo(nodes[j].sx, nodes[j].sy); ctx.stroke(); });
+  ctx.globalAlpha = 1;
+  [...nodes].sort((a, b) => b.sz - a.sz).forEach((v) => {               /* far first: near dots cover far ones */
+    const r = Math.max(2, rad(v) * v.sp * 1.3), fade = Math.max(0.35, Math.min(1, 1.1 - v.sz / 400));
+    ctx.globalAlpha = fade; ctx.fillStyle = KIND_COLORS[v.kind] || '#888'; ctx.beginPath(); ctx.arc(v.sx, v.sy, r, 0, 6.2832); ctx.fill();
+    if (v.owned) { ctx.strokeStyle = text; ctx.lineWidth = 2; ctx.stroke(); }
+    if (!['org', 'person', 'theme'].includes(v.kind) || (v.docs || 0) > 3) { ctx.fillStyle = text; ctx.font = `${v.kind === 'company' ? 600 : 400} ${Math.round(11 * Math.max(0.8, v.sp))}px system-ui`;
+      ctx.fillText(v.label, v.sx + r + 3, v.sy + 4); }
+  });
+  ctx.globalAlpha = 1;
+}
+function graph3d(nodes, edges, rad) {
+  const cv = $('g3d'); if (!cv) return;
+  const idx = {}; nodes.forEach((v, i) => { idx[v.id] = i; });
+  const E = edges.filter((e) => idx[e.a] !== undefined && idx[e.b] !== undefined).map((e) => [idx[e.a], idx[e.b], e.w]);
+  layout3d(nodes, E);
+  cancelAnimationFrame(G3.raf);
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const tick = () => { if (!document.body.contains(cv)) return; if (G3.auto && !reduce) G3.yaw += 0.003; draw3d(cv, nodes, E, rad); G3.raf = requestAnimationFrame(tick); };
+  let drag = null;
+  cv.onmousedown = (e) => { drag = { x: e.clientX, y: e.clientY, moved: false }; G3.auto = false; };
+  window.onmouseup = () => { drag = null; };
+  cv.onmousemove = (e) => { if (!drag) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 2) drag.moved = true;
+    G3.yaw += dx * 0.008; G3.pitch = Math.max(-1.4, Math.min(1.4, G3.pitch + dy * 0.008)); drag.x = e.clientX; drag.y = e.clientY; };
+  cv.onwheel = (e) => { e.preventDefault(); G3.zoom = Math.max(0.4, Math.min(3, G3.zoom * (e.deltaY < 0 ? 1.1 : 0.9))); };
+  cv.onclick = (e) => { const b = cv.getBoundingClientRect(), x = (e.clientX - b.left) * cv.width / b.width, y = (e.clientY - b.top) * cv.height / b.height;
+    let best = null, bd = 400; nodes.forEach((v) => { const d = (v.sx - x) ** 2 + (v.sy - y) ** 2; if (d < bd) { bd = d; best = v; } });
+    if (best) graphNode(best.id, nodes); };
+  tick();
+}
 function renderGraph(d) {
   const W = 1000, H = 640, nodes = d.nodes, E = layout(nodes, d.edges, W, H);
   const rad = (n) => n.kind === 'company' ? 7 + Math.min(10, Math.sqrt(n.docs || 0) / 2) : 3 + Math.min(6, Math.sqrt(n.docs || 0) / 2);
@@ -1500,7 +1565,10 @@ function renderGraph(d) {
         <div class="row wrapr" style="justify-content:space-between"><span class="lbl">Around your companies${d.upto ? ', as of ' + esc(d.upto) : ', today'}</span>
           <span class="small muted">${groupIN(d.totals.docs)} documents · ${groupIN(d.totals.nodes)} things · ${groupIN(d.totals.edges)} dated links in the whole graph</span></div>
         <div class="row wrapr" style="gap:10px">${Object.keys(KIND_NAMES).map((k) => `<label class="row small" style="gap:5px;cursor:pointer"><input type="checkbox" data-gkind="${k}" ${d.kinds.includes(k) ? 'checked' : ''} ${k === 'company' ? 'disabled' : ''}><span style="width:10px;height:10px;border-radius:50%;background:${KIND_COLORS[k]}"></span>${esc(KIND_NAMES[k])}</label>`).join('')}</div>
-        <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;background:var(--panel2);border-radius:10px" role="img" aria-label="Knowledge graph around your companies">
+        <div class="row" style="gap:6px">${[['3d', '3-D (drag to turn, wheel to zoom)'], ['2d', 'Flat']].map(([k, l]) => `<button class="btn ${(S.gView || '3d') === k ? 'primary' : ''}" data-gview="${k}" style="font-size:12px;padding:3px 10px">${l}</button>`).join('')}
+          ${nodes.length ? '' : '<span class="small warn">Nothing to draw yet: the graph fills as your companies, their filings and news are read (it follows your holdings and watch list).</span>'}</div>
+        ${(S.gView || '3d') === '3d' ? `<canvas id="g3d" width="1000" height="640" style="width:100%;height:auto;background:var(--panel2);border-radius:10px;cursor:grab" aria-label="Knowledge graph in 3-D"></canvas>` : ''}
+        <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;background:var(--panel2);border-radius:10px;${(S.gView || '3d') === '3d' ? 'display:none' : ''}" role="img" aria-label="Knowledge graph around your companies">
           ${E.map(([i, j, w]) => `<line x1="${nodes[i].x.toFixed(1)}" y1="${nodes[i].y.toFixed(1)}" x2="${nodes[j].x.toFixed(1)}" y2="${nodes[j].y.toFixed(1)}" stroke="var(--line)" stroke-width="${Math.min(3, 0.6 + Math.log1p(w) / 2).toFixed(2)}"></line>`).join('')}
           ${nodes.map((n) => `<g data-gnode="${esc(n.id)}" style="cursor:pointer"><circle cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="${rad(n).toFixed(1)}" fill="${KIND_COLORS[n.kind]}" stroke="${n.owned ? 'var(--text)' : 'var(--panel2)'}" stroke-width="2"><title>${esc(n.label)} (${esc(n.kind)}${n.docs ? ', ' + n.docs + ' documents' : ''}${n.owned ? ', you own it' : n.watched ? ', watched' : ''})</title></circle>
             ${labelled.has(n.id) ? `<text x="${(n.x + rad(n) + 3).toFixed(1)}" y="${(n.y + 4).toFixed(1)}" font-size="${n.kind === 'company' ? 12 : 10}" font-weight="${n.kind === 'company' ? 600 : 400}" fill="${n.kind === 'company' ? 'var(--text)' : 'var(--muted)'}">${esc(String(n.label).slice(0, 28))}</text>` : ''}</g>`).join('')}
@@ -1517,6 +1585,8 @@ function renderGraph(d) {
   document.querySelectorAll('[data-gkind]').forEach((b) => { b.onchange = () => { S.gKinds = [...document.querySelectorAll('[data-gkind]:checked')].map((x) => x.dataset.gkind); load(true); }; });
   const sl = $('gSlide'); sl.onchange = () => { S.gUpto = Number(sl.value) >= months.length ? null : Number(sl.value); S.gUptoDate = S.gUpto ? months[S.gUpto - 1] : null; load(true); };
   document.querySelectorAll('[data-gnode]').forEach((g) => { g.onclick = () => graphNode(g.dataset.gnode, nodes); });
+  document.querySelectorAll('[data-gview]').forEach((b) => { b.onclick = () => { S.gView = b.dataset.gview; renderGraph(d); }; });
+  if ((S.gView || '3d') === '3d') graph3d(nodes, d.edges, rad);
 }
 async function graphNode(id, nodes) {
   const n = nodes.find((x) => x.id === id) || { label: id, kind: '' };
