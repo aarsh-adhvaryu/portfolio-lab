@@ -150,6 +150,11 @@ def check(con, kite, asof: date, account: Optional[str] = None, now: Optional[da
         if t1.get(r["isin"]) and abs((r["b_value"] - r["a_value"]) - t1[r["isin"]]) < 1e-6:
             rep.breaks.loc[i, "note"] = f"a recent buy of {t1[r['isin']]:g} (T1, not yet settled) is not in the ledger"
     reconcile.save_breaks(con, rep.breaks, f"tradecheck:{asof}", now)
+    if rep.snapshot is not None:                                   # S67: a difference that has gone is not asked about any more
+        current = {f"holding:{r.isin}:{r.a_value:g}:{r.b_value:g}" for r in rep.breaks.itertuples()}
+        for (k,) in con.execute("SELECT subject_key FROM questions WHERE status='open' AND subject_key LIKE 'holding:%'").fetchall():
+            if k not in current:
+                qs.drop(con, k, now)
     for r in rep.breaks.itertuples():
         name = f"{sym.get(r.isin) or ''} ({r.isin})".strip()
         if r.note.startswith("a recent buy"):
@@ -165,6 +170,9 @@ def check(con, kite, asof: date, account: Optional[str] = None, now: Optional[da
         cash = km.funds_from_margins(kite.margins())
         led = float(Ledger.replay(log, upto=asof).cash_balance(account, asof))
         rep.cash = {"kite_available": cash["live_balance"], "ledger": led}
+        if abs(cash["live_balance"] - led) <= CASH_TOL:
+            for (k,) in con.execute("SELECT subject_key FROM questions WHERE status='open' AND subject_key LIKE ?", [f"cash:{account}:%"]).fetchall():
+                qs.drop(con, k, now)
         if abs(cash["live_balance"] - led) > CASH_TOL:
             q = qs.ask(con, AGENT, f"cash:{account}:{led:.2f}:{cash['live_balance']:.2f}",
                        f"Kite's cash balance is {cash['live_balance']:,.2f}, the ledger's {led:,.2f}. Payouts to the bank, "

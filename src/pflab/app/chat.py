@@ -86,11 +86,22 @@ def post(rt, chat_id: int, text: str, mode: str, approved: bool = False) -> dict
     return {"chat_id": chat_id, "msg_id": aid}
 
 
+HISTORY_TURNS, HISTORY_CHARS = 6, 220
+
+
+def history_text(con, chat_id: int, before_msg: int, turns: int = HISTORY_TURNS) -> str:
+    """The last few finished turns of this chat before message `before_msg`, short, oldest first: what a follow-up refers to (S67: the
+    same history reaches the ask centre and the brain, which are otherwise two roads). A pending or failed answer is not history."""
+    rows = con.execute("SELECT role, text FROM chat_messages WHERE chat_id=? AND msg_id < ? AND status='done' ORDER BY msg_id DESC LIMIT ?",
+                       [chat_id, before_msg, turns]).fetchall()
+    return "\n".join(f"{'he asked' if r == 'me' else 'you answered'}: {' '.join((t or '').split())[:HISTORY_CHARS]}" for r, t in reversed(rows))
+
+
 def _work(rt, chat_id: int, aid: int, q: str, mode: str, approved: bool) -> None:
     con = rt.cursor()
     with _WORK:
         try:
-            out = answer(rt, con, q, mode, approved)
+            out = answer(rt, con, q, mode, approved, history=history_text(con, chat_id, aid - 1))
         except Exception as e:                               # shown in the chat, never hidden
             out = {"text": f"This could not be answered: {type(e).__name__}: {str(e)[:300]}", "route": ["error"],
                    "meta": "", "status": "failed"}
@@ -100,19 +111,35 @@ def _work(rt, chat_id: int, aid: int, q: str, mode: str, approved: bool) -> None
     rt.bump("chat", "notifications")
 
 
-def answer(rt, con, q: str, mode: str, approved: bool = False) -> dict:
+def answer(rt, con, q: str, mode: str, approved: bool = False, history: str = "") -> dict:
+    """One answer. The runtime is bound for the system tools of the ask centre; `history` is the earlier turns of the chat (both the
+    ask centre and the brain read it). Works the same for the dashboard's Runtime and the background Desk (Telegram, the tick)."""
+    from pflab.agents import tools as at
+    tok = at.bind(rt)
+    try:
+        return _answer(rt, con, q, mode, approved, history)
+    finally:
+        at.unbind(tok)
+
+
+def _hist(history: str) -> dict:
+    return {"history": history} if history else {}
+
+
+def _answer(rt, con, q: str, mode: str, approved: bool, history: str) -> dict:
     now = rt.clock()
     asof = now.date()
     if mode == "auto":                                   # S56: the escalation chain decides the road
         from pflab.agents import escalate
         from pflab.hq import service
         r = escalate.run(con, q, asof, pm_dir=rt.pm_dir, root=rt.data_root, secrets=rt.secrets, approved=approved, now=now,
-                         fns={"brain": lambda text: service.brain_now(rt, text, rival=False)})
+                         fns={"brain": lambda text: service.brain_now(rt, text, rival=False, history=history),
+                              "local": lambda c, text, a: __import__("pflab.agents.centre", fromlist=["ask"]).ask(c, text, a, **_hist(history))})
         return {"text": r.text, "route": escalate.route(r), "status": r.status, "report": r.report, "cost": r.cost or None,
                 "meta": f"{r.kind} question · " + " → ".join(s.why for s in r.steps)}
     if mode == "ask":
         from pflab.agents import centre
-        a = centre.ask(con, q, asof)
+        a = centre.ask(con, q, asof, **_hist(history))
         route = [f"routing ({a.router}, local)"] + [f"tool: {t}" for t in a.tools] + \
                 (["local model, checked by the guard"] if a.verified else ["facts only (no checked draft)"])
         return {"text": a.text, "route": route, "meta": "local · nothing left the PC"}
@@ -148,8 +175,18 @@ def answer(rt, con, q: str, mode: str, approved: bool = False) -> dict:
                 "route": ["note reused (not bought twice)"] if reused else ["Opus not rung", "local model (guarded)"],
                 "status": "needs_approval" if "to go ahead" in text else "done"}
 
+    from pflab.agents import sandbox as sb
     from pflab.agents import workshop as wk
-    out = wk.ask(con, q, rt.pm_dir, rt.data_root, asof, writer="auto", secrets=rt.secrets, approved=approved, now=now)
+    try:
+        out = wk.ask(con, q, rt.pm_dir, rt.data_root, asof, writer="auto", secrets=rt.secrets, approved=approved, now=now)
+    except sb.SandboxUnavailable as e:                   # S67: nothing ran; no host-process fallback
+        from pflab.agents import questions as qs
+        qs.ask(con, "workshop", f"workshop:sandbox:{now:%Y-%m-%d}",
+               f"Calculations are paused: the sandbox is not available ({e}). Start Docker Desktop (and build the image once if asked); "
+               "I run them again when it works.", now)
+        return {"text": f"This calculation did not run: the sandbox is not available ({e}). Generated code only runs contained, "
+                        "so it waits for Docker.", "route": ["sandbox unavailable: nothing was run"], "status": "failed",
+                "meta": "nothing ran on this PC"}
     if out.measure:
         route = ["local model picks a reviewed measure", "reviewed code (calc/measures.py) on this PC"]
         meta = "a reviewed measure; your rows never left the PC"

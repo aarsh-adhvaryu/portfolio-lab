@@ -102,9 +102,9 @@ Act "write release.toml (channel stable, tag $Tag)" {
 Step "Docker sandbox image (the workshop calculations run in it)"
 if ($NoDocker -or -not (Get-Command docker -ErrorAction SilentlyContinue)) { Write-Host "   skipped (no Docker, or -NoDocker): calculations then run uncontained and the system says so" }
 else {
-  Act "docker build -t pflab-sandbox:1 (skipped if the image exists)" {
-    & docker image inspect pflab-sandbox:1 *> $null
-    if ($LASTEXITCODE) { Push-Location $app; try { & docker build -t pflab-sandbox:1 -f sandbox\Dockerfile . } finally { Pop-Location } }
+  Act "docker build -t pflab-sandbox:2 (skipped if the image exists)" {
+    & docker image inspect pflab-sandbox:2 *> $null
+    if ($LASTEXITCODE) { Push-Location $app; try { & docker build -t pflab-sandbox:2 -f sandbox\Dockerfile . } finally { Pop-Location } }
   }
 }
 

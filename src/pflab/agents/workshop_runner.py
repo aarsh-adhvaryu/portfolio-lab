@@ -6,6 +6,7 @@ and writes `out.json`. Results must be a flat dict of names to finite numbers, b
 import importlib.util
 import json
 import math
+import os
 import sys
 import traceback
 from pathlib import Path
@@ -75,6 +76,27 @@ def _agree(a: dict, b: dict, tol: float, only=None) -> list:
     return bad
 
 
+MAX_WALK = 400
+
+
+def _walk(fn, real: dict, walk: dict, params: dict) -> dict:
+    """Walk-forward: for each date, compute() sees ONLY the rows dated up to and including it (cut here, by this runner, not by the model's
+    code) and must return a `signal`. Point-in-time by construction: a candidate cannot read a row after the date it is asked about."""
+    dates = [str(d) for d in walk.get("dates", [])]
+    if not dates or len(dates) > MAX_WALK:
+        raise ValueError(f"walk needs 1 to {MAX_WALK} dates")
+    out = {}
+    for d in dates:
+        cut = pd.Timestamp(d)
+        sub = {n: f[pd.to_datetime(f["date"]) <= cut].copy() for n, f in real.items()}
+        r = _clean(_call(fn, sub, params))
+        s = r.get("signal")
+        if isinstance(s, bool) or not isinstance(s, (int, float)):
+            raise ValueError("compute must return a numeric 'signal'")
+        out[d] = float(s)
+    return out
+
+
 def main(folder: str) -> int:
     f = Path(folder)
     job = json.loads((f / "job.json").read_text(encoding="utf-8"))
@@ -89,6 +111,10 @@ def main(folder: str) -> int:
                                                                                 **job["test"].get("params", {})}))
             exp = {kk: float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else v
                    for kk, v in job["test"]["expected"].items()}
+            if not exp and job.get("walk"):                 # S67: a walk-forward job is smoke-tested on trusted rows: it must give a numeric signal
+                if isinstance(got.get("signal"), bool) or not isinstance(got.get("signal"), (int, float)):
+                    raise AssertionError("compute must return a numeric 'signal'")
+                continue
             if not exp:
                 raise AssertionError("the test case states no expected result")
             bad = _agree(got, exp, float(job["test"].get("tol", 1e-6)), only=set(exp))
@@ -97,14 +123,19 @@ def main(folder: str) -> int:
                 raise AssertionError(out["test_detail"])
         out["test_ok"] = True
         real = _frames(job["datasets"], f)
-        out["result"] = _clean(_call(fns["compute"], {n: d.copy() for n, d in real.items()}, job.get("params", {})))
-        if "alt" in fns:
+        if job.get("walk"):
+            out["walk"] = _walk(fns["compute"], real, job["walk"], job.get("params", {}))
+            out["result"] = {"walk_dates": float(len(out["walk"]))}
+        else:
+            out["result"] = _clean(_call(fns["compute"], {n: d.copy() for n, d in real.items()}, job.get("params", {})))
+        if "alt" in fns and not job.get("walk"):
             out["alt_result"] = _clean(_call(fns["alt"], {n: d.copy() for n, d in real.items()}, job.get("params", {})))
             out["disagree"] = _agree(out["result"], out["alt_result"], 1e-4)
     except Exception as e:                            # the model's code failing is a finding, reported back to it
         out["error"] = f"{type(e).__name__}: {e}"
         out["trace"] = traceback.format_exc()[-1500:]
-    (f / "out.json").write_text(json.dumps(out, default=str), encoding="utf-8")
+    dest = Path(os.environ.get("PFLAB_OUT") or f)         # in the sandbox the job folder is read-only; the one place to write is /out
+    (dest / "out.json").write_text(json.dumps(out, default=str), encoding="utf-8")
     return 0
 
 

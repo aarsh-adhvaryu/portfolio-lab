@@ -5,9 +5,11 @@ proposal or sends anything; no tool can place an order (there is no order path i
 """
 from __future__ import annotations
 
+import contextvars
 from dataclasses import dataclass
 from datetime import date
 import re
+from types import SimpleNamespace
 from typing import Callable, Dict, List
 
 from pflab.pm import estimate as est
@@ -250,7 +252,92 @@ def question_aliases(con, stocks: List[dict]) -> Dict[str, List[str]]:
     return out
 
 
+# S67: the system's own state and the emails' facts, for the ask centre as for the brain. The tools need the runtime (settings, the data
+# folder, the clock): the dashboard's `Runtime` or the background `Desk`. `bind(rt)` sets it for the question being answered.
+_RT: contextvars.ContextVar = contextvars.ContextVar("pflab_rt", default=None)
+
+
+def bind(rt):
+    """Make `rt` the runtime the system tools read for this thread's question; returns the token for `unbind`."""
+    return _RT.set(rt)
+
+
+def unbind(token) -> None:
+    _RT.reset(token)
+
+
+def _flat(prefix: str, d: dict, out: Facts) -> None:
+    for k, v in d.items():
+        key = f"{prefix}.{k}"
+        if isinstance(v, dict):
+            _flat(key, v, out)
+        elif isinstance(v, (int, float, bool)) or v is None:
+            out[key] = v if v is not None else "none"
+        elif isinstance(v, (list, tuple)):
+            out[key] = "; ".join(str(x) if not isinstance(x, dict) else ", ".join(f"{a} {b}" for a, b in x.items()) for x in v)[:600] or "none"
+        else:
+            out[key] = str(v)[:400]
+
+
+def _ctx(con):
+    rt = _RT.get()
+    if rt is None:
+        return None
+    return SimpleNamespace(rt=rt, now=rt.clock(), con=con)
+
+
+def system(con, asof: date) -> Facts:
+    """The same picture as the Command centre and the brain's `system_status`: connectors, data freshness, work, what is current."""
+    from pflab.hq import tools as hq
+    c = _ctx(con)
+    if c is None:
+        return {"system.unavailable": "the system's state is not reachable from here"}
+    s = hq.system_status(c, {})
+    out: Facts = {"system.verdict": s["verdict"], "system.catching_up": s["catching_up"] or "no"}
+    for x in s["connectors"]:
+        out[f"connector.{x['name']}"] = f"{x['state']}: {x['line']}"
+    for x in s["data_freshness"]:
+        out[f"data.{x['name']}"] = f"{x['state']}: {x['line']}"
+    out["work.failed_last_day"] = s["failed_last_day"]
+    out["work.running_now"] = "; ".join(r["job"] for r in s["running_now"]) or "nothing"
+    out["work.needs_from_him"] = "; ".join(s["needs_from_him"]) or "nothing"
+    out["work.being_researched"] = "; ".join(f"#{c_['id']} {c_['question'][:90]} ({c_['status']})" for c_ in s["being_researched"]) or "nothing"
+    out["work.held_tasks"] = len(s["held_tasks"])
+    out["recommendations.current"] = s["recommendations"]["current"]
+    out["recommendations.note"] = s["recommendations"]["say"] or "nothing prepared earlier is stale"
+    return out
+
+
+def mail(con, asof: date) -> Facts:
+    from pflab.hq import tools as hq
+    c = _ctx(con)
+    if c is None:
+        return {"mail.unavailable": "the email facts are not reachable from here"}
+    out: Facts = {}
+    _flat("mail", {k: v for k, v in hq.mail_facts(c, {}).items() if k != "source"}, out)
+    return out
+
+
+def research(con, asof: date) -> Facts:
+    """The shared research workspace as chat sees it: the same investigations, experiments, objectives and proposals the background work keeps."""
+    from pflab.hq import objectives
+    from pflab.learner import counter, experiments as ex
+    out: Facts = {}
+    for e in ex.report(con)[-6:]:
+        out[f"experiment.{e['id']}"] = f"{e['status']}: {e['hypothesis'][:110]} ({e['candidates']} candidates, {e['kept']} kept; {(e['why'] or '')[:100]})"
+    out["experiments.variants_searched_in_all"] = counter.n_tests(con)
+    for o in objectives.current(con)[:4]:
+        out[f"objective.{o['id']}"] = f"{o['status']}: {o['wish'][:80]}"
+    n_issue = con.execute("SELECT count(*) FROM hq_issues WHERE status='proposed'").fetchone()[0]
+    out["software_changes_proposed_not_applied"] = int(n_issue)
+    if len(out) <= 2 and not n_issue:
+        out["research.note"] = "no experiment or objective has been registered yet"
+    return out
+
+
 TOOLS: List[Tool] = [
+    Tool("research", "research", "the research workspace: experiments the system has registered and run (kept, rejected, waiting), the objectives framed from his wishes "
+         "(framed or still draft), how many variants have been searched, and software changes it has proposed; what has been tried and failed", research),
     Tool("networth", "ledger", "net worth, holdings, rupee values of what is owned, gains and losses, cash, buckets",
          networth),
     Tool("guards", "guard", "whether a stock on the list is safe to buy; NSE surveillance (ASM, GSM, ESM); safety "
@@ -267,5 +354,10 @@ TOOLS: List[Tool] = [
          "year's tax", taxplan),
     Tool("context", "knowledge", "recent news, filings and results about a named company; why a stock moved", context,
          uses_question=True),
+    Tool("system", "system", "whether the system itself is working and in sync: Kite, Gmail, Telegram, the local model, the Claude API, the "
+         "sandbox, how fresh each data source is, what is running, what failed, what is being researched, what needs the investor, "
+         "whether recommendations are current", system),
+    Tool("mail", "mail", "what his money emails said (trades, deposits, dividends, IPO allotments, bank alerts) and whether his record "
+         "or Kite has each one", mail),
 ]
 BY_NAME = {t.name: t for t in TOOLS}

@@ -6,13 +6,16 @@ The app is a clone of the private GitHub repo checked out at a release tag (`vYY
     1. refuse in the workshop (no release.toml), while another process holds the store, or with edited files in the clone
     2. back up the store (`ledger.duckdb`) into `<app folder>\backups` (never overwritten)
     3. `git fetch --tags`, pick the newest tag, `git checkout` it, install the requirements
-    4. self-test: the store opens and migrates, the program starts
+    4. self-test: the program starts, and the new code's migrations are REHEARSED on a COPY of the store (nothing of his is touched
+       until they pass; no table may lose a row)
     5. write release.toml (new tag, `previous_tag` = the old one, `backup` = the file of step 2)
     A failure at 3 or 4 puts the old tag back and the store as it was (the backup), and says so.
 
-`--rollback` returns to `previous_tag` and restores the backup of the last update; the store as it is now is kept beside it as
-`ledger_before_rollback_<date>.duckdb` (nothing is deleted): records written since the update are in that file, not in the
-restored one, and this is said in the result. A migration in an update runs on his real store: the backup comes first, every time.
+`--rollback` returns to `previous_tag` and restores the backup of the last update. S67: it then brings back every row written
+since the update (rows whose key is not in the backup, table by table, over the columns both versions know), so no ledger event, journal
+entry, question or memory made after the upgrade is lost. The store as it was just before the rollback is kept beside it as
+`ledger_before_rollback_<date>.duckdb` (nothing is deleted); a table the older version does not have stays only in that file, and this is
+said in the result. The live store migrates at the next start, with the backup already taken.
 Git, the installer and the self-test are passed in so the whole thing is tested on a temporary repository.
 """
 from __future__ import annotations
@@ -21,6 +24,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
@@ -60,10 +64,131 @@ def default_install(root: Path, run: Run = run_cmd) -> None:
         raise UpdateError(f"installing the requirements failed: {out[-300:]}")
 
 
-def default_selftest(root: Path, run: Run = run_cmd) -> Tuple[bool, str]:
-    """The program starts and the store opens and migrates (a new migration runs here, on the backed-up store)."""
-    rc, out = run([_python(root), "-m", "pflab.cli", "pm", "init"], root)
-    return rc == 0, out[-300:]
+def default_selftest(root: Path, run: Run = run_cmd, pm_dir: Optional[Path] = None) -> Tuple[bool, str]:
+    """The program starts (new code, new libraries), and its migrations run on a COPY of the store: they must pass and no table may lose a
+    row. The real store is not opened here."""
+    rc, out = run([_python(root), "-m", "pflab.cli", "--help"], root)
+    if rc:
+        return False, f"the program does not start: {out[-200:]}"
+    live = Path(pm_dir) / "ledger.duckdb" if pm_dir is not None else None
+    if live is None or not live.exists():
+        return True, "program starts; no store yet to rehearse on"
+    tmp = Path(tempfile.mkdtemp(prefix="pflab_rehearse_"))
+    try:
+        copy = tmp / "ledger.duckdb"
+        shutil.copy2(live, copy)
+        rc, out = run([_python(root), "-m", "pflab.update", "rehearse", str(copy)], root)
+        return rc == 0, out[-300:]
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _row_counts(path: Path) -> dict:
+    import duckdb
+    con = duckdb.connect(str(path), read_only=True)
+    try:
+        return {t: int(con.execute(f'SELECT count(*) FROM "{t}"').fetchone()[0]) for (t,) in con.execute(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema='main' AND table_type='BASE TABLE'").fetchall()}
+    finally:
+        con.close()
+
+
+def rehearse(copy: Path) -> dict:
+    """Migrate a COPY of the store with this code and compare: {version, tables, lost: {table: rows lost}}. Raises if a migration fails."""
+    from pflab.pm import store
+    before = _row_counts(Path(copy))
+    con = store.connect(Path(copy))
+    version = con.execute("SELECT max(version) FROM schema_migrations").fetchone()[0]
+    con.close()
+    after = _row_counts(Path(copy))
+    lost = {t: before[t] - after.get(t, 0) for t in before if after.get(t, 0) < before[t]}
+    return {"version": version, "tables": len(after), "lost": lost, "rows": sum(after.values())}
+
+
+DERIVED = ("lots", "cash_ledger", "income", "fees")             # written by the ledger rebuild from the events; read from the events elsewhere
+
+
+def merge_new_rows(kept: Path, live: Path) -> dict:
+    """Bring back what happened after the backup: for each table both stores have, over the columns both know, the rows of `kept` that are
+    new (added), the rows whose values changed (updated: the later version wins) and the rows `kept` no longer has (deleted: a deletion
+    is not undone). A table without a key is compared whole rows; the events by everything but their ids, so a correction replaces the
+    old version instead of standing beside it. A table that cannot be reconciled is listed under `errors` and left as the backup has it.
+    Returns {added, updated, deleted, errors, only_in_kept, rows}; `rows` counts the rows added."""
+    import duckdb
+    con = duckdb.connect(str(live))
+    try:
+        con.execute(f"ATTACH '{Path(kept).as_posix()}' AS kept (READ_ONLY)")
+        live_cols = {t: [c for (c,) in con.execute("SELECT column_name FROM information_schema.columns WHERE table_catalog = current_database() "
+                                                   "AND table_schema='main' AND table_name=? ORDER BY ordinal_position", [t]).fetchall()]
+                     for (t,) in con.execute("SELECT table_name FROM information_schema.tables WHERE table_catalog = current_database() "
+                                             "AND table_schema='main' AND table_type='BASE TABLE'").fetchall()}
+        kept_cols = {t: [c for (c,) in con.execute("SELECT column_name FROM information_schema.columns WHERE table_catalog='kept' "
+                                                   "AND table_schema='main' AND table_name=? ORDER BY ordinal_position", [t]).fetchall()]
+                     for (t,) in con.execute("SELECT table_name FROM information_schema.tables WHERE table_catalog='kept' "
+                                             "AND table_schema='main' AND table_type='BASE TABLE'").fetchall()}
+        added, only_kept, updated, deleted, errors = {}, sorted(set(kept_cols) - set(live_cols)), {}, {}, {}
+        for t in sorted(set(live_cols) & set(kept_cols)):
+            if t == "schema_migrations" or t in DERIVED:
+                continue                                          # derived from the events (the ledger rebuild writes them): not merged
+            cols = [c for c in live_cols[t] if c in kept_cols[t]]
+            if not cols:
+                continue
+            lst = ", ".join(f'"{c}"' for c in cols)
+            if t == "events":
+                # a ledger rebuild renumbers events, so an id says nothing: an event is the same event when everything but its id and the
+                # time it was stored is the same; the ones that are new get the next ids
+                nat = [c for c in cols if c not in ("event_id", "ingested_at")]
+                nl = ", ".join(f'"{c}"' for c in nat)
+                top = con.execute('SELECT coalesce(max(event_id), 0) FROM "events"').fetchone()[0]
+                rows = con.execute(f'SELECT {nl}, "ingested_at" FROM (SELECT {nl}, "ingested_at" FROM kept."events" k WHERE NOT EXISTS '
+                                   f'(SELECT 1 FROM "events" l WHERE ' + " AND ".join(f'l."{c}" IS NOT DISTINCT FROM k."{c}"' for c in nat) + ")) ORDER BY 1").fetchall()
+                for k, r in enumerate(rows, 1):
+                    con.execute(f'INSERT INTO "events" ("event_id", {nl}, "ingested_at") VALUES (' + ",".join("?" * (len(nat) + 2)) + ")", [top + k, *r])
+                if rows:
+                    added[t] = len(rows)
+                try:                                              # an event the later store no longer has (a corrected one) is not kept beside its fix
+                    gone = con.execute('SELECT count(*) FROM "events" l WHERE NOT EXISTS (SELECT 1 FROM kept."events" k WHERE '
+                                       + " AND ".join(f'l."{c}" IS NOT DISTINCT FROM k."{c}"' for c in nat) + ")").fetchone()[0]
+                    if gone:
+                        con.execute('DELETE FROM "events" WHERE event_id IN (SELECT event_id FROM "events" l WHERE NOT EXISTS (SELECT 1 FROM kept."events" k WHERE '
+                                    + " AND ".join(f'l."{c}" IS NOT DISTINCT FROM k."{c}"' for c in nat) + "))")
+                        deleted[t] = int(gone)
+                except Exception as e:
+                    errors[t] = f"{type(e).__name__}: {str(e)[:120]}"
+                continue
+            pk = [c for (c,) in con.execute("SELECT unnest(constraint_column_names) FROM duckdb_constraints() WHERE database_name = current_database() "
+                                            "AND table_name=? AND constraint_type='PRIMARY KEY'", [t]).fetchall()]
+            if pk and all(c in cols for c in pk):
+                key = ", ".join(f'"{c}"' for c in pk)
+                n = con.execute(f'INSERT INTO "{t}" ({lst}) SELECT {lst} FROM kept."{t}" k WHERE NOT EXISTS '
+                                f'(SELECT 1 FROM "{t}" l WHERE ' + " AND ".join(f'l."{c}" = k."{c}"' for c in pk) + ")").fetchone()
+            else:
+                n = con.execute(f'INSERT INTO "{t}" ({lst}) SELECT {lst} FROM (SELECT {lst} FROM kept."{t}" EXCEPT SELECT {lst} FROM "{t}")').fetchone()
+            if n and n[0]:
+                added[t] = int(n[0])
+            if pk and all(c in cols for c in pk):
+                same = " AND ".join(f'l."{c}" = k."{c}"' for c in pk)
+                try:
+                    rest = [c for c in cols if c not in pk]
+                    if rest:                                      # changed after the backup: the later version stands
+                        diff = " OR ".join(f'l."{c}" IS DISTINCT FROM k."{c}"' for c in rest)
+                        m = con.execute(f'SELECT count(*) FROM "{t}" l JOIN kept."{t}" k ON {same} WHERE {diff}').fetchone()[0]
+                        if m:
+                            con.execute(f'UPDATE "{t}" SET ' + ", ".join(f'"{c}" = k."{c}"' for c in rest)
+                                        + f' FROM kept."{t}" k WHERE ' + " AND ".join(f'"{t}"."{c}" = k."{c}"' for c in pk))
+                            updated[t] = int(m)
+                    g = con.execute(f'SELECT count(*) FROM "{t}" l WHERE NOT EXISTS (SELECT 1 FROM kept."{t}" k WHERE {same})').fetchone()[0]
+                    if g:                                         # removed after the backup: not brought back
+                        con.execute(f'DELETE FROM "{t}" WHERE NOT EXISTS (SELECT 1 FROM kept."{t}" k WHERE '
+                                    + " AND ".join(f'"{t}"."{c}" = k."{c}"' for c in pk) + ")")
+                        deleted[t] = int(g)
+                except Exception as e:
+                    errors[t] = f"{type(e).__name__}: {str(e)[:120]}"
+        con.execute("DETACH kept")
+        return {"added": added, "updated": updated, "deleted": deleted, "errors": errors, "only_in_kept": only_kept,
+                "rows": sum(added.values())}
+    finally:
+        con.close()
 
 
 def _git(run: Run, root: Path, *args: str) -> str:
@@ -141,7 +266,7 @@ def update(root: Path, pm_dir: Path, run: Run = run_cmd, install: Optional[Calla
     try:
         _git(run, root, "checkout", "--detach", newest)
         (install or (lambda p: default_install(p, run)))(root)
-        ok, msg = (selftest or (lambda p: default_selftest(p, run)))(root)
+        ok, msg = (selftest or (lambda p: default_selftest(p, run, pm_dir)))(root)
         if not ok:
             raise UpdateError(f"the self-test failed on {newest}: {msg}")
     except Exception as e:
@@ -178,18 +303,64 @@ def rollback(root: Path, pm_dir: Path, run: Run = run_cmd, install: Optional[Cal
     now = now or datetime.now()
     kept = None
     live = pm_dir / "ledger.duckdb"
-    if bk and Path(bk).exists() and live.exists():
-        kept = Path(app.get("folder", root.parent)) / "backups" / f"ledger_before_rollback_{now:%Y%m%d_%H%M%S}.duckdb"
-        kept.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(live, kept)
+    cand = None
+    merged = None
+    if bk and Path(bk).exists():
+        # S67 local: the restored store is PREPARED beside the live one (backup + everything done since, reconciled) and checked; the live
+        # store is replaced only when that is whole. If it cannot be made safely, nothing changes: same code, same store, and it says why.
+        cand = pm_dir / "ledger.rollback_candidate.duckdb"
+        cand.unlink(missing_ok=True)
+        shutil.copy2(bk, cand)
+        if live.exists():
+            kept = Path(app.get("folder", root.parent)) / "backups" / f"ledger_before_rollback_{now:%Y%m%d_%H%M%S}.duckdb"
+            kept.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(live, kept)
+            try:
+                merged = merge_new_rows(kept, cand)
+                if merged.get("errors"):
+                    raise UpdateError("tables could not be reconciled: " + "; ".join(f"{t}: {e}" for t, e in merged["errors"].items()))
+                _row_counts(cand)                             # the prepared store opens and every table can be counted
+            except Exception as e:
+                cand.unlink(missing_ok=True)
+                raise UpdateError(f"the rollback was not done: the earlier release's store could not be prepared safely "
+                                  f"({type(e).__name__}: {str(e)[:200]}). Nothing was changed; the current store is kept whole "
+                                  f"(a copy is also in {kept.name}).")
     _git(run, root, "checkout", "--detach", prev)
     (install or (lambda p: default_install(p, run)))(root)
-    if bk and Path(bk).exists():
-        shutil.copy2(bk, live)
+    if cand is not None:
+        import os
+        os.replace(cand, live)
     cur = str(app.get("tag", ""))
     _set_release(root, prev, "", "")
     note = f"back on {prev}"
     if kept:
-        note += (f"; the store is the backup from before the update; what was written since is kept in {kept.name} "
-                 "(nothing was deleted)")
-    return {"from": cur, "to": prev, "note": note, "kept": str(kept) if kept else None}
+        note += f"; the store is the backup from before the update"
+        if merged and not merged.get("error"):
+            ch = sum((merged.get("updated") or {}).values()), sum((merged.get("deleted") or {}).values())
+            note += (f", plus the {merged['rows']} row(s) written since the update"
+                     + (f", {ch[0]} changed row(s) and {ch[1]} removal(s) carried over" if ch[0] or ch[1] else "")
+                     + (f" (tables the older version does not have stay only in {kept.name}: {', '.join(merged['only_in_kept'])})"
+                        if merged["only_in_kept"] else "")
+                     + f"; the store as it was is also kept in {kept.name} (nothing was deleted)")
+        else:
+            note += (f"; what was written since could NOT be merged back ({(merged or {}).get('error', 'unknown')}): it is all in {kept.name} "
+                     "(nothing was deleted)")
+    return {"from": cur, "to": prev, "note": note, "kept": str(kept) if kept else None, "merged": merged}
+
+
+def main(argv=None) -> int:
+    """`python -m pflab.update rehearse <store copy>`: what the update's self-test runs with the NEW code."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if len(argv) == 2 and argv[0] == "rehearse":
+        r = rehearse(Path(argv[1]))
+        print(f"migrated a copy to schema v{r['version']}: {r['tables']} tables, {r['rows']:,} rows")
+        if r["lost"]:
+            print(f"ROWS LOST: {r['lost']}")
+            return 1
+        return 0
+    print("usage: python -m pflab.update rehearse <store copy>")
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

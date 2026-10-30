@@ -91,7 +91,7 @@ def brain_wake(rt) -> dict:
     return brain.wake(rt, client(rt), gate(rt), held=held, listed=listed, cal=cal)
 
 
-def brain_now(rt, question: Optional[str] = None, rival: bool = True) -> dict:
+def brain_now(rt, question: Optional[str] = None, rival: bool = True, history: str = "") -> dict:
     """The investor orders a pass (no gatekeeper: his order is the reason); his words are its event. `ok` says whether a pass
     answered. S62: a question from the AI centre or Telegram runs without the rival (the comparison runs on the
     scheduled passes; a question should not cost twice)."""
@@ -101,6 +101,14 @@ def brain_now(rt, question: Optional[str] = None, rival: bool = True) -> dict:
         return {"text": "The brain is off (Settings). Set it to economy or normal to order a pass.", "pass": None,
                 "ok": False}
     evs = [{"key": f"ask:{now:%Y%m%d%H%M%S}", "kind": "from the investor (question)", "text": question}] if question else []
+    if question and history:                                   # S67: the chat so far, so a follow-up is read as one
+        evs.append({"key": f"history:{now:%Y%m%d%H%M%S}", "kind": "the conversation so far", "text": history})
+    if question:                                               # and the work already open, so he is not asked what is being looked at
+        from pflab.hq import cases
+        open_work = cases.listing(con, 4, active_only=True)
+        if open_work:
+            evs.append({"key": f"work:{now:%Y%m%d%H%M%S}", "kind": "your open investigations",
+                        "text": "; ".join(f"#{c['id']} {c['question'][:100]} ({c['status']})" for c in open_work)})
     g = gate(rt)
     evs, withheld = brain.screen(evs, g)
     main, other = brain.pair()
@@ -131,9 +139,24 @@ def deliver(rt):
     return send
 
 
-def start(rt) -> None:
-    from pflab.hq import board
-    board.reap(rt.cursor(), rt.clock())
+def start(rt) -> dict:
+    """Taking the store means any task or case still `running` belongs to a process that died: recover them (retry, bounded), then look
+    for what arrived while the system was off. Safe to call again at a wake: it only reads and moves states."""
+    from pflab.hq import board, cases
+    con, now = rt.cursor(), rt.clock()
+    out = {"tasks_recovered": board.reap(con, now), "cases_recovered": cases.reap(con, now), "cases_resumed": len(cases.sweep(con, now))}
+    try:                                                   # an experiment a dead process left running continues from its recorded attempts
+        from pflab.learner import experiments
+        out["experiments_recovered"] = experiments.reap(con, now)
+    except Exception:
+        out["experiments_recovered"] = 0
+    try:                                                   # a new, activated profile gets its one grouped first question
+        from pflab.app import onboarding
+        out["welcome"] = onboarding.welcome(con, now)
+    except Exception:
+        out["welcome"] = None
+    rt.bump("hq")
+    return out
 
 
 def round_(rt, stop=None, attended: bool = True) -> dict:
@@ -147,8 +170,11 @@ def round_(rt, stop=None, attended: bool = True) -> dict:
             out[name] = fn()
         except Exception as e:                                   # shown in the round's result, never hidden
             out[name] = f"failed: {type(e).__name__}: {str(e)[:200]}"
+            out.setdefault("failed", {})[name] = out[name][len("failed: "):]
 
     part("board", lambda: board.run_all(rt, roster.runners(), deliver(rt), max_n=20 if attended else 8, stop=stop))
+    from pflab.hq import cases
+    part("cases", lambda: len(cases.sweep(rt.cursor(), rt.clock())))     # S67: what a waiting investigation needed may have arrived (free, code only)
     if rt.settings.get("drop_watch", True):
         def drop():
             got = watcher.scan(rt)
@@ -182,4 +208,10 @@ def tick_job(ctx) -> dict:
     except Exception as e:
         out["phone"] = f"failed: {type(e).__name__}: {str(e)[:200]}"
     out.update(round_(rt, attended=False))
-    return {k: (v if isinstance(v, (int, float, str)) else str(v)[:300]) for k, v in out.items()}
+    if isinstance(out.get("phone"), str) and out["phone"].startswith("failed: "):
+        out.setdefault("failed", {})["phone"] = out["phone"][len("failed: "):]
+    failed = out.pop("failed", None)
+    res = {k: (v if isinstance(v, (int, float, str)) else str(v)[:300]) for k, v in out.items()}
+    if failed:
+        res["failed"] = failed                                   # the job fails with the part that failed (service/jobs.py)
+    return res

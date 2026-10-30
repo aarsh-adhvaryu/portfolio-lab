@@ -20,9 +20,26 @@ class Desk:
         self.sims_running = False
         self.sims_error: Optional[str] = None
         self.attended = False                      # nobody at the screen: inbox work finishes before the tick ends
+        # S67: what the shared tools read from the dashboard's runtime, so `system_status` and the rest answer the same here
+        self.busy: Optional[str] = None
+        self.wanted: list = []
+        self.update_ready = False
+        self.live_indices: dict = {}
+        self.catching_up: Optional[str] = None
 
     def cursor(self):
         return self.con
+
+    def mc_path(self) -> Path:
+        return self.pm_dir / "app" / "cache" / "montecarlo.json"
+
+    def mc_cache(self) -> Optional[dict]:
+        import json
+        p = self.mc_path()
+        try:
+            return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
+        except ValueError:
+            return None
 
     def bump(self, *topics: str) -> None:
         pass

@@ -253,6 +253,9 @@ def _run(pm: Path, log) -> int:
         lock.__exit__(None, None, None)
         restart(log)
         return 0
+    from pflab import activation
+    if activation.activate(pm, via="icon"):                # the investor's own click: a fresh profile starts its work now
+        log.info("first launch: the profile is now active")
     try:
         rc = _serve(pm, log, url, port, win)
     except BaseException:
@@ -267,7 +270,7 @@ def _run(pm: Path, log) -> int:
     return rc
 
 
-def _serve(pm: Path, log, url: str, port: int, win) -> int:
+def _serve(pm: Path, log, url: str, port: int, win, headless: bool = False) -> int:
     import uvicorn
 
     from pflab.app.runtime import Runtime
@@ -310,6 +313,8 @@ def _serve(pm: Path, log, url: str, port: int, win) -> int:
                              UPDATE_IDLE_S // 60)
                     rc = RESTART
                     break
+            if headless:                                   # S67: a worker with no window (tests, the verifier) runs until it is told to stop
+                continue
             if rt.idle_for() > IDLE_STOP_S:
                 log.info("window closed: stopping")
                 break

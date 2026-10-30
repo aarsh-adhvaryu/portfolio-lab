@@ -36,6 +36,8 @@ from typing import Callable, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from pflab.agents import sandbox as sb
+
 RUNNER = Path(__file__).with_name("workshop_runner.py")
 TIME_LIMIT_S = 60
 MAX_CODE = 20000
@@ -203,6 +205,7 @@ class Run:
     cross_checked: bool = False
     seconds: float = 0.0
     contained: bool = False                      # ran in Docker (no network, read-only root), not the local subprocess
+    walk: Optional[Dict[str, float]] = None      # S67: walk-forward mode only: {date: signal}, each computed from the rows up to that date
 
 
 def parse_spec(text: str) -> Spec:
@@ -236,16 +239,15 @@ def defaults(spec: Spec) -> dict:
 
 
 def run(spec: Spec, frames: Dict[str, pd.DataFrame], python: str = sys.executable,
-        time_limit: int = TIME_LIMIT_S, values: Optional[dict] = None, sandbox=None) -> Run:
+        time_limit: int = TIME_LIMIT_S, values: Optional[dict] = None, sandbox=None, walk: Optional[List[str]] = None) -> Run:
     """Static check, then the sandbox (Docker when it works, else the local subprocess): the test case first, then the
     real frames (with `values` for the parameters, else their defaults); a second method must agree."""
-    from pflab.agents import sandbox as sb
     if spec.alt_code and same_method(spec.code, spec.alt_code):
         from dataclasses import replace
         spec = replace(spec, alt_code="")          # a copy is no second method: dropped (optional), never a failed try
     problems = static_check(spec.code) + ([f"alt_code: {p}" for p in static_check(spec.alt_code)] if spec.alt_code else [])
     t = spec.test or {}
-    if not t.get("data") or not t.get("expected"):
+    if not t.get("data") or not (t.get("expected") or walk):
         problems.append("no test case (test.data and test.expected are both required)")
     if problems:
         return Run(False, problems)
@@ -256,9 +258,10 @@ def run(spec: Spec, frames: Dict[str, pd.DataFrame], python: str = sys.executabl
             (work / "alt_code.py").write_text(spec.alt_code, encoding="utf-8")
         for i, name in enumerate(spec.datasets):
             frames[name].to_parquet(work / f"{i}.parquet", index=False)
-        (work / "job.json").write_text(json.dumps({"datasets": spec.datasets, "test": t,
-                                                    "params": {**defaults(spec), **(values or {})}}, default=str),
-                                        encoding="utf-8")
+        job = {"datasets": spec.datasets, "test": t, "params": {**defaults(spec), **(values or {})}}
+        if walk:
+            job["walk"] = {"dates": [str(d) for d in walk]}
+        (work / "job.json").write_text(json.dumps(job, default=str), encoding="utf-8")
         box = sandbox or sb.pick(python)
         t0 = datetime.now()
         try:
@@ -266,7 +269,7 @@ def run(spec: Spec, frames: Dict[str, pd.DataFrame], python: str = sys.executabl
         except subprocess.TimeoutExpired:
             return Run(False, [f"stopped after {time_limit} s"], contained=box.contained)
         secs = (datetime.now() - t0).total_seconds()
-        out = json.loads((work / "out.json").read_text(encoding="utf-8")) if (work / "out.json").exists() else {}
+        out = sb.read_result(work / "out.json")
         c = box.contained
         if "error" in out:
             return Run(False, [out.get("test_detail") or out["error"]], seconds=secs, contained=c)
@@ -275,7 +278,8 @@ def run(spec: Spec, frames: Dict[str, pd.DataFrame], python: str = sys.executabl
         if out.get("disagree"):
             return Run(False, ["the two methods disagree: " + "; ".join(out["disagree"][:5])], out.get("result", {}),
                        seconds=secs, contained=c)
-        return Run(True, [], out["result"], cross_checked="alt_result" in out, seconds=secs, contained=c)
+        return Run(True, [], out["result"], cross_checked="alt_result" in out, seconds=secs, contained=c,
+                   walk=out.get("walk") if isinstance(out.get("walk"), dict) else None)
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
@@ -326,6 +330,7 @@ class Outcome:
     reused_from: Optional[str] = None                 # the kept calculation it came from (the library)
     measure: Optional[str] = None                     # a reviewed measure answered it (calc/measures.py)
     confirm: Optional[dict] = None                    # the independent second writing: agrees | disagrees | not run
+    inputs: Optional[dict] = None                     # S67: the frames the run read (name -> DataFrame), kept by cases.record_calc
 
 
 def solve(question: str, frames_for: Callable[[List[str]], Dict[str, pd.DataFrame]], schema: str, samples: str,
@@ -342,6 +347,8 @@ def solve(question: str, frames_for: Callable[[List[str]], Dict[str, pd.DataFram
                 if unknown:
                     raise ValueError(f"unknown dataset(s): {unknown}")
                 r = run(spec, frames_for(spec.datasets))
+            except sb.SandboxUnavailable:
+                raise                                 # S67: nothing ran; asking the writer again would change nothing
             except Exception as e:                    # a writer's malformed reply is a failed attempt, never a crash
                 spec, r = None, Run(False, [f"{type(e).__name__}: {e}"])
             log.append(f"{name} try {k}: " + ("ok" if r.ok else "; ".join(r.problems)[:300]))
@@ -379,6 +386,8 @@ def confirm(question: str, first: Outcome, frames_for, schema: str, samples: str
             if [d for d in spec.datasets if d not in schema_names(schema)]:
                 raise ValueError("unknown dataset")
             r = run(spec, frames_for(spec.datasets))
+        except sb.SandboxUnavailable:
+            raise
         except Exception as e:                      # a malformed second writing is not a verdict
             tried.append(f"{name}: {type(e).__name__}: {e}"[:200])
             continue
@@ -655,6 +664,9 @@ def ask(con, question: str, pm_dir: Path, root: Path, asof: date, *, writer: str
     from pflab.agents import analyst as an
     from pflab.agents import memory as mem
     now = now or datetime.now()
+    why = sb.blocked_by_probe(con)
+    if why:
+        raise sb.SandboxUnavailable(why)                     # S67: a failed containment probe stops generated code until it passes again
     cat = catalogue(root)
     schema = schema_text(cat)
     shown = {n: sample_rows(cols) for n, (_d, cols) in cat.items() if ":" not in n}
@@ -686,7 +698,12 @@ def ask(con, question: str, pm_dir: Path, root: Path, asof: date, *, writer: str
         writers.append(("local model", local or local_writer(), LOCAL_TRIES))
     elif writer == "auto":                                   # Opus refused or failed its checks: the local model, labelled
         writers.append(("local model (fallback after Opus)", local or local_writer(), LOCAL_TRIES))
-    frames_for = lambda names: {n: load_dataset(n, con, root, asof) for n in names}   # noqa: E731
+    captured: dict = {}
+
+    def frames_for(names):                                  # S67: what each run read is remembered, so the number can be reproduced from it
+        got = {n: load_dataset(n, con, root, asof) for n in names}
+        captured.update(got)
+        return got
     out = None
     if library:                                            # reviewed measures, then the library, before paying a writer
         filler = local or _filler()
@@ -704,13 +721,14 @@ def ask(con, question: str, pm_dir: Path, root: Path, asof: date, *, writer: str
             out.confirm = confirm(question, out, frames_for, schema, samples, second + writers)
             if out.confirm["status"] == "disagrees":
                 out.status = "disputed"
+    if out.spec is not None:
+        out.inputs = {n: captured[n] for n in out.spec.datasets if n in captured}
     d = keep(pm_dir, question, out, now)
-    if out.run is not None and not out.run.contained:       # S64: Docker did not run it; one ask a day, never a stop
+    if out.run is not None and not out.run.contained:       # only the explicit workshop setting runs uncontained; say so once a day
         from pflab.agents import questions as qs
         qs.ask(con, "workshop", f"workshop:uncontained:{now:%Y-%m-%d}",
-               "Docker Desktop is not running; calculations run uncontained (a plain subprocess, not a security boundary). "
-               "Start Docker Desktop (and build the image once: docker build -t pflab-sandbox:1 -f sandbox/Dockerfile .). "
-               "Answer 'seen' when noted.", now)
+               "This calculation ran in the uncontained developer subprocess (PFLAB_SANDBOX=local), not in Docker. It is a workshop setting, "
+               "not for the app. Answer 'seen' when noted.", now)
     if out.status == "checked":
         summary = "; ".join(f"{k} {v}" for k, v in list(out.run.result.items())[:10])
         how = "reviewed measure" if out.measure else f"{UNREVIEWED}; second writing {(out.confirm or {}).get('status', 'n/a')}"

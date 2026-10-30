@@ -141,19 +141,17 @@ def test_after_setup_checked_statements_ask_for_his_press_once_per_batch(rt):
     assert questions.open_questions(con) == []
 
 
-def test_the_first_look_reads_a_year_and_later_looks_the_last_weeks(rt):
+def test_the_look_covers_the_recent_weeks_and_then_walks_back_in_windows(rt):
     queries = []
     g = FakeGmail({"m1": (("x", "Mon"), [])})
     real = gmail.message_ids
     gmail.message_ids = lambda sess, q, limit=300: (queries.append((q, limit)), real(sess, q, limit))[1]
     try:
         gmail.fetch(rt, g, now=NOW)
-        g.messages["m2"] = (("y", "Tue"), [])
-        gmail.fetch(rt, g, now=NOW)
     finally:
         gmail.message_ids = real
-    assert "newer_than:400d" in queries[0][0] and queries[0][1] == gmail.FIRST_LIMIT
-    assert "newer_than:40d" in queries[1][0] and queries[1][1] == 300
+    assert "after:2026/09/19 before:2026/10/30" in queries[0][0] and queries[0][1] == gmail.RECENT_LIMIT      # the last 40 days, always
+    assert "before:2026/10/30" in queries[1][0] and queries[1][1] == gmail.WINDOW_LIMIT                       # then history, newest window first
 
 
 def test_sender_names_are_the_password_slot_names():

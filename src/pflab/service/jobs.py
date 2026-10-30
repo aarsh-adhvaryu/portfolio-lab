@@ -3,7 +3,8 @@
 `tick` is the only entry point Task Scheduler needs: it runs every job whose latest slot has no
 success since, once each. A failed job is not retried for `cooldown_minutes` (no hot loop); a job
 whose run died with the process is marked abandoned after `ABANDON_AFTER`. Jobs are idempotent
-(re-running them is safe) and report what they did in a small dict.
+(re-running them is safe) and report what they did in a small dict. S67: a dict with a non-empty `failed` ({part: reason}) is a FAILED run,
+so a sub-step that failed is never recorded as a success (and never refreshes "last good").
 """
 from __future__ import annotations
 
@@ -123,6 +124,9 @@ def is_due(ctx: Ctx, job: Job) -> Tuple[bool, str]:
 def run_job(ctx: Ctx, job: Job, slot: Optional[datetime] = None) -> RunResult:
     """Run one job now, under its lock, recording the outcome. Never raises for a job's own failure."""
     con = ctx.con
+    from pflab import activation
+    if activation.is_pending(ctx.pm_dir):             # a fresh profile does nothing until the investor's first launch from the icon
+        return RunResult(job.name, "skipped", "waiting for the first launch from the desktop icon")
     if job.enabled_fn is not None:
         ok, why = job.enabled_fn(ctx)
         if not ok:
@@ -140,8 +144,11 @@ def run_job(ctx: Ctx, job: Job, slot: Optional[datetime] = None) -> RunResult:
     done = lambda: ctx.now + timedelta(seconds=round(_monotonic() - t0, 3))   # S58: the real finish (ctx.now is the tick's)
     try:
         out = job.fn(ctx) or {}
+        failed = out.get("failed")                      # S67: a job whose sub-step failed has failed (its other work stays done)
+        if isinstance(failed, dict) and failed:
+            out["failed"] = {k: _redact(ctx, str(v))[:300] for k, v in failed.items()}
         detail = json.dumps(out, default=str, sort_keys=True)
-        status = "skipped" if out.get("skipped") else "ok"
+        status = "failed" if isinstance(failed, dict) and failed else "skipped" if out.get("skipped") else "ok"
         con.execute("UPDATE job_runs SET status=?, finished_at=?, detail=? WHERE run_id=?",
                     [status, done(), detail, rid])
         return RunResult(job.name, status, detail, rid)

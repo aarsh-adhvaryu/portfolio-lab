@@ -64,4 +64,4 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["docker: needs Docker running and the pflab-sandbox image (skipped otherwise)"]
+markers = ["docker: needs Docker running and the pflab-sandbox image (skipped otherwise)", "ui: drives a real headless browser (skipped where Edge is missing)"]

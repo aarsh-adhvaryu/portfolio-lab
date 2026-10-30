@@ -88,6 +88,11 @@ def cycle(rt, collect: bool = True, get=None) -> dict:
         except Exception as e:                               # kept registered; the reason shown
             tested[cid] = f"not run: {type(e).__name__}: {str(e)[:150]}"
     out["tested"] = tested
+    try:                                     # S67: one bounded experiment step (nothing is created to look busy; waits for data or the sandbox)
+        from pflab.learner import experiments
+        out["experiment"] = experiments.step(rt, experiments.local_writer())
+    except Exception as e:
+        out["experiment"] = f"not run: {type(e).__name__}: {str(e)[:150]}"
     try:                                     # S65: the forward tests (docs/protocols/s65_forward_protocol.md): form, settle, decide
         from pflab.learner import forward
         out["forward"] = forward.cycle(con, rt.data_root, now)

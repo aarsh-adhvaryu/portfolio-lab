@@ -282,6 +282,70 @@ def create_app(rt) -> FastAPI:
         from pflab.app import system
         return json.loads(json.dumps(system.picture(rt), default=str))
 
+    @app.get("/api/world")
+    def world_api():
+        """The World screen: every sense, agent, routine, piece of work, guard and check, with its state and what happened last (app/world.py)."""
+        from pflab.app import world
+        return world.build(rt, rt.clock())
+
+    @app.post("/api/world/pause")
+    def world_pause(paused: bool = Body(..., embed=True)):
+        """Pause or resume the system's own routines (the scheduler setting). Work already running finishes; nothing new starts while paused."""
+        rt.set_settings({"scheduler": not paused})
+        return {"paused": paused}
+
+    @app.get("/api/coverage")
+    def coverage_api():
+        """Every account found, its months, the open gaps, each mailbox's reach, and whether the picture may be called complete."""
+        from pflab.app import system
+        return json.loads(json.dumps(system._coverage(rt.cursor(), rt.clock()), default=str))
+
+    @app.post("/api/coverage/confirm")
+    def coverage_confirm():
+        """He presses: this is every account, mailbox and export. Only this call confirms; nothing the system does by itself can."""
+        from pflab.ingest import coverage
+        coverage.confirm_inventory(rt.cursor(), rt.clock())
+        rt.bump("health")
+        return {"ok": True, "status": coverage.status(rt.cursor(), rt.clock())}
+
+    @app.post("/api/system/seen")
+    def system_seen():
+        """He has looked: what changed is counted from now (app/system.py `changed_since`)."""
+        from pflab.app import system
+        system.mark_visit(rt)
+        return {"ok": True}
+
+    @app.get("/api/cases/{cid}")
+    def case_view(cid: int):
+        """One investigation: evidence with its times, requests, calculations, why it changed (hq/cases.py)."""
+        from pflab.hq import views as hv
+        try:
+            return hv.case_detail(rt.cursor(), cid)
+        except LookupError as e:
+            raise HTTPException(404, str(e))
+
+    @app.post("/api/hq/tasks/{tid}/release")
+    def hq_release(tid: int):
+        """A task held at the hop limit runs once (its chain stays counted)."""
+        from pflab.hq import board
+        try:
+            out = board.release(rt.cursor(), tid, rt.clock(), "the investor (dashboard)")
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        rt.wake_hq()
+        rt.bump("hq")
+        return out
+
+    @app.post("/api/hq/tasks/{tid}/dismiss")
+    def hq_dismiss(tid: int, reason: str = Body("not wanted", embed=True)):
+        from pflab.hq import board
+        try:
+            out = board.dismiss(rt.cursor(), tid, rt.clock(), "the investor (dashboard)", reason)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        rt.bump("hq")
+        return out
+
     @app.get("/api/mail")
     def mail_status():
         """S65: read-only Gmail: connected or not, what was fetched."""

@@ -5,6 +5,7 @@
     instruction  a change to the brain's instructions the investor said yes to (the brain's cached part)
     daily_cap    an action's daily limit (tools.DAILY) the investor said yes to
     model        a job's model by a registered comparison (below the investor's own Settings choice, above the defaults)
+    experiment   (S67) the outcome of a bounded experiment: kept (shadow research only) or rejected, with its limit stated; never a rule
 A newer row of the same kind and key ends the older one (kept, with its dates); nothing is deleted.
 """
 from __future__ import annotations
@@ -12,8 +13,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Dict, List, Optional
 
-KINDS = ("finding", "lesson", "instruction", "daily_cap", "model")
-BRAIN_KINDS = ("finding", "lesson", "instruction")
+KINDS = ("finding", "lesson", "instruction", "daily_cap", "model", "experiment")
+BRAIN_KINDS = ("finding", "lesson", "instruction", "experiment")
 
 
 def put(con, kind: str, key: str, text: str, value: Optional[str], source: str, now: datetime) -> int:
@@ -54,7 +55,9 @@ def brain_text(con) -> str:
     head = {"finding": "TESTED FINDINGS (claims from reading that passed a registered test on this system's data; history, "
                        "never a forecast)",
             "lesson": "LESSONS FROM YOUR RECORD (each passed its rule, n at least 20)",
-            "instruction": "INSTRUCTIONS ADDED (the investor said yes)"}
+            "instruction": "INSTRUCTIONS ADDED (the investor said yes)",
+            "experiment": "EXPERIMENTS (outcomes of bounded tests with their limits; a rejection is a result, a kept candidate is shadow "
+                          "research only and never a rule)"}
     out = []
     for k in BRAIN_KINDS:
         mine = [r for r in rows if r["kind"] == k]

@@ -381,13 +381,72 @@ def _mail(ctx: Ctx) -> dict:
     out = gmail.fetch(rt, sess)
     try:
         out["read"] = mail_read.run(rt, sess, models.model_id("mail_reading"))
-    except Exception as e:                                   # the local model off, say: the emails are read tomorrow
-        out["read"] = f"not read today: {type(e).__name__}: {str(e)[:160]}"
+    except Exception as e:                                   # the local model off, say: the emails are read at the next try
+        out["read"] = f"not read: {type(e).__name__}: {str(e)[:160]}"
+        out["failed"] = {"mail_reading": out["read"]}        # S67: the attachments came; the reading did not: the run is a failed one
+    if out.get("errors") and out["errors"] >= out.get("messages", 0):                 # every message tried failed: the run did not read mail
+        out.setdefault("failed", {})["fetch"] = f"{out['errors']} message(s) could not be fetched or stored"
     return out
 
 
 register(Job("mail", Daily(21, 15, weekdays_only=False), _mail, "read-only Gmail, once a day: statements that arrived by email into the "
-             "inbox (checked, then your press); what money emails say, read on this PC and checked against your record"))
+             "inbox (checked, then your press); what money emails say, read on this PC and checked against your record",
+             cooldown_minutes=180))
+
+
+def _backfill(ctx: Ctx) -> dict:
+    """S67: market history fills itself, in steps of about 90 seconds (newest sessions first), so a first run needs no long command and
+    an interruption costs nothing. The readiness stages and the known gaps are brought up to date with it."""
+    from pflab.app import readiness
+    from pflab.hq import desk
+    out = readiness.backfill_step(ctx.data_root, ctx.now)
+    sync = readiness.sync_gaps(desk.from_ctx(ctx), ctx.now)
+    res = {**{k: v for k, v in out.items() if k != "last_error"}, "gaps_open": sync["open"], "ready": sync["ready"]}
+    if out.get("errors") and not out.get("fetched"):
+        res["failed"] = {"bhavcopy": out.get("last_error") or f"{out['errors']} session(s) could not be fetched"}
+    return res
+
+
+def _backfill_enabled(ctx: Ctx) -> Tuple[bool, str]:
+    """Enabled only while sessions are missing and the disk has room. Never raises: a data folder that does not exist yet has all of it missing."""
+    import shutil
+    from pathlib import Path
+    from pflab.app import readiness
+    probe = Path(ctx.data_root)
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    try:
+        if shutil.disk_usage(probe).free / 1e9 < MIN_FREE_GB:
+            return False, f"under {MIN_FREE_GB} GB free"
+    except OSError:
+        return False, "the data folder's disk cannot be read"
+    h = readiness.bhavcopy_holes(ctx.data_root, readiness.HISTORY_START, ctx.now.date() - timedelta(days=1))
+    return (bool(h["holes"]), "market history has no holes")
+
+
+register(Job("backfill", Interval(60, weekdays_only=False), _backfill, "market history fills itself in 90-second steps until no session is missing; "
+             "readiness and known gaps updated", cooldown_minutes=30, enabled_fn=_backfill_enabled))
+
+
+def _sandbox_enabled(ctx: Ctx) -> Tuple[bool, str]:
+    import shutil
+    return (shutil.which("docker") is not None, "Docker is not installed")
+
+
+def _sandbox_probe(ctx: Ctx) -> dict:
+    """S67: containment proven by use, weekly: a container with the sandbox's flags tries the network, writes to the root and the job
+    folder, looks for host paths and secrets, and a loop past its limit must be killed. The result is the sandbox's colour on the screen."""
+    from pflab.agents import sandbox as sb
+    from pflab.app import system
+    r = sb.probe()
+    system.record_check(ctx.con, "sandbox", r["ok"], ctx.now, r["why"] if not r["ok"] else "all checks passed: " + ", ".join(sorted(r["checks"])))
+    if not r["ok"]:
+        raise RuntimeError(f"sandbox containment not proven: {r['why']}")
+    return {"checks": len(r["checks"])}
+
+
+register(Job("sandbox", Daily(6, 40, weekdays_only=False), _sandbox_probe, "proves the calculation sandbox is contained (no network, read-only, killed at its limit)",
+             cooldown_minutes=360, enabled_fn=_sandbox_enabled))
 
 
 def _twin(ctx: Ctx) -> dict:

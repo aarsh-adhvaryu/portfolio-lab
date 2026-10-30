@@ -579,6 +579,109 @@ MIGRATIONS = [
         created_at TIMESTAMP NOT NULL, checked_at TIMESTAMP
     );
     """),
+    # 2026-10-29: S67 the completion cycle. Persistent work with states, bounded retries, dependencies and a next review; an
+    # investigation (a case) keeps its question, evidence with times, assumptions, calculations, decision and why it changed;
+    # effects done once (so a resumed task never repeats them); health checks from real operations; known data gaps.
+    (43, "cases_s67", """
+    ALTER TABLE hq_tasks ADD COLUMN attempts INTEGER;
+    ALTER TABLE hq_tasks ADD COLUMN next_review_at TIMESTAMP;
+    ALTER TABLE hq_tasks ADD COLUMN waiting_on VARCHAR;
+    ALTER TABLE hq_tasks ADD COLUMN progress VARCHAR;
+    ALTER TABLE hq_tasks ADD COLUMN dedup_key VARCHAR;
+    CREATE TABLE hq_cases (
+        case_id INTEGER PRIMARY KEY, subject_key VARCHAR UNIQUE, opened_at TIMESTAMP NOT NULL, updated_at TIMESTAMP NOT NULL,
+        origin VARCHAR NOT NULL, question VARCHAR NOT NULL, subject VARCHAR, isin VARCHAR, status VARCHAR NOT NULL,
+        verdict VARCHAR, assumptions_json VARCHAR, coverage_json VARCHAR, uncertainty VARCHAR, decision VARCHAR,
+        decision_reason VARCHAR, next_review_at TIMESTAMP, attempts INTEGER NOT NULL DEFAULT 0, max_attempts INTEGER NOT NULL DEFAULT 3,
+        last_error VARCHAR, closed_at TIMESTAMP, pass_id INTEGER, steps INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE hq_case_deps (
+        dep_id INTEGER PRIMARY KEY, case_id INTEGER NOT NULL, dep_key VARCHAR NOT NULL, kind VARCHAR NOT NULL,
+        request VARCHAR NOT NULL, status VARCHAR NOT NULL, requested_at TIMESTAMP NOT NULL, arrived_at TIMESTAMP,
+        q_id INTEGER, detail VARCHAR, UNIQUE (case_id, dep_key)
+    );
+    CREATE TABLE hq_case_evidence (
+        ev_id INTEGER PRIMARY KEY, case_id INTEGER NOT NULL, added_at TIMESTAMP NOT NULL, kind VARCHAR NOT NULL, stance VARCHAR NOT NULL,
+        text VARCHAR NOT NULL, source_id VARCHAR, source_kind VARCHAR, published_at TIMESTAMP, event_at TIMESTAMP,
+        retrieved_at TIMESTAMP, calc_id INTEGER, data_json VARCHAR
+    );
+    CREATE TABLE hq_case_log (
+        log_id INTEGER PRIMARY KEY, case_id INTEGER NOT NULL, logged_at TIMESTAMP NOT NULL, event VARCHAR NOT NULL, detail VARCHAR
+    );
+    CREATE TABLE hq_calcs (
+        calc_id INTEGER PRIMARY KEY, case_id INTEGER, created_at TIMESTAMP NOT NULL, question VARCHAR NOT NULL, code VARCHAR NOT NULL,
+        code_sha VARCHAR NOT NULL, alt_code VARCHAR, datasets_json VARCHAR, params_json VARCHAR, result_json VARCHAR, status VARCHAR NOT NULL,
+        contained BOOLEAN, attempts INTEGER, check_json VARCHAR, workshop_id VARCHAR
+    );
+    CREATE TABLE hq_effects (
+        effect_key VARCHAR PRIMARY KEY, task_id INTEGER, kind VARCHAR NOT NULL, done_at TIMESTAMP NOT NULL, detail VARCHAR
+    );
+    CREATE TABLE hq_case_reviews (
+        review_id INTEGER PRIMARY KEY, case_id INTEGER NOT NULL, reviewed_at TIMESTAMP NOT NULL, process_json VARCHAR NOT NULL,
+        outcome VARCHAR, note VARCHAR
+    );
+    CREATE TABLE health_checks (
+        check_id INTEGER PRIMARY KEY, connector VARCHAR NOT NULL, checked_at TIMESTAMP NOT NULL, ok BOOLEAN NOT NULL,
+        usable BOOLEAN, detail VARCHAR
+    );
+    CREATE TABLE known_gaps (
+        gap_id INTEGER PRIMARY KEY, gap_key VARCHAR UNIQUE, source VARCHAR NOT NULL, detail VARCHAR NOT NULL, opened_at TIMESTAMP NOT NULL,
+        closed_at TIMESTAMP, status VARCHAR NOT NULL, attempts INTEGER NOT NULL DEFAULT 0
+    );
+    """),
+    # 2026-10-29: S67 local. An effect is 'started' before it runs and 'done' after: a stop in between is an uncertain outcome the
+    # system reports, not an effect it believes happened (rows from before have no state and count as done).
+    (44, "effect_state_s67", """
+    ALTER TABLE hq_effects ADD COLUMN state VARCHAR;
+    """),
+    # 2026-10-29: S67 local. Where each mailbox's walk back through its history has reached (windows of weeks, newest first, resumed
+    # after any stop): the old single capped look (400 days / 1,500 messages) could never reach older evidence.
+    (45, "mail_scan_s67", """
+    CREATE TABLE mail_scan (
+        mailbox VARCHAR PRIMARY KEY, oldest DATE, complete BOOLEAN NOT NULL, scanned INTEGER NOT NULL, updated_at TIMESTAMP NOT NULL
+    );
+    """),
+    # 2026-10-29: S67 local. A kept calculation keeps the exact data it ran on (a parquet snapshot with a content hash, up to a size cap)
+    # and the library versions, so "reproduce" runs on the ORIGINAL inputs; a rerun on today's data is labelled as such.
+    (46, "calc_inputs_s67", """
+    CREATE TABLE hq_calc_inputs (
+        calc_id INTEGER NOT NULL, dataset VARCHAR NOT NULL, sha256 VARCHAR NOT NULL, n_rows INTEGER NOT NULL, n_bytes INTEGER NOT NULL,
+        kept BOOLEAN NOT NULL, data BLOB, PRIMARY KEY (calc_id, dataset)
+    );
+    ALTER TABLE hq_calcs ADD COLUMN versions_json VARCHAR;
+    """),
+    # 2026-10-29: S67 local. The bounded experiment loop (learner/experiments.py): the registered question and every attempt with its measured result.
+    (47, "experiments_s67", """
+    CREATE TABLE learn_experiments (
+        exp_id INTEGER PRIMARY KEY, key VARCHAR UNIQUE, registered_at TIMESTAMP NOT NULL, hypothesis VARCHAR NOT NULL, why_it_matters VARCHAR NOT NULL,
+        disproof VARCHAR NOT NULL, source_kind VARCHAR NOT NULL, source_ref VARCHAR, dataset VARCHAR NOT NULL, max_attempts INTEGER NOT NULL,
+        protocol_path VARCHAR NOT NULL, protocol_sha VARCHAR NOT NULL, evaluator_sha VARCHAR NOT NULL, status VARCHAR NOT NULL,
+        decision_why VARCHAR, decided_at TIMESTAMP, baseline_json VARCHAR
+    );
+    CREATE TABLE learn_attempts (
+        attempt_id INTEGER PRIMARY KEY, exp_id INTEGER NOT NULL, n INTEGER NOT NULL, made_at TIMESTAMP NOT NULL, kind VARCHAR NOT NULL,
+        status VARCHAR NOT NULL, code VARCHAR, code_sha VARCHAR, note VARCHAR, error VARCHAR, result_json VARCHAR, seconds DOUBLE,
+        contained BOOLEAN, cost_inr DOUBLE
+    );
+    """),
+    # 2026-10-29: S67 local. Objectives framed from a wish (hq/objectives.py) and software changes the system proposes (never applied by it).
+    (48, "objectives_issues_s67", """
+    CREATE TABLE hq_objectives (
+        obj_id INTEGER PRIMARY KEY, case_id INTEGER, made_at TIMESTAMP NOT NULL, wish VARCHAR NOT NULL, status VARCHAR NOT NULL,
+        frame_json VARCHAR NOT NULL, problems_json VARCHAR
+    );
+    CREATE TABLE hq_issues (
+        issue_id INTEGER PRIMARY KEY, made_at TIMESTAMP NOT NULL, kind VARCHAR NOT NULL, title VARCHAR NOT NULL, evidence VARCHAR NOT NULL,
+        repro VARCHAR, proposed_patch VARCHAR, status VARCHAR NOT NULL, origin VARCHAR
+    );
+    """),
+    # 2026-10-29: S67 local. Accounts found from the statements themselves (not from a typed list), masked, with how they were found.
+    (49, "account_candidates_s67", """
+    CREATE TABLE account_candidates (
+        cand_key VARCHAR PRIMARY KEY, first_seen TIMESTAMP NOT NULL, last_seen TIMESTAMP NOT NULL, kind VARCHAR NOT NULL, bank VARCHAR, last4 VARCHAR,
+        dp_ids VARCHAR, label VARCHAR NOT NULL, n_files INTEGER NOT NULL, sources VARCHAR, state VARCHAR NOT NULL
+    );
+    """),
 ]
 
 

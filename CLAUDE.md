@@ -71,6 +71,6 @@ no copy of his store): it runs the beta on what the collectors bring; his record
 ## Daily commands
 `pflab pm init|networth|guards|alerts|propose|advise|deploy|simulate|fd show|tax --fy N|quicko --fy N|reset`, `pflab ask`, `pflab list`,
 `pflab kg`, `pflab research`, `pflab analyst`, `pflab learner status|test --claim N`, `pflab service run|tick|status`, `pflab conductor`,
-`pflab hq`, `pflab us`, `pflab setup secrets|status`, `pflab update [--check|--rollback]`, `pflab --paid|--live ...` (workshop only).
+`pflab hq`, `pflab us`, `pflab setup secrets|status`, `pflab update [--check|--rollback]`, `pflab verify [--app F] [--report F] [--wake-check] [--live-model] [--offline]` (local acceptance of a candidate on a copy of the record; `tools\verify_candidate.ps1` runs it from an isolated checkout), `pflab --paid|--live ...` (workshop only).
 Installing the app: `tools\install_app.ps1`, then `tools\seed_app.ps1` once. The desktop shortcut "Portfolio Lab" starts the dashboard
 and all jobs in one process (it holds the store); `tools\register_tasks.ps1` registers the tick (the app only).

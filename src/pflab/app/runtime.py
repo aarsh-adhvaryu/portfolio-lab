@@ -31,6 +31,7 @@ INDICES = {"NIFTY 50": "NSE:NIFTY 50", "BANK NIFTY": "NSE:NIFTY BANK", "NIFTY 50
 SCHEDULER_EVERY_S = 60
 LIVE_EVERY_S = 60
 MC_PATHS, MC_MAX_AGE_H = 10_000, 20
+WAKE_GAP = timedelta(minutes=5)     # the scheduler loop turns every minute: a longer silence is a sleep
 BATCH_POLL_MIN = 30                 # a submitted Opus batch is collected this often while the window is open
 
 
@@ -61,6 +62,9 @@ class Runtime:
         self.sims_running = False
         self.sims_error: Optional[str] = None
         self._hq_wake = threading.Event()             # S59: an order on the board runs at once
+        self.catching_up: Optional[str] = None        # S67: set after a wake or a start after a long stop, until the data is current again
+        self._beat: Optional[datetime] = None
+        self._woke_at: Optional[datetime] = None
 
     # --- change signals ----------------------------------------------------------------------------------------------
     def bump(self, *topics: str) -> None:
@@ -84,6 +88,9 @@ class Runtime:
     def start(self) -> None:
         from pflab.service import jobs
         jobs.reap_at_start(self.cursor(), self.clock())     # S66: runs left "running" by a stopped process are due again
+        last_run = self.cursor().execute("SELECT max(started_at) FROM job_runs").fetchone()[0]
+        if last_run is not None and self.clock() - last_run > timedelta(hours=6):
+            self.catching_up, self._woke_at = f"started after {int((self.clock() - last_run).total_seconds() // 3600)} h off", self.clock()
         for name, fn in (("scheduler", self._scheduler_loop), ("live", self._live_loop), ("mc", self._mc_loop),
                          ("research", self._research_loop), ("hq", self._hq_loop), ("phone", self._phone_loop)):
             t = threading.Thread(target=self._guard(fn), name=name, daemon=True)
@@ -111,8 +118,52 @@ class Runtime:
                     self.stop.wait(60)
         return run
 
+    def beat(self) -> Optional[str]:
+        """Called once a loop. A gap far longer than the loop's own pause means the PC slept (or the process was frozen): recover what was
+        running, look for what arrived, and say so until the data is current again. Pure: the clock is the runtime's own, so tests move it."""
+        from pflab.app import system
+        from pflab.hq import service
+        now = self.clock()
+        last, self._beat = self._beat, now
+        wake = None
+        if last is not None and now - last > WAKE_GAP:
+            mins = int((now - last).total_seconds() // 60)
+            self.catching_up, self._woke_at = f"woke after {mins} min away", now
+            try:
+                wake = {"at": now.isoformat(timespec="seconds"), "away_min": mins, "recovered": service.start(self)}
+            except Exception:
+                log.exception("recovery after wake failed")
+                wake = {"at": now.isoformat(timespec="seconds"), "away_min": mins, "recovered": "failed"}
+            self.bump("health", "command")
+        elif self.catching_up and self._woke_at is not None:
+            ok, _why = system.critical_fresh(self.cursor(), now)
+            if ok or now - self._woke_at > timedelta(hours=2):
+                self.catching_up = None
+                self.bump("health", "command")
+        self._write_beat(now, wake)
+        return self.catching_up
+
+    def _write_beat(self, now: datetime, wake: Optional[dict]) -> None:
+        """`pm/app/heartbeat.json`: the last beat and the last wake with what was recovered, for `pflab verify --wake-check` (a sleep that
+        really happened on this PC is the one thing a cloud test cannot do). Best effort: a full disk never stops the loop."""
+        p = self.pm_dir / "app" / "heartbeat.json"
+        try:
+            old = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+        except (OSError, ValueError):
+            old = {}
+        doc = {"at": now.isoformat(timespec="seconds"), "pid": __import__("os").getpid(), "catching_up": self.catching_up,
+               "last_wake": wake or old.get("last_wake"), "wakes": int(old.get("wakes", 0)) + (1 if wake else 0)}
+        if wake is None and old.get("last_wake") and self.catching_up is None and "settled_at" not in old.get("last_wake", {}):
+            doc["last_wake"] = {**old["last_wake"], "settled_at": now.isoformat(timespec="seconds")}     # the data caught up after that wake
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps(doc), encoding="utf-8")
+        except OSError:
+            pass
+
     def _scheduler_loop(self) -> None:
         while not self.stop.is_set():
+            self.beat()
             self.run_wanted()
             if self.settings.get("scheduler", True):
                 self.scheduler_once()
@@ -213,6 +264,8 @@ class Runtime:
         con = self.cursor()
         if con.execute("SELECT 1 FROM hq_tasks WHERE status IN ('queued','running') LIMIT 1").fetchone():
             return False                              # S59: an agent at work (a paid call in flight) is not cut off
+        if con.execute("SELECT 1 FROM hq_cases WHERE status='running' LIMIT 1").fetchone():
+            return False                              # S67: neither is an investigation's pass
         return not con.execute("SELECT 1 FROM job_runs WHERE status='running' LIMIT 1").fetchone()
 
     def poll_batches(self) -> bool:

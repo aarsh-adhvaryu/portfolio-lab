@@ -134,13 +134,13 @@ def test_rollback_returns_to_the_previous_tag_and_keeps_what_was_written_since(w
     r = up.rollback(world.app, world.pm, install=ok_install, now=datetime(2026, 10, 29, 8, 0, 0))
     assert r["to"] == "v2026.10.01" and up.checked_out(world.app) == "v2026.10.01"
     assert (world.app / "version.txt").read_text(encoding="utf-8") == "one"
-    assert notes(world.pm) == ["before"]                                                       # the store before the update
+    assert notes(world.pm) == ["before", "after the update"]                                   # the store before the update, plus what was written since (S67)
     kept = Path(r["kept"])
     assert kept.exists() and "ledger_before_rollback_20261029_080000" in kept.name
     con = duckdb.connect(str(kept))
     assert [x[0] for x in con.execute("SELECT note FROM record ORDER BY rowid").fetchall()] == ["before", "after the update"]
     con.close()
-    assert "nothing was deleted" in r["note"]
+    assert "nothing was deleted" in r["note"] and r["merged"]["added"] == {"record": 1}
     rel = release.load(world.app)["app"]
     assert rel["tag"] == "v2026.10.01" and rel["previous_tag"] == ""
     with pytest.raises(up.UpdateError, match="no earlier release"):
