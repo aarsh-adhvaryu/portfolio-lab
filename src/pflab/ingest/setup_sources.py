@@ -137,13 +137,27 @@ def needed(src: dict, optional: bool = True) -> List[str]:
     return out
 
 
+def request_key(text: str) -> str:
+    return "setup:file:" + re.sub(r"[^a-z0-9]+", "-", text.lower())[:60]
+
+
 def ask_needed(con, src: dict, now: Optional[datetime] = None) -> int:
     """One Needs-from-you item per missing document, once. Returns how many were new."""
     n = 0
     for text in needed(src):
-        key = "setup:file:" + re.sub(r"[^a-z0-9]+", "-", text.lower())[:60]
-        if questions.ask(con, AGENT, key, f"Drop this in Inbox and files: {text}.", now or datetime.now()):
+        if questions.ask(con, AGENT, request_key(text), f"Drop this in Inbox and files: {text}.", now or datetime.now()):
             n += 1
+    return n
+
+
+def close_met(con, src: dict, now: Optional[datetime] = None) -> int:
+    """A request for a document closes itself once that document is in (found on the first real use: the asks stayed open after the files were dropped).
+    `src` is the sources with every dropped file counted. Returns how many were closed."""
+    still = {request_key(t) for t in needed(src)}
+    n = 0
+    for (k,) in con.execute("SELECT subject_key FROM questions WHERE status='open' AND subject_key LIKE 'setup:file:%'").fetchall():
+        if k not in still:
+            n += int(questions.drop(con, k, now or datetime.now()))
     return n
 
 

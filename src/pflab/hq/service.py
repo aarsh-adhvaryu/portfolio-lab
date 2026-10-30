@@ -155,6 +155,11 @@ def start(rt) -> dict:
         out["welcome"] = onboarding.welcome(con, now)
     except Exception:
         out["welcome"] = None
+    try:                                                   # requests for files he has already dropped close at start too
+        from pflab.app import inbox
+        out["requests_closed"] = inbox.close_met_requests(rt)
+    except Exception:
+        out["requests_closed"] = 0
     rt.bump("hq")
     return out
 

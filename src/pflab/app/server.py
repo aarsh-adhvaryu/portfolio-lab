@@ -436,7 +436,9 @@ def create_app(rt) -> FastAPI:
         merged = srcs.load(p)
         from pflab.app import inbox as ib
         waiting = ib.attach_waiting(rt)                      # S65: the files kept before Setup start their checks now
-        return {"needed": su.needed(merged), "asked": su.ask_needed(rt.cursor(), merged, rt.clock()), "files": waiting}
+        asked = su.ask_needed(rt.cursor(), merged, rt.clock())
+        ib.close_met_requests(rt)                            # what he dropped before Setup already answers its requests
+        return {"needed": su.needed(merged), "asked": asked, "files": waiting}
 
     @app.get("/api/fd")
     def fd_list():

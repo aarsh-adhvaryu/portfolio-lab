@@ -131,6 +131,10 @@ def receive(rt, name: str, data: bytes, hint: str = "", account: Optional[str] =
         from pflab.app import chat
         chat._add(con, chat_id, "me", "ask", f"Attached {safe} ({KIND_LABEL[kind]})", "done", now)
         rt.bump("chat")
+    try:
+        close_met_requests(rt)                              # the file just dropped answers its request now, not at the next rebuild
+    except Exception:
+        pass
     rt.bump("inbox")
     if waiting:
         return {"id": iid, "kind": kind, "duplicate": False, "awaiting_setup": True}
@@ -498,6 +502,24 @@ def listing(rt, limit: int = 40) -> List[dict]:
         d["label"] = KIND_LABEL.get(d["kind"], d["kind"])
         out.append(d)
     return out
+
+
+def close_met_requests(rt) -> int:
+    """Count every dropped ledger document (whatever stage it has reached) as present and close the Needs-from-you requests it answers."""
+    from pflab.ingest import setup_sources as su, sources as srcs
+    sources = rt.pm_dir / "sources.toml"
+    if not sources.exists():
+        return 0
+    con = rt.cursor()
+    over = srcs.load_overlay(sources)
+    for (iid,) in con.execute("SELECT item_id FROM inbox_items WHERE status <> 'removed' ORDER BY item_id").fetchall():
+        it = _item(rt, iid)
+        if it["kind"] in LEDGER_KINDS and it["path"]:
+            try:
+                over = srcs.with_document(over, it["kind"], _rel(rt, it["path"]), it["account"])
+            except ValueError:
+                continue                                    # a bank statement with no account yet cannot answer a request
+    return su.close_met(con, srcs.merge(srcs.base(sources), over), rt.clock())
 
 
 def remove(rt, iid: int) -> None:

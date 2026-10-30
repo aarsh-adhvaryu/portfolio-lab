@@ -196,3 +196,26 @@ def test_endpoints(rt, monkeypatch):
     assert c.post(f"/api/inbox/{iid}/nonsense").status_code == 404
     assert c.delete(f"/api/inbox/{iid}").json() == {"ok": True}
     assert c.get("/api/inbox").json()["items"] == []
+
+
+def test_a_request_for_a_document_closes_itself_when_the_document_is_dropped(tmp_path, monkeypatch):
+    """Found on the first real use: 'Drop this in Inbox and files: Console tradebook(s)...' stayed open after he had dropped the files."""
+    from pflab.agents import questions
+    from pflab.ingest import setup_sources as su
+    (tmp_path / "pm").mkdir()
+    (tmp_path / "pm" / "sources.toml").write_text('start = "2026-04-01"\n\n[zerodha]\naccount = "zer"\ntradebooks = []\n\n[cas]\nfiles = []\n\n'
+                                                  '[[bank]]\naccount = "sbi"\n\n[accounts.zer]\nkind = "broker"\n\n[accounts.sbi]\nkind = "bank"\nbank = "SBI"\nlast4 = "9001"\n', encoding="utf-8")
+    con = store.connect(tmp_path / "l.duckdb")
+    monkeypatch.setattr(ib, "_start", lambda rt, iid: None)
+    rt = runtime.Runtime(tmp_path / "pm", tmp_path / "data", tmp_path, con=con, clock=lambda: NOW)
+    merged = srcs.load(rt.pm_dir / "sources.toml")
+    assert su.ask_needed(con, merged, NOW) >= 3
+    open_before = {t for _, _, t in questions.open_questions(con)}
+    assert any("tradebook" in t for t in open_before) and any("funds ledger" in t for t in open_before) and any("SBI account ending 9001" in t for t in open_before)
+    questions.ask(con, "planner", "planner:monthly", "How much will you add each month?", NOW)
+    ib.receive(rt, "tradebook-FY26.csv", b"trade_id,x\n1,2\n", hint="tradebook")                  # the files he dropped
+    ib.receive(rt, "ledger.xlsx", b"zz", hint="funds_ledger")
+    ib.receive(rt, "sbi.xls", b"yy", hint="bank", account="sbi")
+    after = {t for _, _, t in questions.open_questions(con)}
+    assert not any("tradebook" in t or "funds ledger" in t or "SBI account ending 9001" in t for t in after)        # answered by the files
+    assert any("CAS" in t for t in after) and any("each month" in t for t in after)                                   # a different file and a real question stay
