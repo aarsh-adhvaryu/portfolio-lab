@@ -50,12 +50,13 @@ def test_a_timeout_kills_the_container():
     assert run_cmd[run_cmd.index("--name") + 1] == kill[0][2]             # the same container is the one killed
 
 
-def test_available_needs_docker_and_the_image_and_is_remembered():
+def test_available_needs_docker_and_the_image_and_is_remembered(monkeypatch):
+    monkeypatch.setattr(sb, "RETRY_S", 0.01)
     ok = FakeRun([0, 0])
     assert sb.available(ok, now=1000.0, force=True) is True and len(ok.calls) == 2
     assert sb.available(FakeRun([1]), now=1100.0) is True                   # inside the 10 minutes: not asked again
     assert sb.available(FakeRun([1]), now=1000.0 + sb.CACHE_S + 1) is False  # docker info fails
-    assert sb.available(FakeRun([0, 1]), now=3000.0, force=True) is False  # docker works, the image is missing
+    assert sb.available(FakeRun([0, 1, 1]), now=3000.0, force=True) is False  # docker works, the image is missing (looked at twice)
 
     def boom(*a, **k):
         raise FileNotFoundError("docker")
