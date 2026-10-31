@@ -20,7 +20,7 @@ import os
 import re
 import sys
 import warnings
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -34,6 +34,7 @@ from pflab.pm import store
 
 ROOT = Path(__file__).resolve().parents[1]
 TOL = 0.05
+OVERDRAFT_MAX, OVERDRAFT_DAYS = 100.0, 5      # a broker's short debit balance repaid by a pay-in within days (2026-10-31)
 
 
 def _sha(p: Path) -> str:
@@ -111,11 +112,19 @@ def build(src: dict, root: Path) -> tuple:
         check("a Console tradebook is given", False, "no tradebook yet: trades are not in the ledger")
     cnotes = list({n.number: n for p in z.get("contract_notes_xlsx", []) for n in _contract_notes(root / p)}.values())
     tev, rep = cn.apply_fees(tev, cnotes)
-    check("every trade has a contract note", not rep["without_note"] and not rep["note_trades_not_in_tradebook"],
-          f"{rep['with_fees']} trades with levies; missing {rep['without_note']}")
-    events += tev
     zfiles = ([z["funds_ledger"]] if z.get("funds_ledger") else []) + [p for p in z.get("funds_ledgers") or [] if p != z.get("funds_ledger")]
     zdf = zl.parse_many([root / p for p in zfiles]) if zfiles else None   # several Console ledgers (other years) are one ledger
+    # (2026-10-31) a day with no contract note takes its charges from Console's own settlement of that day (the total; STT set apart)
+    srep = {"days": {}, "trades": 0, "skipped": []}
+    if zdf is not None and rep["without_note"]:
+        tev, srep = cn.fees_from_settlements(tev, dict(zip(zl.settlements(zdf)["date"], zl.settlements(zdf)["net"])))
+        if srep["days"]:
+            notes.append(f"charges of {srep['trades']} trade(s) on {len(srep['days'])} day(s) with no contract note taken from Console's settlement "
+                         f"(the day's total; STT estimated at 0.1% of value, the rest as charges): " + ", ".join(f"{d} {t:,.2f}" for d, t in srep["days"].items()))
+    still = [(d, r) for d, r in rep["without_note"] if str(d) not in srep["days"]]
+    check("every trade's charges are known (contract note or Console settlement)", not still and not rep["note_trades_not_in_tradebook"],
+          f"{rep['with_fees']} trades from contract notes, {srep['trades']} from Console's settlement; unknown: {still}; {srep['skipped']}")
+    events += tev
     for p in zfiles:
         period(zer, "funds_ledger", p, zl.parse(root / p))
     if zdf is not None:
@@ -310,7 +319,9 @@ def build(src: dict, root: Path) -> tuple:
     # (2026-10-30) money the broker spent that no file of his explains (an older tradebook with no funds ledger for that time, say) is funded
     # by a named deposit on the day it was short, so the rest of the record is still built; the difference says how much and when.
     from pflab.ledger.cash import CashError
-    unexplained = []
+    unexplained, overdrafts = [], []
+    credits_in = lambda d: sorted(e.date for e in events if e.date > d and e.date <= d + timedelta(days=OVERDRAFT_DAYS) and (
+        (e.kind == "deposit" and e.account_id == zer) or (e.kind == "cash_transfer" and e.counter_account == zer)))
     for _ in range(400):
         try:
             led = Ledger.replay(log)
@@ -320,8 +331,16 @@ def build(src: dict, root: Path) -> tuple:
             if not m or m.group(1) != zer:
                 raise
             d, short = date.fromisoformat(m.group(3)), round(-float(m.group(2)) + 0.005, 2)
-            unexplained.append((d, short))
-            events.append(Event("deposit", zer, d, amount=short, ref=f"unexplained_funding:{d}:{len(unexplained)}"))
+            later = credits_in(d)
+            if short <= OVERDRAFT_MAX and later:
+                # (2026-10-31) Zerodha lets the balance dip below zero until the next pay-in (47 paise on one day of his): the dip is
+                # carried as the broker's short credit and repaid from that pay-in, so no money is invented and the closing still agrees
+                overdrafts.append((d, short))
+                events.append(Event("deposit", zer, d, amount=short, ref=f"broker_overdraft:{d}:{len(overdrafts)}"))
+                events.append(Event("withdrawal", zer, later[0], amount=short, ref=f"broker_overdraft_repaid:{d}:{len(overdrafts)}"))
+            else:
+                unexplained.append((d, short))
+                events.append(Event("deposit", zer, d, amount=short, ref=f"unexplained_funding:{d}:{len(unexplained)}"))
             log = EventLog()
             for ev_ in sorted(events, key=lambda e: (e.date, inflow(e))):
                 log.append(ev_)
@@ -329,6 +348,8 @@ def build(src: dict, root: Path) -> tuple:
         raise RuntimeError("the record could not be balanced: too many unexplained fundings")
     check("every rupee Zerodha spent has a source in your files", not unexplained,
           "funded with no file showing where from: " + ", ".join(f"{d} {a:,.2f}" for d, a in unexplained[:8]))
+    if overdrafts:
+        notes.append("Zerodha's balance dipped below zero until the next pay-in (it allows that): " + ", ".join(f"{d} {a:,.2f}" for d, a in overdrafts))
 
     # --- checks against every source --------------------------------------------------------------------------
     zc = led.cash_balance(zer)
@@ -340,8 +361,11 @@ def build(src: dict, root: Path) -> tuple:
         check(f"{acc} cash = statement closing", abs(r["ledger_cash"] - r["statement_closing"]) <= TOL,
               f"ledger {r['ledger_cash']:,.2f} vs statement {r['statement_closing']:,.2f}")
     if zdf is not None:                                                  # the ones no bank statement shows were booked above: named here
+        ends = {acc: max(df["date"]) for acc, df in stm.items() if len(df)}
+        short = sorted({acc for d, _ in unmatched for acc, e in ends.items() if e < d})
         check("every Zerodha pay-in and payout is in a bank statement", not unmatched,
-              "not in any bank statement given: " + ", ".join(f"{d} {a:+,.2f}" for d, a in unmatched))
+              "not in any bank statement given: " + ", ".join(f"{d} {a:+,.2f}" for d, a in unmatched)
+              + ("; statements that end before these dates: " + ", ".join(f"{a} (ends {ends[a]})" for a in short) if short else ""))
     for end, snap in snaps:
         pos = Ledger.replay(log, upto=end).positions()
         for acc in sorted(set(snap["account"].dropna())):

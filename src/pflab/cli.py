@@ -104,6 +104,8 @@ def main(argv=None):
 
     nwp = pmsub.add_parser("networth", help="net worth by bucket: holdings, cash, FDs (reserve shown apart)")
     nwp.add_argument("--asof", type=_d, default=date.today())
+    trp = pmsub.add_parser("trace", help="every balance with the file and date it comes from, fact or estimate, and the open differences")
+    trp.add_argument("--asof", type=_d, default=date.today())
 
     fdp = pmsub.add_parser("fd", help="fixed deposits: load the deposit file or a certificate, show the ladder")
     fdp.add_argument("action", choices=["load", "cert", "show"])
@@ -1264,6 +1266,10 @@ def _pm(a) -> int:
     if a.pm_cmd == "networth":
         from pflab.calc import networth
         print(networth.render(networth.build(store.connect(read_only=True), a.asof)))
+        return 0
+    if a.pm_cmd == "trace":
+        from pflab.pm import trace
+        print(trace.render(trace.build(store.connect(read_only=True), a.asof)))
         return 0
     if a.pm_cmd == "fd":
         import os

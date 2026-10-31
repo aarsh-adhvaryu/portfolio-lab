@@ -6,10 +6,12 @@ from __future__ import annotations
 import io
 from datetime import date, datetime
 
+import pandas as pd
 import pytest
 
 from pflab.app import inbox as ib
 from pflab.app import runtime
+from pflab.ingest import bank
 from pflab.ingest import fd_summary as fs
 from pflab.ingest import sniff
 from pflab.pm import fd as fdm
@@ -126,15 +128,18 @@ def _his_file(rt, *fds):
 def test_dropping_a_summary_counts_its_deposits_and_a_redrop_restart_or_rerun_changes_nothing(rt):
     from pflab.calc import networth
     _his_file(rt, _sbi("4444"))
-    r = ib.receive(rt, "FDSummary_Oct.xlsx", xlsx(summary_rows()))
+    raw = xlsx(summary_rows())
+    r = ib.receive(rt, "FDSummary_Oct.xlsx", raw)
     assert r["kind"] == "fd_summary"
     assert ib._item(rt, r["id"])["status"] == "in the store"
     nw = networth.build(rt.cursor(), date(2026, 10, 31))
     assert sorted(nw["fds"]["fd_id"]) == ["1111", "2222", "3333", "4444"] and nw["fds"]["estimate"].all()
     assert set(nw["fds"]["bank"]) == {"HDFC", "SBI"} and nw["fd_excluded"] == []
     total = float(nw["fds"]["value"].sum())
-    assert ib.receive(rt, "FDSummary_Oct.xlsx", xlsx(summary_rows()))["duplicate"]                # the same file again
+    assert ib.receive(rt, "FDSummary_Oct.xlsx", raw)["duplicate"]                                  # the same file again
+    ib.receive(rt, "FDSummary_Oct (1).xlsx", xlsx(summary_rows()) + b"")                           # a fresh export of the same summary
     ib.deposits_now(rt)                                                                           # a rerun (a restart, the job)
+    assert len(fdm.load(rt.cursor())) == 4
     assert float(networth.build(rt.cursor(), date(2026, 10, 31))["fds"]["value"].sum()) == pytest.approx(total)
 
 
@@ -184,3 +189,45 @@ def test_a_zerodha_contract_note_pdf_is_recognised_as_a_ledger_document():
     text = "Zerodha Broking Ltd. CONTRACT NOTE CUM TAX INVOICE Contract Note No: CNT-26/27-0000001 Trade Date: 16/10/2026"
     assert sniff.from_text(text)["kind"] == "contract_note"
     assert sniff.from_text("Zerodha transaction with holding statement")["kind"] == "other"
+
+
+# --- the ledger's last differences (2026-10-31) --------------------------------------------------------------------------------------------
+
+def test_a_day_with_no_contract_note_takes_its_charges_from_the_brokers_settlement():
+    from pflab.ingest import contract_note as cn
+    from pflab.ledger.events import Event
+    ev = [Event("buy", "ZER", date(2026, 10, 16), isin="INE000A01011", qty=10, price=1000.0, ref="t1"),
+          Event("buy", "ZER", date(2026, 10, 16), isin="INE000A01029", qty=5, price=400.0, ref="t2"),
+          Event("sell", "ZER", date(2026, 10, 20), isin="INE000A01011", qty=10, price=1100.0, ref="t3", fees={"brokerage": 1.0}),
+          Event("buy", "ZER", date(2026, 10, 22), isin="INE000A01029", qty=1, price=400.0, ref="t4")]
+    settle = {date(2026, 10, 16): -12000.0 - 15.40, date(2026, 10, 22): -400.0 + 50.0}           # the 22nd: a credit, not charges
+    out, rep = cn.fees_from_settlements(ev, settle)
+    f1, f2 = out[0].fees, out[1].fees
+    assert rep["days"] == {"2026-10-16": 15.4} and rep["trades"] == 2
+    assert f1["stt"] == 10.0 and f2["stt"] == 2.0 and sum(f1.values()) + sum(f2.values()) == pytest.approx(15.4)
+    assert out[2].fees == {"brokerage": 1.0} and out[3].fees == {}                                      # a note day untouched; a bad day refused
+    assert any("not charges" in why for _, why in rep["skipped"])
+    assert out[0].cost_fee_total == pytest.approx(f1["charges_console"])                               # STT is no cost for capital gains
+
+
+def test_a_line_he_called_his_own_transfer_that_is_a_zerodha_payout_is_matched_as_one():
+    from pflab.ingest import bank_labels as bl
+    df = pd.DataFrame([dict(date=date(2026, 8, 8), description="NEFT CR ZERODHA", debit=0.0, credit=4000.5, balance=0.0, ref="", value_date=date(2026, 8, 8))])
+    df = bank.classify(df, rules=[])
+    df["category"], df["rule_id"] = "own_transfer", "label_x"                                          # his label
+    flows = pd.DataFrame({"date": [date(2026, 8, 7)], "amount": [-4000.5]})
+    out, rep = bl.auto_label({"HDFC_0001": df}, flows)
+    assert rep["broker"] == 1 and out["HDFC_0001"]["category"].iloc[0] == "broker_transfer"
+
+
+def test_every_balance_is_traced_to_its_source_with_its_basis(rt):
+    from pflab.app import readiness
+    from pflab.pm import trace
+    _his_file(rt, _sbi("4444"))
+    ib.receive(rt, "FDSummary_Oct.xlsx", xlsx(summary_rows()))
+    readiness.open_gap(rt.cursor(), "ledger:diff:pay-in", "ledger", "not in any bank statement given: 2026-10-26 +5,000.00", NOW)
+    rows = {(r["what"], r["account"]): r for r in trace.build(rt.cursor(), date(2026, 10, 31))}
+    hd = rows[("deposits", "HDFC")]
+    assert hd["n"] == 3 and hd["basis"] == "estimate" and "bank summary" in hd["sources"][0] and hd["method"]
+    assert rows[("deposits", "SBI")]["n"] == 1 and ("difference", "pay-in") in rows and rows[("net worth", "all")]["value"] > 0
+    assert "from:" in trace.render(list(rows.values()))

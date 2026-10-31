@@ -71,7 +71,9 @@ def auto_label(statements: Dict[str, pd.DataFrame], broker_flows: Optional[pd.Da
         flows = [(f.date, float(f.amount)) for f in broker_flows.itertuples()]
         taken = set()
         for acc, df in out.items():
-            for r in df[df["category"] == "unclassified"].itertuples():
+            # (2026-10-31) a line he labelled 'my own transfer' that is a Console pay-in or payout is one: Zerodha is his own account too
+            open_ = (df["category"] == "unclassified") | ((df["category"] == "own_transfer") & (df["rule_id"] != "auto_own"))
+            for r in df[open_].itertuples():
                 side, amt = ("debit", r.debit) if r.debit > 0 else ("credit", r.credit)
                 for i, (fd, fa) in enumerate(flows):
                     if i in taken or abs(abs(fa) - amt) >= TOL or abs((fd - r.date).days) > days or (fa > 0) != (side == "debit"):

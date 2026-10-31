@@ -417,6 +417,12 @@ def create_app(rt) -> FastAPI:
         ib.close_met_requests(rt)                            # what he dropped before Setup already answers its requests
         return {"needed": su.needed(merged), "asked": asked, "files": waiting}
 
+    @app.get("/api/trace")
+    def trace_view():
+        """(2026-10-31) Every balance with the file and date it comes from, fact or estimate, and the open differences."""
+        from pflab.pm import trace
+        return json.loads(json.dumps({"rows": trace.build(rt.cursor(), rt.clock().date())}, default=str))
+
     @app.get("/api/fd")
     def fd_list():
         """S65: the deposits on file (last four digits, bank, amount, rate, maturity)."""
