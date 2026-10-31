@@ -240,9 +240,24 @@ def comovement(ctx: Ctx, a: dict) -> dict:
 
 
 def tax_plan(ctx: Ctx, a: dict) -> dict:
-    from pflab.tax import plan as tp
-    return {"lines": tp.render(tp.overview(ctx.con, ctx.asof))[:60],
-            "source": "tax/plan.py: the tax engine replays each sale (both regimes), FIFO lots, 112A exemption"}
+    from pflab.tax import kite_estimate as ke, plan as tp
+    out = {"source": "tax/plan.py: the tax engine replays each sale (both regimes), FIFO lots, 112A exemption"}
+    try:
+        out["lines"] = tp.render(tp.overview(ctx.con, ctx.asof))[:60]
+    except Exception as e:                                 # a gap in the rules or the record must not hide the Kite estimate: it is said, not raised
+        out["lines"] = []
+        out["engine_error"] = f"the tax engine could not run on the record: {type(e).__name__}: {str(e)[:160]}"
+    try:                                                   # shares Kite shows and the statements do not yet: a labelled provisional figure, never a lot
+        est = ke.estimates(ctx.con, ctx.asof)
+    except Exception as e:
+        est = []
+        out["kite_estimate_error"] = f"{type(e).__name__}: {str(e)[:120]}"
+    if est:
+        out["kite_estimates"] = est
+        out["kite_estimate_lines"] = ke.lines(est)
+        out["kite_estimate_note"] = ("ESTIMATE, from Kite: these shares are in Kite but not yet in the statements, so the tax engine cannot work on them. Kite's quantity and "
+                                     "average price are used, short-term rate assumed; the engine's own figure replaces this when the statements arrive")
+    return out
 
 
 INDEX_KEYS = {"NIFTY 50": "NIFTY50_PRICE", "NIFTY50": "NIFTY50_PRICE", "NIFTY 500": "NIFTY500_TRI",
