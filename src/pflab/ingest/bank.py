@@ -97,11 +97,94 @@ def _sheet_rows(raw: bytes, password: Optional[str]) -> List[list]:
     raise StatementError("not an Excel workbook")
 
 
+PDF_HEAD = ["Date", "Narration", "Chq./Ref.No.", "Value Dt", "Withdrawal Amt.", "Deposit Amt.", "Closing Balance"]
+_P_START = re.compile(r"^(\d\d/\d\d/\d\d)\s+(.*)$")
+_P_TAIL = re.compile(r"^(.*?)\s*(\S+)\s+(\d\d/\d\d/\d\d)\s+([\d,]+\.\d\d)\s+([\d,]+\.\d\d)\s*$")
+_P_SUMMARY = re.compile(r"^\s*(-?[\d,]+\.\d\d)\s+(\d+)\s+(\d+)\s+([\d,]+\.\d\d)\s+([\d,]+\.\d\d)\s+(-?[\d,]+\.\d\d)\s*$")
+
+
+def _pdf_text(raw: bytes, password: Optional[str]) -> str:
+    from pypdf import PdfReader
+    r = PdfReader(io.BytesIO(raw))
+    if r.is_encrypted:
+        tries = [password] if password else []
+        try:                                                # the saved passwords too, in memory (the file was opened the same way at the drop)
+            from pflab.ingest import sniff
+            tries += [pw for _, pw in sniff.passwords_from_secrets()]
+        except Exception:
+            pass
+        if not any(pw and r.decrypt(pw) for pw in tries):
+            raise StatementError("the statement is password-protected: none of the saved passwords opens it")
+    return "\n".join(p.extract_text() or "" for p in r.pages)
+
+
+def _pdf_rows(raw: bytes, password: Optional[str] = None) -> List[list]:
+    """(2026-10-31) A bank's PDF statement in HDFC's layout -> the same rows a spreadsheet gives (PDF_HEAD). Each line starts with its date; its
+    narration may wrap over lines; it ends with the reference, value date, amount and closing balance. Withdrawal or deposit is read from how the
+    balance moves, starting from the statement summary's opening balance; the counts and totals of the summary must then agree, or the file
+    is refused. Page headers and footers between the lines are skipped."""
+    lines = _pdf_text(raw, password).splitlines()
+    summary = None
+    for i, l in enumerate(lines):
+        if re.match(r"^\s*Opening Balance\s+Dr Count", l, re.I) and i + 1 < len(lines):
+            m = _P_SUMMARY.match(lines[i + 1])
+            if m:
+                summary = [_num(m[1]), int(m[2]), int(m[3]), _num(m[4]), _num(m[5]), _num(m[6])]
+            break
+    if summary is None:
+        raise StatementError("a PDF statement without its summary (opening balance, counts, totals): its lines cannot be checked")
+    txns, cur, table = [], None, False
+    for l in lines:
+        s = l.strip()
+        if re.match(r"^STATEMENT SUMMARY", s, re.I):
+            break                                       # the lines end here; the summary and the bank's notes follow
+        if re.match(r"^Date\s+Narration", s) or re.match(r"^Registered Office Address", s, re.I):
+            table = True                                # page 1 opens with the column names; later pages after the bank's footer
+            continue
+        if re.match(r"^Page No", s, re.I):
+            table = False                               # the page's header block (his name and address) until the footer
+            continue
+        if not table or not s:
+            continue
+        m = _P_START.match(s)
+        if m and (cur is None or cur.get("bal") is not None):
+            cur = {"date": m[1], "narr": [], "bal": None}
+            txns.append(cur)
+            s = m[2]
+        elif cur is None:
+            continue
+        if cur["bal"] is None:
+            t = _P_TAIL.match(s)
+            if t:
+                cur["narr"].append(t[1])
+                cur.update(ref=t[2], vdate=t[3], amt=_num(t[4]), bal=_num(t[5]))
+                continue
+        cur["narr"].append(s)
+    if not txns or any(t["bal"] is None for t in txns):
+        raise StatementError("a line of the PDF statement has no amount and balance: the layout is not one this reader knows")
+    prev, rows, nd, nc, sd, sc = summary[0], [list(PDF_HEAD)], 0, 0, 0.0, 0.0
+    for t in txns:
+        move = round(t["bal"] - prev, 2)
+        if abs(abs(move) - t["amt"]) > TOL:
+            raise StatementError(f"PDF line of {t['date']}: the balance moves by {move:,.2f} but the amount is {t['amt']:,.2f}")
+        deb, cre = (t["amt"], 0.0) if move < 0 else (0.0, t["amt"])
+        nd, nc, sd, sc = nd + (deb > 0), nc + (cre > 0), sd + deb, sc + cre
+        rows.append([t["date"], "".join(t["narr"]).strip(), t["ref"], t["vdate"], f"{deb:.2f}" if deb else "", f"{cre:.2f}" if cre else "", f"{t['bal']:.2f}"])
+        prev = t["bal"]
+    got = [summary[0], nd, nc, round(sd, 2), round(sc, 2), round(prev, 2)]
+    if got[1:3] != summary[1:3] or any(abs(a - b) > 0.01 for a, b in zip(got[3:], summary[3:])):
+        raise StatementError(f"the PDF's lines give {nd} debits {sd:,.2f}, {nc} credits {sc:,.2f}, closing {prev:,.2f}; its summary says "
+                             f"{summary[1]} debits {summary[3]:,.2f}, {summary[2]} credits {summary[4]:,.2f}, closing {summary[5]:,.2f}")
+    return rows
+
+
 def _rows_from(source: Union[str, Path, bytes], password: Optional[str] = None) -> List[list]:
     import csv
     if isinstance(source, bytes):
-        return _sheet_rows(source, password)
+        return _pdf_rows(source, password) if source[:5] == b"%PDF-" else _sheet_rows(source, password)
     s = str(source)
+    if chr(10) not in s and Path(s).suffix.lower() == ".pdf":
+        return _pdf_rows(Path(s).read_bytes(), password)
     if chr(10) not in s and Path(s).suffix.lower() in (".xlsx", ".xls", ".csv"):
         p = Path(s)
         if p.suffix.lower() in (".xlsx", ".xls"):
@@ -184,11 +267,12 @@ def load_rules(path: Path = RULES_PATH, local: Optional[Path] = None) -> List[di
 
 def merge_parsed(frames: List[pd.DataFrame]) -> pd.DataFrame:
     """Several statements of ONE account (different periods, possibly overlapping) as one chronological statement. A line that appears in two files
-    (same date, description, amount and running balance, counted per occurrence so a real repeat is kept) is kept once. The opening balance is the
-    earliest file's. A gap between files is not hidden: the closing-balance check at the build fails and names it."""
+    (same date, amount and running balance, counted per occurrence so a real repeat is kept) is kept once; the description is not compared
+    (2026-10-31: a PDF wraps it differently from the spreadsheet of the same account; the running balance already makes the line unique). The
+    opening balance is the earliest file's. A gap between files is not hidden: the closing-balance check at the build fails and names it."""
     if len(frames) == 1:
         return frames[0]
-    key = ["date", "description", "debit", "credit", "balance"]
+    key = ["date", "debit", "credit", "balance"]
     tagged = []
     for f in frames:
         t = f.copy()

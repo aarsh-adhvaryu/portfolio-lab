@@ -37,3 +37,11 @@ logs/
 
 # his own files, never in git
 /all data/
+
+# (2026-10-31) a statement dropped into the workshop by mistake never reaches git
+/*.pdf
+/*.xls
+/*.xlsx
+/*.csv
+/*.png
+/*.jpg
