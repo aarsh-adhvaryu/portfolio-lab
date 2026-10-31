@@ -40,7 +40,7 @@ no copy of his store): it runs the beta on what the collectors bring; his record
 ## Working rules (his standing preferences)
 - **Reports to him: 15 lines or fewer, plain words** (he is not a trader: say what a number means for him). Commit messages: 10 lines
   or fewer. Notes are findings plus decisions needed.
-- **Long runs are his** (anything over ~5 minutes: backfills, rebuilds, evaluations): give the exact PowerShell command from the repo
+- **Long runs** (2026-10-31: bounded acceptance runs are the development session's to run and observe; during the acceptance window until 2026-11-07 the Rs 1,500 window cap replaces the day limits, see PLAN.md S68). For anything over ~5 minutes that is genuinely long (backfills, rebuilds), a sample first, then: give the exact PowerShell command from the repo
   folder, what it produces, how long, how to tell it finished; never trust a completion notice over the process table and the files.
   **Run the real path yourself on a short sample first**; he wants no reruns from untested fixes.
 - **Technical choices are yours** (models, methods, fixes): decide, record a dated amendment with a safe fallback, do not hand him
@@ -52,7 +52,7 @@ no copy of his store): it runs the beta on what the collectors bring; his record
   No real data in git: grep the staged diff for amounts, names, ids (Indian grouping too) and test fixtures before every push;
   `.venv\Scripts\python -m pflab.hq.security` must print "privacy grep: clean" (it checks against `%USERPROFILE%\.pflab\privacy_terms.json`,
   which the app's daily privacy check rewrites; `python -m pflab.hq.security export` in the app's folder writes it at once).
-- **The system asks only what only he can answer** (Needs from you); one brain with tools, no rivals; the knowledge graph and memory
+- **The system asks only what only he can answer** (Needs from you); coordinated specialists (amendment A25, 2026-10-31: a coordinator, research and quant workers and an independent reviewer on the one board; the old "one brain, no rivals" no longer applies); the knowledge graph and memory
   must update themselves. Tools and models are used to their full capability where they help, never as a demo.
 - **Only one process may hold the store:** close the dashboard and the bot before CLI work; back the store up before any migration or
   real-path write. The store migrates itself; take new ids with `store.next_id`, never a DuckDB sequence.

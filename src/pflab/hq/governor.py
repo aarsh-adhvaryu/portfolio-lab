@@ -50,8 +50,29 @@ LIMITS: Dict[str, Limits] = {
     "brain_rival": Limits("brain", 40_000, 6_000, {"off": 0, "economy": 4, "normal": 8}),
     "reflection": Limits("brain", 60_000, 12_000, {"off": 0, "economy": 1, "normal": 1}),
     "fetch": Limits("workers", 60_000, 4_000, {"off": 0, "economy": 10, "normal": 20}),
+    # S68: the mission workers (hq/workers.py), each its own agent in the governor's table
+    "w_coord": Limits("workers", 60_000, 8_000, {"off": 0, "economy": 24, "normal": 48}),
+    "w_research": Limits("workers", 80_000, 8_000, {"off": 0, "economy": 60, "normal": 120}),
+    "w_quant": Limits("workers", 80_000, 10_000, {"off": 0, "economy": 60, "normal": 120}),
+    "w_review": Limits("workers", 80_000, 8_000, {"off": 0, "economy": 24, "normal": 48}),
+    "w_assistant": Limits("workers", 80_000, 6_000, {"off": 0, "economy": 80, "normal": 200}),     # the conversation: his messages, never held by day limits
 }
 COUNTED = ("done", "sending", "queued", "submitted", "refused")
+
+
+def layer_limits(cfg: dict, layer: str) -> tuple:
+    """(share of the monthly cap, rupees a day) of a layer: the code's defaults, or api_budget.toml [policy.day_rupees] / [policy.share] (S68;
+    read on every call, so an edit holds at once). Defaults equal the constants of S59-S67."""
+    share, day = LAYERS[layer]
+    p = (cfg or {}).get("policy") or {}
+    return float((p.get("share") or {}).get(layer, share)), float((p.get("day_rupees") or {}).get(layer, day))
+
+
+def passes_per_day(cfg: dict, agent: str, mode: str) -> int:
+    """Calls (for the brain: passes) a day under the brain setting: the code's table, or [policy.passes.<agent>] in api_budget.toml (S68)."""
+    m = mode if mode in MODES else "economy"
+    over = (((cfg or {}).get("policy") or {}).get("passes") or {}).get(agent) or {}
+    return int(over.get(m, LIMITS[agent].per_day.get(m, 0)))
 
 
 def cost_inr(model: str, input_tokens: int, output_tokens: int, usd_inr: float, cache_read: int = 0,
@@ -71,11 +92,21 @@ def _spent(con, agents: List[str], since: datetime) -> float:
                              f"AND status IN ({','.join('?' * len(COUNTED))})", [*agents, since, *COUNTED]).fetchone()[0])
 
 
+def _spent_system(con, agents: List[str], since: datetime) -> float:
+    """The system's own spend since `since` (not his questions): what the DAY limit is measured against."""
+    q = ",".join("?" * len(agents))
+    return float(con.execute(f"SELECT coalesce(sum(cost_inr), 0) FROM api_calls WHERE agent IN ({q}) AND created_at >= ? "
+                             f"AND coalesce(his_order, FALSE) = FALSE AND status IN ({','.join('?' * len(COUNTED))})",
+                             [*agents, since, *COUNTED]).fetchone()[0])
+
+
 def calls_today(con, agent: str, now: datetime) -> int:
-    """Calls (for the brain: passes) today: the later turns of a tool loop belong to the pass its first turn opened."""
+    """Calls (for the brain: passes) today: the later turns of a tool loop belong to the pass its first turn opened. His questions are not
+    counted (S68): the system's own passes a day are measured without them."""
     day = datetime(now.year, now.month, now.day)
     return int(con.execute(f"SELECT count(*) FROM api_calls WHERE agent = ? AND created_at >= ? AND coalesce(turn, 1) = 1 "
-                           f"AND status IN ({','.join('?' * len(COUNTED))})", [agent, day, *COUNTED]).fetchone()[0])
+                           f"AND coalesce(his_order, FALSE) = FALSE AND status IN ({','.join('?' * len(COUNTED))})",
+                           [agent, day, *COUNTED]).fetchone()[0])
 
 
 def check(con, agent: str, est_inr: float, n_in: int, n_out: int, now: datetime, mode: str, cfg: dict,
@@ -90,22 +121,43 @@ def check(con, agent: str, est_inr: float, n_in: int, n_out: int, now: datetime,
         raise BudgetRefused(f"{agent}: {n_in:,} input tokens, over its {lim.max_in:,} a call")
     if n_out > lim.max_out:
         raise BudgetRefused(f"{agent}: up to {n_out:,} output tokens, over its {lim.max_out:,} a call")
-    n = lim.per_day.get(mode if mode in MODES else "economy", 0)
+    window = an.acceptance(cfg, now)                         # S68: in the bounded acceptance window only the window's own cap holds
+    n = passes_per_day(cfg, agent, mode)
     if n <= 0:
         raise BudgetRefused(f"{agent} does not run with the brain set to '{mode}'")
-    if not his_order and turn <= 1 and calls_today(con, agent, now) >= n:
-        raise BudgetRefused(f"{agent}: {n} calls today already (its limit under '{mode}')")
-    share, day_cap = LAYERS[lim.layer]
+    tomorrow = datetime(now.year, now.month, now.day) + timedelta(days=1, minutes=5)
+    next_month = (datetime(now.year, now.month, 1) + timedelta(days=32)).replace(day=1, minute=5)
+    if not (his_order or window) and turn <= 1 and calls_today(con, agent, now) >= n:
+        raise _refuse(f"{agent}: {n} calls today already (its limit under '{mode}')", tomorrow)
+    share, day_cap = layer_limits(cfg, lim.layer)
     peers = agents_in(lim.layer)
-    day = _spent(con, peers, datetime(now.year, now.month, now.day))
-    if not his_order and day + est_inr > day_cap:
-        raise BudgetRefused(f"the {lim.layer} have spent ~Rs {day:,.1f} today; this call up to ~Rs {est_inr:,.1f} "
-                            f"would pass their Rs {day_cap:,.0f} a day")
+    day = _spent_system(con, peers, datetime(now.year, now.month, now.day))      # his questions are not counted against the system's day
+    # the day's rupees stop a pass from BEGINNING; a pass already begun (turn 2 on) is stopped only by the cap, never half-way by a day limit
+    if not (his_order or window) and turn <= 1 and day + est_inr > day_cap:
+        raise _refuse(f"the {lim.layer} have spent ~Rs {day:,.1f} today; this call up to ~Rs {est_inr:,.1f} "
+                      f"would pass their Rs {day_cap:,.0f} a day", tomorrow)
     month = _spent(con, peers, datetime(now.year, now.month, 1))
-    if month + est_inr > share * cfg["cap"]:
-        raise BudgetRefused(f"the {lim.layer} have spent ~Rs {month:,.0f} this month; their share is "
-                            f"Rs {share * cfg['cap']:,.0f} of the Rs {cfg['cap']:,.0f} cap")
-    return an.check_budget(con, est_inr, cfg, now, approved)
+    if not window and month + est_inr > share * cfg["cap"]:
+        raise _refuse(f"the {lim.layer} have spent ~Rs {month:,.0f} this month; their share is "
+                      f"Rs {share * cfg['cap']:,.0f} of the Rs {cfg['cap']:,.0f} cap", next_month)
+    try:
+        return an.check_budget(con, est_inr, cfg, now, approved)
+    except BudgetRefused as e:
+        if getattr(e, "resume_at", None) is None:
+            e.resume_at = acc_end(cfg, now) or next_month           # the cap resets with the month; a window's cap does not reset
+        raise
+
+
+def acc_end(cfg: dict, now: datetime) -> Optional[datetime]:
+    """When a refusal by the acceptance window's own cap can next change: never inside the window (a cap spent stays spent)."""
+    w = an.acceptance(cfg, now)
+    return (w["until"] + timedelta(minutes=1)) if w else None
+
+
+def _refuse(why: str, resume_at: datetime) -> BudgetRefused:
+    e = BudgetRefused(why)
+    e.resume_at = resume_at                                  # S68: when this refusal can next be different; a waiting case looks again then
+    return e
 
 
 def log_refusal(con, agent: str, model: str, topic: str, question: str, why: str, now: datetime) -> int:
@@ -115,6 +167,50 @@ def log_refusal(con, agent: str, model: str, topic: str, question: str, why: str
                 "status, cost_inr, finished_at, error, agent) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 [cid, now, "live", model, topic, question[:500], "", "{}", "over_limit", 0.0, now, why[:500], agent])
     return cid
+
+
+# --- every limit in force, in one view (S68) ---------------------------------------------------------------------------
+
+def policy_view(con, now: datetime, mode: str = "economy") -> dict:
+    """The one view of what may refuse a paid call right now: each limit, its value, where it is set, why it exists and whether an edit
+    holds at once. `policy` is 'acceptance' while the bounded window is open, else 'normal'; `window` carries its spend against its cap."""
+    from pflab import release
+    from pflab.hq import tools as tl
+    cfg = an.config()
+    win = an.acceptance(cfg, now)
+    rows = []
+
+    def add(name, value, where, why, live=True, applies="system work", lifted=False):
+        rows.append({"limit": name, "value": value, "set_in": where, "why": why, "live": live, "applies_to": applies,
+                     "state": "lifted by the acceptance window" if lifted else "in force"})
+    cap_key = "dev_monthly_cap_rupees" if release.channel() == "beta" else "monthly_cap_rupees"
+    add("monthly cap", f"Rs {cfg['cap']:,.0f}", f"api_budget.toml [api] {cap_key}", "his money; the whole system's month", applies="everything",
+        lifted=bool(win))
+    for lay in LAYERS:
+        share, day = layer_limits(cfg, lay)
+        add(f"{lay} layer, rupees a day", f"Rs {day:,.0f}", "api_budget.toml [policy.day_rupees] (default in hq/governor.py)",
+            "a noisy day never spends the month; it stops a pass from beginning, never half-way", lifted=bool(win))
+        add(f"{lay} layer, share of the month", f"{share:.0%} = Rs {share * cfg['cap']:,.0f}", "api_budget.toml [policy.share]",
+            "keeps a quarter of the cap for the analyst's own paths", lifted=bool(win))
+    for agent in LIMITS:
+        add(f"{agent}, calls a day ({mode})", passes_per_day(cfg, agent, mode), "api_budget.toml [policy.passes.<agent>] / Settings brain setting",
+            "calls (for the brain: passes) the system starts by itself; his questions are not counted", lifted=bool(win))
+    for t in sorted(tl.DAILY):
+        n = tl.daily_cap(con, t, now)
+        add(f"tool {t}, a day", n, "api_budget.toml [policy.tool_caps] / learner proposals", "a noisy day never floods him or the cap",
+            lifted=bool(win) and t in tl.WORK_TOOLS)
+    add("one job asks first above", f"Rs {cfg['ask_above']:,.0f}", "api_budget.toml [api] ask_above_rupees", "a single job over this needs his yes",
+        applies="everything")
+    add("paid calls from the workshop", "off unless --paid", "src/pflab/guard.py", "the workshop sends nothing outward unless told",
+        live=False, applies="the workshop only")
+    out = {"policy": "acceptance" if win else "normal", "channel": release.channel(), "mode": mode, "limits": rows,
+           "month_spent": round(an.month_spend_inr(con, now), 2), "cap": cfg["cap"], "window": None}
+    if win:
+        spent = an.window_spend(con, win["since"])
+        out["window"] = {"since": str(win["since"])[:16], "until": str(win["until"])[:16], "cap": win["cap"], "spent": round(spent, 2),
+                         "left": round(max(0.0, win["cap"] - spent), 2),
+                         "note": "inside the window only its own cap holds; every call is tagged policy='acceptance'; it ends by itself"}
+    return out
 
 
 # --- spend per agent (the dashboard) ---------------------------------------------------------------------------------
@@ -152,7 +248,8 @@ def spend(con, now: datetime) -> dict:
             d["today"] += float(inr or 0) if at >= day0 else 0.0
             d["calls"] += 1
     layers = []
-    for name, (share, day_cap) in LAYERS.items():
+    for name in LAYERS:
+        share, day_cap = layer_limits(cfg, name)
         peers = agents_in(name)
         layers.append({"layer": name, "month": _spent(con, peers, month0), "share": share * cfg["cap"],
                        "today": _spent(con, peers, day0), "day_cap": day_cap})

@@ -156,14 +156,11 @@ def test_a_follow_up_sees_the_chat_and_the_open_work(rt, tmp_path):
         got["evs"] = evs
         return 1
     import pflab.hq.service as sv
-    sv.client = lambda r: object()
-    orig = brain.think
-    brain.think = spy
-    try:
+    with pytest.MonkeyPatch.context() as mp:                      # (S68: restored afterwards; this used to leak into every later test)
+        mp.setattr(sv, "client", lambda r: object())
+        mp.setattr(brain, "think", spy)
         con.execute("INSERT INTO hq_passes VALUES (1, ?, 'asked', '[]', 'm', 'brain', false, 'done', 'The answer.', '[]', 0, NULL, NULL)", [NOW])
         service.brain_now(d, "and is that too much?", rival=False, history=h)
-    finally:
-        brain.think = orig
     kinds = [e["kind"] for e in got["evs"]]
     assert kinds == ["from the investor (question)", "the conversation so far", "your open investigations"]
     assert "Is AAA's margin trend real?" in got["evs"][2]["text"]

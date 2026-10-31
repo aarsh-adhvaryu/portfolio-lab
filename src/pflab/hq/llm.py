@@ -99,10 +99,11 @@ def call(con, agent: str, params: Dict[str, Any], client, *, now: datetime, mode
     from pflab.pm.store import next_id
     cid = next_id(con, "api_calls", "call_id")
     body = json.dumps(params, sort_keys=True, default=str)
+    policy = "acceptance" if an.acceptance(cfg, now) else "normal"
     con.execute("INSERT INTO api_calls (call_id, created_at, mode, model, topic, question, request_sha, request_json, "
-                "status, cost_inr, agent, turn) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                "status, cost_inr, agent, turn, policy, his_order) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 [cid, now, "live", model, topic, (question or topic)[:2000], hashlib.sha256(body.encode()).hexdigest(),
-                 body, "sending", est, agent, turn])
+                 body, "sending", est, agent, turn, policy, bool(his_order)])
     try:
         if model == gv.HAIKU:
             msg = client.messages.create(**params)

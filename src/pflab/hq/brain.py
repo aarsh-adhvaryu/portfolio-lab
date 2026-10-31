@@ -262,13 +262,15 @@ def due_scheduled(con, now: datetime, cal=None) -> Optional[str]:
         week0 = datetime.combine(now.date() - timedelta(days=now.weekday()), datetime.min.time())
         worked = con.execute("SELECT 1 FROM hq_passes WHERE role='brain' AND trigger <> 'reflection' AND status='done' "
                              "AND passed_at >= ?", [now - timedelta(days=7)]).fetchone()   # nothing to reflect on: no pass
-        if worked and not con.execute("SELECT 1 FROM hq_passes WHERE trigger='reflection' AND role='brain' AND passed_at >= ?",
+        if worked and not con.execute("SELECT 1 FROM hq_passes WHERE trigger='reflection' AND role='brain' AND status NOT IN ('not made', 'stopped') "
+                                      "AND passed_at >= ?",
                                       [week0]).fetchone():
             return "reflection"
     trading = cal.is_trading_day(now.date()) if cal is not None else now.weekday() < 5
     if trading and (now.hour, now.minute) >= MORNING_AT:
         day0 = datetime.combine(now.date(), datetime.min.time())
-        if not con.execute("SELECT 1 FROM hq_passes WHERE trigger='morning' AND role='brain' AND passed_at >= ?", [day0]).fetchone():
+        if not con.execute("SELECT 1 FROM hq_passes WHERE trigger='morning' AND role='brain' AND status NOT IN ('not made', 'stopped') "
+                           "AND passed_at >= ?", [day0]).fetchone():      # S68: a pass that was refused or stopped did not review the morning
             return "morning"
     if _us_open_due(con, now):
         return "us_open"
@@ -288,7 +290,8 @@ def _us_open_due(con, now: datetime) -> bool:
         if pt is None or now < pt or not lf.positions(con, now.date()):
             return False
         day0 = datetime.combine(now.date(), datetime.min.time())
-        return not con.execute("SELECT 1 FROM hq_passes WHERE trigger='us_open' AND role='brain' AND passed_at >= ?", [day0]).fetchone()
+        return not con.execute("SELECT 1 FROM hq_passes WHERE trigger='us_open' AND role='brain' AND status NOT IN ('not made', 'stopped') "
+                               "AND passed_at >= ?", [day0]).fetchone()
     except Exception:
         return False
 
@@ -441,7 +444,7 @@ def think(rt, trigger: str, evs: List[dict], client, gate, *, model: str = gv.OP
     ctx = tl.Ctx(rt, pid, model, SHADOW or role == "rival", syms, gate, now, client=client, mode=mode,
                  source=stable + "\n" + change, case_ids=list(case_ids))   # the cheaper rival journals only: nothing happens twice
     messages = [first_message(stable, change)]
-    cost, note, first_call, stopped = 0.0, "", None, None
+    cost, note, first_call, stopped, stop_exc = 0.0, "", None, None, None
     pending, asked_save, handoffs, state_before = stable + "\n" + change, False, 0, None
     for turn in range(1, MAX_TURNS + 1):
         last = turn == MAX_TURNS
@@ -456,7 +459,7 @@ def think(rt, trigger: str, evs: List[dict], client, gate, *, model: str = gv.OP
                 _close(con, pid, "not made", error=why)
                 _end_cases(con, ctx.case_ids, pid, now, e, why)
                 return pid
-            stopped = f"stopped before turn {turn}: {why}"
+            stopped, stop_exc = f"stopped before turn {turn}: {why}", e
             break
         cost += s.cost_inr
         first_call = first_call or s.call_id
@@ -504,22 +507,32 @@ def think(rt, trigger: str, evs: List[dict], client, gate, *, model: str = gv.OP
         ctx.problems.append(f"{dropped} sentence(s) of the note dropped: numbers not in what it read")
     if stopped:
         ctx.problems.append(stopped)
-    _close(con, pid, "done", note, ctx.decisions, cost, first_call, "; ".join(ctx.problems) or None)
-    _end_cases(con, ctx.case_ids, pid, now, None if not (stopped or "").startswith("stopped before") else RuntimeError(stopped), stopped or "")
+    # S68: a pass that stopped for a refusal or a provider failure and wrote no note did not "do" anything: it is `stopped`, never `done`; its
+    # work so far (evidence, calculations, the saved state) stays, and its cases wait for the condition instead of failing.
+    halted = stop_exc is not None and not note.strip()
+    if halted and ctx.results:                               # checkpoint: what the pass had read, for the next pass on these cases
+        try:
+            run_tool(ctx, "save_state", {"state": _code_state(ctx)[:3000]}, turn)
+        except Exception:
+            pass
+    _close(con, pid, "stopped" if halted else "done", note, ctx.decisions, cost, first_call, "; ".join(ctx.problems) or None)
+    _end_cases(con, ctx.case_ids, pid, now, stop_exc if halted else None, stopped or "")
     rt.bump("hq")
     return pid
 
 
 def _end_cases(con, ids: Sequence[int], pid: int, now: datetime, err: Optional[Exception], why: str = "") -> None:
-    """The cases of a pass: a refusal by the governor (the day's limit, the cap) is not the cases' fault, so they wait for the next
-    pass without a failed attempt; any other failure counts as one."""
-    from pflab.hq import cases
+    """The cases of a pass: a refusal by the governor (the day's limit, the cap) or a provider failure that may pass is not the cases'
+    fault, so they WAIT (with the reason and the time to look again) without a failed attempt; any other failure counts as one."""
+    from pflab.hq import board, cases
     if not ids:
         return
     if err is None:
         cases.end_pass(con, ids, pid, now, True)
     elif isinstance(err, gv.BudgetRefused):
-        cases.defer(con, ids, now, why)
+        cases.defer(con, ids, now, why, "waiting_budget", getattr(err, "resume_at", None))
+    elif board.is_transient(err):
+        cases.defer(con, ids, now, why, "waiting_provider", now + timedelta(minutes=cases.RETRY_MINUTES))
     else:
         cases.end_pass(con, ids, pid, now, False, why)
 

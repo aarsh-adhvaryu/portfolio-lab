@@ -36,7 +36,7 @@ class Reply:
     route: List[str] = field(default_factory=list)
     data: dict = field(default_factory=dict)
     cost: float = 0.0
-    status: str = "done"                                  # done | failed | needs_approval | waiting (data: data["waiting_on"])
+    status: str = "done"                                  # done | failed | needs_approval | waiting (data: data["waiting_on"]) | deferred (data: resume_at)
     then: List[Tuple[str, str]] = field(default_factory=list)   # (agent, text): work handed on
 
 
@@ -126,7 +126,7 @@ def wake(con, key: str, now: datetime, note: str = "") -> int:
     """What a waiting task needed has arrived: every task waiting on `key` is queued again. Returns how many."""
     ids = [r[0] for r in con.execute("SELECT task_id FROM hq_tasks WHERE status='waiting' AND waiting_on=?", [key]).fetchall()]
     for tid in ids:
-        con.execute("UPDATE hq_tasks SET status='queued', waiting_on=NULL, progress=? WHERE task_id=?",
+        con.execute("UPDATE hq_tasks SET status='queued', waiting_on=NULL, wait_kind=NULL, resume_condition=NULL, progress=? WHERE task_id=?",
                     [f"resumed: {note or key} arrived {now:%Y-%m-%d %H:%M}", tid])
     return len(ids)
 
@@ -191,6 +191,11 @@ def _run_claimed(rt, agents: Dict[str, Callable], deliver, con, tid: int, now: d
         rep.status = "failed"                              # waiting for nothing named could never be resumed
         rep.text += " (it said it was waiting but named nothing)"
     nxt = None
+    deferred = rep.status == "deferred"
+    if deferred:                                           # S68: waiting for a budget, the provider or a time is not an attempt spent
+        nxt = datetime.fromisoformat(str(rep.data.get("resume_at"))) if rep.data.get("resume_at") else rt.clock() + timedelta(minutes=30)
+        rep.status = "retry"
+        con.execute("UPDATE hq_tasks SET attempts=greatest(coalesce(attempts, 1) - 1, 0) WHERE task_id=?", [tid])
     if transient and t["attempts"] < MAX_ATTEMPTS:
         rep.status, nxt = "retry", rt.clock() + _backoff(t["attempts"])
         rep.text += f" (attempt {t['attempts']} of {MAX_ATTEMPTS}; tried again at {nxt:%H:%M})"
@@ -199,13 +204,20 @@ def _run_claimed(rt, agents: Dict[str, Callable], deliver, con, tid: int, now: d
     fin = None if rep.status in ("waiting", "retry") else rt.clock()
     from pflab.pm.store import transaction
     with transaction(con):                                 # the answer and the hand-offs it names are saved together or not at all (audit F6)
-        con.execute("UPDATE hq_tasks SET status=?, result=?, result_json=?, cost_inr=?, finished_at=?, next_review_at=?, waiting_on=?, "
-                    "progress=? WHERE task_id=?",
-                    [rep.status, rep.text[:20000], json.dumps({"route": rep.route, **rep.data}, default=str), rep.cost or None,
-                     fin, nxt, waiting_on, str(rep.data.get("progress") or "")[:300] or None, tid])
+        con.execute("UPDATE hq_tasks SET status=?, result=?, result_json=?, cost_inr=coalesce(cost_inr, 0) + ?, finished_at=?, next_review_at=?, waiting_on=?, "
+                    "progress=?, wait_kind=?, resume_condition=?, lease_owner=NULL, lease_until=NULL, checkpoint_json=coalesce(?, checkpoint_json), "
+                    "artifacts_json=coalesce(?, artifacts_json) WHERE task_id=?",
+                    [rep.status, rep.text[:20000], json.dumps({"route": rep.route, **rep.data}, default=str), rep.cost or 0.0,
+                     fin, nxt, waiting_on, str(rep.data.get("progress") or "")[:300] or None,
+                     (rep.data.get("wait_kind") if rep.status in ("waiting", "retry") else None),
+                     (rep.data.get("resume_condition") if rep.status in ("waiting", "retry") else None),
+                     json.dumps(rep.data["checkpoint"], default=str) if rep.data.get("checkpoint") is not None else None,
+                     json.dumps(rep.data["artifacts"], default=str) if rep.data.get("artifacts") is not None else None, tid])
         for agent, text in rep.then:
             post(con, agent, text, rt.clock(), frm=t["to"], parent=tid, dedup_key=f"then:{tid}:{agent}:{hashlib.sha1(text.encode()).hexdigest()[:10]}")
     t = get(con, tid)
+    if t["status"] == "done":                              # S68: whatever waited for this task goes on
+        wake(con, f"task:{tid}", rt.clock(), f"task #{tid} finished")
     if deliver is not None and t["channel"] != "dashboard" and t["status"] in ("done", "failed", "needs_approval"):
         try:
             deliver(t)

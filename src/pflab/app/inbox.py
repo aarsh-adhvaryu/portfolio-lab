@@ -92,9 +92,19 @@ def receive(rt, name: str, data: bytes, hint: str = "", account: Optional[str] =
     safe = re.sub(r"[^A-Za-z0-9._ -]", "_", Path(name).name)[:120] or "file"
     sha = hashlib.sha256(data).hexdigest()
     con = rt.cursor()
-    seen = con.execute("SELECT item_id FROM inbox_items WHERE sha=? AND status <> 'removed'", [sha]).fetchone()
+    seen = con.execute("SELECT item_id, status FROM inbox_items WHERE sha=? AND status <> 'removed'", [sha]).fetchone()
     if seen:
-        return {"id": seen[0], "duplicate": True}
+        # S68: the same bytes again are not new evidence, but they are not nothing: a file that failed or is blocked is looked at again (a parser
+        # fixed, a password saved), and a waiting investigation is swept, so "I dropped it again" resolves what it was for.
+        again = False
+        if seen[1] in ("failed", BLOCKED):
+            again = retry(rt, seen[0])
+        try:
+            from pflab.hq import cases
+            cases.sweep(rt.cursor(), rt.clock())
+        except Exception:
+            pass
+        return {"id": seen[0], "duplicate": True, "retried": again}
     kind = classify(safe, hint)
     info: dict = {}
     if not hint:                                            # S65: the content decides, the name is only the fallback
@@ -107,13 +117,14 @@ def receive(rt, name: str, data: bytes, hint: str = "", account: Optional[str] =
         from pflab.agents import questions
         from pflab.app import readiness
         if sniff.is_encrypted(data, safe) and not info.get("password_name"):
-            # (email is gone, 2026-10-30) a locked file none of his saved passwords opens: asked once, kept visible, not stored half-read
+            # A locked file none of his saved passwords opens: asked ONCE, kept (a copy under pm/inbox/locked, shown as `blocked` with the reason),
+            # never evidence; it is read again by itself when a password is saved (S68: no second drop needed).
+            reason = "password-protected; none of the saved passwords opens it"
             questions.ask(con, "inbox", f"inbox:locked:{sha[:12]}", f"'{safe}' is password-protected and none of your saved passwords opens it. Add its "
-                          "password in Settings > Keys and passwords (any name, for example the bank's), then drop the same file again.", rt.clock())
-            coverage.note_gap(con, "locked", sha[:12], f"{safe}: password-protected; none of the saved passwords opens it", rt.clock())
-            rt.bump("inbox")
-            raise ValueError("this file is password-protected and none of your saved passwords opens it: add its password in Settings > Keys and "
-                             "passwords, then drop it again")
+                          "password in Settings > Keys and passwords (any name, for example the bank's); I will open it by myself and carry on.", rt.clock())
+            coverage.note_gap(con, "locked", sha[:12], f"{safe}: {reason}", rt.clock())
+            iid = _block(rt, con, safe, data, sha, reason)
+            return {"id": iid, "kind": "other", "duplicate": False, "blocked": reason}
         questions.drop(con, f"inbox:locked:{sha[:12]}", rt.clock())                            # the same file, now opened: its request and gap close
         readiness.close_gap(con, f"coverage:locked:{sha[:12]}", rt.clock())
         if info["kind"] in KIND_LABEL and info["kind"] != "other":
@@ -156,6 +167,65 @@ def receive(rt, name: str, data: bytes, hint: str = "", account: Optional[str] =
         return {"id": iid, "kind": kind, "duplicate": False, "awaiting_setup": True}
     _start(rt, iid)
     return {"id": iid, "kind": kind, "duplicate": False}
+
+
+BLOCKED = "blocked"
+# the states in which a file counts as evidence for an investigation: it was read and used (or, for a statement, checked). A file that is
+# still being worked on, failed, is kept unread or is blocked is NOT evidence (S68).
+EVIDENCE_STATES = ("in the ledger", "in the graph", "in the store", "read", "ready")
+
+
+def _block(rt, con, safe: str, data: bytes, sha: str, reason: str) -> int:
+    """Keep a copy of a file that cannot be read yet, in a folder of the profile, and show it as `blocked` with the reason."""
+    from pflab.pm.store import next_id
+    d = rt.pm_dir / "inbox" / "locked"
+    d.mkdir(parents=True, exist_ok=True)
+    path = d / f"{sha[:12]}_{safe}"
+    if not path.exists():
+        path.write_bytes(data)
+    now = rt.clock()
+    iid = next_id(con, "inbox_items", "item_id")
+    steps = [{"name": "received", "state": "done"}, {"name": "opened", "state": "failed"}]
+    con.execute("INSERT INTO inbox_items (item_id, name, kind, account, path, sha, status, steps_json, result_json, chat_id, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", [iid, safe, "other", None, str(path), sha, BLOCKED, json.dumps(steps),
+                                                      json.dumps({"blocked": reason, "unblocks": "save its password in Settings > Keys and passwords"}),
+                                                      None, now, now])
+    rt.bump("inbox")
+    return iid
+
+
+def retry(rt, iid: int) -> bool:
+    """Read a blocked or failed item again with what is known now (saved passwords, the current readers). True when it was handed on."""
+    from pflab.ingest import sniff
+    con = rt.cursor()
+    r = con.execute("SELECT name, path, status FROM inbox_items WHERE item_id=?", [iid]).fetchone()
+    if not r or not r[1] or not Path(r[1]).exists():
+        return False
+    name, path, status = r
+    data = Path(path).read_bytes()
+    if status == BLOCKED:
+        info = sniff.sniff(data, name, sniff.passwords_from_secrets())
+        if sniff.is_encrypted(data, name) and not info.get("password_name"):
+            return False                                                            # still locked: nothing changed
+        con.execute("UPDATE inbox_items SET status='removed', updated_at=? WHERE item_id=?", [rt.clock(), iid])   # the copy stays; a new row is made
+        try:
+            receive(rt, name, data)
+        except ValueError:
+            pass                                                                    # (which bank account? is asked by receive)
+        return True
+    if status == "failed":
+        _update(rt, iid, status="working", steps_json=json.dumps(_steps((_item(rt, iid))["kind"], 1)))
+        _start(rt, iid)
+        return True
+    return False
+
+
+def retry_blocked(rt) -> int:
+    """Every blocked file whose password is now saved is read; cheap when nothing changed (called by the HQ round and when a secret is saved)."""
+    n = 0
+    for (iid,) in rt.cursor().execute("SELECT item_id FROM inbox_items WHERE status=?", [BLOCKED]).fetchall():
+        n += int(retry(rt, iid))
+    return n
 
 
 def _start(rt, iid: int) -> None:

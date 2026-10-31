@@ -92,6 +92,13 @@ class Runtime:
     def start(self) -> None:
         from pflab.service import jobs
         jobs.reap_at_start(self.cursor(), self.clock())     # S66: runs left "running" by a stopped process are due again
+        try:                                                 # S68: a credential a failure text carried into a row is rewritten (idempotent)
+            from pflab import scrub
+            n, _ = scrub.scrub_store(self.cursor())
+            if n:
+                log.info("scrubbed %d stored text(s) that held a credential-shaped string", n)
+        except Exception:
+            log.exception("scrub of stored text failed")
         last_run = self.cursor().execute("SELECT max(started_at) FROM job_runs").fetchone()[0]
         if last_run is not None and self.clock() - last_run > timedelta(hours=6):
             self.catching_up, self._woke_at = f"started after {int((self.clock() - last_run).total_seconds() // 3600)} h off", self.clock()

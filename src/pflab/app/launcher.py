@@ -187,6 +187,12 @@ def main() -> int:
     logging.basicConfig(filename=pm / "app" / "app.log", level=logging.INFO, encoding="utf-8",
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     log = logging.getLogger("pflab.app")
+    from pflab import scrub                                # S68: nothing shaped like a credential is written to the log
+    scrub.install()
+    try:
+        scrub.scrub_file(pm / "app" / "app.log")
+    except OSError:
+        pass
     if sys.stdout is None or sys.stderr is None:          # pythonw: anything printed goes to the log, not into the void
         sys.stdout = sys.stderr = open(pm / "app" / "app.log", "a", encoding="utf-8", buffering=1)
     if "--after" in sys.argv:                              # a restart: the old instance first lets go of the ledger

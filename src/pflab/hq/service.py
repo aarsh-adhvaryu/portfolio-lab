@@ -68,7 +68,8 @@ def paused(rt) -> bool:
 
 def paid_allowed(rt) -> bool:
     from pflab.agents import analyst as an
-    return not paused(rt) and rt.settings.get("preset", "full") in ("full", "marathon") and an.config()["cap"] > 0
+    cfg = an.config()
+    return not paused(rt) and rt.settings.get("preset", "full") in ("full", "marathon") and (cfg["cap"] > 0 or an.acceptance(cfg, rt.clock()) is not None)
 
 
 def read_now(rt, limit: int = 40) -> dict:
@@ -181,6 +182,22 @@ def start(rt) -> dict:
     return out
 
 
+def drive_missions(rt, stop=None, attended: bool = True, rounds: int = 12) -> dict:
+    """Move every active mission on, then run what that made runnable, and again, until nothing moves (bounded): the plan, its steps, the review and
+    the answer follow one another without waiting for the next HQ round. State lives in the store, so a stop at any point is resumed by the next call."""
+    from pflab.hq import board, missions, roster
+    moved: dict = {}
+    for _ in range(rounds):
+        if stop is not None and stop.is_set():
+            break
+        step = missions.tick(rt)
+        moved.update(step)
+        n = board.run_all(rt, roster.runners(), deliver(rt), max_n=6 if attended else 3, stop=stop)
+        if not n and not step:
+            break
+    return moved
+
+
 def round_(rt, stop=None, attended: bool = True) -> dict:
     """One HQ round. Each part fails on its own (logged in the result), never the round."""
     from pflab.hq import board, keeper, messenger, roster, security, watcher
@@ -202,7 +219,14 @@ def round_(rt, stop=None, attended: bool = True) -> dict:
         out["paused"] = True
         return out
     from pflab.hq import cases
+    def blocked_files():                                          # S68: a password saved since opens a blocked file by itself
+        from pflab.app import inbox
+        return inbox.retry_blocked(rt)
+    part("blocked_files", blocked_files)
     part("cases", lambda: len(cases.sweep(rt.cursor(), rt.clock())))     # S67: what a waiting investigation needed may have arrived (free, code only)
+    if preset != "off" and paid_allowed(rt):                     # S68: the system chooses work itself (signals, due reviews); paid work only where paid work is allowed
+        part("autonomy", lambda: __import__("pflab.hq.missions", fromlist=["scan"]).scan(rt))
+    part("missions", lambda: drive_missions(rt, stop, attended))     # S68: each mission moves on from what its tasks have produced
     if rt.settings.get("drop_watch", True):
         def drop():
             got = watcher.scan(rt)

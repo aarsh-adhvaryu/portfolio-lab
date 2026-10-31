@@ -127,7 +127,7 @@ def test_f6_an_interruption_before_the_hand_off_is_saved_loses_nothing(tmp_path,
 
 def test_f5_the_next_candidate_never_sees_the_validation_result(tmp_path):
     con = store.connect(tmp_path / "l.duckdb")
-    eid = ex.register(con, tmp_path / "proto", NOW, hypothesis="Momentum", why_it_matters="w", disproof="d", source_kind="investor")
+    eid = ex.register(con, tmp_path / "proto", NOW, hypothesis="Momentum", why_it_matters="w", disproof="d", source_kind="investor", contract="index_timing")
     hist = [{"n": 1, "status": "rejected", "note": "", "error": "", "code": "def compute(data): return {}",
              "result": {"development": {"t": 1.1}, "validation": {"t": 2.7, "mean_excess": 0.004}, "why": "validation t 2.7 under 3.0"}}]
     text = ex.prompt(con, eid, "index:NIFTY50_TRI", hist)

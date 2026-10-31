@@ -96,7 +96,7 @@ def test_an_order_given_from_an_agents_panel_reaches_the_board_and_the_old_tab_i
     row = rt.cursor().execute("SELECT to_agent, text, from_agent FROM hq_tasks").fetchall()
     assert row == [("calc", "Drawdown of the Nifty 50 since 2020", "investor")], row
     assert "Drawdown of the Nifty 50" in res[2]
-    assert "Agent HQ" not in res[3] and res[3].startswith("World|")
+    assert "Agent HQ" not in res[3] and "Assistant" in res[3] and "World" in res[3] and "Command centre" not in res[3] and "AI centre" not in res[3]
 
 
 def test_a_reply_being_typed_is_not_redrawn_away_and_the_screen_catches_up_after(server, tmp_path):
@@ -122,7 +122,7 @@ def test_a_reply_being_typed_is_not_redrawn_away_and_the_screen_catches_up_after
         (f"JSON.stringify({{second: document.getElementById('screen').innerText.includes('Second question arrived later'), "
          f"first: (document.getElementById('qa{q1}') || {{}}).value || ''}})", 0.1),                                                      # 4: the screen has caught up, his text is kept
     ]
-    errors, res = _edge.shoot(f"http://127.0.0.1:{port}/#/ai", str(tmp_path / "type.png"), 1500, 1000, 5, steps)
+    errors, res = _edge.shoot(f"http://127.0.0.1:{port}/#/assistant", str(tmp_path / "type.png"), 1500, 1000, 5, steps)
     import json
     assert errors == [], errors
     mid = json.loads(res[3])

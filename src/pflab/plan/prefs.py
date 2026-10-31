@@ -95,9 +95,11 @@ def _set_cap(rupees: float, now: datetime) -> str:
     if not path.exists():
         raise PrefError("no api_budget.toml in the PM folder")
     text = path.read_text(encoding="utf-8")
-    pat = re.compile(r"(^\s*monthly_cap_rupees\s*=\s*)([0-9.]+)", re.M)
+    from pflab import release
+    key = "dev_monthly_cap_rupees" if release.channel() == "beta" else "monthly_cap_rupees"     # S68: the key the running channel reads
+    pat = re.compile(r"(^\s*" + key + r"\s*=\s*)([0-9.]+)", re.M)
     if not pat.search(text):
-        raise PrefError("no monthly_cap_rupees line in api_budget.toml")
+        raise PrefError(f"no {key} line in api_budget.toml")
     b = _backup(path, now)
     path.write_text(pat.sub(lambda m: m.group(1) + f"{rupees:g}", text, count=1), encoding="utf-8")
     return f"monthly cap set to Rs {rupees:,.0f}; the old file is kept as {b.name}"

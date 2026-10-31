@@ -30,6 +30,7 @@ import re
 
 import pandas as pd
 
+from pflab.learner import contracts
 from pflab.learner import counter
 from pflab.learner import templates as tp
 
@@ -44,7 +45,7 @@ COMPARATOR = "always invested"
 DEFAULT_DATASET = "index:NIFTY50_TRI"
 SPENT_FROM = date(2022, 1, 1)           # the period the repo declares spent: never loaded into an experiment
 
-STATUSES = ("registered", "running", "kept", "rejected", "deferred", "waiting")
+STATUSES = ("registered", "running", "kept", "rejected", "deferred", "waiting", "unsupported")
 
 import threading
 _LIVE: set = set()                      # experiments THIS process is running: a wake must not reap them; a dead process owns none
@@ -64,7 +65,19 @@ def reap(con, now: datetime) -> int:
 
 
 def evaluator_sha() -> str:
-    return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    """The trusted evaluator: this file and the contracts it dispatches to (a change to either after registration stops the run)."""
+    h = hashlib.sha256(Path(__file__).read_bytes())
+    h.update(Path(contracts.__file__).read_bytes())
+    return h.hexdigest()
+
+
+def score(contract: str, df: pd.DataFrame, signals: Dict[str, float], period: Tuple[str, str]) -> dict:
+    """A period scored by the experiment's own contract. A contract this code does not know is an error, never a default."""
+    if contract == "index_timing":
+        return score_period(df, signals, period)
+    if contract == "deployment":
+        return contracts.score_deployment(df, signals, period, month_ends)
+    raise ValueError(f"no evaluator for contract {contract!r}")
 
 
 # --- the trusted evaluator ------------------------------------------------------------------------------------------------------------------
@@ -137,28 +150,30 @@ def score_period(df: pd.DataFrame, signals: Dict[str, float], period: Tuple[str,
             "exposure": round(held / n, 3) if n else 0.0}
 
 
-def decide(dev: dict, val: dict, bar_dev: float) -> Tuple[bool, str]:
+def decide(dev: dict, val: dict, bar_dev: float, comparator: str = COMPARATOR) -> Tuple[bool, str]:
     """The registered rule: enough months in both periods, the candidate ahead of the comparator in both, t >= the development bar (which
     rises with the variants searched) and >= tp.T_VAL in validation."""
     if dev["n_months"] < MIN_MONTHS or val["n_months"] < MIN_MONTHS:
         return False, f"too few months to say anything (development {dev['n_months']}, validation {val['n_months']}, need {MIN_MONTHS} each)"
     if dev["mean_excess"] <= 0:
-        return False, f"behind {COMPARATOR} in development (mean {dev['mean_excess']:+.4f} a month, t {dev['t']})"
+        return False, f"behind {comparator} in development (mean {dev['mean_excess']:+.4f}, t {dev['t']})"
     if dev["t"] < max(bar_dev, tp.T_DEV):
         return False, f"ahead in development but not by enough: t {dev['t']} under the bar {bar_dev:.2f}"
     if val["mean_excess"] <= 0:
-        return False, f"ahead in development, behind in validation ({val['mean_excess']:+.4f} a month, t {val['t']})"
+        return False, f"ahead in development, behind in validation ({val['mean_excess']:+.4f}, t {val['t']})"
     if val["t"] < tp.T_VAL:
         return False, f"validation t {val['t']} under {tp.T_VAL}"
-    return True, f"ahead of {COMPARATOR} in both periods (t {dev['t']} development, {val['t']} validation) net of switching costs"
+    return True, f"ahead of {comparator} in both periods (t {dev['t']} development, {val['t']} validation) net of costs"
 
 
 # --- registration ---------------------------------------------------------------------------------------------------------------------------
 
 def register(con, proto_dir: Path, now: datetime, *, hypothesis: str, why_it_matters: str, disproof: str, source_kind: str, source_ref: str = "",
-             dataset: str = DEFAULT_DATASET, max_attempts: int = MAX_ATTEMPTS) -> int:
+             dataset: str = DEFAULT_DATASET, max_attempts: int = MAX_ATTEMPTS, contract: Optional[str] = None) -> int:
     """Commit the question, the comparator, the periods, the metric, the minimum evidence, the stop conditions and the budget BEFORE any
-    candidate is seen. Returns the experiment id; the same hypothesis on the same dataset is never registered twice."""
+    candidate is seen. Returns the experiment id; the same hypothesis on the same dataset is never registered twice. `contract` names the
+    evaluation (`learner/contracts.py`); a hypothesis no contract fits is recorded with status `unsupported` and the reason, and is never run
+    through another contract's template."""
     if source_kind not in ("case", "claim", "data_issue", "process_failure", "investor"):
         raise ValueError("source_kind must be case, claim, data_issue, process_failure or investor")
     if not hypothesis.strip() or not disproof.strip() or not why_it_matters.strip():
@@ -169,11 +184,22 @@ def register(con, proto_dir: Path, now: datetime, *, hypothesis: str, why_it_mat
         return int(old[0])
     from pflab.pm.store import next_id
     eid = next_id(con, "learn_experiments", "exp_id")
+    try:
+        cname = contracts.resolve(hypothesis, contract)
+    except contracts.Unsupported as e:
+        con.execute("INSERT INTO learn_experiments (exp_id, key, registered_at, hypothesis, why_it_matters, disproof, source_kind, source_ref, dataset, "
+                    "max_attempts, protocol_path, protocol_sha, evaluator_sha, status, decision_why, decided_at, contract) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, 'unsupported', ?, ?, NULL)",
+                    [eid, key, now, hypothesis.strip()[:600], why_it_matters.strip()[:600], disproof.strip()[:600], source_kind, source_ref[:200], dataset,
+                     0, "", "", evaluator_sha(), str(e)[:600], now])
+        return eid
+    c = contracts.CONTRACTS[cname]
     proto = {"exp_id": eid, "registered_at": now.isoformat(timespec="seconds"), "hypothesis": hypothesis.strip(), "why_it_matters": why_it_matters.strip(),
              "would_disprove": disproof.strip(), "source": {"kind": source_kind, "ref": source_ref}, "dataset": dataset,
-             "comparator": COMPARATOR, "metric": "paired monthly return difference net of switching cost; t-statistic",
+             "contract": cname, "comparator": c.comparator, "metric": c.metric,
+             "assumptions": ({"cash_rate_pa": contracts.CASH_RATE_PA, "cost_bps": contracts.COST_BPS, "horizon_months": contracts.HORIZON} if cname == "deployment" else {}),
              "periods": {"development": tp.DEV, "validation": tp.VAL, "spent_not_loaded_from": SPENT_FROM.isoformat()},
-             "switch_cost": SWITCH_COST, "minimum_evidence": f"{MIN_MONTHS} months in each period",
+             "switch_cost": SWITCH_COST, "minimum_evidence": f"{MIN_MONTHS} {c.min_text}",
              "rule": (f"ahead of the comparator in both periods; development t >= max(counter.t_needed(N), {tp.T_DEV}) with N = the tests run including this "
                       f"candidate; validation t >= {tp.T_VAL}"),
              "stop": {"first_kept": True, "max_attempts": max_attempts, "repairs_per_attempt": REPAIRS, "wait_if_data_or_sandbox_missing": True},
@@ -185,9 +211,9 @@ def register(con, proto_dir: Path, now: datetime, *, hypothesis: str, why_it_mat
     body = json.dumps(proto, indent=1, sort_keys=True)
     p.write_text(body, encoding="utf-8")
     con.execute("INSERT INTO learn_experiments (exp_id, key, registered_at, hypothesis, why_it_matters, disproof, source_kind, source_ref, dataset, "
-                "max_attempts, protocol_path, protocol_sha, evaluator_sha, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, 'registered')",
+                "max_attempts, protocol_path, protocol_sha, evaluator_sha, status, contract) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, 'registered', ?)",
                 [eid, key, now, hypothesis.strip()[:600], why_it_matters.strip()[:600], disproof.strip()[:600], source_kind, source_ref[:200], dataset,
-                 max_attempts, str(p), hashlib.sha256(body.encode()).hexdigest(), proto["evaluator_sha256"]])
+                 max_attempts, str(p), hashlib.sha256(body.encode()).hexdigest(), proto["evaluator_sha256"], cname])
     return eid
 
 
@@ -242,11 +268,19 @@ def parse_reply(text: str) -> Tuple[str, str]:
     return code + "\n", (w.group(1).strip() if w else "")[:300]
 
 
+def contract_of(con, eid: int) -> str:
+    r = con.execute("SELECT contract FROM learn_experiments WHERE exp_id=?", [eid]).fetchone()
+    return (r[0] if r and r[0] else contracts.DEFAULT)               # experiments registered before S68 are index timing
+
+
 def prompt(con, eid: int, dataset: str, history: List[dict]) -> str:
     h, why, dis = con.execute("SELECT hypothesis, why_it_matters, disproof FROM learn_experiments WHERE exp_id=?", [eid]).fetchone()
-    lines = [f"HYPOTHESIS: {h}", f"WHY IT MATTERS: {why}", f"WHAT WOULD DISPROVE IT: {dis}", f"DATASET: {dataset}",
-             f"COMPARATOR: {COMPARATOR}. A candidate is kept only if it beats it in a development period ({tp.DEV[0]} to {tp.DEV[1]}) and a later validation "
-             f"period ({tp.VAL[0]} to {tp.VAL[1]}), net of {SWITCH_COST:.1%} per switch; the bar rises with every variant already tried."]
+    cname = contract_of(con, eid)
+    c = contracts.CONTRACTS[cname]
+    costs = f"net of {SWITCH_COST:.1%} per switch" if cname == "index_timing" else f"net of {contracts.COST_BPS:.0f} basis points per rupee invested"
+    lines = [f"CONTRACT: {cname}", f"HYPOTHESIS: {h}", f"WHY IT MATTERS: {why}", f"WHAT WOULD DISPROVE IT: {dis}", f"DATASET: {dataset}",
+             f"COMPARATOR: {c.comparator}. A candidate is kept only if it beats it in a development period ({tp.DEV[0]} to {tp.DEV[1]}) and a later validation "
+             f"period ({tp.VAL[0]} to {tp.VAL[1]}), {costs}; the bar rises with every variant already tried."]
     if history:
         lines.append("EARLIER CANDIDATES (measured by the evaluator, not claimed):")
         for a in history:
@@ -319,10 +353,12 @@ def _run(con, eid: int, root: Path, now: datetime, writer, sandbox, frame, clock
         return {"status": "waiting", "why": "not enough history", "attempts": 0}
     con.execute("UPDATE learn_experiments SET status='running' WHERE exp_id=?", [eid])
     # the comparator, scored by trusted code and recorded as attempt 0
-    always = {d.isoformat(): 1.0 for d in dates}
-    base = {"development": score_period(df, always, tp.DEV), "validation": score_period(df, always, tp.VAL)}
+    cname = contract_of(con, eid)
+    comparator = contracts.CONTRACTS[cname].comparator
+    always = contracts.baseline_signals(cname, dates)
+    base = {"development": score(cname, df, always, tp.DEV), "validation": score(cname, df, always, tp.VAL)}
     if not any(a["kind"] == "baseline" for a in attempts(con, eid)):
-        _attempt(con, eid, 0, now, "baseline", "ok", note=COMPARATOR, result=base)
+        _attempt(con, eid, 0, now, "baseline", "ok", note=comparator, result=base)
     # (audit) the budget survives a restart: every attempt number used (kept, rejected, crashed or duplicate), the money and the seconds already
     # spent are read back from the record, so an interrupted run resumes inside the SAME budget instead of a fresh one
     prior = [a for a in attempts(con, eid) if a["kind"] != "baseline"]
@@ -371,7 +407,7 @@ def _run(con, eid: int, root: Path, now: datetime, writer, sandbox, frame, clock
             tried += 1
             continue
         try:
-            dev, val = score_period(df, r.walk, tp.DEV), score_period(df, r.walk, tp.VAL)
+            dev, val = score(cname, df, r.walk, tp.DEV), score(cname, df, r.walk, tp.VAL)
         except ValueError as e:
             _attempt(con, eid, tried + 1, now, "candidate", "crash", code=spec.code, error=f"the signals were incomplete: {e}", seconds=r.seconds, contained=r.contained)
             crashes += 1
@@ -379,8 +415,8 @@ def _run(con, eid: int, root: Path, now: datetime, writer, sandbox, frame, clock
             continue
         n_tests = counter.n_tests(con) + 1                         # this candidate counts, kept or not
         bar = counter.t_needed(n_tests)
-        ok, why = decide(dev, val, bar)
-        counter.record(con, now, "learner", "experiment:switch_rule", {"exp_id": eid, "attempt": tried + 1, "code_sha": hashlib.sha256(spec.code.encode()).hexdigest()[:16]},
+        ok, why = decide(dev, val, bar, comparator)
+        counter.record(con, now, "learner", "experiment:switch_rule" if cname == "index_timing" else f"experiment:{cname}", {"exp_id": eid, "attempt": tried + 1, "code_sha": hashlib.sha256(spec.code.encode()).hexdigest()[:16]},
                        n_dev=dev["n_months"], t_dev=dev["t"], t_val=val["t"], threshold_dev=bar, passed=ok, note=f"experiment:{eid}")
         res = {"development": dev, "validation": val, "dev_bar": round(bar, 3), "tests_in_family": n_tests, "why": why, "baseline": base}
         _attempt(con, eid, tried + 1, now, "candidate", "kept" if ok else "rejected", code=spec.code, note=spec.explain, result=res,
@@ -391,13 +427,13 @@ def _run(con, eid: int, root: Path, now: datetime, writer, sandbox, frame, clock
             kept = res
     bj = json.dumps(base)
     if kept is not None:
-        _set(con, eid, "kept", f"a candidate beat {COMPARATOR} in both periods: {kept['why']}. Shadow research only; nothing is wired as a rule", now, baseline=bj)
+        _set(con, eid, "kept", f"a candidate beat {comparator} in both periods: {kept['why']}. Shadow research only; nothing is wired as a rule", now, baseline=bj)
         status = "kept"
     elif tried >= max_attempts and crashes == tried:
         _set(con, eid, "deferred", f"every candidate failed to run ({crashes} of {tried}); try again with a different writer", now, baseline=bj)
         status = "deferred"
     elif tried >= max_attempts:
-        _set(con, eid, "rejected", f"{tried} candidate(s) tried, none beat {COMPARATOR} by the registered rule", now, baseline=bj)
+        _set(con, eid, "rejected", f"{tried} candidate(s) tried, none beat {comparator} by the registered rule", now, baseline=bj)
         status = "rejected"
     else:
         _set(con, eid, "deferred", "stopped on the time or cost budget before the attempts were used", now, baseline=bj)
@@ -422,8 +458,11 @@ def local_writer(model: Optional[str] = None) -> Callable[[str], str]:
     """The candidate writer on this PC (the local model, no cost, nothing leaves): the experiment's own system prompt."""
     from pflab.llm import client, registry
     m = model or registry.chosen("general") or "qwen3:8b-q8_0"
-    return lambda prompt: client.chat(m, [{"role": "system", "content": WRITER_SYSTEM}, {"role": "user", "content": prompt}],
-                                      num_predict=2500, num_ctx=8192).text
+    def write(prompt: str) -> str:
+        c = re.match(r"CONTRACT: (\w+)", prompt)
+        system = contracts.CONTRACTS[c.group(1)].writer_system if c and c.group(1) in contracts.CONTRACTS else WRITER_SYSTEM
+        return client.chat(m, [{"role": "system", "content": system}, {"role": "user", "content": prompt}], num_predict=2500, num_ctx=8192).text
+    return write
 
 
 def select(con) -> Optional[int]:

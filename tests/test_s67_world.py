@@ -142,7 +142,7 @@ def test_agent_hq_is_part_of_the_world_not_a_second_screen():
     """The World is the one place for the agents: no Agent HQ tab, no old office drawing, and every control it had is still reachable from the World."""
     static = Path(__file__).resolve().parents[1] / "src" / "pflab" / "app" / "static"
     app_js, world_js = (static / "app.js").read_text(encoding="utf-8"), (static / "world.js").read_text(encoding="utf-8")
-    tabs = app_js.split("const TABS = [", 1)[1].split("];", 1)[0]
+    tabs = app_js.split("const NAV = [", 1)[1].split("];", 1)[0]                                   # (S68: the screens are NAV)
     assert "'hq'" not in tabs and "Agent HQ" not in tabs and "'world'" in tabs
     assert "renderHQ" not in app_js and "officeSVG" not in app_js and "screen === 'hq'" not in app_js
     for part in ("orderP", "boardP", "brainP", "sugP", "agentsP", "spendP", "remP"):             # every panel it had is built and shown under the map

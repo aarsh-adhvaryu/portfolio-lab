@@ -692,6 +692,40 @@ MIGRATIONS = [
         account_id VARCHAR NOT NULL, kind VARCHAR NOT NULL, file_sha VARCHAR, first_date DATE, last_date DATE, n_rows INTEGER, built_at TIMESTAMP NOT NULL
     );
     """),
+    # S68: each paid call records the policy it was admitted under ('normal' | 'acceptance', the bounded window) and whether the investor's own
+    # question caused it (those never count against the system's day limits).
+    (51, "api_calls_policy_s68", """
+    ALTER TABLE api_calls ADD COLUMN policy VARCHAR;
+    ALTER TABLE api_calls ADD COLUMN his_order BOOLEAN;
+    """),
+    # S68: missions (one investigation carried by several workers), the task columns that make a board task a durable unit of worker
+    # work (its case, role, dependencies, the snapshot it read, a checkpoint, the artifacts it produced, a lease, why it waits and what resumes
+    # it), and the artifact index that "done" is judged by.
+    (52, "missions_workers_s68", """
+    ALTER TABLE hq_tasks ADD COLUMN case_id INTEGER;
+    ALTER TABLE hq_tasks ADD COLUMN role VARCHAR;
+    ALTER TABLE hq_tasks ADD COLUMN depends_on VARCHAR;
+    ALTER TABLE hq_tasks ADD COLUMN input_version VARCHAR;
+    ALTER TABLE hq_tasks ADD COLUMN checkpoint_json VARCHAR;
+    ALTER TABLE hq_tasks ADD COLUMN artifacts_json VARCHAR;
+    ALTER TABLE hq_tasks ADD COLUMN lease_owner VARCHAR;
+    ALTER TABLE hq_tasks ADD COLUMN lease_until TIMESTAMP;
+    ALTER TABLE hq_tasks ADD COLUMN wait_kind VARCHAR;
+    ALTER TABLE hq_tasks ADD COLUMN resume_condition VARCHAR;
+    CREATE TABLE hq_missions (
+        mission_id INTEGER PRIMARY KEY, case_id INTEGER NOT NULL, created_at TIMESTAMP NOT NULL, updated_at TIMESTAMP NOT NULL,
+        goal VARCHAR NOT NULL, state VARCHAR NOT NULL, round INTEGER NOT NULL, plan_json VARCHAR, snapshot_id VARCHAR,
+        result_json VARCHAR, last_progress_at TIMESTAMP, next_trigger VARCHAR, blocker VARCHAR, origin VARCHAR
+    );
+    CREATE TABLE hq_artifacts (
+        artifact_id INTEGER PRIMARY KEY, case_id INTEGER, task_id INTEGER, kind VARCHAR NOT NULL, ref VARCHAR, detail VARCHAR,
+        created_at TIMESTAMP NOT NULL
+    );
+    """),
+    # S68: every experiment names the evaluation contract that judges it (learner/contracts.py); NULL = index_timing (registered before S68)
+    (53, "experiment_contract_s68", """
+    ALTER TABLE learn_experiments ADD COLUMN contract VARCHAR;
+    """),
 ]
 
 

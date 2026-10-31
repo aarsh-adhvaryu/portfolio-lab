@@ -109,9 +109,12 @@ def config(path: Optional[Path] = None) -> dict:
     from pflab import release
     # S65: the Rs 2,500 cap belongs to the app; the workshop counts against its own development line (default 0, raised only by him)
     cap = float(c.get("dev_monthly_cap_rupees", 0.0)) if release.channel() == "beta" else float(c.get("monthly_cap_rupees", 0.0))
+    whole = _toml.load(p) if p.exists() else {}
     return {"model": c.get("model", MODEL), "cap": cap,
             "ask_above": float(c.get("ask_above_rupees", 0.0)), "usd_inr": float(c.get("usd_inr", 90.0)),
             "adopted": bool(c.get("adopted", False)),
+            # S68: the day limits and the bounded acceptance window are configuration, read on every call (live, no restart)
+            "policy": whole.get("policy", {}), "acceptance": whole.get("acceptance", {}),
             # the investor 2026-10-23: Tijori exports are public company data, not his; they go to the analyst (set false to stop)
             "tijori_to_analyst": bool(c.get("tijori_to_analyst", True))}
 
@@ -362,7 +365,45 @@ def month_spend_inr(con, now: datetime) -> float:
                              "('done','refused','submitted','queued')", [start]).fetchone()[0])
 
 
+def _when(v) -> Optional[datetime]:
+    if isinstance(v, datetime):
+        return v
+    if hasattr(v, "year") and hasattr(v, "month"):                          # a TOML date
+        return datetime(v.year, v.month, v.day, 23, 59, 59)
+    try:
+        return datetime.fromisoformat(str(v)) if v else None
+    except ValueError:
+        return None
+
+
+def acceptance(cfg: dict, now: datetime) -> Optional[dict]:
+    """S68 (his word 2026-10-31): the bounded acceptance window. While `now` is before `until`, the system's day limits and passes-a-day do
+    not hold and the window's own cap (`cap_rupees`, spend since `since`) replaces the monthly cap. It ends by itself; the normal policy
+    is then exactly as before. Returns {since, until, cap} or None. A window with no cap is no window."""
+    a = (cfg or {}).get("acceptance") or {}
+    until, since = _when(a.get("until")), _when(a.get("since")) or datetime(now.year, now.month, now.day)
+    cap = float(a.get("cap_rupees", 0) or 0)
+    if until is None or cap <= 0 or now > until or now < since:
+        return None
+    return {"since": since, "until": until, "cap": cap}
+
+
+def window_spend(con, since: datetime) -> float:
+    return float(con.execute("SELECT coalesce(sum(cost_inr), 0) FROM api_calls WHERE created_at >= ? AND status IN "
+                             "('done','refused','submitted','queued')", [since]).fetchone()[0])
+
+
 def check_budget(con, est_inr: float, cfg: dict, now: datetime, approved: bool = False) -> List[str]:
+    acc = acceptance(cfg, now)
+    if acc:                                                  # the window's cap stands in for the month's
+        spent = window_spend(con, acc["since"])
+        if spent + est_inr > acc["cap"]:
+            raise BudgetRefused(f"the acceptance window's cap would be passed: spent ~Rs {spent:,.0f} since {acc['since']:%Y-%m-%d}, "
+                                f"this job up to ~Rs {est_inr:,.0f}, window cap Rs {acc['cap']:,.0f} (ends {acc['until']:%Y-%m-%d})")
+        if est_inr > cfg["ask_above"] and not approved:
+            raise NeedsApproval(f"this job may cost up to ~Rs {est_inr:,.0f} (your limit for one job is Rs {cfg['ask_above']:,.0f})")
+        return [f"over 80% of the acceptance window's budget (~Rs {spent + est_inr:,.0f} of Rs {acc['cap']:,.0f})"] \
+            if spent + est_inr >= 0.8 * acc["cap"] else []
     if cfg["cap"] <= 0:
         raise BudgetRefused("no monthly cap is set in api_budget.toml: nothing is sent")
     spent = month_spend_inr(con, now)

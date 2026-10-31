@@ -12,6 +12,7 @@ States (`hq_cases.status`):
     waiting_data       needs something named in `hq_case_deps` (a report, an answer, a file); `sweep` resumes it when that arrives
     retry              a pass failed; tried again at `next_review_at`, at most `max_attempts` passes in all
     awaiting_approval  the next step needs his yes (a paid call over his limit, an uncontained run, a change of a limit)
+    workspace          S68: a scratch case of the assistant's conversation (a calculation or a scenario for him); the brain's case pass never takes it
     done               decided (`decision`, `decision_reason`); `next_review_at` reopens it on that day (`due`)
     failed             out of attempts; shown on the screen, not hidden
 
@@ -27,8 +28,9 @@ import threading
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Sequence, Tuple
 
-STATES = ("queued", "running", "waiting_data", "retry", "awaiting_approval", "done", "failed")
-ACTIVE = ("queued", "running", "waiting_data", "retry", "awaiting_approval")
+WAITING_FOR_CONDITION = ("waiting_budget", "waiting_provider")          # S68: waiting is not failing; `next_review_at` is when to look again
+STATES = ("queued", "running", "waiting_data", "retry", "awaiting_approval", "done", "failed", "workspace", *WAITING_FOR_CONDITION)
+ACTIVE = ("queued", "running", "waiting_data", "retry", "awaiting_approval", *WAITING_FOR_CONDITION)
 STANCES = ("for", "against", "neutral", "missing")
 DECISIONS = ("nothing", "watch", "suggest", "ask", "tell", "inconclusive")
 ORIGINS = ("scheduled", "event", "brain", "chat", "investor", "code")
@@ -37,6 +39,7 @@ REVIEW_DAYS = 7               # the default next review of a closed case
 RETRY_MINUTES = 15
 FRESH_DAYS = {"filing": 30, "result": 100, "article": 3, "web": 7, "dataset": 30, "email": 14, "calculation": 3650, "observation": 3}
 CASE_PASS_EVERY = timedelta(hours=1)
+MISSION_OWNED = "(SELECT case_id FROM hq_missions WHERE state IN ('planning', 'working', 'reviewing', 'synthesising'))"
 
 
 def _id(con, table: str, col: str) -> int:
@@ -217,6 +220,34 @@ def _floor(m: dict, requested) -> datetime:
     return r - timedelta(days=30)
 
 
+def _period_words(pe: str) -> List[str]:
+    """How a period's end date may be written inside a sheet: 'Sep 2026', 'September 2026', '2026-09', '30-09-2026', 'Q2 FY27'."""
+    from datetime import date as _d
+    d = _d.fromisoformat(pe[:10])
+    fy = d.year + (1 if d.month >= 4 else 0)
+    q = {4: 1, 5: 1, 6: 1, 7: 2, 8: 2, 9: 2, 10: 3, 11: 3, 12: 3, 1: 4, 2: 4, 3: 4}[d.month]
+    # a quarter's end months: only the end month (6, 9, 12, 3) names the quarter
+    return [f"{d:%b %Y}".lower(), f"{d:%B %Y}".lower(), f"{d:%Y-%m}", f"{d:%d-%m-%Y}", f"{d:%b-%y}".lower(), f"q{q} fy{str(fy)[2:]}", f"q{q}fy{str(fy)[2:]}"]
+
+
+def _dropped_dataset(con, m: dict, floor: datetime) -> str:
+    """A dataset the inbox read (kind 'dataset' in the graph) with an edge to the company, whose own text or columns name the period asked for
+    (when one was named); empty when none fits."""
+    rows = con.execute("SELECT d.doc_id, d.title, coalesce(cast(d.attrs_json AS VARCHAR), '') FROM kg_docs d JOIN kg_edges e ON e.src = d.doc_id "
+                       "AND e.dst = ? WHERE d.kind = 'dataset' AND d.dup_of IS NULL ORDER BY d.ingested_at", [f"company:{m['isin']}"]).fetchall()
+    for doc_id, title, attrs in rows:
+        if m.get("period_end"):
+            hay = f"{title} {attrs}".lower()
+            try:
+                words = _period_words(str(m["period_end"]))
+            except ValueError:
+                words = []
+            if words and not any(w in hay for w in words):
+                continue                                            # a sheet that does not show the period asked is not that report
+        return f"dataset {doc_id}: {(title or '')[:80]}"
+    return ""
+
+
 def arrive(con, cid: int, dep_key: str, now: datetime, detail: str = "") -> bool:
     """The dependency arrived: mark it, and queue the case again when nothing else is open."""
     r = con.execute("SELECT dep_id FROM hq_case_deps WHERE case_id=? AND dep_key=? AND status='open'", [cid, dep_key]).fetchone()
@@ -250,25 +281,34 @@ def sweep(con, now: datetime) -> List[Tuple[int, str]]:
             if a and a[0] in ("answered", "dropped") and m.get("answer", True) and not m.get("doc_kind") and not m.get("inbox"):
                 found = f"his answer to question #{qid}" if a[0] == "answered" else f"question #{qid} closed"
         if not found and m.get("doc_kind"):
-            # right company (the edge), right type, and published for the period asked: on or after the period's end, else not before
-            # 30 days ahead of the request. An old report imported only now is not what was asked for.
+            # S68: what counts is WHAT the document is, not when it was imported: right company (the edge), right type, published for the
+            # period asked (on or after the period's end). A report imported BEFORE the request answers it (no ingested_at floor). Without a
+            # period the report must be recent (30 days before the request), so an old one is not taken for the one asked for.
             floor = _floor(m, requested)
-            args: list = [m["doc_kind"], requested, floor]
+            args: list = [m["doc_kind"], floor]
             sql = "SELECT d.doc_id, d.title FROM kg_docs d "
             if m.get("isin"):
                 sql += "JOIN kg_edges e ON e.src = d.doc_id AND e.dst = ? "
                 args = [f"company:{m['isin']}", *args]
-            sql += "WHERE d.kind = ? AND d.ingested_at >= ? AND d.published_at >= ? AND d.dup_of IS NULL ORDER BY d.ingested_at LIMIT 1"
+            sql += "WHERE d.kind = ? AND d.published_at >= ? AND d.dup_of IS NULL ORDER BY d.ingested_at LIMIT 1"
             r = con.execute(sql, args).fetchone()
             if r:
                 found = f"{m['doc_kind']} {r[0]}: {(r[1] or '')[:80]}"
+            elif m.get("isin"):
+                found = _dropped_dataset(con, m, floor)           # a file he dropped is a dataset about the company, read by the inbox
         if not found and m.get("inbox"):
+            from pflab.app.inbox import EVIDENCE_STATES
             token = str(m.get("company") or (get(con, cid) or {}).get("subject") or "").strip().lower()
-            for iid, name, kind, text in con.execute("SELECT item_id, name, kind, coalesce(text, '') FROM inbox_items WHERE created_at >= ? "
-                                                     "AND status <> 'removed' ORDER BY item_id", [requested]).fetchall():
-                if m.get("inbox_kind") and kind != m["inbox_kind"]:
+            q = ",".join("?" * len(EVIDENCE_STATES))
+            # a file that arrived before the request counts; one that failed, is blocked or is still being read does not (it is not evidence yet)
+            for iid, name, kind, text, res in con.execute(f"SELECT item_id, name, kind, coalesce(text, ''), coalesce(result_json, '') FROM inbox_items "
+                                                          f"WHERE status IN ({q}) ORDER BY item_id", list(EVIDENCE_STATES)).fetchall():
+                want = m.get("inbox_kind")
+                if want in ("result", "results", "report", "filing", "document"):
+                    want = ("other", "market", "result")        # the inbox has no kind 'result': a company report is filed as 'other' or 'market'
+                if want and kind not in ((want,) if isinstance(want, str) else want):
                     continue                                      # a statement does not answer a request for a results report
-                if token and token not in f"{name} {text[:4000]}".lower():
+                if token and token not in f"{name} {text[:4000]} {res[:2000]}".lower():
                     continue                                      # a file about someone else does not either
                 found = f"file {name} in the inbox"
                 break
@@ -385,6 +425,18 @@ def original_inputs(con, calc_id: int, names: List[str]) -> Tuple[Optional[dict]
     return out, ""
 
 
+def _reproduce_trusted(con, calc_id: int, name: str, params: dict, datasets: List[str], kept: dict, basis: str, frames_for) -> dict:
+    from pflab.quant import trusted
+    frames, why = original_inputs(con, calc_id, datasets)
+    if frames is None:
+        return {"ok": False, "reproduced": False, "basis": "original", "label": "not reproducible", "same_as_kept": False, "why": why, "differences": [],
+                "result": {}, "kept": kept, "problems": [why]}
+    got = trusted.rerun(name, params, frames)
+    diffs = compare_results(kept, got)
+    return {"ok": True, "reproduced": not diffs, "basis": "original", "label": "reproduced from the original data" if not diffs else "differs from the kept result",
+            "same_as_kept": not diffs, "differences": diffs, "result": got, "kept": kept, "problems": []}
+
+
 def reproduce(con, calc_id: int, frames_for=None, sandbox=None, basis: str = "original") -> dict:
     """Run a kept calculation again. basis='original' (the default) uses the data it ran on, from its snapshot; if that is not available
     it says so and runs nothing unless the caller gave `frames_for`, in which case the rerun is on current data and is labelled so. It
@@ -395,6 +447,8 @@ def reproduce(con, calc_id: int, frames_for=None, sandbox=None, basis: str = "or
     if not r:
         raise LookupError(f"no calculation #{calc_id}")
     code, alt, ds, params, result, question, check = r
+    if str(code).startswith("trusted:"):                    # S68: reviewed code that ships with the application, rerun by name on the kept inputs
+        return _reproduce_trusted(con, calc_id, str(code)[8:], json.loads(params or "{}"), json.loads(ds or "[]"), json.loads(result or "{}"), basis, frames_for)
     test = (json.loads(check or "{}").get("test") or {})
     spec = wk.Spec(json.loads(ds), code, test, alt or "", "", json.loads(params or "{}"))
     frames = None
@@ -423,13 +477,15 @@ def reproduce(con, calc_id: int, frames_for=None, sandbox=None, basis: str = "or
 def due(con, now: datetime, limit: int = 6) -> List[int]:
     """Cases for the next case pass: queued, retry whose time has come, and closed cases whose review day has come (reopened here,
     with the reason logged). Oldest first."""
-    for (cid,) in con.execute("SELECT case_id FROM hq_cases WHERE status='done' AND next_review_at IS NOT NULL AND next_review_at <= ?",
-                              [now]).fetchall():
+    for (cid,) in con.execute("SELECT case_id FROM hq_cases WHERE status='done' AND next_review_at IS NOT NULL AND next_review_at <= ? "
+                              "AND case_id NOT IN (SELECT case_id FROM hq_missions)", [now]).fetchall():       # (a mission is reopened by hq/missions.py)
         c = get(con, cid)
         set_status(con, cid, "queued", now, f"scheduled review is due (decision then: {c['decision']}: {(c['reason'] or '')[:100]})")
         con.execute("UPDATE hq_cases SET steps=0, closed_at=NULL, attempts=0 WHERE case_id=?", [cid])
-    return [r[0] for r in con.execute("SELECT case_id FROM hq_cases WHERE status='queued' OR (status='retry' AND (next_review_at IS NULL OR "
-                                      "next_review_at <= ?)) ORDER BY opened_at, case_id LIMIT ?", [now, limit]).fetchall()]
+    # a case carried by an active mission belongs to the mission's workers (hq/missions.py), not to the brain's case pass
+    return [r[0] for r in con.execute("SELECT case_id FROM hq_cases WHERE (status='queued' OR (status IN ('retry', 'waiting_budget', 'waiting_provider') "
+                                      "AND (next_review_at IS NULL OR next_review_at <= ?))) AND case_id NOT IN " + MISSION_OWNED + " ORDER BY opened_at, case_id LIMIT ?",
+                                      [now, limit]).fetchall()]
 
 
 _LIVE: set = set()                                         # case ids in a pass of THIS process: a wake must not reap them
@@ -471,21 +527,26 @@ def end_pass(con, ids: Sequence[int], pass_id: int, now: datetime, ok: bool, err
             set_status(con, cid, "queued", now, f"step {steps} done, not decided: queued for another look")
 
 
-def defer(con, ids: Sequence[int], now: datetime, why: str) -> None:
-    """A pass was not made for a reason that is not the case's (a spending limit): back to the queue, no attempt counted."""
+def defer(con, ids: Sequence[int], now: datetime, why: str, kind: str = "waiting_budget", resume_at: Optional[datetime] = None) -> None:
+    """A pass was not made, or stopped, for a reason that is not the case's (a spending limit, the provider): the case WAITS with the reason and
+    the time to look again (`resume_at`, else an hour), and no attempt is counted. It is picked up by `due` when that time comes, so a
+    refusal that cannot change before then is not asked again every round."""
+    if kind not in WAITING_FOR_CONDITION:
+        raise ValueError(f"kind must be one of {WAITING_FOR_CONDITION}")
     with _LIVE_LOCK:
         _LIVE.difference_update(ids)
+    at = resume_at or (now + timedelta(hours=1))
     for cid in ids:
-        con.execute("UPDATE hq_cases SET status='queued', attempts=greatest(attempts - 1, 0), updated_at=? WHERE case_id=? AND status='running'",
-                    [now, cid])
-        log(con, cid, now, "deferred", why[:200])
+        con.execute("UPDATE hq_cases SET status=?, attempts=greatest(attempts - 1, 0), next_review_at=?, last_error=?, updated_at=? "
+                    "WHERE case_id=? AND status='running'", [kind, at, why[:300], now, cid])
+        log(con, cid, now, kind, f"{why[:160]}; looks again {at:%Y-%m-%d %H:%M}")
 
 
 def reap(con, now: datetime) -> int:
     """Cases left `running` by a process that died: back to retry (the pass is counted), or failed when out of attempts."""
     with _LIVE_LOCK:
         mine = set(_LIVE)
-    rows = [r for r in con.execute("SELECT case_id FROM hq_cases WHERE status='running'").fetchall() if r[0] not in mine]
+    rows = [r for r in con.execute("SELECT case_id FROM hq_cases WHERE status='running' AND case_id NOT IN " + MISSION_OWNED).fetchall() if r[0] not in mine]
     for (cid,) in rows:
         end_pass(con, [cid], -1, now, False, "interrupted: the system closed during the pass")
         log(con, cid, now, "interrupted", "the system closed during a pass; effects already done are not repeated")

@@ -220,7 +220,7 @@ function wireWorld() {
   $('wpause').onclick = async () => { try { await post('/api/world/pause', { paused: !W.last.pulse.paused }); } catch (er) { alert(er.message); } worldTick(); };
   const ask = async () => { const q = $('wask').value.trim(), to = $('wto').value; if (!q) return;
     try {
-      if (!to) { const r = await post('/api/chats/0/messages', { text: q, mode: 'auto' }); S.chat = r.chat_id; S.mode = 'auto'; location.hash = '#/ai'; return; }
+      if (!to) { await post('/api/assistant', { text: q, context: 'the world screen' }); $('wask').value = ''; location.hash = '#/assistant'; return; }
       await post('/api/hq/order', { agent: to, text: q }); $('wask').value = '';
       $('wmsg').textContent = 'Sent. The answer will appear on the board below.'; W.bench = 'board'; fetchHq(true); worldTick();
     } catch (e) { $('wmsg').textContent = e.message.slice(0, 140); } };
