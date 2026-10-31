@@ -130,7 +130,39 @@ def portfolio(con, u: pd.DataFrame, stock_list: List[dict], now: Optional[dateti
             g.close(con, ME, "owns", cid, e.date)
     for s in stock_list:
         n += g.edge(con, ME, "watches", f"company:{s['isin']}", date.today(), "stock_list", now=now)
+    return n + deposits(con, now)
+
+
+def deposits(con, now: Optional[datetime] = None) -> int:
+    """(2026-10-31) His fixed deposits in the graph: one node a deposit, named by bank and maturity, never by number (the graph is read by the
+    brain; banking details never leave the PC), owned from its term start; a deposit gone from the register or closed is no longer owned."""
+    import hashlib
+    from pflab.pm import fd as fdm
+    n, today = 0, (now or datetime.now()).date()
+    live = set()
+    for f in fdm.load(con):
+        nid = "deposit:" + hashlib.sha256(f"{f.bank}|{f.fd_id}".encode()).hexdigest()[:10]
+        g.node(con, nid, "deposit", f"{f.bank} fixed deposit maturing {f.maturity}",
+               {"bank": f.bank, "principal": f.principal, "rate_pct": round(f.rate * 100, 3), "start": str(f.term_start), "maturity": str(f.maturity),
+                "maturity_amount": f.maturity_amount, "status": f.status, "reserve": f.purpose.startswith("reserve:")}, now)
+        g.node(con, f"bank:{f.bank}", "org", f.bank, now=now)
+        n += g.edge(con, nid, "held_at", f"bank:{f.bank}", f.term_start, "deposits", now=now)
+        if f.status == "closed" and f.closed_on:
+            g.close(con, ME, "owns", nid, f.closed_on)
+        else:
+            live.add(nid)
+            n += g.edge(con, ME, "owns", nid, f.term_start, "deposits", now=now)
+    for (dst,) in con.execute("SELECT dst FROM kg_edges WHERE src=? AND rel='owns' AND dst LIKE 'deposit:%' AND valid_to IS NULL", [ME]).fetchall():
+        if dst not in live:
+            g.close(con, ME, "owns", dst, today)
     return n
+
+
+def refresh_portfolio(con, now: Optional[datetime] = None) -> int:
+    """(2026-10-31) What he owns, at once after the record or the deposits change (the nightly graph job does the rest)."""
+    from pflab.plan import guards as gd
+    sl = gd.stock_list()
+    return portfolio(con, universe(con, sl), sl, now)
 
 
 def filings(con, u: pd.DataFrame, since: date, root=None, now: Optional[datetime] = None) -> int:
