@@ -248,3 +248,44 @@ def test_deposits_are_in_the_knowledge_graph_by_bank_and_maturity_never_by_numbe
     ib.deposits_now(rt)
     kgb.deposits(con, NOW)
     assert owned() == 1
+
+
+# --- a bank statement as a PDF (2026-10-31) -------------------------------------------------------------------------------------------------
+
+PDF_TEXT = """Date Narration Chq./Ref.No. Value Dt Withdrawal Amt. Deposit Amt. Closing Balance
+01/10/26 UPI-SOMEONE-OKBANK-1234 0000123456789012 01/10/26 500.00 9,500.00
+ABC@OKBANK-REF
+02/10/26 NEFT CR-INVENTED EMPLOYER
+SALARY OCT
+0000999988887777 02/10/26 20,000.00 29,500.00
+Page No .: 1
+AN INVENTED HOLDER
+SOME STREET
+Statement of account : 01/10/2026 To : 31/10/2026
+Registered Office Address: HDFC Bank House, Mumbai 400013
+-CONTINUED
+26/10/26 ZERODHA BROKING LTD 0000111122223333 26/10/26 5,000.00 24,500.00
+STATEMENT SUMMARY :-
+Opening Balance Dr Count Cr Count Debits Credits Closing Bal
+10,000.00 2 1 5,500.00 20,000.00 24,500.00
+Registered Office Address: HDFC Bank House
+a legal note that is not a line"""
+
+
+def test_a_bank_pdf_statement_is_read_line_by_line_and_checked_against_its_summary(monkeypatch):
+    monkeypatch.setattr(bank, "_pdf_text", lambda raw, pw: PDF_TEXT)
+    df = bank.parse(b"%PDF-1.4 invented")
+    assert list(df["debit"]) == [500.0, 0.0, 5000.0] and list(df["credit"]) == [0.0, 20000.0, 0.0]
+    assert df["description"].iloc[0].endswith("ABC@OKBANK-REF")                                     # a wrapped narration joined
+    assert df["description"].iloc[1] == "NEFT CR-INVENTED EMPLOYERSALARY OCT-CONTINUED"             # carried over the page break, not his address
+    assert "zerodha" in df["description"].iloc[2].lower() and df.attrs["opening_balance"] == 10000.0
+    monkeypatch.setattr(bank, "_pdf_text", lambda raw, pw: PDF_TEXT.replace("10,000.00 2 1", "10,000.00 3 1"))
+    with pytest.raises(bank.StatementError, match="summary says"):
+        bank.parse(b"%PDF-1.4 invented")
+
+
+def test_the_same_line_in_a_pdf_and_a_spreadsheet_of_one_account_is_counted_once():
+    a = pd.DataFrame([dict(date=date(2026, 10, 1), value_date=date(2026, 10, 1), description="UPI-SOMEONE", ref="", debit=500.0, credit=0.0, balance=9500.0)])
+    b = pd.DataFrame([dict(date=date(2026, 10, 1), value_date=date(2026, 10, 1), description="UPI-SOME ONE-wrapped", ref="", debit=500.0, credit=0.0, balance=9500.0),
+                      dict(date=date(2026, 10, 2), value_date=date(2026, 10, 2), description="NEFT", ref="", debit=0.0, credit=20000.0, balance=29500.0)])
+    assert len(bank.merge_parsed([a, b])) == 2
