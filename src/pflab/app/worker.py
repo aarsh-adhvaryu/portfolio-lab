@@ -22,6 +22,8 @@ def main() -> int:
     logging.basicConfig(filename=pm / "app" / "worker.log", level=logging.INFO, encoding="utf-8",
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     log = logging.getLogger("pflab.worker")
+    from pflab import scrub
+    scrub.install()
     port = st.load(pm)["port"]
 
     def term(*_):                                         # SIGTERM / Ctrl+C: stop the way a requested shutdown does

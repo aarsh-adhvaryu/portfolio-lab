@@ -293,6 +293,11 @@ def _security(rt, t: dict) -> Reply:
                  + security.status(rt.cursor()), ["security agent (code)"])
 
 
+def _worker(rt, t: dict) -> Reply:
+    from pflab.hq import workers
+    return workers.run_task(rt, t)
+
+
 def _receptionist(rt, t: dict) -> Reply:
     from pflab.hq.reception import route
     agent, text = route(t["text"])
@@ -340,6 +345,14 @@ ROSTER: Dict[str, Agent] = {a.name: a for a in [
     Agent("learner", "Learner", "{learner_reading} reads (Haiku 5.5 when its reply does not parse); {learner_proposals} words proposals", "reads papers and blogs for testable "
           "claims, registers and tests them; reads the system's record and proposes changes", "arXiv, OpenAlex, blogs, "
           "drop\\learn, the record", "findings, lessons, proposals", _learner),
+    Agent("w_coord", "Coordinator", "Opus 5.5 (plans and writes the answer)", "plans a mission's steps and writes its final answer after the review",
+          "the case, the portfolio", "a plan, an answer", _worker),
+    Agent("w_research", "Research worker", "Sonnet 5.5 with tools", "gathers and weighs evidence for a mission step; looks for disconfirming evidence",
+          "filings, news, the web, the graph", "evidence in the case", _worker),
+    Agent("w_quant", "Quant worker", "Sonnet 5.5 with tools; the sandbox", "calculations, scenarios and strategy experiments for a mission step",
+          "prices, the ledger snapshot", "calculations, experiments", _worker),
+    Agent("w_review", "Reviewer", "Opus 5.5, its own context", "independently reproduces and checks a mission's work; approves or asks for specific fixes",
+          "the case dossier", "a review", _worker),
     Agent("security", "Security", "code; {review} reviews new code weekly", "re-checks what left the PC, data flows, the "
           "repo's privacy, the tests; never changes code or data", "requests sent, jobs, the repo", "Needs from you",
           _security),

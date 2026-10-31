@@ -132,7 +132,7 @@ def growth(con, asof: date, months: int = 12) -> dict:
     from pflab.calc import growth as gr, valuation as val
     from pflab.ledger import events as ev
     log = ev.load(con)
-    days = sorted({e.trade_date for e in log})
+    days = sorted({e.date for e in log})
     start = asof - timedelta(days=int(months * 30.44))
     if days:
         start = max(start, days[0])

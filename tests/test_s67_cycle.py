@@ -318,7 +318,7 @@ def test_a_refused_pass_does_not_count_against_the_case_and_a_failed_one_does(co
     tiny = {**CFG, "cap": 0.0001}
     brain.think(rt, "case", [], Fake([_note("x")]), egress.Gate(), cfg=tiny, case_ids=[cid])
     c = cases.get(con, cid)
-    assert c["status"] == "queued" and c["attempts"] == 0                                    # the spending limit is not the case's fault
+    assert c["status"] == "waiting_budget" and c["attempts"] == 0 and c["next_review"] > NOW      # S68: it waits, no attempt used
 
 
 def test_search_text_cannot_change_what_a_case_may_do(con, tmp_path, quiet):
@@ -358,7 +358,7 @@ def test_a_calculation_is_kept_with_its_script_data_and_result_and_can_be_reprod
 def test_the_brain_tools_for_cases_are_registered_with_strict_schemas_and_the_rival_cannot_open_cases(con, tmp_path, quiet):
     for n in ("cases", "open_case", "case_evidence", "request_report", "case_calculate", "case_close", "resolve_task"):
         assert n in tl.TOOLS
-    assert len(tl.definitions()) == len(tl.TOOLS)
+    assert len(tl.definitions()) == len(tl.TOOLS) - len(tl.WORKER_ONLY)       # S68: the workers' tools are not the brain's
     rt = _desk(con, tmp_path, Clock(NOW))
     ctx = tl.Ctx(rt, 1, gv.SONNET, True, {"AAA": AAA}, egress.Gate(), NOW)
     text, err = tl.run(ctx, "open_case", {"question": "Anything odd?"}, 1)

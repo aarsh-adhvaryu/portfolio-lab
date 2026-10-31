@@ -108,7 +108,7 @@ def test_the_tool_links_the_explanations_to_the_case_and_chat_sees_the_same_stat
 def test_an_experiment_registered_by_the_brain_is_what_the_learner_runs_and_chat_reads(ctx, con, tmp_path):
     text, err = tl.run(ctx, "register_experiment", {"hypothesis": "A twelve-month momentum filter improves on staying invested",
                                                     "why_it_matters": "it would bear on the 35 percent fall limit", "disproof": "no net gain in either period",
-                                                    "source": "case", "case_id": ctx.cid}, 1)
+                                                    "source": "case", "case_id": ctx.cid, "contract": "index_timing"}, 1)
     assert not err and json.loads(text)["carried_out"]
     assert ex.select(con) == 1
     from pflab.agents import tools as at
@@ -122,13 +122,13 @@ def test_an_experiment_registered_by_the_brain_is_what_the_learner_runs_and_chat
 def test_registering_experiments_is_capped_a_day(ctx):
     done = []
     for k in range(tl.DAILY["register_experiment"] + 2):
-        text, _ = tl.run(ctx, "register_experiment", {"hypothesis": f"rule number {k}", "why_it_matters": "w", "disproof": "d", "source": "investor"}, 1)
+        text, _ = tl.run(ctx, "register_experiment", {"hypothesis": f"rule number {k}", "why_it_matters": "w", "disproof": "d", "source": "investor", "contract": "index_timing"}, 1)
         done.append(json.loads(text).get("carried_out"))
     assert done == [True, True, False, False]
 
 
 def test_an_interrupted_experiment_continues_from_its_recorded_attempts_and_a_live_one_is_left_alone(con, tmp_path):
-    eid = ex.register(con, tmp_path / "proto", NOW, hypothesis="a rule", why_it_matters="w", disproof="d", source_kind="investor")
+    eid = ex.register(con, tmp_path / "proto", NOW, hypothesis="a rule", why_it_matters="w", disproof="d", source_kind="investor", contract="index_timing")
     con.execute("UPDATE learn_experiments SET status='running' WHERE exp_id=?", [eid])
     ex._attempt(con, eid, 1, NOW, "candidate", "rejected", code="def compute(data):\n    return {'signal': 1}\n", result={"why": "behind"})
     with ex._LIVE_LOCK:
@@ -195,7 +195,7 @@ def test_new_research_survives_a_rollback_to_the_release_that_does_not_know_the_
     kept.write_bytes(bk.read_bytes())
     k = store.connect(kept)
     k.execute("INSERT INTO questions VALUES (9, ?, 'investigator', 'objective:1', 'newer question', 'open', NULL, NULL)", [NOW])
-    ex.register(k, tmp_path / "proto", NOW, hypothesis="kept research", why_it_matters="w", disproof="d", source_kind="investor")
+    ex.register(k, tmp_path / "proto", NOW, hypothesis="kept research", why_it_matters="w", disproof="d", source_kind="investor", contract="index_timing")
     k.close()
     r = up.merge_new_rows(kept, bk)
     assert r["errors"] == {} and r["added"].get("questions") == 1

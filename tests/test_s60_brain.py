@@ -105,7 +105,7 @@ def quiet_input(monkeypatch):
 
 def test_every_tool_has_a_strict_schema_and_bounds_are_checked_here():
     defs = tl.definitions()
-    assert len(defs) == len(tl.TOOLS) and all(d["input_schema"]["additionalProperties"] is False for d in defs)
+    assert len(defs) == len(tl.TOOLS) - len(tl.WORKER_ONLY) and all(d["input_schema"]["additionalProperties"] is False for d in defs)
     strict = [d["name"] for d in defs if d.get("strict")]
     assert len(strict) <= 20 and "record_suggestion" in strict and "portfolio" not in strict   # the API's limit: 20
     assert not any(k in p for d in defs for p in d["input_schema"]["properties"].values()
@@ -219,7 +219,8 @@ def test_a_pass_looks_with_tools_records_in_shadow_and_checks_the_note(con, tmp_
     assert s["pass"] == pid and s["kind"] == "hold" and s["quality"] == "sound" and s["shadow"]
     calls = con.execute("SELECT agent, turn, status FROM api_calls ORDER BY call_id").fetchall()
     assert calls == [("brain", 1, "done"), ("brain", 2, "done"), ("brain", 3, "done")]
-    assert gv.calls_today(con, "brain", NOW) == 1                                  # one pass, three turns
+    assert con.execute("SELECT count(*) FROM api_calls WHERE agent='brain' AND turn=1").fetchone()[0] == 1   # one pass, three turns
+    assert gv.calls_today(con, "brain", NOW) == 0     # S68: his question ("asked") is not counted against the system's passes a day
     sent = c.messages.sent
     assert all(m["tools"] and m["system"][0]["cache_control"] for m in sent)
     assert sent[0]["messages"][0]["content"][0]["cache_control"] == {"type": "ephemeral"}
@@ -270,7 +271,7 @@ def test_the_last_turn_has_no_tools_and_a_refused_turn_stops_the_pass(con, tmp_p
         m.setattr(gv, "cost_inr", lambda *a, **k: 0.3)
         pid = brain.think(rt, "asked", [], big, egress.Gate(), cfg=cfg)
     j = next(p for p in brain.journal(con) if p["id"] == pid)
-    assert j["status"] == "done" and "stopped before turn 2" in j["error"]
+    assert j["status"] == "stopped" and "stopped before turn 2" in j["error"]       # S68: a pass that stopped with no note is not "done"
 
 
 def test_near_its_limit_the_brain_hands_off_to_a_fresh_context_and_the_next_pass_reads_it(con, tmp_path, quiet_input,

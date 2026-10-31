@@ -74,7 +74,7 @@ class Writer:
 def _reg(con, tmp_path, **kw):
     return ex.register(con, tmp_path / "proto", NOW, hypothesis=kw.get("h", "Twelve-month momentum improves on always being invested"),
                        why_it_matters="A rule that avoids long falls would matter for a 35 percent fall limit",
-                       disproof="no net gain over always invested in both periods", source_kind="investor")
+                       disproof="no net gain over always invested in both periods", source_kind="investor", contract="index_timing")
 
 
 # --- registration ---------------------------------------------------------------------------------------------------------------------------

@@ -9,21 +9,24 @@
 <link rel="stylesheet" href="/static/world.css">
 </head>
 <body>
-<div class="wrap" id="root">
-  <header class="top">
-    <div class="row" style="gap:12px">
+<div class="shell" id="root">
+  <aside class="rail" aria-label="Screens">
+    <div class="brand">
       <div class="logo" role="img" aria-label="Portfolio Lab"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 17 9 11 13 15 21 7"></polyline><polyline points="15 7 21 7 21 13"></polyline></svg></div>
-      <div style="display:flex;flex-direction:column">
-        <span style="font-weight:700;font-size:16px">Portfolio Lab</span>
-        <span class="small muted" id="clock">starting…</span>
-      </div>
+      <div class="brandtxt"><b>Portfolio Lab</b><span class="small muted" id="clock">starting…</span></div>
     </div>
-    <div class="row wrapr" id="status" style="gap:8px"></div>
-  </header>
-  <nav class="tabs" aria-label="Screens" id="tabs"></nav>
-  <main id="screen" style="display:flex;flex-direction:column;gap:14px"></main>
+    <nav class="tabs" id="tabs"></nav>
+    <div class="railfoot" id="railfoot"></div>
+  </aside>
+  <div class="main">
+    <header class="top"><h1 id="ptitle">Assistant</h1><div class="row wrapr" id="status" style="gap:8px"></div></header>
+    <div id="subnav"></div>
+    <main id="screen" style="display:flex;flex-direction:column;gap:14px"></main>
+  </div>
 </div>
+<div id="dock"></div>
 <script src="/static/app.js"></script>
 <script src="/static/world.js"></script>
+<script src="/static/ui.js"></script>
 </body>
 </html>

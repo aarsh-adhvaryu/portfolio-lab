@@ -149,9 +149,8 @@ def test_a_locked_file_no_saved_password_opens_is_asked_once_and_closes_when_it_
     monkeypatch.setattr(ib, "_start", lambda *a, **k: None)
     monkeypatch.setattr(sniff, "is_encrypted", lambda data, name: True)
     monkeypatch.setattr(sniff, "sniff", lambda data, name, pw=None: {"kind": "other", "bank": None, "last4": None, "dp_ids": None})
-    import pytest
-    with pytest.raises(ValueError, match="password-protected"):
-        ib.receive(rt, "statement.pdf", b"%PDF-1.4 locked")
+    r = ib.receive(rt, "statement.pdf", b"%PDF-1.4 locked")                                     # S68: kept and shown as blocked, not refused
+    assert r["blocked"] and ctx.con.execute("SELECT status FROM inbox_items").fetchone()[0] == "blocked"
     assert len(questions.open_questions(ctx.con)) == 1 and readiness.gaps(ctx.con, "coverage")
     monkeypatch.setattr(sniff, "sniff", lambda data, name, pw=None: {"kind": "bank", "bank": "SBI", "last4": "9001", "dp_ids": None, "password_name": "PFLAB_SBI_PASSWORD"})
     try:

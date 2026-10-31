@@ -21,6 +21,15 @@ def theme_label(t: str) -> str:
     return t.replace("_", " ").lower()
 
 
+def clean_label(label, node_id: str) -> str:
+    """A node's label as words: a missing name (None, NaN, 'nan', empty) falls back to the node's own id."""
+    t = "" if label is None else str(label).strip()
+    if t.lower() in ("", "nan", "none", "null", "<na>"):
+        tail = str(node_id).split(":", 1)[-1].strip()
+        return tail if tail and tail.lower() not in ("nan", "none") else str(node_id)
+    return t
+
+
 def _ts(upto: Optional[date]) -> datetime:
     return datetime.combine(upto, datetime.max.time()) if upto else datetime(2100, 1, 1)
 
@@ -87,6 +96,8 @@ def view(con, upto: Optional[date] = None, kinds: Sequence[str] = DEFAULT_KINDS,
             edges.append({"a": c, "b": other, "w": int(w), "rel": "named with"})
     total = con.execute("SELECT (SELECT count(*) FROM kg_nodes), (SELECT count(*) FROM kg_edges), "
                         "(SELECT count(*) FROM kg_docs WHERE published_at <= ? AND dup_of IS NULL)", [t]).fetchone()
+    for n in nodes.values():                                                # S68: a missing name is never drawn as "nan" or "None"
+        n["label"] = clean_label(n.get("label"), n["id"])
     return {"nodes": list(nodes.values()), "edges": edges, "upto": str(upto) if upto else None, "kinds": kinds,
             "totals": {"nodes": total[0], "edges": total[1], "docs": total[2]}, "growth": growth(con)}
 

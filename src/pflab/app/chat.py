@@ -203,7 +203,7 @@ def tidy(con, now: datetime, days: int = TIDY_DAYS) -> int:
     """Chats untouched for `days`: a short summary goes to the system's memory, then the chat is removed."""
     from pflab.agents import memory as mem
     n = 0
-    for cid, title in con.execute("SELECT chat_id, title FROM chats WHERE updated_at < ?", [now - timedelta(days=days)]).fetchall():
+    for cid, title in con.execute("SELECT chat_id, title FROM chats WHERE updated_at < ? AND title <> 'Assistant'", [now - timedelta(days=days)]).fetchall():
         msgs = messages(con, cid)
         qs = [m["text"][:160] for m in msgs if m["role"] == "me"][:8]
         summary = f"Chat '{title}' ({msgs[0]['at'][:10] if msgs else ''}): " + " | ".join(qs)

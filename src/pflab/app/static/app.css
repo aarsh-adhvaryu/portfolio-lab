@@ -21,6 +21,38 @@ html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans
 a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
 button{font-family:var(--sans)}
 .wrap{min-height:100vh;padding:14px 20px 28px;display:flex;flex-direction:column;gap:14px}
+/* S68 the shell: a left rail of the screens, the work beside it, the assistant one click away on every screen */
+.shell{display:grid;grid-template-columns:216px minmax(0,1fr);min-height:100vh}
+.rail{position:sticky;top:0;height:100vh;padding:16px 12px;border-right:1px solid var(--line);background:var(--panel2);display:flex;flex-direction:column;gap:14px}
+.brand{display:flex;align-items:center;gap:10px;padding:2px 6px}.brandtxt{display:flex;flex-direction:column;line-height:1.25}
+.rail nav.tabs{flex-direction:column;flex-wrap:nowrap;border:none;padding:0;gap:2px}
+.rail nav.tabs a{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;font-size:14px}
+.rail nav.tabs a .ic{width:18px;text-align:center;opacity:.8}.rail nav.tabs a.on{background:var(--panel);box-shadow:inset 3px 0 0 var(--accent)}
+.rail nav.tabs a .badge{margin-left:auto}
+.railfoot{margin-top:auto;display:flex;flex-direction:column;gap:8px;font-size:12px}
+.main{padding:14px 22px 36px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.main header.top h1{margin:0;font-size:20px;font-weight:650;letter-spacing:-.01em}
+.subnav{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:8px}
+.subnav a{padding:6px 12px;border-radius:8px;color:var(--muted);font-size:13px;font-weight:500;text-decoration:none}.subnav a:hover{background:var(--panel)}.subnav a.on{background:var(--panel);color:var(--text)}
+@media (max-width:900px){.shell{grid-template-columns:1fr}.rail{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;border-right:none;border-bottom:1px solid var(--line)}
+  .rail nav.tabs{flex-direction:row;flex-wrap:wrap}.railfoot{margin:0}.brand{padding:0}}
+/* the assistant: the conversation in the middle, the live work beside it */
+.asst{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:14px;align-items:start}
+@media (max-width:1100px){.asst{grid-template-columns:1fr}}
+.thread{display:flex;flex-direction:column;gap:12px;height:calc(100vh - 250px);min-height:380px;overflow-y:auto;padding:4px 6px 4px 0}
+.bub{max-width:86%;display:flex;flex-direction:column;gap:5px}.bub.me{align-self:flex-end}.bub.ai{align-self:flex-start}
+.bub .body{border:1px solid var(--line);border-radius:14px;padding:10px 14px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
+.bub.me .body{background:var(--btn)}.bub.ai .body{background:var(--panel2)}.bub.sys .body{background:var(--panel);border-style:dashed}
+.bub .steps{display:flex;flex-wrap:wrap;gap:4px}.step{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.composer{display:flex;gap:8px;align-items:flex-end;border:1px solid var(--line);border-radius:14px;padding:8px;background:var(--panel)}
+.composer textarea{flex:1;resize:none;min-height:42px;max-height:160px;background:transparent;border:none;outline:none;color:var(--text);font:inherit;padding:6px 8px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.pillst{font-size:11px;font-weight:600;padding:2px 9px;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
+.st-working{color:var(--warn);border-color:var(--warn-line);background:var(--warn-bg)}.st-done{color:var(--up)}.st-blocked,.st-failed{color:var(--down)}.st-wait{color:var(--accent)}
+.facts{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:13px}.facts dt{color:var(--muted)}.facts dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.dockbtn{position:fixed;right:18px;bottom:18px;z-index:30;box-shadow:0 6px 24px rgba(0,0,0,.35);border-radius:999px;padding:10px 18px}
+.dockpanel{position:fixed;right:18px;bottom:68px;width:min(420px,calc(100vw - 36px));height:min(560px,calc(100vh - 110px));z-index:30;display:flex;flex-direction:column;gap:8px;padding:12px;box-shadow:0 12px 40px rgba(0,0,0,.45)}
+.dockpanel .thread{height:auto;flex:1;min-height:0}
 .row{display:flex;align-items:center;gap:10px}
 .wrapr{flex-wrap:wrap}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;min-width:0}

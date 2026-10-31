@@ -52,7 +52,7 @@ def create_app(rt) -> FastAPI:
         """The page asks for its script and styles with their modification time, so the window never runs a cached
         old copy after an update (2026-10-24: the browser kept the old app.js)."""
         html = (STATIC / "index.html").read_text(encoding="utf-8")
-        for name in ("app.js", "app.css"):
+        for name in ("app.js", "app.css", "ui.js", "world.js", "world.css"):
             html = html.replace(f"/static/{name}\"", f"/static/{name}?v={int((STATIC / name).stat().st_mtime)}\"")
         return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
@@ -282,6 +282,13 @@ def create_app(rt) -> FastAPI:
         from pflab.app import system
         return json.loads(json.dumps(system.picture(rt), default=str))
 
+    @app.get("/api/policy")
+    def policy_api():
+        """S68: every limit that can refuse a paid call, with its value, where it is set, why, and whether an edit holds at once; the
+        acceptance window's spend against its cap while it is open."""
+        from pflab.hq import governor
+        return json.loads(json.dumps(governor.policy_view(rt.cursor(), rt.clock(), rt.settings.get("brain", "economy")), default=str))
+
     @app.get("/api/world")
     def world_api():
         """The World screen: every sense, agent, routine, piece of work, guard and check, with its state and what happened last (app/world.py)."""
@@ -338,12 +345,70 @@ def create_app(rt) -> FastAPI:
 
     @app.get("/api/cases/{cid}")
     def case_view(cid: int):
-        """One investigation: evidence with its times, requests, calculations, why it changed (hq/cases.py)."""
-        from pflab.hq import views as hv
+        """One investigation: evidence with its times, requests, calculations, why it changed (hq/cases.py); a mission's card with it (S68)."""
+        from pflab.hq import missions, views as hv
         try:
-            return hv.case_detail(rt.cursor(), cid)
+            d = hv.case_detail(rt.cursor(), cid)
         except LookupError as e:
             raise HTTPException(404, str(e))
+        return json.loads(json.dumps({**d, "mission": missions.card(rt.cursor(), cid)}, default=str))
+
+    @app.post("/api/investigations")
+    def investigate(goal: str = Body(..., embed=True)):
+        """S68: one request becomes an investigation carried by a coordinator, research and quant workers and an independent reviewer. Returns the
+        case and mission ids at once; the work runs on its own (the HQ round), survives a restart and reports in its card."""
+        from pflab.hq import missions
+        try:
+            out = missions.create(rt.cursor(), rt.clock(), goal, pm_dir=rt.pm_dir)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        rt.bump("hq", "chat")
+        rt.wake_hq()
+        return out
+
+    @app.get("/api/assistant")
+    def assistant_history():
+        """S68: the assistant's one persistent conversation (app/assistant.py)."""
+        from pflab.agents import questions
+        from pflab.app import assistant
+        h = assistant.history(rt.cursor(), rt.clock())
+        h["questions"] = [{"id": q, "agent": a, "text": t, "at": ""} for q, a, t in questions.open_questions(rt.cursor())][:30]
+        return json.loads(json.dumps(h, default=str))
+
+    @app.post("/api/assistant")
+    def assistant_post(text: str = Body(..., embed=True), context: str = Body("", embed=True)):
+        """A message to the assistant; the answer is worked out in the background and appears in the thread (its steps visible while it works)."""
+        from pflab.app import assistant
+        try:
+            return assistant.post(rt, text, context)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    @app.post("/api/investigations/{cid}/retry")
+    def investigation_retry(cid: int):
+        """A blocked investigation: try its failed steps again (their checkpoints and what they already made are kept)."""
+        from pflab.hq import missions
+        out = missions.retry(rt.cursor(), rt.clock(), cid)
+        rt.bump("hq")
+        rt.wake_hq()
+        return out
+
+    @app.get("/api/investigations")
+    def investigations(limit: int = 20):
+        """S68: every mission's card (goal, owner, current action, outputs, blocker, last useful progress, next trigger)."""
+        from pflab.hq import missions
+        con = rt.cursor()
+        ids = [r[0] for r in con.execute("SELECT case_id FROM hq_missions ORDER BY mission_id DESC LIMIT ?", [limit]).fetchall()]
+        out = {"investigations": [missions.card(con, c) for c in ids]}
+        try:
+            from pflab.learner import counter, experiments as ex
+            out["experiments"] = [{**e, "contract": ex.contract_of(con, e["id"]) if e.get("id") else None} for e in ex.report(con)[-12:]]
+            out["tests_counted"] = counter.n_tests(con)
+        except Exception:
+            out["experiments"] = []
+        out["calcs"] = [{"id": i, "case_id": c, "question": q, "status": st, "at": str(at)[:16], "trusted": str(w or "").startswith("trusted:")}
+                        for i, c, q, st, at, w in con.execute("SELECT calc_id, case_id, question, status, created_at, workshop_id FROM hq_calcs ORDER BY calc_id DESC LIMIT 20").fetchall()]
+        return json.loads(json.dumps(out, default=str))
 
     @app.post("/api/hq/tasks/{tid}/release")
     def hq_release(tid: int):
@@ -507,7 +572,14 @@ def create_app(rt) -> FastAPI:
             done = ss.set_values({(section, key): value})
         except ss.SetupError as e:
             raise HTTPException(400, str(e))
-        return {"set": done}
+        opened = 0
+        if section == "passwords":                          # S68: a file that was waiting for this password is read at once, no second drop
+            try:
+                from pflab.app import inbox as ib
+                opened = ib.retry_blocked(rt)
+            except Exception:
+                pass
+        return {"set": done, **({"files_opened": opened} if opened else {})}
 
     @app.get("/api/us")
     def us_api():

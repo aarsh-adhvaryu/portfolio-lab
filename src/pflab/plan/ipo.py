@@ -29,8 +29,9 @@ GAINS = (-0.30, -0.20, -0.10, 0.0, 0.10, 0.25, 0.50)
 HORIZONS = (5, 20, 60)
 
 
-def base_rates(root, since: str = SINCE, cache: bool = True) -> dict:
-    """How large IPOs behaved: listing gain (open, close) and the return from the listing-day close, from the panel."""
+def listing_table(root, since: str = SINCE, cache: bool = True) -> pd.DataFrame:
+    """One row per large main-board listing since `since` (isin, date, series, turnover, issue, gain_open, gain_close, r5, r20, r60, dd60), from the
+    panel; cached for 14 days. The rows the base rates and `quant/ipo_policy.py` are computed from."""
     from pflab import _duck
     root = Path(root)
     cp = root / "derived" / "ipo_base_rates.parquet"
@@ -58,6 +59,16 @@ def base_rates(root, since: str = SINCE, cache: bool = True) -> dict:
         if cache and len(t):
             cp.parent.mkdir(parents=True, exist_ok=True)
             t.to_parquet(cp)
+    return t
+
+
+def big_listings(t: pd.DataFrame) -> pd.DataFrame:
+    return t[(t["series"] == "EQ") & (t["turnover"] >= MIN_TURNOVER) & t["gain_open"].between(-0.6, 3.0)]
+
+
+def base_rates(root, since: str = SINCE, cache: bool = True) -> dict:
+    """How large IPOs behaved: listing gain (open, close) and the return from the listing-day close, from the panel."""
+    t = listing_table(root, since, cache)
     big = t[(t["series"] == "EQ") & (t["turnover"] >= MIN_TURNOVER) & t["gain_open"].between(-0.6, 3.0)]
 
     def q(s: pd.Series) -> dict:

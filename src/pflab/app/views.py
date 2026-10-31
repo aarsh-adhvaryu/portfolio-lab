@@ -68,6 +68,9 @@ def holdings(con, asof: date) -> dict:
     pos = n["positions"]
     inst = {r[0]: (r[1], r[2]) for r in con.execute("SELECT isin, sector, name FROM instruments").fetchall()}
     rows = []
+    # S68: a share opened from a depository statement with no purchase record has an UNKNOWN cost (the ledger opens it at 0 so the holding exists). Its cost
+    # and gain are shown as unknown, never as a cost of zero and a gain equal to its whole value, and it is left out of the gain total.
+    unknown = {r[0] for r in con.execute("SELECT DISTINCT isin FROM events WHERE kind='buy' AND ref LIKE '%:cost_unknown'").fetchall()}
     if len(pos):
         g = pos.groupby("isin", as_index=False).agg(symbol=("symbol", "first"), bucket=("bucket", "first"),
                                                     qty=("qty", "sum"), cost=("cost", "sum"), value=("value", "sum"),
@@ -88,14 +91,17 @@ def holdings(con, asof: date) -> dict:
             rows.append({"isin": r.isin, "symbol": _clean(r.symbol), "name": _clean(name), "sector": sec, "bucket": r.bucket,
                          "qty": _f(r.qty), "price": price, "price_kind": r.kind, "price_date": str(r.price_date)[:10],
                          "stale": bool(r.stale), "change": chg, "day_rs": (price - prev) * r.qty if chg is not None else None,
-                         "value": _f(r.value), "cost": _f(r.cost), "unrealised": _f(r.unrealised),
+                         "value": _f(r.value), "cost": None if r.isin in unknown else _f(r.cost), "unrealised": None if r.isin in unknown else _f(r.unrealised),
+                         "cost_unknown": r.isin in unknown,
                          "weight": (_f(r.value) or 0) / total, "spark": [float(c) for c in closes[-20:]]})
         rows.sort(key=lambda x: -(x["value"] or 0))
     v = n["valuation"]
     fds = n["fds"]
     return {"asof": str(asof), "net_worth": n["net_worth"], "investable": n["investable"], "reserve": n["reserve"],
-            "buckets": n["buckets"], "invested_cost": float(pos["cost"].sum()) if len(pos) else 0.0,
-            "unrealised": float(pos["unrealised"].dropna().sum()) if len(pos) else 0.0,
+            "buckets": n["buckets"], "invested_cost": float(pos.loc[~pos["isin"].isin(unknown), "cost"].sum()) if len(pos) else 0.0,
+            "unrealised": float(pos.loc[~pos["isin"].isin(unknown), "unrealised"].dropna().sum()) if len(pos) else 0.0,
+            "cost_unknown": {"holdings": sorted(unknown & set(pos["isin"])) if len(pos) else [],
+                             "value": float(pos.loc[pos["isin"].isin(unknown), "value"].dropna().sum()) if len(pos) else 0.0},
             "day_change": sum(x["day_rs"] for x in rows if x["day_rs"] is not None),
             "cash": float(v.cash_total), "unpriced": len(v.unpriced), "stale": len(v.stale),
             "today": {**n["today"], "lines": nw.summary(n["today"])},

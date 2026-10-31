@@ -2,10 +2,15 @@
    server's change signals (/api/events) move. Money is hidden in privacy mode. */
 'use strict';
 
-const TABS = [
-  ['world', 'World'], ['command', 'Command centre'], ['portfolio', 'Portfolio'], ['watch', 'Watch list'], ['ai', 'AI centre'],
-  ['inbox', 'Inbox and files'], ['research', 'Research and plans'], ['sims', 'Simulations'],
-  ['graph', 'Knowledge graph'], ['schedule', 'Schedule']];
+/* the screens (S68 redesign): Assistant, World, Portfolio, Research, Inbox, System, and Settings under the rail; ui.js draws the new ones */
+const NAV = [['assistant', 'Assistant', '◉'], ['world', 'World', '◌'], ['portfolio', 'Portfolio', '▤'], ['research', 'Research', '⌕'], ['inbox', 'Inbox and files', '⇩'], ['system', 'System', '⚙']];
+const SUBS = {
+  portfolio: [['overview', 'Overview'], ['holdings', 'Holdings and lots'], ['watch', 'Watch list']],
+  research: [['work', 'Investigations'], ['plans', 'Plans and ideas'], ['sims', 'Simulations'], ['graph', 'Knowledge graph']],
+  system: [['now', 'Now'], ['limits', 'Limits and spend'], ['schedule', 'Schedule']],
+};
+const TITLES = { assistant: 'Assistant', world: 'The world', portfolio: 'Portfolio', research: 'Research', inbox: 'Inbox and files', system: 'System', settings: 'Settings', setup: 'Setup' };
+
 const GEAR = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>';
 const POWER = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>';
 const BUCKET_COLORS = ['#60A5FA', '#A78BFA', '#F5B942', '#4ADE9F', '#94A3B8', '#F472B6', '#38BDF8', '#FB923C'];
@@ -23,7 +28,7 @@ function brief(detail) {
   return detail;
 }
 
-const S = { screen: 'world', settings: { privacy: false, theme: 'dark' }, data: {}, selected: null, pview: 'stocks',
+const S = { screen: 'assistant', sub: '', settings: { privacy: false, theme: 'dark' }, data: {}, selected: null, pview: 'stocks',
   last: 0, pending: false, stopped: false, chat: null, mode: 'auto', draft: '', agent: 0 };
 
 /* ---------- helpers ---------- */
@@ -75,8 +80,11 @@ const post = (path, body) => api(path, { method: 'POST', headers: { 'Content-Typ
 
 /* ---------- frame ---------- */
 function renderTabs() {
-  $('tabs').innerHTML = TABS.map(([id, label]) => `<a href="#/${id}" class="${S.screen === id ? 'on' : ''}">${esc(label)}</a>`).join('')
-    + `<a href="#/settings" class="gear ${S.screen === 'settings' ? 'on' : ''}" aria-label="Settings">${GEAR}</a>`;
+  const need = (S.sys && S.sys.needs && S.sys.needs.total) || 0;
+  $('tabs').innerHTML = NAV.map(([id, label, ic]) => `<a href="#/${id}" class="${S.screen === id ? 'on' : ''}"><span class="ic" aria-hidden="true">${ic}</span>${esc(label)}${id === 'assistant' && need ? `<span class="badge">${need}</span>` : ''}</a>`).join('')
+    + `<a href="#/settings" class="${S.screen === 'settings' || S.screen === 'setup' ? 'on' : ''}"><span class="ic" aria-hidden="true">${GEAR}</span>Settings</a>`;
+  $('ptitle').textContent = TITLES[S.screen] || 'Portfolio Lab';
+  $('subnav').innerHTML = subnavHtml(S.screen, S.sub);
 }
 function renderStatus(d) {
   const k = d && d.kite, m = d && d.market;
@@ -90,7 +98,7 @@ function renderStatus(d) {
     ${kiteBtn}
     ${d && d.update_ready ? '<button class="btn warnb" id="updateBtn" title="New code is on disk; it also restarts by itself after 30 minutes untouched with nothing running">Update ready: restart</button>' : ''}
     ${(() => { const s = (d && d.system) || S.sys; if (!s) return ''; const r = s.work.running;
-      return `<a href="#/command" class="chip" style="display:flex;gap:6px;align-items:center" title="${esc(s.verdict)}">${sdot(s.state)}${r.length ? 'working: ' + esc(r.map((x) => x.job.replace(/_/g, ' ')).join(', ')) : esc(s.state === 'ok' ? 'in sync' : s.state === 'down' ? 'needs attention' : 'working, see Command centre')}</a>`; })()}
+      return `<a href="#/system/now" class="chip" style="display:flex;gap:6px;align-items:center" title="${esc(s.verdict)}">${sdot(s.state)}${r.length ? 'working: ' + esc(r.map((x) => x.job.replace(/_/g, ' ')).join(', ')) : esc(s.state === 'ok' ? 'in sync' : s.state === 'down' ? 'needs attention' : 'working, see System')}</a>`; })()}
     <button class="btn" id="power" aria-label="Stop the system" title="Stop the system">${POWER}</button>`;
   const kb = $('kiteLogin'); if (kb) kb.onclick = kiteLogin;
   const ub = $('updateBtn'); if (ub) ub.onclick = async () => {
@@ -189,7 +197,7 @@ function workCard(s) {
   if (!s) return '';
   const w = s.work;
   return `<section class="panel" style="flex:1 1 380px;display:flex;flex-direction:column;gap:6px">
-    <div class="row" style="justify-content:space-between"><span class="lbl">The system at work</span><a href="#/schedule" class="small">Schedule</a></div>
+    <div class="row" style="justify-content:space-between"><span class="lbl">The system at work</span><a href="#/system/schedule" class="small">Schedule</a></div>
     ${w.running.map((r) => `<div class="item"><span class="dot pulse" style="background:var(--warn)"></span><div style="font-size:13px"><b>${esc(r.job.replace(/_/g, ' '))}</b> is running${r.since ? ' since ' + esc(r.since) : ''}</div></div>`).join('')}
     ${w.recent.map((r) => `<div class="item"><span class="dot" style="background:${r.ok ? 'var(--up)' : 'var(--down)'}"></span><div style="min-width:0"><div style="font-size:13px;line-height:1.4">${esc(r.says)}</div><div class="tiny muted">${esc(r.at)}</div></div></div>`).join('') || '<span class="small muted">Nothing has run yet.</span>'}
     ${w.failed_24h ? `<span class="tiny down">${w.failed_24h} run(s) failed in the last day (Schedule shows which)</span>` : ''}
@@ -286,17 +294,6 @@ function processingNote(s) {
   if (!s || !s.processing) return '';
   return `<details class="tiny muted" style="margin-top:6px"><summary>Where each thing is processed</summary>${s.processing.map((p) => `<div style="padding:2px 0"><b>${esc(p.what)}</b>: ${esc(p.where)} (${esc(p.model)}). Sends: ${esc(p.sends)}.</div>`).join('')}</details>`;
 }
-function askCard(s) {
-  const t = s ? s.tools : null;
-  const asks = ['Is everything working and in sync?', 'What needs me today?', 'What is still missing from my record?', 'How is my portfolio against my targets?'];
-  return `<section class="panel" style="flex:1 1 520px;display:flex;flex-direction:column;gap:10px">
-    <div class="row" style="justify-content:space-between"><span class="lbl">Ask the system</span><a href="#/ai" class="small">AI centre</a></div>
-    <div class="row"><label for="quickAsk" style="position:absolute;left:-9999px">Question</label><input id="quickAsk" class="inp" placeholder="Ask about your portfolio, a company, a plan, or the system itself…"><button class="btn primary" id="quickSend">Ask</button></div>
-    <div class="row wrapr" style="gap:6px">${asks.map((a) => `<button class="btn" data-ask="${esc(a)}" style="font-size:12px;padding:5px 10px">${esc(a)}</button>`).join('')}</div>
-    <span class="tiny muted">${t ? `One assistant with ${t.total} tools (${t.read || 0} read-only, the rest journal or ask you first); it reads Kite, your record, filings and the system's own state, and can never place an order. ` : ''}Local first; nothing leaves the PC unless a question needs the API and fits your cap.</span>
-    ${processingNote(s)}
-  </section>`;
-}
 function wireSystem() {
   const seen = document.getElementById('seen');
   if (seen) seen.onclick = async () => { try { await post('/api/system/seen', {}); } catch (er) { alert(er.message); } S.sys = null; load(true); };
@@ -313,77 +310,6 @@ function wireSystem() {
     e.preventDefault(); const g = a.dataset.sysgo;
     if (g === 'kite') return kiteLogin();
     location.hash = GOTO[g] || '#/settings'; }; });
-  document.querySelectorAll('[data-ask]').forEach((b) => { b.onclick = () => { $('quickAsk').value = b.dataset.ask; $('quickSend').click(); }; });
-}
-function renderCommand(d) {
-  const h = d.holdings, mc = d.montecarlo || {}, m = d.market || {};
-  const heads = (d.notifications || []).filter((n) => n.kind !== 'question');        /* questions are in "Needs you" */
-  const dayPct = h.investable ? h.day_change / (h.investable - h.day_change) : null;
-  const rows = h.rows.slice(0, 14);
-  $('screen').innerHTML = `
-  ${systemHero(d.system)}
-  <div class="cols">${needsCard(d.system)}${workCard(d.system)}${syncCard(d.system)}</div>
-  <div class="cols">${researchCard(d.system)}${changedCard(d.system)}${readinessCard(d.system)}${coverageCard(d.system)}</div>
-  ${tickerStrip(d.tickers || [])}
-  ${freshBanner(h.today, d.kite)}
-  <div class="cols">
-    <section class="stack" style="flex:1 1 330px">
-      <div class="panel" style="display:flex;flex-direction:column;gap:10px">
-        <span class="lbl">Net worth</span>
-        <span class="num money" style="font-size:34px;font-weight:600">${rs(h.net_worth)}</span>
-        <div class="row wrapr small" style="gap:16px"><span>Today <b class="num ${ud(h.day_change)}">${rs(h.day_change, true)} (${pct(dayPct, 2, true)})</b></span>
-          <span>Unrealised <b class="num ${ud(h.unrealised)}">${rs(h.unrealised, true)}</b></span></div>
-        <span class="tiny muted">investable ${rs(h.investable)} · reserve FDs ${rs(h.reserve)} · cash ${rs(h.cash)}${h.stale ? ` · ${h.stale} stale price(s)` : ''}${h.fd_estimated ? ' · FD values ESTIMATED' : ''}</span>
-        <span class="tiny ${h.today && h.today.source === 'kite' ? 'muted' : 'warn'}">${h.today ? (h.today.source === 'kite' ? `holdings and cash per Kite ${esc(String(h.today.snapshot_at).replace('T', ' '))} · statements to ${esc(h.today.documents_to)}` : `from statements to ${esc(h.today.documents_to)}`) : ''}${h.today && h.today.moved ? ` · ${rs(Math.abs(h.today.moved))} ${h.today.moved > 0 ? 'moved to' : 'came from'} ${esc(h.today.bank)} (est.)` : ''}</span>
-      </div>
-      ${mixPanel(d.mix, h)}
-      <div class="panel" style="display:flex;flex-direction:column;gap:10px">
-        <span class="lbl">Your 35% fall limit</span>
-        <div style="font-size:13px;line-height:1.55">Chance of a fall beyond 35% on any day within a year: <b class="num">${esc((mc.tail || {}).text || 'not run yet')}</b>
-        <span class="muted">${mc.paths ? `(${num(mc.paths, 0)} paths, history ${esc(mc.history)}, run ${esc(String(mc.at).slice(0, 16).replace('T', ' '))})` : ''}</span></div>
-        <div style="font-size:13px">Market (Nifty) below its high: <b class="num">${pct(m.drawdown)}</b> · dip rule ${m.dip_active ? '<b class="warn">active</b>' : 'not triggered'}</div>
-        ${m.fo_line ? `<div class="small soft">F&amp;O: ${esc(m.fo_line)}</div>` : ''}
-        <div class="row"><button class="btn" id="mcRun">Run the simulation now</button><span class="tiny muted">ESTIMATE from past joint returns</span></div>
-      </div>
-    </section>
-    <section class="panel" style="flex:2 1 560px;display:flex;flex-direction:column;gap:10px">
-      <div class="row" style="justify-content:space-between"><span class="lbl">Holdings</span><span class="small muted">${h.rows.length} positions · <a href="#/portfolio">all and lots</a></span></div>
-      <div class="scroll"><table style="min-width:640px"><thead><tr><th>Name</th><th>Qty</th><th>Price</th><th>Day</th><th>Value</th><th>Weight</th><th>P&amp;L</th><th>20 sessions</th></tr></thead><tbody>
-      ${rows.map((r) => `<tr><td><b>${esc(r.symbol || r.isin)}</b><br><span class="tiny muted">${esc(r.sector || r.bucket || '')}</span></td>
-        <td class="num">${num(r.qty, r.qty % 1 ? 3 : 0)}</td><td class="num">${num(r.price)}${r.price_kind === 'live' ? ' <span class="tiny up">live</span>' : ''}</td>
-        <td class="num ${ud(r.change)}">${pct(r.change, 2, true)}</td><td class="num money">${rs(r.value)}</td><td class="num">${pct(r.weight)}</td>
-        <td class="num money ${ud(r.unrealised)}">${rs(r.unrealised, true)}</td><td>${spark(r.spark)}</td></tr>`).join('')}
-      </tbody></table></div>
-    </section>
-    <section class="stack" style="flex:1 1 320px">
-      <div class="panel" style="display:flex;flex-direction:column;gap:4px">
-        <div class="row" style="justify-content:space-between"><span class="lbl">From your watch list</span><a href="#/watch" class="small">All</a></div>
-        ${(d.nudges || []).map((w) => `<div class="item">${vbadge(w.verdict)}<span class="small" style="min-width:0"><b>${esc(w.symbol)}</b> ${esc(w.text)}${w.price ? ` · now ${num(w.price)}` : ''}</span></div>`).join('') || '<span class="small muted">Being studied: zones appear after the first refresh.</span>'}
-      </div>
-      <div class="panel" style="display:flex;flex-direction:column;gap:4px">
-        <div class="row" style="justify-content:space-between"><span class="lbl">Worth a look</span><span class="small muted">${heads.length}</span></div>
-        ${heads.length ? heads.map((n) => `<div class="item"><span class="dot" style="background:${n.kind === 'held' ? 'var(--muted)' : 'var(--accent)'}"></span>
-          <div style="min-width:0"><div style="font-size:13px;line-height:1.4">${esc(n.text)}</div><div class="tiny muted">${esc(n.meta)} · ${esc(n.at)}</div></div></div>`).join('') : '<span class="small muted">Nothing new: no research flags, watch hits, plans or held messages.</span>'}
-      </div>
-    </section>
-  </div>
-  <div class="cols">
-    ${askCard(d.system)}
-    <section class="panel" style="flex:1 1 380px;display:flex;flex-direction:column;gap:10px">
-      <div class="row" style="justify-content:space-between"><span class="lbl">Your notes for the system</span><a href="#/schedule" class="small">Schedule</a></div>
-      <div class="row wrapr" style="gap:8px">${d.notes.length ? d.notes.map((n) => `<div class="note ${n.done ? 'done' : ''}"><button aria-label="Mark done" data-toggle="${n.id}">${n.done ? '✓' : '○'}</button><span>${esc(n.text)}</span><button aria-label="Remove note" data-del="${n.id}">×</button></div>`).join('') : '<span class="small muted">No notes. Add one: a company to research, a question to look at.</span>'}</div>
-      <div class="row"><label for="noteIn" class="small muted" style="white-space:nowrap">Add a note</label><input id="noteIn" class="inp" placeholder="e.g. Research a company before its results"><button class="btn" id="noteAdd">Add</button></div>
-    </section>
-  </div>`;
-  wireSystem();
-  $('mcRun').onclick = async () => { await post('/api/montecarlo/run'); $('mcRun').textContent = 'Running… (a minute or two)'; };
-  const k2 = $('kiteLogin2'); if (k2) k2.onclick = kiteLogin;
-  $('noteAdd').onclick = addNote; $('noteIn').onkeydown = (e) => { if (e.key === 'Enter') addNote(); };
-  const quick = async () => { const q = $('quickAsk').value.trim(); if (!q) return;
-    const r = await post('/api/chats/0/messages', { text: q, mode: 'auto' }); S.chat = r.chat_id; S.mode = 'auto'; location.hash = '#/ai'; };
-  $('quickSend').onclick = quick; $('quickAsk').onkeydown = (e) => { if (e.key === 'Enter') quick(); };
-  document.querySelectorAll('[data-toggle]').forEach((b) => { b.onclick = () => post(`/api/notes/${b.dataset.toggle}/toggle`).then(() => load(true)); });
-  document.querySelectorAll('[data-del]').forEach((b) => { b.onclick = () => api(`/api/notes/${b.dataset.del}`, { method: 'DELETE' }).then(() => load(true)); });
 }
 async function addNote() { const t = $('noteIn').value.trim(); if (!t) return; await post('/api/notes', { text: t }); load(true); }
 
@@ -778,11 +704,6 @@ function hqWire(root, again) {
   on('hqThink', 'onclick', async () => { try { await post('/api/hq/order', { agent: 'brain', text: '' }); } catch (e) { S.hqMsg = e.message; } again(); });
 }
 /* ---------- AI centre (54b) ---------- */
-const MODES = [['auto', 'Auto', 'local first; then the agents; then Opus only when needed, each step with its reason (your data stays here)'],
-  ['ask', 'Local only', 'the system\'s own tools and the local model; nothing leaves the PC'],
-  ['web', 'Web search', 'Opus searches the web for a public question; priced first, pages cited'],
-  ['deep', 'Deep research', 'Opus writes a cited note from public documents; priced first, kept in the graph'],
-  ['calc', 'Calculate', 'Opus writes the maths as code from the data layout; it runs here on your rows']];
 function chipStyle(step) {
   const s = step.toLowerCase();
   if (s.includes('opus')) return 'background:#2A1730;border-color:#6B2F6E;color:#F0ABFC';
@@ -793,126 +714,6 @@ function chipStyle(step) {
 /* source tags ([F:fact], [S1], [W2], [D3], [inf]) as small muted markers: the claim stays readable, the source visible */
 const tags = (html) => html.replace(/\[(F:[^\]\s]+|S\d+|W\d+|D\d+|inf)\]/g, (m, t) =>
   `<sup class="tiny muted" title="${t.startsWith('F:') ? 'fact from the system: ' + t.slice(2) : t === 'inf' ? 'inference' : 'source ' + t}">${t.startsWith('F:') ? 'f' : t}</sup>`);
-function msgHtml(m, prevQ) {
-  const me = m.role === 'me';
-  const route = (m.route || []).map((r, i, a) => `<span class="row" style="gap:4px"><span class="tiny" style="padding:4px 9px;border-radius:6px;border:1px solid;${chipStyle(r)}">${esc(r)}</span>${i < a.length - 1 ? '<span class="muted">→</span>' : ''}</span>`).join('');
-  return `<div style="align-self:${me ? 'flex-end' : 'flex-start'};max-width:82%;display:flex;flex-direction:column;gap:6px">
-    ${route ? `<div class="row wrapr" style="gap:4px">${route}</div>` : ''}
-    <div style="background:${me ? 'var(--btn)' : 'var(--panel2)'};border:1px solid var(--line);border-radius:12px;padding:10px 14px;line-height:1.55;white-space:pre-wrap">${m.status === 'working' ? '<span class="warn">Working on it…</span>' : tags(esc(m.text))}</div>
-    ${m.report ? `<div class="row" style="background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 12px;gap:10px"><span class="small" style="flex:1">Saved as a note in the knowledge graph</span><button class="btn" data-report="${esc(m.report)}">Open report</button></div>` : ''}
-    ${m.status === 'needs_approval' && prevQ ? `<button class="btn warnb" style="align-self:flex-start" data-approve="${esc(m.mode)}" data-q="${esc(prevQ)}">Approve and send</button>` : ''}
-    ${m.meta || m.at ? `<span class="tiny muted">${esc(m.meta)}${m.meta ? ' · ' : ''}${esc(m.at)}</span>` : ''}</div>`;
-}
-function renderAI(d) {
-  const ae = document.activeElement;
-  if (ae && /^qa\d+$/.test(ae.id) && ae.value) { S.deferred = true; return; }          // an answer to one of the system's questions is being typed: draw after
-  const keepQa = {}; document.querySelectorAll('#screen input[id^="qa"]').forEach((i) => { if (i.value) keepQa[i.id] = i.value; });   // half-written answers survive the redraw
-  const scrollY = window.scrollY;
-  setTimeout(() => { Object.entries(keepQa).forEach(([id, v]) => { const i = $(id); if (i && !i.value) i.value = v; }); if (Math.abs(window.scrollY - scrollY) > 2) window.scrollTo(0, scrollY); }, 0);
-  const focus = document.activeElement && document.activeElement.id;
-  const mode = MODES.find((x) => x[0] === S.mode) || MODES[0];
-  let prevQ = null;
-  const msgs = d.messages.map((m) => { const h = msgHtml(m, prevQ); if (m.role === 'me') prevQ = m.text; return h; }).join('');
-  const sel = d.agents[S.agent || 0] || d.agents[0];
-  const sy = S.sys, qs = S.allq ? d.questions : d.questions.slice(0, 4);
-  const asks = ['Is everything working and in sync?', 'What needs me today?', 'What is still missing from my record?', 'How is my portfolio against my targets?', 'What changed since yesterday?'];
-  $('screen').innerHTML = `
-  <div class="cols" style="align-items:stretch">
-  <section class="panel" style="flex:3 1 760px;display:flex;flex-wrap:wrap;padding:0;overflow:hidden">
-    <aside style="flex:0 1 240px;min-width:200px;border-right:1px solid var(--line);padding:12px;display:flex;flex-direction:column;gap:8px;background:var(--panel2)">
-      <button class="btn primary" id="newChat">+ New chat</button>
-      <span class="lbl" style="margin-top:6px">Chats</span>
-      ${d.chats.map((c) => `<div class="row" style="gap:4px;border-radius:8px;background:${c.id === d.chat_id ? 'var(--panel)' : 'transparent'}">
-        <button class="btn" style="flex:1;min-width:0;text-align:left;background:none;border-color:transparent" data-chat="${c.id}"><span style="display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.title)}</span><span class="tiny muted">${esc(c.updated)}</span></button>
-        <button class="btn" style="background:none;border-color:transparent;padding:6px" aria-label="Delete chat" data-delchat="${c.id}">×</button></div>`).join('') || '<span class="small muted">No chats yet.</span>'}
-      <span class="tiny muted" style="margin-top:auto;border-top:1px solid var(--line);padding-top:8px;line-height:1.5">Each question stands on its own for the local model. Chats untouched for 30 days are summarised into the system's memory and removed.</span>
-    </aside>
-    <div style="flex:1 1 640px;min-width:0;display:flex;flex-direction:column;gap:12px;padding:14px 16px">
-      <div id="msgs" style="display:flex;flex-direction:column;gap:14px;height:max(460px, calc(100vh - 340px));overflow-y:auto;padding-right:6px">${msgs || `<div style="margin:auto;display:flex;flex-direction:column;gap:12px;align-items:center;max-width:520px;text-align:center"><span class="muted">Ask anything about your portfolio, a company, a plan, a calculation, or the system itself.</span>
-        <div class="row wrapr" style="gap:6px;justify-content:center">${asks.map((a) => `<button class="btn" data-sugg="${esc(a)}" style="font-size:12px;padding:5px 10px">${esc(a)}</button>`).join('')}</div></div>`}</div>
-      <div style="display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:12px">
-        <div class="row wrapr" style="gap:6px">${MODES.map(([id, label]) => `<button class="btn ${S.mode === id ? 'primary' : ''}" data-mode="${id}">${label}</button>`).join('')}
-          <span class="small muted" style="margin-left:6px">${esc(mode[2])}</span></div>
-        <div class="row">
-          <input type="file" id="chatFile" multiple style="display:none"><button class="btn" id="attachBtn" aria-label="Attach a file" title="Attach files or paste a screenshot (Ctrl+V): read on this PC, shown in Inbox and files"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg></button>
-          <label for="chatIn" style="position:absolute;left:-9999px">Your message</label>
-          <input id="chatIn" class="inp" placeholder="Ask, or describe what you need…" value="${esc(S.draft || '')}">
-          <button class="btn primary" id="sendBtn">Send</button>
-        </div>
-      </div>
-    </div>
-  </section>
-  <section class="stack" style="flex:1 1 360px">
-    <div class="panel" style="display:flex;flex-direction:column;gap:6px">
-      <span class="lbl">What the assistant can reach</span>
-      ${sy ? sy.connectors.map((c) => `<div class="row" style="gap:8px;align-items:flex-start">${sdot(c.state)}<b class="small" style="flex:0 0 auto">${esc(c.name)}</b><span class="tiny muted" style="flex:1;text-align:right">${esc(c.line)}</span></div>`).join('')
-        + `<span class="tiny muted" style="border-top:1px solid var(--line2);padding-top:6px">${sy.tools.total} tools: ${sy.tools.read || 0} read-only (portfolio, Kite, filings, forecasts, the system's own state), ${sy.tools.journal || 0} that write its journal, ${sy.tools.action || 0} that ask you first. No tool places an order. ${sy.verdict.charAt(0).toUpperCase() + sy.verdict.slice(1)}.</span>` : '<span class="small muted">Reading the system…</span>'}
-    </div>
-    <div class="panel" style="display:flex;flex-direction:column;gap:10px">
-      <div class="row" style="justify-content:space-between"><span class="lbl">The system asks you</span><span class="small warn">${d.questions.length} open</span></div>
-      ${qs.map((q) => `<div style="background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px">
-        <span style="font-size:13px;line-height:1.45">${esc(q.text.length > 280 ? q.text.slice(0, 278) + '…' : q.text)}</span><span class="tiny muted">${esc(q.agent)} · ${esc(q.at)}</span>
-        <div class="row"><input class="inp" id="qa${q.id}" placeholder="Your answer"><button class="btn" data-answer="${q.id}">Answer</button></div></div>`).join('') || '<span class="small muted">Nothing to answer.</span>'}
-      ${d.questions.length > 4 ? `<button class="btn" id="allq" style="align-self:flex-start">${S.allq ? 'Show fewer' : 'Show all ' + d.questions.length}</button>` : ''}
-    </div>
-    <div class="panel" style="display:flex;flex-direction:column;gap:8px">
-      <span class="lbl">API spend this month</span>
-      <div class="bar"><i style="width:${Math.min(100, d.spend.month / d.spend.cap * 100).toFixed(1)}%"></i></div>
-      <span class="small num">₹${num(d.spend.month, 0)} of ₹${groupIN(d.spend.cap)} · warns at 80%, stops at 100%${d.spend.adopted ? '' : ' · analyst OFF'}</span>
-    </div>
-  </section>
-  </div>
-  <div class="cols">
-    <section class="panel" style="flex:2 1 560px;display:flex;flex-direction:column;gap:10px">
-      <span class="lbl">Agents</span>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">
-        ${d.agents.map((a, i) => `<button class="btn" data-agent="${i}" style="text-align:left;display:flex;flex-direction:column;gap:3px;background:var(--panel2);border-color:${(S.agent || 0) === i ? 'var(--accent)' : 'var(--line)'}">
-          <span class="row" style="gap:7px"><span class="dot" style="margin:0;background:${a.state === 'ok' ? 'var(--up)' : a.state === 'running' ? 'var(--warn)' : a.state === 'failed' ? 'var(--down)' : 'var(--muted)'}"></span><b>${esc(a.name)}</b></span>
-          <span class="tiny muted">${esc(a.state)}${a.last ? ' · ' + esc(a.last) : ''}</span></button>`).join('')}
-      </div>
-      ${sel ? `<div style="border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:6px"><b>${esc(sel.name)}</b><span class="small soft">${esc(sel.duty)}</span>
-        <div class="row wrapr small" style="gap:6px"><span class="chip">model: ${esc(sel.model)}</span><span class="chip">autonomy: ${esc(sel.autonomy)}</span><span class="chip">checked by: ${esc(sel.check)}</span>${sel.jobs.length ? `<span class="chip">jobs: ${esc(sel.jobs.join(', '))}</span>` : ''}</div>
-        ${sel.detail ? `<span class="tiny muted">last result: ${esc(brief(sel.detail))}</span>` : ''}</div>` : ''}
-    </section>
-    <section class="stack" style="flex:1 1 380px">
-      <div class="panel" style="display:flex;flex-direction:column;gap:8px">
-        <span class="lbl">Calculations (reused before any is written again)</span>
-        ${(d.calcs || []).map((c) => `<div style="background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:4px">
-          <span class="small">${esc(c.question)}</span>
-          <span class="tiny muted">${esc(c.at)} · ${c.reused_from ? 'reused ' + esc(c.reused_from.slice(0, 15)) : 'written by ' + esc(c.writer)}${c.params.length ? ' · parameters: ' + esc(c.params.join(', ')) : ''}</span>
-          <div class="row" style="justify-content:space-between"><span class="tiny ${c.label === 'reviewed' ? 'up' : c.status === 'checked' ? 'warn' : 'down'}">${esc(c.status === 'checked' ? c.label : 'failed')}</span>
-            ${c.status === 'checked' && c.label !== 'reviewed' && !c.reused_from ? `<button class="btn" style="min-height:26px;padding:3px 10px" data-promote="${esc(c.id)}">I checked the method: promote</button>` : ''}</div></div>`).join('') || '<span class="small muted">None yet: ask a calculation (Calculate or Auto).</span>'}
-        <span class="tiny muted">A promoted calculation answers similar questions free: the local model only reads the values (dates, names, thresholds) from the question.</span>
-      </div>
-    </section>
-  </div>`;
-  const box = $('msgs'); box.scrollTop = box.scrollHeight;
-  const inp = $('chatIn');
-  inp.oninput = () => { S.draft = inp.value; };
-  inp.onkeydown = (e) => { if (e.key === 'Enter') sendChat(); };
-  if (focus === 'chatIn') { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
-  $('sendBtn').onclick = () => sendChat();
-  $('attachBtn').onclick = () => $('chatFile').click();
-  $('chatFile').onchange = () => attachToChat([...$('chatFile').files]);
-  $('newChat').onclick = async () => { const r = await post('/api/chats'); S.chat = r.id; load(true); };
-  document.querySelectorAll('[data-chat]').forEach((b) => { b.onclick = () => { S.chat = Number(b.dataset.chat); load(true); }; });
-  document.querySelectorAll('[data-delchat]').forEach((b) => { b.onclick = async () => { if (!confirm('Delete this chat?')) return; await api(`/api/chats/${b.dataset.delchat}`, { method: 'DELETE' }); if (S.chat === Number(b.dataset.delchat)) S.chat = null; load(true); }; });
-  document.querySelectorAll('[data-sugg]').forEach((b) => { b.onclick = () => sendChat(b.dataset.sugg); });
-  if ($('allq')) $('allq').onclick = () => { S.allq = !S.allq; renderAI(d); };
-  document.querySelectorAll('[data-mode]').forEach((b) => { b.onclick = () => { S.mode = b.dataset.mode; renderAI(d); }; });
-  document.querySelectorAll('[data-agent]').forEach((b) => { b.onclick = () => { S.agent = Number(b.dataset.agent); renderAI(d); }; });
-  document.querySelectorAll('[data-report]').forEach((b) => { b.onclick = () => openReport(b.dataset.report); });
-  document.querySelectorAll('[data-approve]').forEach((b) => { b.onclick = () => sendChat(b.dataset.q, b.dataset.approve, true); });
-  document.querySelectorAll('[data-answer]').forEach((b) => { b.onclick = async () => { const v = $('qa' + b.dataset.answer).value.trim(); if (!v) return; await post(`/api/questions/${b.dataset.answer}/answer`, { text: v }); load(true); }; });
-  document.querySelectorAll('[data-promote]').forEach((b) => { b.onclick = async () => { if (!confirm('Promote this calculation? Read its method first: once promoted it answers similar questions on its own.')) return; await post(`/api/workshop/${b.dataset.promote}/promote`); load(true); }; });
-}
-async function sendChat(text, mode, approved) {
-  const q = (text ?? S.draft ?? '').trim();
-  if (!q) return;
-  const r = await post(`/api/chats/${S.chat || 0}/messages`, { text: q, mode: mode || S.mode, approved: !!approved });
-  S.chat = r.chat_id; if (text === undefined) S.draft = '';
-  load(true);
-}
 async function openReport(id) {
   const d = await api('/api/doc?id=' + encodeURIComponent(id));
   const o = document.createElement('div');
@@ -1241,7 +1042,7 @@ function renderInbox(d) {
   document.querySelectorAll('[data-iact]').forEach((b) => { b.onclick = async () => {
     if (b.dataset.iact === 'apply' && !confirm('Rebuild your record with this document now? (It also happens by itself within minutes.) What does not match is named in Needs from you.')) return;
     b.disabled = true;
-    try { const r = await post(`/api/inbox/${b.dataset.iid}/${b.dataset.iact}`); if (b.dataset.iact === 'research') { if (r.skipped) { alert(r.why); return; } S.chat = r.chat_id; location.hash = '#/ai'; return; } }
+    try { const r = await post(`/api/inbox/${b.dataset.iid}/${b.dataset.iact}`); if (b.dataset.iact === 'research') { if (r.skipped) { alert(r.why); return; } location.hash = '#/assistant'; return; } }
     catch (e) { S.inboxMsg = e.message; }
     load(true); }; });
   document.querySelectorAll('[data-idel]').forEach((b) => { b.onclick = async () => { if (!confirm('Remove this file from the inbox and delete it?')) return; try { await api(`/api/inbox/${b.dataset.idel}`, { method: 'DELETE' }); } catch (e) { S.inboxMsg = e.message; } load(true); }; });
@@ -1251,12 +1052,8 @@ document.addEventListener('paste', (e) => {
   const files = pastedFiles(e);
   if (!files.length) return;
   if (S.screen === 'inbox') { e.preventDefault(); uploadAll(files, { kind: S.ikind === 'bank' ? '' : (S.ikind || '') }); }
-  else if (S.screen === 'ai') { e.preventDefault(); attachToChat(files); }
+  else if (S.screen === 'assistant') { e.preventDefault(); attachToAssistant(files); }
 });
-async function attachToChat(files) {
-  if (!S.chat) { const r = await post('/api/chats'); S.chat = r.id; }
-  await uploadAll(files, { chat: S.chat });
-}
 
 /* ---------- Simulations (54e) ---------- */
 const MIX_COLORS = { current: BUCKET_COLORS[0], target: BUCKET_COLORS[1], 'what-if': BUCKET_COLORS[2] };
@@ -1615,42 +1412,50 @@ async function load(force = false) {
   const showing = () => S.screen === screen;
   const fresh = () => showing() && gen > (S.drawn || 0) && ((S.drawn = gen), true);
   try {
-    if (screen === 'command') {
-      const [d, sy] = await Promise.all([api('/api/command'), api('/api/system').catch(() => S.sys || null)]);
-      if (!fresh()) return; d.system = sy; S.sys = sy; S.sysAt = Date.now();
-      S.settings = { ...S.settings, ...d.settings }; applyTheme(); renderStatus(d); keepInputs(() => renderCommand(d)); S.data.command = d; }
-    else {
-      if (!S.data.command) { const c = await api('/api/command'); if (!showing()) return; S.data.command = c; }
-      if (!S.sys || Date.now() - (S.sysAt || 0) > 60000) { try { S.sys = await api('/api/system'); S.sysAt = Date.now(); } catch (e) { /* the chip is simply left out */ } }
-      S.settings = { ...S.settings, ...S.data.command.settings }; applyTheme();   // privacy and theme on every screen
-      renderStatus(S.data.command);
-      if (screen === 'portfolio') { const d = await api('/api/portfolio' + (S.selected ? '?isin=' + encodeURIComponent(S.selected) : '')); if (fresh()) renderPortfolio(d); }
-      else if (screen === 'world') { const d = await api('/api/world'); if (fresh()) renderWorld(d); }
-      else if (screen === 'schedule') { const d = await api('/api/schedule'); if (fresh()) keepInputs(() => renderSchedule(d)); }
-      else if (screen === 'sims') { const d = await api('/api/sims'); if (fresh()) renderSims(d); }
-      else if (screen === 'graph') { const d = await api('/api/graph?' + new URLSearchParams({ kinds: (S.gKinds || ['company', 'sector', 'verdict', 'org', 'person']).join(','), ...(S.gUptoDate ? { upto: S.gUptoDate } : {}) })); if (fresh()) renderGraph(d); }
-      else if (screen === 'settings') { const d = await api('/api/settings'); if (fresh()) { S.settings = d; renderSettings(d); } }
-      else if (screen === 'setup') { const d = await api('/api/setup'); if (fresh()) renderSetup(d); }
-      else if (screen === 'ai') { const d = await api('/api/ai' + (S.chat ? '?chat=' + S.chat : '')); if (fresh()) { S.chat = d.chat_id; renderAI(d); } }
-      else if (screen === 'watch') { const d = await api('/api/watch'); if (fresh()) keepInputs(() => renderWatch(d)); }
-      else if (screen === 'inbox') { const d = await api('/api/inbox'); if (fresh()) keepInputs(() => renderInbox(d)); }
-      else if (screen === 'research') { const d = await api('/api/research' + (S.rsel ? '?isin=' + encodeURIComponent(S.rsel) : '')); if (fresh()) keepInputs(() => renderResearch(d)); }
+    if (!S.data.command || screen === 'portfolio' && S.sub === 'overview') { const c = await api('/api/command'); if (!showing()) return; S.data.command = c; }
+    if (!S.sys || Date.now() - (S.sysAt || 0) > (screen === 'system' ? 4000 : 60000)) { try { S.sys = await api('/api/system'); S.sysAt = Date.now(); } catch (e) { /* the chip is simply left out */ } }
+    S.settings = { ...S.settings, ...S.data.command.settings }; applyTheme();   // privacy and theme on every screen
+    renderStatus(S.data.command); renderTabs();
+    const sub = S.sub;
+    if (screen === 'assistant') {
+      const [h, inv, pol] = await Promise.all([api('/api/assistant'), api('/api/investigations').catch(() => ({ investigations: [] })), api('/api/policy').catch(() => null)]);
+      if (!showing()) return; h.policy = pol; S.drawn = gen; renderAssistant(h, inv.investigations, S.data.command, S.sys); paintDock(); return;
     }
+    if (screen === 'portfolio' && sub === 'overview') { const d = S.data.command; if (fresh()) keepInputs(() => { $('screen').innerHTML = ''; renderPortfolioOverview(d); }); }
+    else if (screen === 'portfolio' && sub === 'holdings') { const d = await api('/api/portfolio' + (S.selected ? '?isin=' + encodeURIComponent(S.selected) : '')); if (fresh()) renderPortfolio(d); }
+    else if (screen === 'portfolio' && sub === 'watch') { const d = await api('/api/watch'); if (fresh()) keepInputs(() => renderWatch(d)); }
+    else if (screen === 'world') { const d = await api('/api/world'); if (fresh()) renderWorld(d); }
+    else if (screen === 'research' && sub === 'work') { const d = await api('/api/investigations'); if (fresh()) keepInputs(() => { $('screen').innerHTML = ''; renderInvestigations(d); }); }
+    else if (screen === 'research' && sub === 'plans') { const d = await api('/api/research' + (S.rsel ? '?isin=' + encodeURIComponent(S.rsel) : '')); if (fresh()) keepInputs(() => renderResearch(d)); }
+    else if (screen === 'research' && sub === 'sims') { const d = await api('/api/sims'); if (fresh()) renderSims(d); }
+    else if (screen === 'research' && sub === 'graph') { const d = await api('/api/graph?' + new URLSearchParams({ kinds: (S.gKinds || ['company', 'sector', 'verdict', 'org', 'person']).join(','), ...(S.gUptoDate ? { upto: S.gUptoDate } : {}) })); if (fresh()) renderGraph(d); }
+    else if (screen === 'inbox') { const d = await api('/api/inbox'); if (fresh()) keepInputs(() => renderInbox(d)); }
+    else if (screen === 'system' && sub === 'now') { const s = S.sys; if (fresh()) keepInputs(() => { $('screen').innerHTML = systemNowHtml(s, S.data.command); wireSystem(); }); }
+    else if (screen === 'system' && sub === 'limits') { const p = await api('/api/policy'); if (fresh()) { $('screen').innerHTML = ''; renderLimits(p); } }
+    else if (screen === 'system' && sub === 'schedule') { const d = await api('/api/schedule'); if (fresh()) keepInputs(() => renderSchedule(d)); }
+    else if (screen === 'settings') { const d = await api('/api/settings'); if (fresh()) { S.settings = d; renderSettings(d); } }
+    else if (screen === 'setup') { const d = await api('/api/setup'); if (fresh()) renderSetup(d); }
+    const sh = $('subnav'); if (sh) sh.innerHTML = subnavHtml(S.screen, S.sub);
+    paintDock();
   } catch (e) {
     if (showing()) $('screen').innerHTML = `<div class="soon"><b>Could not load this screen</b><span class="small muted">${esc(e.message)}</span></div>`;
   }
 }
 function route() {
-  const id = (location.hash.replace('#/', '') || 'world');
-  const was = S.screen;
-  S.screen = TABS.some(([t]) => t === id) || id === 'settings' || id === 'setup' ? id : 'world';
-  if (S.screen !== was) $('screen').innerHTML = '<div class="soon"><span class="muted">Loading…</span></div>';   // never the old screen
+  const [id, sub] = (location.hash.replace('#/', '') || 'assistant').split('/');
+  const was = S.screen + '/' + S.sub;
+  const legacy = { command: ['system', 'now'], ai: ['assistant', ''], schedule: ['system', 'schedule'], sims: ['research', 'sims'], graph: ['research', 'graph'], watch: ['portfolio', 'watch'] };
+  let screen = id, subv = sub || '';
+  if (legacy[id]) [screen, subv] = legacy[id];
+  const valid = NAV.some(([t]) => t === screen) || screen === 'settings' || screen === 'setup';
+  S.screen = valid ? screen : 'assistant';
+  const subs = SUBS[S.screen];
+  S.sub = subs ? (subs.some(([k]) => k === subv) ? subv : subs[0][0]) : '';
+  if (S.screen + '/' + S.sub !== was) { $('screen').innerHTML = '<div class="soon"><span class="muted">Loading…</span></div>'; S.threadHtml = null; S.threadSeen = false; }
   renderTabs(); load(true);
 }
-const TOPICS = { world: ['hq', 'inbox', 'activity', 'health', 'command', 'settings'], command: null, portfolio: ['live', 'portfolio', 'settings'], watch: ['watch', 'live', 'settings'],
-  research: ['research', 'watch', 'settings'], ai: ['chat', 'notifications', 'settings', 'inbox'], schedule: ['activity', 'notes', 'sims', 'settings'],
-  inbox: ['inbox', 'settings'], sims: ['sims', 'settings'], graph: ['settings'],
-  settings: ['settings', 'kite'], setup: ['inbox', 'settings'] };
+const TOPICS = { assistant: ['chat', 'hq', 'notifications', 'inbox', 'settings'], world: ['hq', 'inbox', 'activity', 'health', 'command', 'settings'], portfolio: ['live', 'portfolio', 'watch', 'settings'],
+  research: ['research', 'hq', 'watch', 'sims', 'settings'], inbox: ['inbox', 'settings'], system: ['activity', 'health', 'hq', 'notes', 'settings'], settings: ['settings', 'kite'], setup: ['inbox', 'settings'] };
 function listen() {
   const es = new EventSource('/api/events');
   let prev = null;
@@ -1671,7 +1476,7 @@ function listen() {
    the screen refreshed after every one). The redraw waits until the box is left or empty; nothing typed is ever lost. */
 function typing() {
   const a = document.activeElement;
-  if (!a || !a.matches || !a.matches('#screen input:not([type=checkbox]):not([type=radio]):not([type=range]), #screen textarea')) return false;
+  if (!a || !a.matches || !a.matches('#screen input:not([type=checkbox]):not([type=radio]):not([type=range]), #screen textarea') || a.id === 'chatIn') return false;   // (the assistant's composer is patched, never redrawn)
   return String(a.value || '').length > 0;
 }
 const catchUp = () => { if (S.deferred && !typing()) { S.deferred = false; load(true); } };
@@ -1692,4 +1497,5 @@ function keepInputs(render) {
 setInterval(() => { $('clock').textContent = new Date().toLocaleString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }); }, 1000);
 setInterval(() => load(false), 60000);
 window.addEventListener('hashchange', route);
-route(); listen();
+/* start once every script (ui.js, world.js) has been read */
+document.addEventListener('DOMContentLoaded', () => { route(); listen(); });

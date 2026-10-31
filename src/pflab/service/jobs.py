@@ -75,7 +75,9 @@ def last_success(con, job: str) -> Optional[datetime]:
 
 
 def _redact(ctx: Ctx, text: str) -> str:
-    return ctx.secrets.redact(text) if ctx.secrets is not None else text
+    """The saved values first, then anything shaped like a credential (a token inside an exception's URL)."""
+    from pflab import scrub
+    return scrub.scrub(ctx.secrets.redact(text) if ctx.secrets is not None else text)
 
 
 def reap_abandoned(con, now: datetime) -> int:
@@ -147,7 +149,7 @@ def run_job(ctx: Ctx, job: Job, slot: Optional[datetime] = None) -> RunResult:
         failed = out.get("failed")                      # S67: a job whose sub-step failed has failed (its other work stays done)
         if isinstance(failed, dict) and failed:
             out["failed"] = {k: _redact(ctx, str(v))[:300] for k, v in failed.items()}
-        detail = json.dumps(out, default=str, sort_keys=True)
+        detail = _redact(ctx, json.dumps(out, default=str, sort_keys=True))      # S68: every part of the result, not only `failed`
         status = "failed" if isinstance(failed, dict) and failed else "skipped" if out.get("skipped") else "ok"
         con.execute("UPDATE job_runs SET status=?, finished_at=?, detail=? WHERE run_id=?",
                     [status, done(), detail, rid])
