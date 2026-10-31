@@ -86,7 +86,7 @@ def test_an_order_given_from_an_agents_panel_reaches_the_board_and_the_old_tab_i
     """What Agent HQ used to do, from the World: click an agent, give it an order, and it is on the board (and shown there)."""
     rt, port = server
     steps = [
-        ("document.querySelector('[data-nid=\"a:calc\"]').dispatchEvent(new MouseEvent('click', {bubbles: true})); 1", 0.6),            # 0: open Calculation
+        ("document.querySelector('[data-nid=\"a:quant\"]').dispatchEvent(new MouseEvent('click', {bubbles: true})); 1", 0.6),            # 0: open Quant (its orders go to the calculation runner)
         ("var t = document.getElementById('wio-t'); t.value = 'Drawdown of the Nifty 50 since 2020'; document.getElementById('wio-go').click(); 1", 1.5),   # 1: order it
         ("document.getElementById('wbench').innerText", 0.2),                                                                          # 2: the board shows it
         ("[...document.querySelectorAll('#tabs a')].map(a => a.textContent).join('|')", 0.1),                                          # 3: the tab bar

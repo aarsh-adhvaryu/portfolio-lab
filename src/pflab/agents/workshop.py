@@ -204,7 +204,7 @@ class Run:
     result: Dict[str, object] = field(default_factory=dict)
     cross_checked: bool = False
     seconds: float = 0.0
-    contained: bool = False                      # ran in Docker (no network, read-only root), not the local subprocess
+    contained: Optional[bool] = None             # True: ran in Docker; False: ran in the local subprocess; None: no generated code ran (a failure before it, or our own reviewed code)
     walk: Optional[Dict[str, float]] = None      # S67: walk-forward mode only: {date: signal}, each computed from the rows up to that date
 
 
@@ -724,7 +724,7 @@ def ask(con, question: str, pm_dir: Path, root: Path, asof: date, *, writer: str
     if out.spec is not None:
         out.inputs = {n: captured[n] for n in out.spec.datasets if n in captured}
     d = keep(pm_dir, question, out, now)
-    if out.run is not None and not out.run.contained:       # only the explicit workshop setting runs uncontained; say so once a day
+    if out.run is not None and out.run.contained is False:  # generated code really ran outside Docker (only the workshop's explicit setting can): said once a day
         from pflab.agents import questions as qs
         qs.ask(con, "workshop", f"workshop:uncontained:{now:%Y-%m-%d}",
                "This calculation ran in the uncontained developer subprocess (PFLAB_SANDBOX=local), not in Docker. It is a workshop setting, "

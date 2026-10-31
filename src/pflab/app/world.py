@@ -119,12 +119,16 @@ def agents_view(rt, now: datetime) -> List[dict]:
         "SELECT to_agent, count(*), max(finished_at) FROM hq_tasks WHERE status='failed' AND finished_at >= ? GROUP BY 1", [since]).fetchall()}
     cur = {a: t for a, t in con.execute("SELECT to_agent, arg_max(text, task_id) FROM hq_tasks WHERE status='running' GROUP BY 1").fetchall()}
     out = []
-    for a in roster.listing():
-        n = a["name"]
-        state = "working" if run.get(n) else "down" if fail.get(n) and not done.get(n) else "waiting" if wait.get(n) else "ok" if done.get(n) else "idle"
-        out.append({"id": n, "label": a["title"], "does": a.get("does") or a.get("about") or "", "state": state, "running": run.get(n, 0), "waiting": wait.get(n, 0),
-                    "done_24h": done.get(n, (0, None))[0], "last_done": done.get(n, (0, None))[1], "failed_24h": fail.get(n, (0, None))[0],
-                    "doing": (cur.get(n) or "")[:140]})
+    for r in roster.roles(getattr(rt, "settings", None)):            # one node per role; its members' tasks added up
+        ms = r["members"]
+        nrun, nwait = sum(run.get(m, 0) for m in ms), sum(wait.get(m, 0) for m in ms)
+        ndone, nfail = sum(done.get(m, (0, None))[0] for m in ms), sum(fail.get(m, (0, None))[0] for m in ms)
+        last = max([done[m][1] for m in ms if m in done] or [None], key=lambda x: x or "")
+        doing = next((cur[m] for m in ms if cur.get(m)), "")
+        state = "working" if nrun else "down" if nfail and not ndone else "waiting" if nwait else "ok" if ndone else "idle"
+        out.append({"id": r["id"], "label": r["title"], "does": r["does"], "state": state, "running": nrun, "waiting": nwait,
+                    "done_24h": ndone, "last_done": last, "failed_24h": nfail, "doing": (doing or "")[:140],
+                    "order_to": r["order_to"], "made_of": r["made_of"]})
     return out
 
 
@@ -216,8 +220,10 @@ def feed(rt, now: datetime, limit: int = 40) -> List[dict]:
     for job, st, at, fin, det in con.execute("SELECT job, status, started_at, finished_at, detail FROM job_runs ORDER BY started_at DESC LIMIT 14").fetchall():
         ev.append((fin or at, "routine", job.replace("_", " "), {"ok": "finished", "running": "started", "failed": "failed", "skipped": "skipped"}.get(st, st)
                    + ("" if st in ("ok", "running") else f": {(det or '')[:80]}"), "down" if st == "failed" else "working" if st == "running" else "ok"))
+    from pflab.hq import roster
+    role_title = {r["id"]: r["title"] for r in roster.ROLES}                     # the feed names the role the map shows
     for tid, to, st, created, fin, text in con.execute("SELECT task_id, to_agent, status, created_at, finished_at, text FROM hq_tasks ORDER BY coalesce(finished_at, created_at) DESC LIMIT 14").fetchall():
-        ev.append((fin or created, "agent", to, f"{st}: {text[:90]}", "down" if st == "failed" else "working" if st == "running" else "waiting" if st in ("queued", "waiting", "held", "retry") else "ok"))
+        ev.append((fin or created, "agent", role_title.get(roster.role_of(to), to), f"{st}: {text[:90]}", "down" if st == "failed" else "working" if st == "running" else "waiting" if st in ("queued", "waiting", "held", "retry") else "ok"))
     for cid, at, e, det in con.execute("SELECT case_id, logged_at, event, detail FROM hq_case_log ORDER BY log_id DESC LIMIT 10").fetchall():
         ev.append((at, "investigation", f"case #{cid}", f"{e}: {(det or '')[:90]}", "waiting" if e in ("waiting_data", "retry") else "ok"))
     for aid, eid, at, kind, st in con.execute("SELECT attempt_id, exp_id, made_at, kind, status FROM learn_attempts WHERE kind <> 'baseline' ORDER BY attempt_id DESC LIMIT 6").fetchall():

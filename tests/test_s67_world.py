@@ -41,7 +41,9 @@ def test_a_fresh_profile_shows_every_agent_and_claims_nothing(rt):
     w = world.build(rt, NOW)
     assert w["errors"] == {}
     names = {a["id"] for a in w["agents"]}
-    assert names == {a["name"] for a in roster.listing()}                                      # every agent has a place in the world
+    assert names == {r["id"] for r in roster.ROLES}                                             # every role has a place in the world
+    members = [m for r in roster.ROLES for m in r["members"]]
+    assert sorted(members) == sorted(a["name"] for a in roster.listing())                       # and every runner belongs to exactly one role
     assert w["counts"]["working"] == 0 and w["counts"]["down"] == 0 and w["counts"]["done_today"] == 0
     assert w["feed"] == [] and w["looking_into"] == {"investigations": [], "experiments": []}
     assert {n["id"] for n in w["senses"]} == {"markets", "filings", "broker", "record", "us"}
@@ -65,7 +67,8 @@ def test_states_come_from_what_actually_happened(rt):
     assert by["markets"]["state"] in ("ok", "late") and by["markets"]["done_today"] >= 2
     ag = {a["id"]: a for a in w["agents"]}
     assert ag["research"]["state"] == "working" and ag["research"]["doing"] == "Read AAA results"
-    assert ag["calc"]["state"] == "ok" and ag["portfolio"]["state"] == "down" and ag["quant"]["state"] == "waiting"
+    assert ag["quant"]["state"] == "waiting" and ag["quant"]["done_24h"] == 1 and ag["quant"]["waiting"] == 1      # calc done + quant queued: one role
+    assert ag["portfolio"]["state"] == "down"
     assert w["counts"]["working"] >= 2 and w["counts"]["down"] >= 2
     assert "failed" in w["pulse"]["verdict"] and w["pulse"]["tone"] == "down"
     f = w["feed"]

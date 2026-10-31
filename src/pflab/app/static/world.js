@@ -82,7 +82,9 @@ function wInspector(d) {
   } else if (n.does !== undefined) {
     body = `<div class="k">${esc(n.does)}</div><div class="k">${n.running} running · ${n.waiting} waiting · ${n.done_24h} done and ${n.failed_24h} failed in the last day${n.last_done ? ' · last done ' + esc(n.last_done) : ''}</div>
       ${n.doing ? `<div class="k">Doing: ${esc(n.doing)}</div>` : ''}
-      <div class="orderbox"><input id="wio-t" class="inp" placeholder="Give ${esc(n.label)} an order…" aria-label="Order for ${esc(n.label)}"><button class="btn primary" id="wio-go">Send</button></div>
+      ${(n.made_of || []).length > 1 ? `<div class="age">Made of: ${n.made_of.map((m) => esc(m.title) + ' (' + esc(m.model) + ')').join(' · ')}</div>` : ''}
+      ${n.order_to ? `<div class="orderbox" data-to="${esc(n.order_to)}"><input id="wio-t" class="inp" placeholder="${n.order_to === 'investigation' ? 'Start an investigation: what should be found out?' : 'Give ' + esc(n.label) + ' an order…'}" aria-label="Order for ${esc(n.label)}"><button class="btn primary" id="wio-go">${n.order_to === 'investigation' ? 'Start' : 'Send'}</button></div>`
+        : '<div class="age">Takes its work from investigations only.</div>'}
       <div class="age" id="wio-m">${esc(W.note)}</div>`;
   } else {
     const dt = n.detail || {};
@@ -102,7 +104,7 @@ function wShell(d) {
       <section class="glass pulsecard"><div class="orbrow"><div class="orb" id="worb"></div><div><div class="verdict" id="wverdict"></div><div class="age" id="wsys"></div></div></div>
         <div class="counts" id="wcounts"></div>
         <div class="ctrl"><button class="btn" id="wpause"></button><span class="age" style="align-self:center">Pause stops new routines; running work finishes.</span></div>
-        <div class="askrow"><select id="wto" aria-label="Who to ask"><option value="">The AI (chat)</option>${(d.agents || []).map((a) => `<option value="${esc(a.id.replace(/^a:/, ''))}">${esc(a.label)}</option>`).join('')}</select>
+        <div class="askrow"><select id="wto" aria-label="Who to ask"><option value="">The AI (chat)</option>${(d.agents || []).filter((a) => a.order_to && a.order_to !== 'investigation').map((a) => `<option value="${esc(a.order_to)}">${esc(a.label)}</option>`).join('')}<option value="investigation">Start an investigation</option></select>
           <input id="wask" placeholder="Tell the AI what you want, or ask what it is doing…" aria-label="Ask the AI"><button class="btn primary" id="wsend">Send</button></div><div class="age" id="wmsg"></div></section>
       <div id="winsp"></div>
       <section class="glass"><div class="panelh"><b>Is everything running? Is it done?</b><span class="age" id="wchk"></span></div><div class="tabsm" id="wtabs"></div><div class="checks" id="wchecks"></div></section>
@@ -172,7 +174,12 @@ function patchWorld(d) {
     hqWire(el, () => fetchHq(true));
     const go = el.querySelector('#wio-go'), tx = el.querySelector('#wio-t');
     const order = async () => { const text = tx.value.trim(); if (!text) return;
-      try { await post('/api/hq/order', { agent: W.sel.replace(/^a:/, ''), text }); tx.value = ''; W.note = 'Sent. The answer will appear on the board.'; } catch (e) { W.note = e.message.slice(0, 120); }
+      const to = el.querySelector('.orderbox').dataset.to;
+      try {
+        if (to === 'investigation') { await post('/api/investigations', { goal: text }); W.note = 'Started. Its card is under Research and its progress comes to the assistant.'; }
+        else { await post('/api/hq/order', { agent: to, text }); W.note = 'Sent. The answer will appear on the board.'; }
+        tx.value = '';
+      } catch (e) { W.note = e.message.slice(0, 120); }
       const m = $('wio-m'); if (m) m.textContent = W.note; fetchHq(true); };
     if (go) { go.onclick = order; tx.onkeydown = (e) => { if (e.key === 'Enter') order(); }; }
   });
@@ -221,6 +228,7 @@ function wireWorld() {
   const ask = async () => { const q = $('wask').value.trim(), to = $('wto').value; if (!q) return;
     try {
       if (!to) { await post('/api/assistant', { text: q, context: 'the world screen' }); $('wask').value = ''; location.hash = '#/assistant'; return; }
+      if (to === 'investigation') { await post('/api/investigations', { goal: q }); $('wask').value = ''; location.hash = '#/research/work'; return; }
       await post('/api/hq/order', { agent: to, text: q }); $('wask').value = '';
       $('wmsg').textContent = 'Sent. The answer will appear on the board below.'; W.bench = 'board'; fetchHq(true); worldTick();
     } catch (e) { $('wmsg').textContent = e.message.slice(0, 140); } };
