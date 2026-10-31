@@ -21,10 +21,18 @@ from typing import List, Optional
 LABEL = "estimate, from Kite"
 
 
+def cess() -> float:
+    try:
+        from pflab import _toml
+        return float(_toml.load(Path(__file__).resolve().parents[3] / "configs" / "tax_policy_in.toml")["tax"]["cess"])
+    except Exception:
+        return 0.0
+
+
 def stcg_rate() -> Optional[float]:
     try:
         from pflab import _toml
-        return float(_toml.load(Path(__file__).resolve().parents[3] / "configs" / "tax_policy_in.toml")["stcg_rate"])
+        return float(_toml.load(Path(__file__).resolve().parents[3] / "configs" / "tax_policy_in.toml")["tax"]["stcg_rate"])
     except Exception:
         return None
 
@@ -62,14 +70,15 @@ def estimates(con, asof: date, rate: Optional[float] = None) -> List[dict]:
         p = price_fn(isin, asof)
         px = float(p.value) if p is not None else cost
         gain = (px - cost) * extra
-        tax = max(gain, 0.0) * rate if rate is not None else None
+        tax = max(gain, 0.0) * rate * (1 + cess()) if rate is not None else None          # the rate plus the health and education cess; surcharge (high incomes) is not in it
         out.append({"isin": isin, "symbol": ksym.get(isin), "label": LABEL, "kite_view_at": taken.isoformat(timespec="minutes"), "quantity": extra,
                     "average_price": cost, "price_now": px, "price_date": str(getattr(p, "date", "") or "")[:10], "cost_total": cost * extra,
                     "value_now": px * extra, "unrealised_gain": gain, "short_term_rate": rate, "tax_if_sold_now": tax,
                     "assumes": ["the shares were bought within the last year (short-term rate); if older the real tax is lower",
                                 "Kite's average price is the cost (brokerage and statutory charges are not in it)",
                                 f"Kite's view is from {taken:%Y-%m-%d %H:%M}; a later sale or purchase is not in it",
-                                "a loss gives no tax and none is refunded or carried forward here"],
+                                "a loss gives no tax and none is refunded or carried forward here",
+                                "the rate includes the 4% cess; a surcharge, if your income is high, is not included"],
                     "replaced_by": "the tradebook or contract note and the depository statement: the tax engine then works from the real lot",
                     "not_a_lot": True})
     return out

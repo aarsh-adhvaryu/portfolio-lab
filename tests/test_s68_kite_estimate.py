@@ -19,7 +19,7 @@ def test_a_new_allotment_kite_shows_gets_a_labelled_provisional_figure(con):
     assert set(est) == {BBB}                                         # AAA is fewer in Kite than the ledger: a sale, not a new holding
     e = est[BBB]
     assert e["label"] == "estimate, from Kite" and e["quantity"] == 20 and e["average_price"] == pytest.approx(45.0)
-    assert e["unrealised_gain"] == pytest.approx(100.0) and e["tax_if_sold_now"] == pytest.approx(20.0)
+    assert e["unrealised_gain"] == pytest.approx(100.0) and e["tax_if_sold_now"] == pytest.approx(20.0 * (1 + ke.cess()))
     assert e["not_a_lot"] is True and "short-term" in e["assumes"][0] and "statement" in e["replaced_by"]
     assert "ESTIMATE" in ke.lines([e])[0] and "estimate, from Kite" in ke.lines([e])[0]
     assert con.execute("SELECT count(*) FROM events WHERE isin=?", [BBB]).fetchone()[0] == 0     # never written to the record
@@ -60,3 +60,8 @@ def test_the_tax_plan_tool_carries_the_estimate(con, tmp_path):
     ctx = tl.Ctx(d, 1, "m", False, {}, egress.Gate(), NOW)
     out = tl.tax_plan(ctx, {})
     assert out["kite_estimates"][0]["symbol"] == "BBB" and "ESTIMATE, from Kite" in out["kite_estimate_note"]
+
+
+def test_the_rate_is_read_from_the_policy_file_not_silently_missing():
+    """Found in the real app: the key sits under [tax], so the rate came back None and the tax step quietly vanished (it did in the IPO study too)."""
+    assert ke.stcg_rate() == pytest.approx(0.20) and ke.cess() == pytest.approx(0.04)

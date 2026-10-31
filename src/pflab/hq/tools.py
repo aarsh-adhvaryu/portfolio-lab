@@ -1130,7 +1130,7 @@ def ipo_policy_study(ctx: Ctx, a: dict) -> dict:
     try:
         from pflab import _toml
         from pathlib import Path
-        stcg = float(_toml.load(Path(__file__).resolve().parents[3] / "configs" / "tax_policy_in.toml")["stcg_rate"])
+        stcg = float(_toml.load(Path(__file__).resolve().parents[3] / "configs" / "tax_policy_in.toml")["tax"]["stcg_rate"])
     except Exception:
         pass
     prm = {k: a[k] for k in ("qty", "issue") if a.get(k) is not None}

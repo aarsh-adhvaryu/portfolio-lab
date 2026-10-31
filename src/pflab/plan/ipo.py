@@ -135,7 +135,7 @@ def strategy(con, root, asof: date, name: str, qty: int, issue: float, budget: f
     if stcg is None:
         try:
             from pflab import _toml
-            stcg = float(_toml.load(Path(__file__).resolve().parents[3] / "configs" / "tax_policy_in.toml")["stcg_rate"])
+            stcg = float(_toml.load(Path(__file__).resolve().parents[3] / "configs" / "tax_policy_in.toml")["tax"]["stcg_rate"])
         except Exception:
             stcg = None
     try:                                                   # the allotment Kite already shows, before the statements: a labelled provisional figure
