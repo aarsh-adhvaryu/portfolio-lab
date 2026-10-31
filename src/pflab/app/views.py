@@ -101,7 +101,9 @@ def holdings(con, asof: date) -> dict:
             "today": {**n["today"], "lines": nw.summary(n["today"])},
             "fd_estimated": n["fd_estimated"], "rows": rows,
             "fds": [{"maturity": str(r.maturity), "value": _f(r.value), "estimate": bool(r.estimate),
-                     "reserve": bool(r.reserve)} for r in fds.itertuples()] if len(fds) else []}
+                     "reserve": bool(r.reserve), "bank": getattr(r, "bank", None), "method": getattr(r, "method", None),
+                     "as_of": str(getattr(r, "as_of", "") or "")[:10]} for r in fds.itertuples()] if len(fds) else [],
+            "fd_excluded": [{**x, "maturity": str(x["maturity"])} for x in n.get("fd_excluded") or []]}
 
 
 def mix(con, asof: date) -> dict:

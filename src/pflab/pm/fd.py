@@ -17,6 +17,16 @@ estimates are kept apart:
 - estimates (`Estimate`): any other date's value, the payout net of TDS, a FY's interest before its
   certificate exists. A projection starts from the anchor and withdraws TDS at TDS_RATE at each FY end,
   assuming total bank interest is above the TDS threshold and the PAN is on record.
+
+Amendment 2026-10-31 (the first real run counted no deposit at all):
+- Another bank (HDFC's summary, checked on 3 real deposits) compounds quarterly but its maturity figures sit 0.005-0.014% below SBI's
+  arithmetic. For a bank other than SBI the path is scaled to end exactly on the bank's own maturity amount; terms more than REL_TOL_OTHER
+  away are refused. Fallback: SBI's convention unscaled (bank = "SBI").
+- A deposit with no current value read from the bank is valued from its terms (the principal on the term start is the bank's own fact),
+  labelled an estimate, instead of failing the whole portfolio.
+- The deposit register is rebuilt by `sync` from every input that exists: his deposit file and each bank FD summary dropped in the inbox.
+  A deposit past its maturity with no closing recorded is UNRESOLVED (renewed or paid out is not known): listed, kept out of the total
+  (a payout would already be in the bank balance), and asked about once.
 """
 from __future__ import annotations
 
@@ -31,7 +41,8 @@ from pflab import _toml
 from pflab.pm import estimate as est
 
 TDS_RATE = 0.10                 # resident, PAN furnished (Income-tax Act 2025; bank interest)
-TOL_MATURITY = 2.0              # rupees: the model must reproduce the bank's maturity amount
+TOL_MATURITY = 2.0              # rupees: the model must reproduce the bank's maturity amount (SBI)
+REL_TOL_OTHER = 0.001           # another bank: within 0.1%, then scaled to the bank's own figure
 RENEWING = ("auto renewal", "default")
 
 
@@ -84,6 +95,17 @@ def _q(fd: FD, k: int) -> date:
 
 def contract_value(fd: FD, on: date) -> float:
     """Value on `on` with no TDS taken (the bank's own projection basis)."""
+    return _raw_value(fd, on) * _scale(fd)
+
+
+def _scale(fd: FD) -> float:
+    """1 for SBI (its arithmetic is reproduced to the rupee); for another bank the factor that ends the path on its own maturity amount."""
+    if fd.bank.upper() == "SBI":
+        return 1.0
+    return fd.maturity_amount / _raw_value(fd, fd.maturity)
+
+
+def _raw_value(fd: FD, on: date) -> float:
     if on < fd.term_start:
         raise FDError(f"FD {fd.fd_id}: {on} is before the term start {fd.term_start}")
     on = min(on, fd.maturity)
@@ -101,7 +123,9 @@ def contract_value(fd: FD, on: date) -> float:
 
 def check(fd: FD) -> float:
     """The model's maturity amount; refuses terms that do not reproduce the bank's figure."""
-    m = contract_value(fd, fd.maturity)
+    m = _raw_value(fd, fd.maturity)
+    if fd.bank.upper() != "SBI" and abs(m / fd.maturity_amount - 1) <= REL_TOL_OTHER:
+        return fd.maturity_amount
     if abs(m - fd.maturity_amount) > TOL_MATURITY:
         raise FDError(f"FD {fd.fd_id}: terms give a maturity amount of {m:,.2f}, the bank shows "
                       f"{fd.maturity_amount:,.2f}: check principal, rate and dates")
@@ -121,17 +145,23 @@ def _fy_ends(a: date, b: date) -> List[date]:
 def _projection(fd: FD, upto: date) -> Tuple[float, List[Tuple[date, float, float]]]:
     """(factor on `upto`, [(fy_end, interest, tds)...]) from the anchor. The factor scales contract_value
     to what the deposit holds after the TDS taken so far."""
-    if fd.anchor_date is None:
-        raise FDError(f"FD {fd.fd_id}: no bank value read yet (anchor), nothing to project from")
-    k = fd.anchor_value / contract_value(fd, fd.anchor_date)
+    a_date, a_value = anchor(fd)
+    k = a_value / contract_value(fd, a_date)
     steps = []
-    for t in _fy_ends(fd.anchor_date, min(upto, fd.maturity)):
+    for t in _fy_ends(a_date, min(upto, fd.maturity)):
         # TDS at the FY end is on the whole FY's interest; no TDS is taken inside a FY, so the factor holds
         interest = k * (contract_value(fd, t) - contract_value(fd, max(fd.term_start, date(t.year - 1, 4, 1))))
         tds = TDS_RATE * interest
         k -= tds / contract_value(fd, t)
         steps.append((t, interest, tds))
     return k, steps
+
+
+def anchor(fd: FD) -> Tuple[date, float]:
+    """The bank's value on the day it was read; with none, the principal on the term start (the bank's own terms)."""
+    if fd.anchor_date is not None:
+        return fd.anchor_date, fd.anchor_value
+    return fd.term_start, fd.principal
 
 
 def _inputs(fd: FD) -> dict:
@@ -150,8 +180,10 @@ def value(fd: FD, on: date) -> Union[float, est.Estimate]:
     if fd.anchor_date and on < fd.anchor_date:
         raise FDError(f"FD {fd.fd_id}: values before the bank's reading ({fd.anchor_date}) are not modelled")
     k, _ = _projection(fd, on)
-    return est.Estimate(k * contract_value(fd, on), "SBI quarterly compounding from the bank's value, TDS at "
-                        f"{TDS_RATE:.0%} withdrawn each 31 Mar", est.inputs_hash(_inputs(fd)), fd.anchor_date)
+    a_date, _ = anchor(fd)
+    base = "the bank's value read on " + str(a_date) if fd.anchor_date else "its terms (principal at the term start; no current value read yet)"
+    return est.Estimate(k * contract_value(fd, on), f"{fd.bank} quarterly compounding from {base}, TDS at "
+                        f"{TDS_RATE:.0%} withdrawn each 31 Mar", est.inputs_hash(_inputs(fd)), a_date)
 
 
 def maturity_payout(fd: FD) -> est.Estimate:
@@ -270,7 +302,7 @@ def from_toml(path: Union[str, Path]) -> List[FD]:
                 instruction=t.get("maturity_instruction", ""), status=t.get("status", "open"),
                 closed_on=t.get("closed_on"), closing_amount=t.get("closing_amount"),
                 prev_rate=float(t["prev_rate_pct"]) / 100 if "prev_rate_pct" in t else None,
-                anchor_date=None if closed or "current_value" not in t else as_of,
+                anchor_date=None if closed or "current_value" not in t else t.get("value_on", as_of),
                 anchor_value=None if closed or "current_value" not in t else float(t["current_value"]),
                 opened=t.get("start"), purpose=t.get("purpose", ""))
         check(fd)
@@ -282,7 +314,7 @@ def from_toml(path: Union[str, Path]) -> List[FD]:
 
 
 def entry(fd_id: str, bank: str, principal: float, rate_pct: float, start, maturity, maturity_amount: float, instruction: str = "",
-          purpose: str = "") -> dict:
+          purpose: str = "", current_value: Optional[float] = None, value_on=None) -> dict:
     """S65: a deposit entered on the Setup screen, validated: the last four digits of its number only, and its terms must reproduce the
     bank's own maturity amount (`check`), so a typing slip is caught before anything is written."""
     import re as _re
@@ -294,6 +326,11 @@ def entry(fd_id: str, bank: str, principal: float, rate_pct: float, start, matur
         raise FDError("amount above 0, a yearly rate between 0 and 20%, maturity after the start, and a maturity amount at least the amount")
     e = {"id": fd_id, "bank": str(bank or "SBI").strip().upper(), "principal": float(principal), "rate_pct": float(rate_pct), "start": start,
          "maturity": maturity, "maturity_amount": float(maturity_amount), "maturity_instruction": str(instruction or ""), "purpose": str(purpose or "")}
+    if current_value is not None:                                        # the bank's value on a day: a fact; without it the value is estimated
+        on = value_on if isinstance(value_on, date) else date.fromisoformat(str(value_on)) if value_on else None
+        if on is None or not start <= on <= maturity or current_value < principal * 0.9:
+            raise FDError("a current value needs the day it was read (between the start and the maturity) and must be close to or above the amount")
+        e["current_value"], e["value_on"] = float(current_value), on
     check(FD(fd_id=fd_id, principal=e["principal"], rate=e["rate_pct"] / 100, term_start=start, maturity=maturity,
              maturity_amount=e["maturity_amount"], bank=e["bank"], instruction=e["maturity_instruction"], opened=start))
     return e
@@ -309,7 +346,8 @@ def add_to_file(path: Union[str, Path], e: dict) -> None:
     q = lambda v: '"' + str(v).replace('"', "'") + '"'                                   # noqa: E731
     block = (f"\n[[fd]]\nid = {q(e['id'])}\nbank = {q(e['bank'])}\nprincipal = {e['principal']!r}\nrate_pct = {e['rate_pct']!r}\n"
              f"start = {e['start'].isoformat()}\nmaturity = {e['maturity'].isoformat()}\nmaturity_amount = {e['maturity_amount']!r}\n"
-             f"maturity_instruction = {q(e['maturity_instruction'])}\npurpose = {q(e['purpose'])}\n")
+             f"maturity_instruction = {q(e['maturity_instruction'])}\npurpose = {q(e['purpose'])}\n"
+             + (f"current_value = {e['current_value']!r}\nvalue_on = {e['value_on'].isoformat()}\n" if e.get("current_value") is not None else ""))
     tmp = path.with_suffix(".tmp")
     tmp.write_text(text + block, encoding="utf-8")
     from_toml(tmp)                                                      # the whole file must still read and check before it replaces his
@@ -334,6 +372,46 @@ def save(con, fds: Sequence[FD], source: str, now: Optional[datetime] = None) ->
     return len(fds)
 
 
+def _last4(fd_id: str) -> str:
+    import re as _re
+    return _re.sub(r"\D", "", str(fd_id))[-4:] or str(fd_id)
+
+
+def register(his: Sequence[FD], summaries: Sequence[dict]) -> Tuple[List[FD], dict]:
+    """The deposit register from every input: `his` (his deposit file) and `summaries` ({bank, deposits, observed, source}, a bank's FD summary
+    each). One deposit is one (bank, last four digits): the same term in two inputs is kept once (his entry first, it may carry the bank's
+    current value); a later start for the same number is a renewal and replaces the older term. Deposits of two banks that share their last four
+    digits are told apart as BANK-1234. Returns (deposits, notes: renewed, refused)."""
+    reg: Dict[Tuple[str, str], FD] = {(f.bank.upper(), _last4(f.fd_id)): f for f in his}
+    notes: dict = {"renewed": [], "refused": [], "from_summaries": 0}
+    for s in sorted(summaries, key=lambda x: x["observed"]):
+        bank = (s.get("bank") or "?").upper()
+        for d in s["deposits"]:
+            key = (bank, d.last4)
+            try:
+                fd = FD(fd_id=d.last4, principal=d.principal, rate=d.rate_pct / 100, term_start=d.start, maturity=d.maturity,
+                        maturity_amount=d.maturity_amount, bank=bank, opened=d.start)
+                check(fd)
+            except FDError as e:
+                notes["refused"].append(f"{bank} deposit ending {d.last4}: {e}")
+                continue
+            old = reg.get(key)
+            if old is None:
+                reg[key] = fd
+                notes["from_summaries"] += 1
+            elif d.start > old.term_start:
+                reg[key] = replace(fd, opened=old.opened or old.term_start, purpose=old.purpose, prev_rate=old.rate)
+                notes["renewed"].append(f"{bank} deposit ending {d.last4}: a new term from {d.start}")
+    clash = {k[1] for k in reg if sum(1 for j in reg if j[1] == k[1]) > 1}
+    out = [replace(f, fd_id=f"{b}-{n}") if n in clash else replace(f, fd_id=n if f.fd_id.isdigit() else f.fd_id) for (b, n), f in reg.items()]
+    return sorted(out, key=lambda f: (f.maturity, f.fd_id)), notes
+
+
+def unresolved(fds: Sequence[FD], on: date) -> List[FD]:
+    """Open deposits past their maturity: renewed or paid out is not known yet."""
+    return [f for f in fds if f.status == "open" and f.maturity < on]
+
+
 def load(con) -> List[FD]:
     rows = con.execute(f"SELECT {_COLS} FROM fds ORDER BY maturity, fd_id").fetchall()
     keys = [c.strip() for c in _COLS.split(",")]
@@ -341,11 +419,14 @@ def load(con) -> List[FD]:
 
 
 def save_interest(con, fy: int, rows: Sequence[dict], source: str, now: Optional[datetime] = None) -> int:
-    """Certificate rows for one FY: {fd_id, paid, accrued, tds}. Re-loading a FY replaces it."""
+    """Certificate rows for one FY: {fd_id, paid, accrued, tds}. Re-loading a certificate replaces its own rows and those of the same deposits;
+    another certificate's deposits of the same year stay (2026-10-31: a second certificate used to wipe the first)."""
     from pflab.pm.store import transaction
     now = now or datetime.now()
+    ids = [r["fd_id"] for r in rows]
     with transaction(con):
-        con.execute("DELETE FROM fd_interest WHERE fy = ?", [fy])
+        con.execute("DELETE FROM fd_interest WHERE fy = ? AND (source = ?" + (f" OR fd_id IN ({', '.join('?' * len(ids))})" if ids else "") + ")",
+                    [fy, source, *ids])
         for r in rows:
             con.execute("INSERT INTO fd_interest VALUES (?,?,?,?,?,?,?)",
                         [r["fd_id"], fy, r["paid"], r["accrued"], r["tds"], source, now])

@@ -43,14 +43,23 @@ def build(con, asof: date) -> Dict[str, object]:
                      for i in pos["isin"]]
     pos["bucket"] = [bucket(*(meta.get(i, ("", "", "", ""))[:2]), meta.get(i, ("", "", "", ""))[3] or "")
                      for i in pos["isin"]]
-    fds = [f for f in fdm.load(con) if f.status == "open" and f.maturity >= asof]
-    fd_rows = []
+    every = [f for f in fdm.load(con) if f.term_start <= asof]
+    fds = [f for f in every if f.status == "open" and f.maturity >= asof]
+    fd_rows, fd_out = [], []
     for f in fds:
-        x = fdm.value(f, asof)
+        try:
+            x = fdm.value(f, asof)
+        except fdm.FDError as e:                               # (2026-10-31) one deposit that cannot be valued never breaks the whole picture
+            fd_out.append({"fd_id": f.fd_id, "bank": f.bank, "maturity": f.maturity, "why": f"not valued: {e}"})
+            continue
         fd_rows.append(dict(fd_id=f.fd_id, maturity=f.maturity, value=x.value if isinstance(x, est.Estimate) else x,
                             estimate=isinstance(x, est.Estimate), reserve=f.purpose.startswith("reserve:"),
-                            purpose=f.purpose))
-    fdf = pd.DataFrame(fd_rows, columns=["fd_id", "maturity", "value", "estimate", "reserve", "purpose"])
+                            purpose=f.purpose, bank=f.bank, method=x.method if isinstance(x, est.Estimate) else "the bank's value that day",
+                            as_of=getattr(x, "as_of", None) if isinstance(x, est.Estimate) else asof))
+    for f in fdm.unresolved(every, asof):                      # matured, renewal or payout not seen: listed, kept out (a payout is in the bank)
+        fd_out.append({"fd_id": f.fd_id, "bank": f.bank, "maturity": f.maturity, "contract_amount": f.maturity_amount,
+                       "why": "matured; renewed or paid out is not known yet: drop the bank's latest deposit summary"})
+    fdf = pd.DataFrame(fd_rows, columns=["fd_id", "maturity", "value", "estimate", "reserve", "purpose", "bank", "method", "as_of"])
     by = pos.dropna(subset=["value"]).groupby("bucket")["value"].sum().to_dict()
     by["cash"] = v.cash_total
     by["debt"] = by.get("debt", 0.0) + float(fdf.loc[~fdf["reserve"], "value"].sum())
@@ -58,7 +67,7 @@ def build(con, asof: date) -> Dict[str, object]:
     investable = sum(by.values())
     return {"asof": asof, "valuation": v, "positions": pos, "fds": fdf, "buckets": by, "reserve": reserve,
             "investable": investable, "net_worth": investable + reserve,
-            "fd_estimated": bool(fdf["estimate"].any()) if len(fdf) else False}
+            "fd_estimated": bool(fdf["estimate"].any()) if len(fdf) else False, "fd_excluded": fd_out}
 
 
 def render(nw: Dict[str, object]) -> str:
@@ -83,6 +92,8 @@ def render(nw: Dict[str, object]) -> str:
     if len(f):
         lines.append(f"FDs: {len(f)} open, {f['value'].sum():,.2f} "
                      f"(reserve {f.loc[f['reserve'], 'value'].sum():,.2f}; investable {f.loc[~f['reserve'], 'value'].sum():,.2f})")
+    for x in nw.get("fd_excluded") or []:
+        lines.append(f"! FD {x['bank']} {x['fd_id']} (maturity {x['maturity']}): left out of the total: {x['why']}")
     if v.unpriced:
         lines.append(f"! {len(v.unpriced)} holding(s) unpriced: left out of every total")
     return "\n".join(lines)

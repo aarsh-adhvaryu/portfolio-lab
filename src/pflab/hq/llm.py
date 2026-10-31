@@ -80,7 +80,7 @@ def _count_kwargs(p: Dict[str, Any]) -> Dict[str, Any]:
 
 def call(con, agent: str, params: Dict[str, Any], client, *, now: datetime, mode: str, private_text: str,
          gate: egress.Gate, doc_kinds: Sequence[str] = (), topic: str = "", question: str = "",
-         cfg: Optional[dict] = None, approved: bool = False, turn: int = 1, extra_in: int = 0) -> Sent:
+         cfg: Optional[dict] = None, approved: bool = False, turn: int = 1, extra_in: int = 0, his_order: bool = False) -> Sent:
     """Raises egress.EgressBlocked, governor.BudgetRefused (logged as over_limit) or analyst.NeedsApproval. `extra_in`:
     input the count cannot see (a page web fetch will read, at its cap), priced as the worst case."""
     cfg = cfg or an.config()
@@ -92,7 +92,7 @@ def call(con, agent: str, params: Dict[str, Any], client, *, now: datetime, mode
     n_in = int(client.messages.count_tokens(**_count_kwargs(params)).input_tokens) + int(extra_in)
     est = gv.cost_inr(model, n_in, int(params["max_tokens"]), cfg["usd_inr"])
     try:
-        warn = gv.check(con, agent, est, n_in, int(params["max_tokens"]), now, mode, cfg, approved, turn)
+        warn = gv.check(con, agent, est, n_in, int(params["max_tokens"]), now, mode, cfg, approved, turn, his_order=his_order)
     except gv.BudgetRefused as e:
         gv.log_refusal(con, agent, model, topic, question or topic, str(e), now)
         raise

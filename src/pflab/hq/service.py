@@ -171,6 +171,12 @@ def start(rt) -> dict:
         out["requests_closed"] = inbox.close_met_requests(rt)
     except Exception:
         out["requests_closed"] = 0
+    if out.get("choices_restored") and "fd_holdings.toml" in out["choices_restored"]:
+        try:                                               # his deposits came back: counted at once, not at the next job
+            from pflab.app import inbox
+            out["deposits"] = inbox.deposits_now(rt).get("deposits")
+        except Exception:
+            out["deposits"] = None
     rt.bump("hq")
     return out
 

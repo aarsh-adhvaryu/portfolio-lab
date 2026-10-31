@@ -40,6 +40,20 @@ def _sha(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()[:16]
 
 
+def _contract_notes(path: Path) -> list:
+    """A contract-note workbook (many notes), or one note's PDF (2026-10-31: a PDF was set aside unread), opened with the saved passwords."""
+    if path.suffix.lower() != ".pdf":
+        return cn.parse_xlsx(path)
+    from pflab.ingest import sniff
+    for _name, pw in [(None, None)] + list(sniff.passwords_from_secrets()):
+        try:
+            return [cn.parse(path, pw)]
+        except cn.ContractNoteError as e:
+            if "password" not in str(e).lower():
+                raise
+    raise cn.ContractNoteError(f"{path.name}: none of the saved passwords opens this contract note")
+
+
 def _pw(env):
     """A statement password: the environment variable, else the same name under [passwords] in the secrets file
     (%USERPROFILE%\\.pflab\\secrets.toml; the investor 2026-10-17 asked for them to be kept there, outside the repo)."""
@@ -95,7 +109,7 @@ def build(src: dict, root: Path) -> tuple:
     else:                                                                # (2026-10-30) no tradebook yet: the rest is still built
         names, tev = {}, []
         check("a Console tradebook is given", False, "no tradebook yet: trades are not in the ledger")
-    cnotes = list({n.number: n for p in z.get("contract_notes_xlsx", []) for n in cn.parse_xlsx(root / p)}.values())
+    cnotes = list({n.number: n for p in z.get("contract_notes_xlsx", []) for n in _contract_notes(root / p)}.values())
     tev, rep = cn.apply_fees(tev, cnotes)
     check("every trade has a contract note", not rep["without_note"] and not rep["note_trades_not_in_tradebook"],
           f"{rep['with_fees']} trades with levies; missing {rep['without_note']}")

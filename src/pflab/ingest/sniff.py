@@ -8,6 +8,7 @@ A PDF's first pages (pypdf) or a workbook's / CSV's first rows are read for the 
     cas            a depository consolidated account statement (NSDL or CDSL), with the DP / client ids it lists
     bank           a bank statement: the bank's name and the last four digits of the account number
     gift_city      a Zerodha GIFT City (IFSC) statement
+    fd_summary     a bank's fixed deposit summary (account, principal, maturity amount and date, rate, start)
     other          anything else (the name-based guess then stands)
 
 An encrypted file is opened with the passwords of the secrets file's [passwords] section, tried in turn, in memory; none is
@@ -79,6 +80,8 @@ def from_text(text: str) -> Dict[str, Optional[str]]:
         out["bank"] = "SBI" if "state bank" in t else None
     elif "gift city" in t or "ifsc unit" in t or "international financial services centre" in t and "zerodha" in t:
         out["kind"] = "gift_city"
+    elif re.search(r"contract\s*note\s*no", t) and "trade date" in t and "zerodha" in t:
+        out["kind"] = "contract_note"                           # one day's Zerodha contract note as a PDF (2026-10-31)
     elif "transaction with holding statement" in t or "statement of transaction" in t:
         out["kind"] = "other"                                   # a broker DP's own statement, not a CAS the ledger can read
     elif "consolidated account statement" in t and ("nsdl" in t or "cdsl" in t or "depository" in t):
@@ -109,6 +112,9 @@ def from_rows(rows: List[list]) -> Dict[str, Optional[str]]:
         out["kind"] = "funds_ledger"
     elif "contract note" in text:
         out["kind"] = "contract_note"
+    elif _fd_summary(rows):
+        from pflab.ingest import fd_summary
+        out["kind"], out["bank"] = "fd_summary", fd_summary.bank_of(rows)            # a bank's fixed deposit summary (2026-10-31)
     elif any(("txn date" in c or c == "date") for c in cells) and any(d in c for c in cells for d in ("description", "narration", "details")) \
             and any(d in c for c in cells for d in ("debit", "withdrawal")) and any(d in c for c in cells for d in ("credit", "deposit")):
         out["kind"] = "bank"
@@ -122,6 +128,11 @@ def from_rows(rows: List[list]) -> Dict[str, Optional[str]]:
     elif "tijori" in text or "screener" in text:
         out["kind"] = "market"
     return out
+
+
+def _fd_summary(rows) -> bool:
+    from pflab.ingest import fd_summary
+    return fd_summary.is_summary(rows)
 
 
 def sniff(data: bytes, name: str, passwords=()) -> Dict[str, Optional[str]]:

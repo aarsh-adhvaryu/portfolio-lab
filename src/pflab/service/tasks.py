@@ -415,6 +415,37 @@ register(Job("ledger", Interval(15, weekdays_only=False), _ledger, "your record:
              cooldown_minutes=15, enabled_fn=_ledger_wanted))
 
 
+def _deposits_wanted(ctx: Ctx) -> Tuple[bool, str]:
+    import json as _json
+    from pflab.app import inbox as ib
+    from pflab.hq import desk
+    rt = desk.from_ctx(ctx)
+    p = ctx.pm_dir / "app" / "deposits.json"
+    try:
+        last = _json.loads(p.read_text(encoding="utf-8")).get("fingerprint") if p.exists() else None
+    except (OSError, ValueError):
+        last = None
+    return ib.deposits_fingerprint(rt) != last, "no new deposit file or summary"
+
+
+def _deposits(ctx: Ctx) -> dict:
+    """(2026-10-31) His deposits: the register rebuilt from his deposit file and every bank deposit summary, whenever one changes."""
+    import json as _json
+    from pflab.app import inbox as ib
+    from pflab.hq import desk
+    rt = desk.from_ctx(ctx)
+    res = ib.deposits_now(rt)
+    p = ctx.pm_dir / "app" / "deposits.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(_json.dumps({"fingerprint": ib.deposits_fingerprint(rt), "at": ctx.now.isoformat(timespec="seconds"), **res}, default=str),
+                 encoding="utf-8")
+    return res
+
+
+register(Job("deposits", Interval(15, weekdays_only=False), _deposits, "your fixed deposits: rebuilt from your deposit file and each bank's "
+             "deposit summary whenever one arrives", cooldown_minutes=15, enabled_fn=_deposits_wanted))
+
+
 def _backfill(ctx: Ctx) -> dict:
     """S67: market history fills itself, in steps of about 90 seconds (newest sessions first), so a first run needs no long command and
     an interruption costs nothing. The readiness stages and the known gaps are brought up to date with it."""

@@ -79,9 +79,12 @@ def calls_today(con, agent: str, now: datetime) -> int:
 
 
 def check(con, agent: str, est_inr: float, n_in: int, n_out: int, now: datetime, mode: str, cfg: dict,
-          approved: bool = False, turn: int = 1) -> List[str]:
+          approved: bool = False, turn: int = 1, his_order: bool = False) -> List[str]:
     """Raise BudgetRefused (or analyst.NeedsApproval) when the call may not be made; else the cap's warnings. A later
-    turn of a pass (S60 tool loop) is not counted against passes a day again; every other limit holds per turn."""
+    turn of a pass (S60 tool loop) is not counted against passes a day again; every other limit holds per turn.
+    `his_order` (2026-10-31: on the first night every question he asked after 23:15 was refused because the brain's own passes had used
+    its day): his question is not held by the passes-a-day or rupees-a-day limits meant for the system's own work; the layer's monthly
+    share and his cap still hold. Fallback: his_order=False everywhere restores the old rule."""
     lim = LIMITS[agent]
     if n_in > lim.max_in:
         raise BudgetRefused(f"{agent}: {n_in:,} input tokens, over its {lim.max_in:,} a call")
@@ -90,12 +93,12 @@ def check(con, agent: str, est_inr: float, n_in: int, n_out: int, now: datetime,
     n = lim.per_day.get(mode if mode in MODES else "economy", 0)
     if n <= 0:
         raise BudgetRefused(f"{agent} does not run with the brain set to '{mode}'")
-    if turn <= 1 and calls_today(con, agent, now) >= n:
+    if not his_order and turn <= 1 and calls_today(con, agent, now) >= n:
         raise BudgetRefused(f"{agent}: {n} calls today already (its limit under '{mode}')")
     share, day_cap = LAYERS[lim.layer]
     peers = agents_in(lim.layer)
     day = _spent(con, peers, datetime(now.year, now.month, now.day))
-    if day + est_inr > day_cap:
+    if not his_order and day + est_inr > day_cap:
         raise BudgetRefused(f"the {lim.layer} have spent ~Rs {day:,.1f} today; this call up to ~Rs {est_inr:,.1f} "
                             f"would pass their Rs {day_cap:,.0f} a day")
     month = _spent(con, peers, datetime(now.year, now.month, 1))
