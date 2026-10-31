@@ -138,6 +138,13 @@ def strategy(con, root, asof: date, name: str, qty: int, issue: float, budget: f
             stcg = float(_toml.load(Path(__file__).resolve().parents[3] / "configs" / "tax_policy_in.toml")["stcg_rate"])
         except Exception:
             stcg = None
+    try:                                                   # the allotment Kite already shows, before the statements: a labelled provisional figure
+        from pflab.tax import kite_estimate as ke
+        est = [e for e in ke.estimates(con, asof) if e["quantity"] > 0]
+        if est:
+            out["kite_estimate"] = {"label": ke.LABEL, "lines": ke.lines(est), "holdings": est}
+    except Exception:
+        pass
     if stcg is not None:
         out["tax_on_a_sale_within_a_year"] = {"rate": stcg, "label": "estimate: short-term gains rate from configs/tax_policy_in.toml",
                                               "on_a_25pct_listing_gain_rs": round(tax_estimate(allot * 0.25, stcg))}
