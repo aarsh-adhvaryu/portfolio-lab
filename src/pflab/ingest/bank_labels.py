@@ -120,6 +120,10 @@ def subject_key(g: dict) -> str:
 def ask(con, grps: List[dict], now: Optional[datetime] = None) -> List[int]:
     """One question per group that matters; at most MAX_OPEN of this agent's questions open at once. Returns the new ids."""
     now = now or datetime.now()
+    current = {subject_key(g) for g in grps}                # (2026-10-31) a line the code has since explained (an IPO payment, say) is not asked
+    for (k,) in con.execute("SELECT subject_key FROM questions WHERE agent=? AND status='open'", [AGENT]).fetchall():
+        if k not in current:
+            questions.drop(con, k, now)
     open_now = con.execute("SELECT count(*) FROM questions WHERE agent=? AND status='open'", [AGENT]).fetchone()[0]
     made = []
     for g in grps:

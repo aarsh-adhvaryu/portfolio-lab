@@ -196,3 +196,30 @@ def test_a_summary_hours_late_after_a_restart_is_not_sent(tmp_path, monkeypatch)
     jobs.REGISTRY["summary_morning"].fn(at(9, 20))
     jobs.REGISTRY["summary_evening"].fn(at(22, 0))
     assert sent == ["morning", "evening"]
+
+
+def test_an_ipo_allotment_is_paid_by_the_one_bank_debit_of_its_amount_never_spending_or_money_from_nowhere():
+    """2026-10-31: the exchange takes an allotment through his UPI mandate; that debit was asked about as 'OTHER'."""
+    from pflab.ingest import bank
+    b = _bpl()
+    rows = [dict(date=date(2026, 6, 10), value_date=date(2026, 6, 10), description="UPI-000001-ICIABCDEF-50200000000001", ref="", debit=12345.0,
+                 credit=0.0, balance=10_000.0),
+            dict(date=date(2026, 5, 1), value_date=date(2026, 5, 1), description="UPI-SHOP", ref="", debit=12345.0, credit=0.0, balance=47_485.0)]
+    stm = {"HDFC_0001": bank.classify(pd.DataFrame(rows), rules=[])}
+    acc, line = b.ipo_payment_line(stm, 12345.0, date(2026, 6, 10))
+    assert acc == "HDFC_0001" and line.date == date(2026, 6, 10)                     # the August one is too early
+    assert b.ipo_payment_line(stm, 12345.0, date(2026, 6, 10), {("HDFC_0001", line.ref_id)}) is None   # taken once
+    stm2 = {"A": stm["HDFC_0001"], "B": stm["HDFC_0001"].copy()}
+    assert b.ipo_payment_line(stm2, 12345.0, date(2026, 6, 10)) is None             # two candidates: nothing is guessed
+
+
+def test_a_label_question_the_code_has_since_explained_is_withdrawn(tmp_path):
+    from pflab.ingest import bank, bank_labels as bl
+    con = store.connect(tmp_path / "l.duckdb")
+    rows = [dict(date=date(2026, 9, d), value_date=date(2026, 9, d), description="UPI-SOMEONE-ABC", ref="", debit=12_000.0, credit=0.0,
+                 balance=100_000.0 - 12_000.0 * d) for d in (1, 2, 3)]
+    df = bank.classify(pd.DataFrame(rows), rules=[])
+    assert len(bl.ask(con, bl.groups({"HDFC_0001": df}), NOW)) == 1
+    df["category"] = "ipo_payment"                                                          # explained by the next build
+    bl.ask(con, bl.groups({"HDFC_0001": df}), NOW)
+    assert [k for k, _, _ in questions.open_questions(con)] == []
