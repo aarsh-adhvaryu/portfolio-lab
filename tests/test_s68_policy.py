@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from pflab.agents import analyst as an
-from pflab.hq import brain, cases, egress, governor as gv, tools as tl
+from pflab.hq import brain, cases, egress, governor as gv, service, tools as tl
 from pflab.hq.desk import Desk
 from pflab.pm import store
 
@@ -211,3 +211,20 @@ def test_the_policy_view_shows_every_limit_and_the_windows_spend(con, monkeypatc
     monkeypatch.setattr(an, "config", lambda: CFG)
     v = gv.policy_view(con, NOW, "normal")
     assert v["policy"] == "normal" and v["window"] is None and all(r["state"] == "in force" for r in v["limits"])
+
+
+def test_the_analysts_own_calls_are_tagged_with_the_policy_too(con, monkeypatch):
+    monkeypatch.setattr(an, "config", lambda: WINDOW)
+    cid = an._log(con, an.Request("q", "workshop"), "live", an.MODEL, "done", NOW, {"model": an.MODEL}, 3.0)
+    assert con.execute("SELECT policy FROM api_calls WHERE call_id=?", [cid]).fetchone()[0] == "acceptance"
+
+
+def test_a_call_a_killed_process_left_sending_is_closed_at_the_next_start_and_still_counted(con, tmp_path):
+    _spend(con, "brain", 7.0, status="sending")
+    rt = Desk(con, tmp_path / "pm", tmp_path / "data", tmp_path / "repo", None, {"brain": "normal"}, clock=lambda: NOW)
+    (tmp_path / "pm").mkdir(exist_ok=True)
+    out = service.start(rt)
+    assert out["calls_closed"] == 1
+    st, err = con.execute("SELECT status, error FROM api_calls").fetchone()
+    assert st == "refused" and "interrupted" in err
+    assert an.month_spend_inr(con, NOW) == 7.0                                      # the estimate still counts against the cap

@@ -152,6 +152,10 @@ def start(rt) -> dict:
     from pflab.hq import board, cases
     con, now = rt.cursor(), rt.clock()
     out = {"tasks_recovered": board.reap(con, now), "cases_recovered": cases.reap(con, now), "cases_resumed": len(cases.sweep(con, now))}
+    # S68: a paid call the old process was in the middle of (found after a hard kill: a row 'sending' for ever) is closed. The money may have been spent, so it
+    # stays counted at its estimate (status 'refused' is counted by the governor), with the reason said.
+    out["calls_closed"] = int(con.execute("SELECT count(*) FROM api_calls WHERE status='sending'").fetchone()[0])
+    con.execute("UPDATE api_calls SET status='refused', error='interrupted: the process stopped during this call; counted at its estimate', finished_at=? WHERE status='sending'", [now])
     try:                                                   # an experiment a dead process left running continues from its recorded attempts
         from pflab.learner import experiments
         out["experiments_recovered"] = experiments.reap(con, now)

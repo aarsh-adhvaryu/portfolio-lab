@@ -471,10 +471,14 @@ def _log(con, req: Request, mode: str, model: str, status: str, now: datetime, p
     from pflab.pm.store import next_id
     cid = next_id(con, "api_calls", "call_id")
     body = json.dumps(p, sort_keys=True)
+    try:
+        policy = "acceptance" if acceptance(config(), now) else "normal"        # S68: the analyst's own calls are tagged like the HQ's
+    except Exception:
+        policy = None
     con.execute("INSERT INTO api_calls (call_id, created_at, mode, model, topic, question, request_sha, request_json, status, "
-                "cost_inr) VALUES (?,?,?,?,?,?,?,?,?,?)",          # named: S59 added the `agent` column
+                "cost_inr, policy) VALUES (?,?,?,?,?,?,?,?,?,?,?)",          # named: S59 added the `agent` column
                 [cid, now, mode, model, req.topic, req.question, hashlib.sha256(body.encode()).hexdigest(), body, status,
-                 cost_inr])
+                 cost_inr, policy])
     return cid
 
 
