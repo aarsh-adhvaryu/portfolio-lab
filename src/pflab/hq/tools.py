@@ -1471,7 +1471,7 @@ def definitions(names=None) -> List[dict]:
         opt = len(t.params) - len(t.required)
         # S64: tools after the 20th are checked by `validate` only. S68: the API also refuses a request whose strict tools carry too many OPTIONAL
         # parameters in all (found live: 33 -> "grammar too large"), so a strict tool that would pass MAX_OPTIONAL is sent non-strict (checked here)
-        on = bool(t.required) and strict < MAX_STRICT and optional + opt <= MAX_OPTIONAL
+        on = names is None and bool(t.required) and strict < MAX_STRICT and optional + opt <= MAX_OPTIONAL      # a worker's list is never strict (the API refused a compiled grammar of 37 tools); `validate` checks every input here anyway
         strict += on
         optional += opt if on else 0
         out.append(t.definition(on))

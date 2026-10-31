@@ -353,3 +353,12 @@ def test_a_daily_tool_cap_is_a_wait_until_it_resets_not_a_failure(rt, con, monke
     assert q["next_review"] > NOW
     missions.tick(rt)
     assert missions.card(con, 1)["state"] == "working" and "limit" in missions.card(con, 1)["blocker"]
+
+
+def test_a_workers_tool_list_is_not_strict_so_the_compiled_grammar_stays_small(rt):
+    """Found on the first real run in the app: 'the compiled grammar is too large' for the quant's 38 tools."""
+    from pflab.hq import tools as tl
+    for role, names in workers.TOOLS.items():
+        defs = tl.definitions(frozenset(n for n in names if n in tl.TOOLS))
+        assert not any(d.get("strict") for d in defs), role
+    assert sum(1 for d in tl.definitions() if d.get("strict")) <= tl.MAX_STRICT              # the brain's own list is as it was
