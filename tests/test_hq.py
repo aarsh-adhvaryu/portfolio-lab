@@ -120,6 +120,18 @@ def test_governor_limits_in_order(con):
         gv.check(con, "reader", 0.1, 100, 100, NOW, "economy", {**CFG, "cap": 900.0})
 
 
+
+def test_his_own_question_is_not_held_by_the_brains_day_limits_but_the_month_and_cap_still_hold(con):
+    for k in range(4):                                       # the brain's own passes used its day (4 passes, Rs 116)
+        con.execute("INSERT INTO api_calls (call_id, created_at, mode, model, question, request_sha, request_json, status, "
+                    "cost_inr, agent) VALUES (?,?,?,?,?,?,?,?,?,?)", [k + 1, NOW, "live", gv.OPUS, "q", "", "{}", "done", 29.0, "brain"])
+    with pytest.raises(gv.BudgetRefused, match="calls today"):
+        gv.check(con, "brain", 16.0, 100, 100, NOW, "economy", CFG)
+    assert gv.check(con, "brain", 16.0, 100, 100, NOW, "economy", CFG, his_order=True) == []      # 2026-10-31: his question still runs
+    con.execute("UPDATE api_calls SET cost_inr=249 WHERE call_id=1")                                 # month 336 of the brain's 1,000
+    with pytest.raises(gv.BudgetRefused, match="cap"):
+        gv.check(con, "brain", 16.0, 100, 100, NOW, "economy", {**CFG, "cap": 340.0}, his_order=True)
+
 def test_spend_names_old_calls_by_how_they_were_made(con):
     rows = [(1, "web", gv.OPUS, "web", None, 9.0), (2, "batch", gv.SONNET, "AAA", "worker", 3.0),
             (3, "live", gv.SONNET, "workshop", None, 2.0), (4, "live", gv.HAIKU, "AAA", "reader", 0.01)]

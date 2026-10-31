@@ -448,7 +448,8 @@ def think(rt, trigger: str, evs: List[dict], client, gate, *, model: str = gv.OP
         try:
             s = llm.call(con, agent, params(messages, model, effort, lim.max_out, last), client, now=now, mode=mode,
                          private_text=pending, gate=gate, doc_kinds=("portfolio",), topic="brain",
-                         question=f"{trigger} pass" + (f", turn {turn}" if turn > 1 else ""), cfg=cfg, turn=turn)
+                         question=f"{trigger} pass" + (f", turn {turn}" if turn > 1 else ""), cfg=cfg, turn=turn,
+                         his_order=trigger == "asked" and role != "rival")
         except Exception as e:                      # refused by the governor, blocked, or failed: journalled
             why = f"{type(e).__name__}: {str(e)[:300]}"
             if turn == 1:

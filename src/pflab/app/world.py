@@ -21,7 +21,7 @@ from typing import Dict, List, Optional
 SENSES = [("markets", "Market data", ["collect", "prices", "nav", "global", "backfill"], "prices, NAVs, world markets"),
           ("filings", "Filings and news", ["filings", "kg"], "company filings, news, the graph's intake"),
           ("broker", "Kite", ["tradecheck", "idle_cash"], "holdings, funds, trades"),
-          ("record", "Your record", ["ledger"], "your statements, built into one ledger by itself"),
+          ("record", "Your record", ["ledger", "deposits"], "your statements and deposits, built into one record by itself"),
           ("us", "US sleeve", ["us_fx"], "USDINR rates")]
 ROUTINES = [("thinking", "Thinking rounds", ["hq", "conductor", "research", "analyst", "forecast", "comove", "scans", "twin", "companion", "learner"],
              "the brain, research, forecasts, the learner"),

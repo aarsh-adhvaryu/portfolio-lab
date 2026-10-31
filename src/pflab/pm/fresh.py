@@ -28,7 +28,8 @@ from pflab.pm import reset
 CONFIRM = "start-fresh"
 # His CHOICES, not his history (2026-10-30: the first fresh start left them behind and the new profile sat idle: no targets, no watch list,
 # no analyst, no cap). They go with him into a new profile; the data they were built on does not.
-CHOICES = ("api_budget.toml", "targets.toml", "targets_notes.md", "stock_list.toml", "theme_baskets.toml", "groups.toml")
+CHOICES = ("api_budget.toml", "targets.toml", "targets_notes.md", "stock_list.toml", "theme_baskets.toml", "groups.toml",
+           "fd_holdings.toml")      # (2026-10-31) the deposits he typed are in no statement: left behind, his deposits counted for nothing
 
 
 def carry_choices(src_pm: Path, dst_pm: Path) -> list:

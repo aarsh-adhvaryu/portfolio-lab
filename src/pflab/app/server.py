@@ -431,7 +431,8 @@ def create_app(rt) -> FastAPI:
         try:
             e = fdm.entry(fields.get("id"), fields.get("bank"), float(fields.get("principal") or 0), float(fields.get("rate_pct") or 0),
                           fields.get("start"), fields.get("maturity"), float(fields.get("maturity_amount") or 0), fields.get("instruction") or "",
-                          fields.get("purpose") or "")
+                          fields.get("purpose") or "", float(fields["current_value"]) if fields.get("current_value") else None,
+                          fields.get("value_on") or None)
         except (ValueError, TypeError) as err:
             raise HTTPException(400, str(err))
         if not write:
@@ -441,8 +442,8 @@ def create_app(rt) -> FastAPI:
             fdm.add_to_file(path, e)
         except fdm.FDError as err:
             raise HTTPException(400, str(err))
-        n = fdm.save(rt.cursor(), fdm.from_toml(path), str(path))
-        rt.bump("portfolio")
+        from pflab.app import inbox as ib
+        n = ib.deposits_now(rt).get("deposits")              # (2026-10-31) the whole register, so a summary's deposits are not wiped
         return {"ok": True, "written": True, "deposits": n}
 
     @app.post("/api/inbox/apply-all")

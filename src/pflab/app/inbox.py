@@ -29,7 +29,8 @@ IMAGE_DAYS = 7
 LEDGER_KINDS = ("tradebook", "contract_note", "funds_ledger", "cas", "bank")
 KIND_LABEL = {"tradebook": "Console tradebook", "contract_note": "contract notes", "funds_ledger": "Console funds ledger",
               "cas": "depository CAS", "bank": "bank statement", "screenshot": "screenshot", "market": "market-data export",
-              "gift_city": "GIFT City statement", "fd_certificate": "deposit interest certificate", "other": "other file"}
+              "gift_city": "GIFT City statement", "fd_certificate": "deposit interest certificate", "fd_summary": "bank deposit summary",
+              "other": "other file"}
 _LOCK = threading.Lock()
 
 
@@ -75,6 +76,9 @@ def _store_dir(rt, kind: str) -> Path:
 
 def _steps(kind: str, done: int, failed: bool = False) -> List[dict]:
     kind = "tradebook" if kind == "fd_certificate" else kind          # a certificate follows the ledger's steps (read, checked, your OK, stored)
+    if kind == "fd_summary":
+        flow = ["received", "recognised", "checked (rows add up)", "in your deposits"]
+        return [{"name": n, "state": "done" if i < done else ("failed" if failed and i == done else "todo")} for i, n in enumerate(flow)]
     names = {"ledger": ["received", "recognised", "checked (dry run)", "your OK", "in the ledger"],
              "screenshot": ["received", "read on this PC", "summarised", "image deleted"],
              "graph": ["received", "recognised", "in the knowledge graph"]}
@@ -211,6 +215,8 @@ def _process(rt, iid: int) -> None:
             _dry_run(rt, it)
         elif it["kind"] == "fd_certificate":
             _fd_cert(rt, it)
+        elif it["kind"] == "fd_summary":
+            deposits_now(rt)
         elif it["kind"] == "screenshot":
             _ocr(rt, it)
         elif ((it.get("result") or {}).get("sniff") or {}).get("password_name") and Path(it["path"]).suffix.lower() == ".pdf":
@@ -256,6 +262,97 @@ def _fd_cert(rt, it: dict, write: bool = False) -> dict:
         _to_chat(rt, it, f"{it['name']}: interest certificate for FY{fy - 1}-{str(fy)[2:]}, {len(fr)} deposit(s), its rows add up. Press 'Add to "
                  "the ledger' in Inbox and files to keep it.", ["read on this PC", "checked"])
     return res
+
+
+def _resniff_others(rt) -> int:
+    """(2026-10-31) A sheet or PDF filed as 'other' by an older version is looked at again with the current readers, once: a bank's deposit
+    summary or a contract-note PDF dropped before its reader existed then counts like one dropped today. Returns how many changed kind."""
+    from pflab.ingest import sniff
+    con, n = rt.cursor(), 0
+    for iid, name, path, res in con.execute("SELECT item_id, name, path, result_json FROM inbox_items WHERE kind='other' AND status <> 'removed'").fetchall():
+        r = json.loads(res or "{}")
+        if r.get("resniffed") or Path(name).suffix.lower() not in SHEET_EXT | {".pdf"} or not path or not Path(path).exists():
+            continue
+        info = sniff.sniff(Path(path).read_bytes(), name, sniff.passwords_from_secrets())
+        r = {**r, "resniffed": 1, "sniff": info}
+        if info.get("kind") == "fd_summary":
+            _update(rt, iid, kind="fd_summary", status="working", steps_json=json.dumps(_steps("fd_summary", 2)), result_json=json.dumps(r, default=str))
+            n += 1
+        elif info.get("kind") == "contract_note":                 # the ledger job reads it with the other statements
+            dest = rt.repo / "new" / Path(path).name
+            if not dest.exists():
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(Path(path).read_bytes())
+            _update(rt, iid, kind="contract_note", path=str(dest), status="ready", steps_json=json.dumps(_steps("contract_note", 3)),
+                    result_json=json.dumps(r, default=str))
+            n += 1
+        else:
+            _update(rt, iid, result_json=json.dumps(r, default=str))
+    return n
+
+
+def deposits_now(rt) -> dict:
+    """(2026-10-31) The deposit register rebuilt from every input that exists: his deposit file (pm/fd_holdings.toml) and each bank deposit
+    summary in the inbox. Nothing waits: a summary that does not add up is a named gap; a deposit past its maturity is asked about once."""
+    import hashlib as _h
+    from pflab.agents import questions
+    from pflab.app import readiness
+    from pflab.ingest import fd_summary as fs
+    from pflab.pm import fd as fdm
+    con, now = rt.cursor(), rt.clock()
+    out = {"reclassified": _resniff_others(rt)}
+    his, path = [], rt.pm_dir / "fd_holdings.toml"
+    if path.exists():
+        try:
+            his = fdm.from_toml(path)
+            readiness.close_gap(con, "deposits:file", now)
+        except Exception as e:
+            readiness.open_gap(con, "deposits:file", "deposits", f"your deposit file cannot be read: {type(e).__name__}: {str(e)[:200]}", now)
+    summaries, items = [], []
+    for iid, in con.execute("SELECT item_id FROM inbox_items WHERE kind='fd_summary' AND status <> 'removed' ORDER BY item_id").fetchall():
+        it = _item(rt, iid)
+        try:
+            bank, deps = fs.parse(Path(it["path"]).read_bytes(), _cert_password(it))
+            summaries.append({"bank": bank, "deposits": deps, "observed": it["created"], "source": it["name"]})
+            items.append((it, len(deps), bank))
+            readiness.close_gap(con, f"deposits:summary:{it['sha'][:12]}", now)
+        except Exception as e:
+            readiness.open_gap(con, f"deposits:summary:{it['sha'][:12]}", "deposits", f"{it['name']}: {type(e).__name__}: {str(e)[:200]}", now)
+            fail(rt, iid, e)
+    if not his and not summaries:
+        return {**out, "deposits": 0, "why": "no deposit file and no bank deposit summary yet"}
+    fds, notes = fdm.register(his, summaries)
+    n = fdm.save(con, fds, f"register: {'your deposit file' if his else 'no deposit file'} + {len(summaries)} bank summary(ies)", now)
+    for it, k, bank in items:
+        _update(rt, it["id"], status="in the store", steps_json=json.dumps(_steps("fd_summary", 4)),
+                result_json=json.dumps({**it["result"], "bank": bank, "deposits": k}, default=str))
+    refused = notes["refused"]
+    key = "deposits:refused"
+    if refused:
+        readiness.open_gap(con, key, "deposits", "; ".join(refused)[:600], now)
+    else:
+        readiness.close_gap(con, key, now)
+    late = fdm.unresolved(fds, now.date())
+    qk = "deposits:matured:" + _h.sha1("|".join(sorted(f"{f.bank}{f.fd_id}" for f in late)).encode()).hexdigest()[:10]
+    for (k,) in con.execute("SELECT subject_key FROM questions WHERE status='open' AND subject_key LIKE 'deposits:matured:%' AND subject_key <> ?", [qk]).fetchall():
+        questions.drop(con, k, now)
+    if late:
+        questions.ask(con, "deposits", qk, f"{len(late)} deposit(s) have passed their maturity date and I cannot see whether they were renewed or paid out: "
+                      + ", ".join(f"{f.bank} ending {f.fd_id[-4:]} on {f.maturity}" for f in late[:8])
+                      + ". Drop each bank's latest deposit summary (or its statement) in Inbox and files; until then they are left out of the total.", now)
+    rt.bump("portfolio", "inbox")
+    return {**out, "deposits": n, "from_file": len(his), "from_summaries": notes["from_summaries"], "renewed": len(notes["renewed"]),
+            "refused": len(refused), "matured_unresolved": len(late)}
+
+
+def deposits_fingerprint(rt) -> str:
+    """What the register is built from: the deposit file's bytes and the deposit summaries; a change is a reason to rebuild."""
+    con = rt.cursor()
+    p = rt.pm_dir / "fd_holdings.toml"
+    parts = [hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else "-"]
+    parts += [r[0] for r in con.execute("SELECT sha FROM inbox_items WHERE kind='fd_summary' AND status <> 'removed' ORDER BY sha").fetchall()]
+    parts.append(str(con.execute("SELECT count(*) FROM inbox_items WHERE kind='other' AND status <> 'removed' AND coalesce(result_json, '') NOT LIKE '%resniffed%'").fetchone()[0]))
+    return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
 
 
 def _missing(merged: dict) -> List[str]:
