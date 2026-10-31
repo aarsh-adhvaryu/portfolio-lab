@@ -481,7 +481,8 @@ def attach_waiting(rt, inline: bool = False) -> dict:
     return {"started": started, "unknown": unknown}
 
 
-HINTS = [("contract note", "the Console contract notes (Excel) for the days after the last one you gave"),
+HINTS = [("charges are known", "the Console contract notes (Excel) for the days named, or the Console funds ledger that covers them"),
+         ("contract note", "the Console contract notes (Excel) for the days after the last one you gave"),
          ("Console closing", "the contract notes of your latest trades (their charges), or a newer Console funds ledger"),
          ("pay-in", "the bank statement that shows each of these Zerodha pay-ins and payouts"),
          ("statement closing", "the bank statements without a missing month"),
@@ -516,7 +517,35 @@ def record_differences(con, checks, n_events: int, now) -> int:
     return len(failed)
 
 
-def build_now(rt) -> dict:
+READERS = ("bank", "bank_labels", "contract_note", "tradebook", "zerodha_ledger", "cas", "fd_summary", "sniff")
+
+
+def builder_fingerprint(rt) -> str:
+    """(2026-10-31) The code that reads his statements into the record: when it changes (an update), every statement is read again by itself,
+    so a fix reaches the files he dropped earlier, not only the next one."""
+    import importlib
+    parts = []
+    for p in [rt.repo / "tools" / "build_pm_ledger.py"] + [Path(importlib.import_module(f"pflab.ingest.{m}").__file__) for m in READERS]:
+        parts.append(hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else "-")
+    return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
+
+
+def last_build(rt) -> dict:
+    p = rt.pm_dir / "app" / "ledger_build.json"
+    try:
+        return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def rebuild_due(rt) -> bool:
+    """The record was built from statements before, and the reading code has changed since."""
+    con = rt.cursor()
+    built = con.execute("SELECT 1 FROM inbox_items WHERE status='in the ledger' LIMIT 1").fetchone()
+    return bool(built) and last_build(rt).get("fingerprint") != builder_fingerprint(rt)
+
+
+def build_now(rt, force: bool = False) -> dict:
     """Set up the accounts from the files if nobody has, then build and write the whole record from every statement. Called by the `ledger` job
     after any statement arrives, and by the screen's press. Nothing is waited for: a missing file is a named difference."""
     from pflab.agents import questions
@@ -539,17 +568,17 @@ def build_now(rt) -> dict:
         questions.ask(con, "setup", "setup:auto", "I set up your accounts from the files you dropped: " + ", ".join(names) + f", from {a['start']}. "
                       "If one is wrong or missing, change it in Settings > Open Setup; your record is rebuilt by itself.", rt.clock())
         attach_waiting(rt, inline=True)
-    return apply_all(rt)
+    return apply_all(rt, force=force)
 
 
-def apply_all(rt) -> dict:
+def apply_all(rt, force: bool = False) -> dict:
     """S65: every ledger document whose dry run passed or that was kept, added in ONE rebuild: written only when every check passes (his press)."""
     from pflab.ingest import sources as srcs
     con = rt.cursor()
     items = [_item(rt, r[0]) for r in con.execute("SELECT item_id FROM inbox_items WHERE status IN ('ready', 'kept', 'checks failed') "
                                                   "ORDER BY item_id").fetchall()]
     items = [it for it in items if it["kind"] in LEDGER_KINDS]
-    if not items:
+    if not items and not force:
         return {"written": False, "why": "no documents waiting"}
     with _LOCK:
         sources = rt.pm_dir / "sources.toml"
@@ -570,6 +599,13 @@ def apply_all(rt) -> dict:
         with transaction(con):
             b.write(con, log, led, src)
         srcs.save_overlay(sources, over)
+        try:
+            p = rt.pm_dir / "app" / "ledger_build.json"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps({"fingerprint": builder_fingerprint(rt), "at": rt.clock().isoformat(timespec="seconds"), "events": len(log),
+                                     "differences": len(failed)}), encoding="utf-8")
+        except OSError:
+            pass
         for it in items:
             _update(rt, it["id"], status="in the ledger", steps_json=json.dumps(_steps(it["kind"], 5)),
                     result_json=json.dumps({**it["result"], "checks": res["checks"], "events": len(log), "failed": len(failed)}, default=str))

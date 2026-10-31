@@ -251,6 +251,47 @@ def allocate(note: ContractNote) -> Dict[str, Dict[str, float]]:
     return out
 
 
+STT_DELIVERY = 0.001            # equity delivery STT, each side (Finance Act; rounded to the rupee per scrip on the note)
+MAX_CHARGE_SHARE = 0.01         # a day's charges above 1% of its turnover is not charges: refused, named
+
+
+def fees_from_settlements(events: List[Event], settle: Dict[date, float]) -> Tuple[List[Event], dict]:
+    """(2026-10-31) A trade day with NO contract note takes its charges from the broker's own daily settlement: the trades' net value less what
+    was settled is what the day's levies came to (a fact, the total only). STT is set apart at STT_DELIVERY of each trade's value (it is not a
+    cost for capital gains); the rest is `charges_console`, split by value. A day with some trades on a note and some not, no settlement line,
+    or an impossible total is left alone and reported."""
+    trades = [e for e in events if e.kind in ("buy", "sell")]
+    bare: Dict[date, List[Event]] = {}
+    for e in trades:
+        bare.setdefault(e.date, []).append(e)
+    days, skipped = {}, []
+    for d, es in bare.items():
+        if any(e.fees for e in es):
+            if not all(e.fees for e in es):
+                skipped.append((d, "some trades of the day have a contract note and some do not"))
+            continue
+        if d not in settle:
+            skipped.append((d, "no settlement line in the funds ledger"))
+            continue
+        net = sum((e.qty * e.price) * (1 if e.kind == "sell" else -1) for e in es)
+        total = round(net - settle[d], 2)
+        turnover = sum(e.qty * e.price for e in es)
+        if total < 0 or total > MAX_CHARGE_SHARE * turnover:
+            skipped.append((d, f"the settlement differs from the trades by {total:,.2f}: not charges"))
+            continue
+        stt = {e.ref: float(round(STT_DELIVERY * e.qty * e.price, 2)) for e in es}
+        if sum(stt.values()) > total:
+            stt = {k: 0.0 for k in stt}
+        rest = round(total - sum(stt.values()), 2)
+        shares = {e.ref: float(round(rest * e.qty * e.price / turnover, 2)) for e in es}
+        big = max(es, key=lambda e: e.qty * e.price).ref
+        shares[big] = float(round(shares[big] + rest - sum(shares.values()), 2))
+        days[d] = (total, {e.ref: {k: v for k, v in (("stt", stt[e.ref]), ("charges_console", shares[e.ref])) if v} for e in es})
+    alloc = {ref: f for _, (_, per) in days.items() for ref, f in per.items()}
+    out = [dataclasses.replace(e, fees={**e.fees, **alloc[e.ref]}) if e.kind in ("buy", "sell") and e.ref in alloc else e for e in events]
+    return out, {"days": {str(d): t for d, (t, _) in sorted(days.items())}, "trades": len(alloc), "skipped": sorted(skipped)}
+
+
 def apply_fees(events: List[Event], notes: Iterable[ContractNote]) -> Tuple[List[Event], dict]:
     """Tradebook buy/sell events (ref = trade_id) with their contract-note levies set as `fees`. A note trade
     whose side, ISIN or quantity differs from the event is refused; trades with no note are reported."""

@@ -397,6 +397,10 @@ def _ledger_wanted(ctx: Ctx) -> Tuple[bool, str]:
     kinds = "','".join(ib.LEDGER_KINDS)
     n = ctx.con.execute(f"SELECT count(*) FROM inbox_items WHERE (kind IN ('{kinds}') AND status IN ('ready', 'kept', 'checks failed', 'awaiting setup')) "
                         "OR (kind = 'fd_certificate' AND status = 'ready')").fetchone()[0]
+    if not n:
+        from pflab.hq import desk
+        if ib.rebuild_due(desk.from_ctx(ctx)):
+            return True, "the reading code changed: every statement is read again"
     return bool(n), "no new statement to build from"
 
 
@@ -405,7 +409,8 @@ def _ledger(ctx: Ctx) -> dict:
     is written, and what does not match is named with what closes it. No press, no waiting for a complete set."""
     from pflab.app import inbox as ib
     from pflab.hq import desk
-    res = ib.build_now(desk.from_ctx(ctx))
+    rt = desk.from_ctx(ctx)
+    res = ib.build_now(rt, force=ib.rebuild_due(rt))
     if res.get("error"):
         res["failed"] = {"build": res["error"]}
     return {k: v for k, v in res.items() if k not in ("checks", "notes")} | {"differences": [c["name"] for c in res.get("checks", []) if not c["ok"]]}

@@ -218,3 +218,17 @@ def test_a_request_for_a_document_closes_itself_when_the_document_is_dropped(tmp
     after = {t for _, _, t in questions.open_questions(con)}
     assert not any("tradebook" in t or "funds ledger" in t or "SBI account ending 9001" in t for t in after)        # answered by the files
     assert any("CAS" in t for t in after) and any("each month" in t for t in after)                                   # a different file and a real question stay
+
+
+def test_new_reading_code_reads_every_statement_again_once(rt, monkeypatch):
+    """2026-10-31: a fix to the readers reaches the files dropped earlier: the ledger job rebuilds once, then waits for a new file."""
+    rt.cursor().execute("INSERT INTO inbox_items (item_id, name, kind, path, sha, status, created_at, updated_at) "
+                        "VALUES (1, 'tradebook-A.csv', 'tradebook', 'x', 'abc', 'in the ledger', ?, ?)", [NOW, NOW])
+    assert ib.rebuild_due(rt)
+    b = fake_builder()
+    monkeypatch.setattr(ib, "_builder", lambda rt: b)
+    assert ib.apply_all(rt)["written"] is False                                                  # nothing new, no rebuild asked
+    res = ib.build_now(rt, force=True)
+    assert res["written"] and "src" in b.seen and not ib.rebuild_due(rt)
+    monkeypatch.setattr(ib, "builder_fingerprint", lambda rt: "changed")
+    assert ib.rebuild_due(rt)
