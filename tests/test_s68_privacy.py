@@ -117,3 +117,17 @@ def test_an_id_the_model_copies_into_its_own_words_or_a_call_is_replaced_not_a_r
     rep = workers.run_task(rt, board.get(con, tid))
     assert rep.status == "done", rep.text                                       # the model's own copy of the id was replaced, so the next request was allowed
     assert all(ACCT not in json.dumps(kw["messages"]) for _, kw in m.seen)
+
+
+def test_an_id_already_kept_in_the_case_does_not_stop_the_next_task(rt, con):
+    """The retry of a task that had stopped on an id kept stopping: the id sat in the dossier built from the case's own evidence."""
+    from pflab.hq import workers
+    out = missions.create(con, NOW, "A research question about AAA results", pm_dir=rt.pm_dir)
+    cases.add_evidence(con, out["case_id"], NOW, f"Checked account {ACCT} earlier.", stance="neutral", kind="observation")
+    ok = _use(("case_evidence", {"case_id": 1, "stance": "neutral", "text": "Looked again.", "source_kind": "observation"}))
+    m = Model({"research": [ok, _say("Done.")]})
+    rt._hq_client = m
+    tid = board.post(con, "w_research", "check", NOW, frm="mission", body={"case_id": out["case_id"], "role": "research", "promise": {"evidence": 1}, "goal": "g"})
+    rep = workers.run_task(rt, board.get(con, tid))
+    assert rep.status == "done", rep.text
+    assert all(ACCT not in json.dumps(kw["messages"]) for _, kw in m.seen)
