@@ -239,7 +239,7 @@ def run_task(rt, task: dict, client=None, gate=None, cfg=None) -> Reply:
     opening = [f"TASK #{task['id']} ({role}): {task['text']}", f"YOU MUST PRODUCE: {json.dumps(promise)}", dossier]
     if ck.get("summary"):
         opening.append(f"YOUR EARLIER WORK ON THIS TASK (checkpoint): {ck['summary']}")
-    stable = "\n\n".join(opening)
+    stable = _scrub_ids("\n\n".join(opening), gate)              # evidence and checkpoints the model wrote earlier may hold an id it copied: replaced before it goes out
     pid = brain._record(con, now, f"task:{task['id']}", [], model, role, "running")
     ctx = tl.Ctx(rt, pid, model, False, {}, gate, now, client=client, mode=mode, source=stable, case_ids=[cid], task_id=task["id"], role=role,
                  allowed=frozenset(n for n in TOOLS[role] if n in tl.TOOLS))
