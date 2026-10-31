@@ -104,3 +104,16 @@ def test_the_models_own_words_never_carry_his_name_back_into_the_next_turn(rt, c
     workers.run_task(rt, t)
     sent = json.dumps(m.seen)
     assert NAME not in sent.lower().replace("synthname's", "")                                  # the first turn's reply is sent back only after his name is replaced
+
+
+def test_an_id_the_model_copies_into_its_own_words_or_a_call_is_replaced_not_a_reason_to_stop(rt, con):
+    """Found in the real app: a quant task stopped on 'not sent: an account, depository, folio or deposit id' that the model itself had written."""
+    from pflab.hq import workers
+    ok = _use(("case_evidence", {"case_id": 1, "stance": "neutral", "text": "Looked at it.", "source_kind": "observation"}))
+    m = Model({"research": [_say(f"I checked account {ACCT} and found nothing to record."), ok, _say(f"Done; account {ACCT} was checked.")]})
+    rt._hq_client = m
+    out = missions.create(con, NOW, "A research question about AAA results", pm_dir=rt.pm_dir)
+    tid = board.post(con, "w_research", "check", NOW, frm="mission", body={"case_id": out["case_id"], "role": "research", "promise": {"evidence": 1}, "goal": "g"})
+    rep = workers.run_task(rt, board.get(con, tid))
+    assert rep.status == "done", rep.text                                       # the model's own copy of the id was replaced, so the next request was allowed
+    assert all(ACCT not in json.dumps(kw["messages"]) for _, kw in m.seen)
