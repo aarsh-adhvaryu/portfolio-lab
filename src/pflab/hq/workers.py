@@ -105,6 +105,24 @@ class Conv:
     first_call: Optional[int] = None
 
 
+def _scrub_ids(text: str, gate) -> str:
+    """The model's own words with any of his account, depository, folio or deposit ids replaced (the privacy gate would otherwise refuse the next request
+    and the task would stop on a number the model itself had copied)."""
+    from pflab.hq import redact
+    out, _ = redact.redact(text, gate, lines=False)
+    return out
+
+
+def _scrub_obj(x, gate):
+    if isinstance(x, str):
+        return _scrub_ids(x, gate)
+    if isinstance(x, dict):
+        return {k: _scrub_obj(v, gate) for k, v in x.items()}
+    if isinstance(x, list):
+        return [_scrub_obj(v, gate) for v in x]
+    return x
+
+
 def _tool_defs(role: str) -> list:
     from pflab.hq import tools as tl
     return tl.definitions(frozenset(n for n in TOOLS[role] if n in tl.TOOLS))
@@ -140,14 +158,16 @@ def converse(rt, con, ctx, messages: list, *, system: str, tools: list, model: s
             reminder = check(out.note) if check else None
             if reminder and out.nudges < NUDGES and turn < max_turns and not ctx.wait_for:
                 out.nudges += 1
-                messages.append({"role": "assistant", "content": [{"type": "text", "text": out.note or "(done)"}]})
+                messages.append({"role": "assistant", "content": [{"type": "text", "text": _scrub_ids(brain.unnamed(out.note, gate.names), gate) or "(done)"}]})
                 messages.append({"role": "user", "content": [{"type": "text", "text": reminder}]})
                 continue
             return out
         kept = [brain.as_param(b) for b in msg.content if getattr(b, "type", "") in brain.KEEP_BLOCKS]
         for b in kept:
             if b.get("type") == "text":
-                b["text"] = brain.unnamed(b["text"], gate.names)
+                b["text"] = _scrub_ids(brain.unnamed(b["text"], gate.names), gate)
+            elif b.get("type") == "tool_use":                  # what the model wrote INTO a call goes back to it next turn: his ids are replaced there too
+                b["input"] = _scrub_obj(b.get("input"), gate)
         messages.append({"role": "assistant", "content": kept})
         results = []
         for b in uses:
