@@ -39,9 +39,9 @@ def rt(con, tmp_path, monkeypatch):
     return Desk(con, tmp_path / "pm", tmp_path / "data", tmp_path / "repo", None, {"brain": "normal", "preset": "full", "telegram_send": False}, clock=lambda: NOW)
 
 
-def _insert_reading(con, doc="D1"):
+def _insert_reading(con, doc="D1", isin=AAA):
     cols = [r[0] for r in con.execute("SELECT column_name FROM information_schema.columns WHERE table_name='hq_readings' ORDER BY ordinal_position").fetchall()]
-    vals = {"doc_id": doc, "read_at": NOW - timedelta(hours=1), "material": "yes", "isins_json": json.dumps([AAA]), "summary": "AAA reported a large order loss",
+    vals = {"doc_id": doc, "read_at": NOW - timedelta(hours=1), "material": "yes", "isins_json": json.dumps([isin]), "summary": "AAA reported a large order loss",
             "kind": "result", "model": "m", "cost_inr": 0.0, "status": "done", "facts_json": "[]", "published_at": NOW - timedelta(hours=2)}
     use = [c for c in cols if c in vals]
     con.execute(f"INSERT INTO hq_readings ({','.join(use)}) VALUES ({','.join('?' * len(use))})", [vals[c] for c in use])
@@ -66,9 +66,13 @@ def test_a_new_material_filing_on_a_held_name_starts_an_investigation_with_no_ch
     assert any("While you were away" in t for t in told) and any("Finished" in t for t in told)
 
 
-def test_an_unchanged_signal_is_not_adopted_twice_and_a_days_starts_are_bounded(rt, con):
-    for k in range(5):
-        _insert_reading(con, f"D{k}")
+def test_an_unchanged_signal_is_not_adopted_twice_and_a_days_starts_are_bounded(rt, con, monkeypatch):
+    isins = [f"INE00{k}A0101{k}" for k in range(5)]
+    for k, i in enumerate(isins):                                           # five DIFFERENT companies, five signals
+        con.execute("""INSERT INTO instruments (isin, key_kind, asset_class, tax_class, listed, symbol, name, source, built_at)
+                       VALUES (?, 'isin', 'equity', 'listed_equity', TRUE, ?, ?, 'synthetic', now())""", [i, f"CO{k}", f"CO{k} Limited"])
+        _insert_reading(con, f"D{k}", i)
+    monkeypatch.setattr(service, "names", lambda r: (isins, []))
     rt._hq_client = Model({"coordinator": [], "research": [], "quant": [], "review": []})
     first = missions.scan(rt)
     assert len(first["started"]) == missions.DAILY_NEW and first["held_back"] == 2              # five signals, three starts a day
@@ -126,3 +130,19 @@ def test_a_failed_investigation_can_be_retried_and_resumes_where_it_stopped(rt, 
     service.drive_missions(rt)
     assert missions.card(con, out["case_id"])["state"] == "done"
     assert con.execute("SELECT count(*) FROM hq_artifacts WHERE kind='evidence'").fetchone()[0] == ev_before             # the research was not repeated
+
+
+def test_six_documents_about_one_companys_results_are_one_mission_not_six(rt, con):
+    """Found on the first real start: six missions on six documents about the same company's quarter."""
+    for k in range(6):
+        _insert_reading(con, f"D{k}")
+    rt._hq_client = Model({"coordinator": [], "research": [], "quant": [], "review": []})
+    out = missions.scan(rt)
+    assert len(out["started"]) == 1 and con.execute("SELECT count(*) FROM hq_missions").fetchone()[0] == 1
+    lead = out["started"][0]
+    assert "Other documents of the same kind" in missions.mission_of(con, lead)["goal"]
+    st = con.execute("SELECT status, decision, decision_reason FROM hq_cases WHERE case_id <> ? ORDER BY case_id", [lead]).fetchall()
+    assert len(st) == 4 and all(r[0] == "done" and r[1] == "nothing" and "folded into" in r[2] for r in st)
+    _insert_reading(con, "D9")                                              # a new document the same week: covered by the one already started
+    again = missions.scan(rt)
+    assert again["started"] == [] and con.execute("SELECT count(*) FROM hq_missions").fetchone()[0] == 1

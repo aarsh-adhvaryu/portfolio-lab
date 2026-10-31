@@ -459,7 +459,25 @@ def adopt(rt) -> dict:
     rows = con.execute("SELECT case_id, question, subject, isin, subject_key FROM hq_cases WHERE origin='code' AND status='queued' "
                        "AND (subject_key LIKE 'discover:reading:%' OR subject_key LIKE 'discover:ipo:%') AND case_id NOT IN (SELECT case_id FROM hq_missions) "
                        "ORDER BY case_id").fetchall()
-    for cid, question, subject, isin, key in rows:
+    # ONE mission per company and kind of signal: the first real run found six missions on six documents about the same company's results, the same story.
+    # The first signal leads; the others are folded into its goal and their cases closed as covered, so the team looks at the company once.
+    groups: dict = {}
+    for row in rows:
+        groups.setdefault((row[3] or row[2] or row[0], row[4].split(":")[1]), []).append(row)
+    recent = {(r[0], r[1]) for r in con.execute(
+        "SELECT coalesce(c.isin, c.subject), split_part(c.subject_key, ':', 2) FROM hq_missions m JOIN hq_cases c ON c.case_id = m.case_id "
+        "WHERE m.origin='system' AND m.created_at >= ?", [now - timedelta(days=7)]).fetchall()}
+    for (who, kind0), members in groups.items():
+        lead, rest = members[0], members[1:]
+        if (who, kind0) in recent:                            # already looked at this week: these signals are covered, not repeated
+            for r in members:
+                _cover(con, now, r[0], "an investigation of this company for this kind of signal was started this week")
+            continue
+        cid, question, subject, isin, key = lead
+        if rest:
+            question = (question + " Other documents of the same kind, read in the same period: " + " | ".join(r[1][:160] for r in rest[:5]))[:1200]
+            for r in rest:
+                _cover(con, now, r[0], f"folded into case #{cid} (the same company, the same kind of signal)")
         if started_today(con, now) >= cap:
             out["held_back"] += 1
             continue
@@ -474,6 +492,14 @@ def adopt(rt) -> dict:
         r = _adopt_case(con, now, cid, question, subject, isin, why, revisit, rt.pm_dir)
         out["started"].append(r["case_id"])
     return out
+
+
+def _cover(con, now: datetime, cid: int, why: str) -> None:
+    """A signal another mission already covers: its case is closed with the reason (never silently dropped, never opened again: the case key stays)."""
+    from pflab.hq import cases
+    con.execute("UPDATE hq_cases SET status='done', decision='nothing', decision_reason=?, closed_at=?, updated_at=?, next_review_at=NULL WHERE case_id=? AND status='queued'",
+                [why[:300], now, now, cid])
+    cases.log(con, cid, now, "covered", why[:300])
 
 
 def _adopt_case(con, now: datetime, cid: int, question: str, subject, isin, why: str, revisit: str, pm_dir) -> dict:
