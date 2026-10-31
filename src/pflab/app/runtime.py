@@ -63,6 +63,8 @@ class Runtime:
         self.kite_state = "idle"                      # idle | waiting | done | failed: <why>
         self.sims_running = False
         self.sims_error: Optional[str] = None
+        self.mc_error: Optional[str] = None           # the fall-limit simulation's last failure, for the World screen
+        self.hq_last_round: Optional[tuple] = None    # (when, parts that failed) of the HQ thread's last round
         self._hq_wake = threading.Event()             # S59: an order on the board runs at once
         self.catching_up: Optional[str] = None        # S67: set after a wake or a start after a long stop, until the data is current again
         self._beat: Optional[datetime] = None
@@ -316,7 +318,8 @@ class Runtime:
         from pflab.hq import service
         service.start(self)
         while not self.stop.is_set():
-            service.round_(self, stop=self.stop)
+            out = service.round_(self, stop=self.stop)
+            self.hq_last_round = (self.clock(), sorted((out or {}).get("failed") or {}))   # the World reads the HQ's rounds from here
             self._hq_wake.wait(30)
             self._hq_wake.clear()
 
@@ -380,7 +383,13 @@ class Runtime:
             c = self.mc_cache()
             age = (self.clock() - datetime.fromisoformat(c["at"])).total_seconds() / 3600 if c else 1e9
             if age >= MC_MAX_AGE_H:
-                self.mc_once()
+                try:
+                    self.mc_once()
+                    self.mc_error = None
+                except Exception as e:                           # (2026-10-31) said on the screen as a failure, retried in an hour, never a 60 s loop
+                    self.mc_error = f"{type(e).__name__}: {str(e)[:200]}"
+                    log.exception("fall-limit simulation failed")
+                    self.bump("health", "command")
             from pflab.app import chat, inbox
             if chat.tidy(self.cursor(), self.clock()):            # chats untouched for 30 days -> memory
                 self.bump("chat")
@@ -440,7 +449,8 @@ class Runtime:
         y1 = sims.fan(R.values, w, 12, paths, rng)["years"]["1"]
         out = {"at": now.isoformat(timespec="seconds"), "paths": paths, "years": 1, "p_fall35": p,
                "se_pp": math.sqrt(p * (1 - p) / paths) * 100, "median": y1["p50"], "p5": y1["p5"],
-               "p95": y1["p95"], "history": f"{R.index[0]:%b %Y}-{R.index[-1]:%b %Y}"}
+               "p95": y1["p95"], "history": f"{R.index[0]:%b %Y}-{R.index[-1]:%b %Y}",
+               "left_out": sims.left_out(self.cursor(), now.date())}
         p_ = self.mc_path()
         p_.parent.mkdir(parents=True, exist_ok=True)
         p_.write_text(json.dumps(out, indent=1), encoding="utf-8")

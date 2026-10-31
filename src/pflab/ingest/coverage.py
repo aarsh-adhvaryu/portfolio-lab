@@ -133,6 +133,7 @@ def matrix(con, now: datetime) -> List[dict]:
     by_last4: Dict[str, list] = {}
     by_dp: Dict[str, dict] = {}
     earliest, today = _earliest(con), now.date()
+    confirmed = inventory_confirmed(con) and _confirmed_covers_all(con)
     for a in set_up:
         pk = PERIOD_KIND.get(a["kind"])
         cov = statement_cover(periods(con, a["id"], pk), earliest, today) if pk else None
@@ -143,7 +144,8 @@ def matrix(con, now: datetime) -> List[dict]:
         else:
             bits = ([f"no statement covers {', '.join(cov['holes'][:3])}"] if cov["holes"] else []) + \
                    ([f"statements end {cov['to']}: newer ones are missing"] if cov["stale"] else []) + \
-                   ([f"statements begin {cov['from']}, later than the rest: opened later, or the first ones are missing"] if cov["late_start"] else [])
+                   ([f"statements begin {cov['from']}, later than the rest: opened later, or the first ones are missing"]
+                    if cov["late_start"] and not confirmed else [])        # (2026-10-31) he confirmed every account and file: it was opened then
             nxt, ok = ("; ".join(bits) or None), not bits
         out.append({"account": f"{a['provider'] or a['kind']} ({a['id']})", "state": "set up" + (", closed" if a["closed"] else ""), "found_in": "your setup",
                     "covered_from": str(cov["from"]) if cov and cov["from"] else None, "covered_to": str(cov["to"]) if cov and cov["to"] else None,

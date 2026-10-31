@@ -189,3 +189,27 @@ def test_an_old_session_or_an_expired_contract_is_no_current_data(tmp_path):
     pd.DataFrame({"date": pd.to_datetime([date(2026, 9, 1)]), "symbol": ["AAA"], "class": ["long build-up"], "price_change": [0.01],
                   "oi_change_pct": [0.1]}).to_parquet(d / "fo_buildup.parquet")
     assert options.buildup_for(tmp_path, date(2026, 10, 30), ["AAA"]) == {}
+
+
+def test_the_fall_limit_simulation_leaves_out_what_it_cannot_model_and_a_failure_shows_as_failed(monkeypatch, tmp_path):
+    """2026-10-31: an unclassified holding (0.3%) made the weights sum to 0.9971 and the simulation crashed every minute, shown as 'nothing yet'."""
+    from pflab.app import sims, system
+    from pflab.pm import today
+    monkeypatch.setattr(today, "build", lambda con, asof: {"buckets": {"equity": 30.0, "gold": 10.0, "debt": 59.0, "review": 1.0}})
+    m = sims.current_mix(None, date(2026, 10, 31))
+    assert abs(sum(m.values()) - 1) < 1e-12 and sims.weights(m).sum() == pytest.approx(1.0)
+    assert sims.left_out(None, date(2026, 10, 31)) == {"review": 1.0}
+    src = open(system.__file__, encoding="utf-8").read()
+    assert "rows[-1].update(state=DOWN, line=f\"failed: {err}\"" in src                         # the screen says failed, with the reason
+
+
+def test_the_hq_row_shows_the_hq_threads_own_rounds_not_a_job_that_never_runs(con, tmp_path):
+    """2026-10-31: with the window open the HQ runs every 30 s on its own thread; its job row said 'due' forever and looked stuck."""
+    from pflab.app import world
+    rt = _rt(con, tmp_path, Clock(NOW))
+    rt.hq_last_round = (NOW, [])
+    row = next(j for j in world.jobs_view(rt, NOW) if j["job"] == "hq")
+    assert row["state"] == "ok" and row["done_today"] and "30 s" in row["when"]
+    rt.hq_last_round = (NOW, ["readers"])
+    row = next(j for j in world.jobs_view(rt, NOW) if j["job"] == "hq")
+    assert row["state"] == "down" and "readers" in row["why"]
