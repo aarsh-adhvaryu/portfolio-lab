@@ -33,10 +33,23 @@ def test_a_loss_gives_no_tax_and_no_kite_view_gives_no_estimate(con):
     assert e["unrealised_gain"] == pytest.approx(-100.0) and e["tax_if_sold_now"] == 0.0
 
 
-def test_statements_newer_than_kites_view_replace_the_estimate(con):
+def test_an_old_kite_view_still_gives_the_estimate_and_says_how_old_it_is(con):
+    """The real app: the Kite snapshot was older than the statements, so the first version ignored a new allotment it could see."""
     from datetime import datetime
-    today.record(con, FakeKite(), "ZER", datetime(2026, 9, 30, 15, 0))        # Kite's view is older than the statements (they run to 1 Oct)
-    assert ke.estimates(con, NOW.date(), rate=0.20) == []                     # the ledger speaks: no estimate
+    today.record(con, FakeKite(), "ZER", datetime(2026, 9, 30, 15, 0))
+    e = ke.estimates(con, NOW.date(), rate=0.20)[0]
+    assert e["symbol"] == "BBB" and e["kite_view_at"].startswith("2026-09-30") and "2026-09-30" in ke.lines([e])[0]
+
+
+def test_when_the_record_has_the_lot_there_is_no_estimate(con):
+    from datetime import date
+    from pflab.ledger import events as ev
+    today.record(con, FakeKite(), "ZER", NOW)
+    assert ke.estimates(con, NOW.date(), rate=0.20)
+    log = ev.load(con)
+    log.append(ev.Event("buy", "ZER", date(2026, 10, 15), isin=BBB, qty=20, price=45.0, ref="T9"))
+    ev.save(con, log)
+    assert ke.estimates(con, NOW.date(), rate=0.20) == []
 
 
 def test_the_tax_plan_tool_carries_the_estimate(con, tmp_path):
