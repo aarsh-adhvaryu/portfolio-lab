@@ -411,6 +411,12 @@ def _ledger(ctx: Ctx) -> dict:
     from pflab.hq import desk
     rt = desk.from_ctx(ctx)
     res = ib.build_now(rt, force=ib.rebuild_due(rt))
+    if res.get("written"):
+        try:                                                     # the graph knows what he owns at once, not tonight
+            from pflab.kg import build as kgb
+            res["graph"] = kgb.refresh_portfolio(ctx.con, ctx.now)
+        except Exception as e:
+            res["failed"] = {"graph": f"{type(e).__name__}: {str(e)[:200]}"}     # a dict: the job fails visibly (the count stays in differences)
     if res.get("error"):
         res["failed"] = {"build": res["error"]}
     return {k: v for k, v in res.items() if k not in ("checks", "notes")} | {"differences": [c["name"] for c in res.get("checks", []) if not c["ok"]]}
@@ -440,6 +446,12 @@ def _deposits(ctx: Ctx) -> dict:
     from pflab.hq import desk
     rt = desk.from_ctx(ctx)
     res = ib.deposits_now(rt)
+    if res.get("deposits"):
+        try:
+            from pflab.kg import build as kgb
+            res["graph"] = kgb.deposits(ctx.con, ctx.now)
+        except Exception as e:
+            res["failed"] = {"graph": f"{type(e).__name__}: {str(e)[:200]}"}
     p = ctx.pm_dir / "app" / "deposits.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(_json.dumps({"fingerprint": ib.deposits_fingerprint(rt), "at": ctx.now.isoformat(timespec="seconds"), **res}, default=str),

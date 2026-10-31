@@ -231,3 +231,20 @@ def test_every_balance_is_traced_to_its_source_with_its_basis(rt):
     assert hd["n"] == 3 and hd["basis"] == "estimate" and "bank summary" in hd["sources"][0] and hd["method"]
     assert rows[("deposits", "SBI")]["n"] == 1 and ("difference", "pay-in") in rows and rows[("net worth", "all")]["value"] > 0
     assert "from:" in trace.render(list(rows.values()))
+
+
+def test_deposits_are_in_the_knowledge_graph_by_bank_and_maturity_never_by_number(rt):
+    from pflab.kg import build as kgb
+    _his_file(rt, _sbi("4444"))
+    ib.receive(rt, "FDSummary_Oct.xlsx", xlsx(summary_rows()))
+    kgb.deposits(rt.cursor(), NOW)
+    con = rt.cursor()
+    nodes = con.execute("SELECT node_id, name FROM kg_nodes WHERE kind='deposit'").fetchall()
+    assert len(nodes) == 4 and all("1111" not in n + i and "4444" not in n + i for i, n in nodes)
+    assert any(n == "HDFC fixed deposit maturing 2027-09-30" for _, n in nodes)
+    owned = lambda: con.execute("SELECT count(*) FROM kg_edges WHERE rel='owns' AND dst LIKE 'deposit:%' AND valid_to IS NULL").fetchone()[0]
+    assert owned() == 4
+    con.execute("UPDATE inbox_items SET status='removed' WHERE kind='fd_summary'")                  # the summary taken away: only his file
+    ib.deposits_now(rt)
+    kgb.deposits(con, NOW)
+    assert owned() == 1
