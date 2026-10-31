@@ -1078,6 +1078,32 @@ def policy_scenarios(ctx: Ctx, a: dict) -> dict:
             "note": "a hypothetical scenario study, not a forecast and not a backtest; the reviewer reruns it from calc #" + str(kid)}
 
 
+def exposure_shock_tool(ctx: Ctx, a: dict) -> dict:
+    """What a stated equity fall would cost the portfolio as it stands now (hypothetical scenario, trusted code, reproducible): each holding falls by the
+    stated fall times its beta (default 1). Use it instead of writing code for the arithmetic of a fall."""
+    from pflab.hq import missions
+    from pflab.pm import today
+    from pflab.quant import trusted
+    t = today.build(ctx.con, ctx.asof)
+    pos = t["positions"]
+    pos = pos[pos["value"].notna() & (pos["qty"] > 0)].groupby("symbol", as_index=False)["value"].sum()
+    cash = float(t["buckets"].get("cash", 0.0)) + float(t["buckets"].get("debt", 0.0))
+    try:
+        betas = json.loads(a.get("betas_json") or "{}")
+        falls = [float(x) for x in json.loads(a["falls_json"])]
+    except (ValueError, TypeError):
+        return {"error": "falls_json must be a JSON list of numbers and betas_json a JSON object {symbol: beta}"}
+    prm = {"cash": cash, "falls_pct": falls, "betas": betas, "default_beta": float(a.get("default_beta", 1.0)),
+           "label": f"snapshot {missions.snapshot_id(ctx.con, ctx.rt.pm_dir)}"}
+    res = trusted.plain(trusted.TRUSTED["exposure_shock"]({"positions": pos}, prm))
+    c = _case(ctx, a)
+    kid = trusted.record(ctx.con, c["id"], ctx.now, "exposure_shock", a.get("why", "loss from a stated equity fall")[:300], prm, {"positions": pos}, res)
+    note_artifact(ctx, c["id"], "scenario", kid, "checked")
+    note_artifact(ctx, c["id"], "calc", kid, "checked")
+    return {"calc_id": kid, "kind": "scenario", "total_rupees": res["total_rupees"], "equity_rupees": res["equity_rupees"], "cash_and_debt_rupees": res["cash_rupees"],
+            "table": [{k: r[k] for k in ("index_fall_pct", "loss_rupees", "loss_pct_of_total")} for r in res["table"]], "assumptions": res["assumptions"]}
+
+
 def ipo_policy_study(ctx: Ctx, a: dict) -> dict:
     """Sell-or-hold policies for an IPO allotment evaluated on the history of large listings since 2016 (quant/ipo_policy.py): development 2016-2019,
     validation 2020-2021, baseline sell at the listing close; listing-day information only. Trusted code; kept as a reproducible calculation."""
@@ -1392,6 +1418,11 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
           "vol_pa": _n("yearly noise around each path, as a fraction", 0.0, 0.5), "cash_rate_pa": _n("what waiting cash earns, yearly fraction", 0.0, 0.15),
           "staged_months": _i("months of his current staged approach", 2, 24), "dip_trigger": _n("fall from the peak that releases the reserve, as a fraction", 0.02, 0.4),
           "wait_trigger": _n("fall from the start at which held cash goes in, as a fraction", 0.02, 0.5)}, ("case_id", "why"), policy_scenarios),
+    Tool("exposure_shock", "journal", "What a stated equity fall (for example 10, 20 and 35 percent) would cost the portfolio as it stands, holding by holding, using each "
+         "holding beta (default 1). Trusted code on the current snapshot, reproducible by the reviewer; the falls and betas are your stated assumptions. Use it for the "
+         "arithmetic of a fall instead of writing code.", {"case_id": _i("the case", 1, 10 ** 9), "falls_json": _s("JSON list of index falls in percent, e.g. [10, 20, 35]", 60),
+                                                           "betas_json": _s("JSON object {symbol: beta} for holdings whose beta you know", 400), "default_beta": _n("beta for the others", 0.0, 3.0),
+                                                           "why": _s("what question this answers", 200)}, ("case_id", "falls_json"), exposure_shock_tool),
     Tool("ipo_policy_study", "journal", "How selling at listing, holding 5, 20 or 60 sessions, selling half, or a listing-day-gain rule would have done for large IPO listings since 2016 "
          "(development 2016-2019, validation 2020-2021, baseline: sell at the listing close; under 20 listings: no conclusion). History of other companies, not a forecast of this one. "
          "Kept as a reproducible calculation.", {"case_id": _i("the case", 1, 10 ** 9), "qty": _i("shares allotted, if known", 1, 10 ** 7), "issue": _n("issue price, if known", 1, 10 ** 6)},
@@ -1474,6 +1505,11 @@ def task_cap_reached(ctx: "Ctx", tool: str) -> Optional[str]:
     n = TASK_CAPS.get(tool)
     if n is None or not ctx.task_id:
         return None
+    if tool == "case_calculate":                              # two calculations that did not run are enough: more writing would only cost
+        bad = ctx.con.execute("SELECT count(*) FROM hq_artifacts WHERE task_id=? AND kind='calc' AND coalesce(detail, '') <> 'checked'", [ctx.task_id]).fetchone()[0]
+        if bad >= 2:
+            return ("two of this task's calculations did not run. Do not write more code for this: use exposure_shock or policy_scenarios for a fall, or report what "
+                    "you could not measure and why")
     from pflab.pm.store import next_id  # noqa: F401
     used = ctx.con.execute("SELECT count(*) FROM hq_tool_calls c JOIN hq_passes p ON p.pass_id = c.pass_id WHERE p.trigger=? AND c.tool=? AND c.status IN ('ran','error')",
                            [f"task:{ctx.task_id}", tool]).fetchone()[0]

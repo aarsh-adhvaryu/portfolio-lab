@@ -183,3 +183,20 @@ def summary_lines(res: dict, top: int = 16) -> List[str]:
         out.append(f"{r['path']:<18} {r['policy']:<16} return {r['return_pct']:+6.1f}%  worst value vs amount {r['worst_value_vs_amount_pct']:+6.1f}%  "
                    f"max drawdown {r['max_drawdown_pct']:6.1f}%  invested by end {r['invested_by_end_pct']:.0f}%")
     return out
+
+
+def exposure_shock(positions: list, cash: float, falls_pct, *, betas: dict = None, default_beta: float = 1.0, label: str = "") -> dict:
+    """What an equity fall would cost the portfolio as it stands (a hypothetical scenario: stated falls, stated betas; no forecast). `positions` is
+    [{symbol, value}] of the holdings, `cash` the cash and waiting money that does not fall; each holding falls by `fall * beta` (its beta from `betas`,
+    else `default_beta`). Returns the loss in rupees and percent of the whole for each stated fall, and per holding."""
+    betas = betas or {}
+    total = float(sum(p["value"] for p in positions)) + float(cash)
+    out = []
+    for f in falls_pct:
+        per = [{"symbol": p["symbol"], "beta": float(betas.get(p["symbol"], default_beta)), "loss": -p["value"] * f / 100.0 * float(betas.get(p["symbol"], default_beta))}
+               for p in positions]
+        loss = float(sum(x["loss"] for x in per))
+        out.append({"index_fall_pct": float(f), "loss_rupees": loss, "loss_pct_of_total": loss / total * 100 if total else 0.0, "per_holding": per})
+    return {"kind": "scenario", "version": VERSION + "-shock", "label": label, "total_rupees": total, "cash_rupees": float(cash), "equity_rupees": total - float(cash),
+            "default_beta": default_beta, "betas_used": betas, "table": out,
+            "assumptions": {"note": "the index falls are stated assumptions, not forecasts; each holding is assumed to fall by its beta times the index; cash does not fall"}}

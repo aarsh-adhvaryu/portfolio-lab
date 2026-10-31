@@ -75,7 +75,7 @@ READ_TOOLS = ("picture", "portfolio", "stocks_overview", "stock_facts", "reading
 TOOLS = {
     "coordinator": READ_TOOLS + ("plan_mission", "submit_answer", "frame_objective", "case_evidence", "propose_software_change"),
     "research": READ_TOOLS + ("web_search", "fetch_cited", "case_evidence", "request_report", "request_artifact", "frame_objective"),
-    "quant": READ_TOOLS + ("measure", "quant", "simulation", "scenario", "policy_scenarios", "ipo_policy_study", "case_calculate", "register_experiment",
+    "quant": READ_TOOLS + ("measure", "quant", "simulation", "scenario", "policy_scenarios", "exposure_shock", "ipo_policy_study", "case_calculate", "register_experiment",
                            "case_evidence", "request_artifact", "reproduce_calc", "frame_objective"),
     "review": READ_TOOLS + ("reproduce_calc", "submit_review", "case_evidence"),
 }

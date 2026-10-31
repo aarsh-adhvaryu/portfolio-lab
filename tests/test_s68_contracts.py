@@ -173,3 +173,27 @@ def test_the_candidate_sees_no_row_after_a_decision_date(monkeypatch):
 def test_the_evaluator_hash_covers_the_contracts(tmp_path):
     h1 = ex.evaluator_sha()
     assert isinstance(h1, str) and len(h1) == 64
+
+
+def test_exposure_shock_is_arithmetic_the_reviewer_can_rerun(con):
+    """Found live: a quant asked the code writers for pure arithmetic of a fall 17 times and every try failed."""
+    res = policies.exposure_shock([{"symbol": "AAA", "value": 600000.0}, {"symbol": "BBB", "value": 400000.0}], 1000000.0, [10, 20], betas={"AAA": 1.2}, default_beta=1.0)
+    t = {r["index_fall_pct"]: r for r in res["table"]}
+    assert t[10.0]["loss_rupees"] == pytest.approx(-(600000 * 0.1 * 1.2 + 400000 * 0.1))                 # cash does not fall
+    assert t[20.0]["loss_pct_of_total"] == pytest.approx(-(600000 * 0.2 * 1.2 + 400000 * 0.2) / 2000000 * 100)
+    pos = pd.DataFrame({"symbol": ["AAA", "BBB"], "value": [600000.0, 400000.0]})
+    cid, _ = cases.open_case(con, NOW, "loss in a fall?", subject="AAA")
+    prm = {"cash": 1000000.0, "falls_pct": [10, 20], "betas": {"AAA": 1.2}, "default_beta": 1.0, "label": "t"}
+    kid = trusted.record(con, cid, NOW, "exposure_shock", "loss in a fall", prm, {"positions": pos}, trusted.plain(trusted.TRUSTED["exposure_shock"]({"positions": pos}, prm)))
+    assert cases.reproduce(con, kid)["reproduced"] is True
+
+
+def test_two_calculations_that_did_not_run_stop_the_third(con):
+    from types import SimpleNamespace
+    from pflab.hq import tools as tl
+    ctx = SimpleNamespace(task_id=7, con=con)
+    for k in range(2):
+        con.execute("INSERT INTO hq_artifacts VALUES (?, 1, 7, 'calc', ?, 'failed', ?)", [k + 1, str(k), NOW])
+    msg = tl.task_cap_reached(ctx, "case_calculate")
+    assert msg and "did not run" in msg and "exposure_shock" in msg
+    assert tl.task_cap_reached(SimpleNamespace(task_id=8, con=con), "case_calculate") is None             # another task is not affected

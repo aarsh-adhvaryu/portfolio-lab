@@ -25,8 +25,14 @@ def _ipo(inputs: Dict[str, pd.DataFrame], params: dict) -> dict:
     return ipo_policy.run(inputs["listings"], **params)
 
 
-TRUSTED: Dict[str, Callable] = {"policy_scenarios": _policies, "ipo_policy": _ipo}
-KIND = {"policy_scenarios": "scenario", "ipo_policy": "calculation"}
+def _shock(inputs: Dict[str, pd.DataFrame], params: dict) -> dict:
+    pos = inputs["positions"]
+    return policies.exposure_shock([{"symbol": r.symbol, "value": float(r.value)} for r in pos.itertuples()], float(params["cash"]), params["falls_pct"],
+                                   betas=params.get("betas") or {}, default_beta=float(params.get("default_beta", 1.0)), label=params.get("label", ""))
+
+
+TRUSTED: Dict[str, Callable] = {"policy_scenarios": _policies, "ipo_policy": _ipo, "exposure_shock": _shock}
+KIND = {"policy_scenarios": "scenario", "ipo_policy": "calculation", "exposure_shock": "scenario"}
 
 
 def plain(x):
