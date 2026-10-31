@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Callable, Dict, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
 from pflab.hq.board import Reply
 
@@ -357,6 +357,47 @@ ROSTER: Dict[str, Agent] = {a.name: a for a in [
           "repo's privacy, the tests; never changes code or data", "requests sent, jobs, the repo", "Needs from you",
           _security),
 ]}
+
+
+# S68 (2026-10-31, his request): the World shows ROLES, not runners. Several runners do one job (the old single-call research doorbell, web search
+# and the cited-page reader are all research; calculation, simulation and the quant templates are all quant work), so a map of 20 runners showed
+# most of them idle forever. The runners stay (orders, the board and tests name them); the map draws one node per role and adds up its members.
+# `order_to`: where an order typed on the role goes ("investigation" starts one; None: the role takes work only from a mission).
+ROLES = [
+    {"id": "brain", "title": "Brain", "members": ["brain"], "order_to": "brain"},
+    {"id": "assistant", "title": "Assistant", "members": ["ask", "receptionist"], "order_to": "ask",
+     "does": "talks with you: answers from the record, runs calculations, starts investigations and reports their results"},
+    {"id": "coordinator", "title": "Coordinator", "members": ["w_coord"], "order_to": "investigation",
+     "does": "plans an investigation's steps, hands them to research and quant, and writes the answer after the review"},
+    {"id": "research", "title": "Research", "members": ["w_research", "research", "web", "fetch"], "order_to": "research",
+     "does": "gathers and weighs evidence from filings, results, news and the web; cited pages only"},
+    {"id": "quant", "title": "Quant", "members": ["w_quant", "calc", "sim", "quant"], "order_to": "calc",
+     "does": "calculations (written twice, run in the sandbox), scenarios, simulations and pre-registered strategy experiments"},
+    {"id": "reviewer", "title": "Reviewer", "members": ["w_review"], "order_to": None,
+     "does": "independently reproduces and checks an investigation's work; approves it or asks for specific fixes"},
+    {"id": "readers", "title": "Readers", "members": ["reader", "analysis", "watcher"], "order_to": "analysis",
+     "does": "reads every public document and every file you drop: materiality, figures, summary"},
+    {"id": "learner", "title": "Learner", "members": ["learner"], "order_to": "learner"},
+    {"id": "memory", "title": "Memory and graph", "members": ["memory", "graph", "cleanup"], "order_to": "graph",
+     "does": "keeps decisions and notes, follows them up, and keeps the knowledge graph tidy"},
+    {"id": "portfolio", "title": "Portfolio", "members": ["portfolio"], "order_to": "portfolio"},
+    {"id": "messenger", "title": "Messenger", "members": ["messenger"], "order_to": "messenger"},
+    {"id": "security", "title": "Security", "members": ["security"], "order_to": "security"},
+]
+
+
+def roles(settings=None) -> list:
+    """The roles the map draws, each with its members' titles and models (every runner belongs to exactly one role)."""
+    out = []
+    for r in ROLES:
+        ms = [ROSTER[m] for m in r["members"] if m in ROSTER]
+        out.append({**r, "does": r.get("does") or (ms[0].does if ms else ""),
+                    "made_of": [{"name": a.name, "title": a.title, "model": model_text(a, settings)} for a in ms]})
+    return out
+
+
+def role_of(name: str) -> Optional[str]:
+    return next((r["id"] for r in ROLES if name in r["members"]), None)
 
 
 def runners() -> Dict[str, Callable]:

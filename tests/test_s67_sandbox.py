@@ -251,3 +251,17 @@ def test_an_image_baked_by_an_older_release_is_named_and_proves_nothing():
     r = sb.probe(Docker(probe=GOOD, runner_sha="0" * 64))
     assert r["ok"] is False and "different runner" in r["why"] and "docker build" in r["why"]
     assert sb.probe(Docker(probe=GOOD))["ok"] is True
+
+
+def test_a_calculation_that_failed_before_any_code_ran_is_not_called_uncontained(rt, monkeypatch):
+    """S68, found in the real app: today's failed tax attempts raised 'This calculation ran in the uncontained developer subprocess' although no code
+    had run at all (a failed Run defaulted to contained=False). Nothing ran, so nothing is said."""
+    monkeypatch.setenv("PFLAB_SANDBOX", "docker")
+    monkeypatch.setattr(sb, "status", lambda *a, **k: {"ok": True})
+    monkeypatch.setattr("pflab.agents.analyst.config", lambda: {"adopted": False, "cap": 0, "ask_above": 0, "usd_inr": 90, "model": "m", "tijori_to_analyst": False})
+    monkeypatch.setattr(wk, "local_writer", lambda model=None: (lambda prompt: "no code here"))
+    monkeypatch.setattr(wk, "_filler", lambda: None)
+    out = wk.ask(rt.cursor(), "Something the writer cannot write", rt.pm_dir, rt.data_root, NOW.date(), now=NOW)
+    assert out.status != "checked" and (out.run is None or out.run.contained is not False)
+    assert rt.cursor().execute("SELECT count(*) FROM questions WHERE subject_key LIKE 'workshop:uncontained:%'").fetchone()[0] == 0
+    assert wk.Run(False, ["x"]).contained is None                     # 'nothing ran' is not 'ran uncontained'
