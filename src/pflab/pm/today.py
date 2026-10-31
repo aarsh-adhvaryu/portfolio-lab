@@ -165,7 +165,11 @@ def build(con, asof: date) -> Dict[str, object]:
         if b <= TOL:
             continue
         cost = (lcost.get(isin, 0.0) * min(a, b) / a if a > TOL else 0.0) + max(b - a, 0.0) * (kpx.get(isin) or price or 0.0)
-        m = meta.get(isin, ("", "", None, None))
+        m = meta.get(isin)
+        if m is None:                                     # (2026-10-31) a new listing Kite holds before the statements do (an IPO): its class from
+            from pflab.pm import instruments as ins       # the ISIN, as the record will classify it, not `review`
+            a_, t_, _ = ins.classify(isin, name=ksym.get(isin))
+            m = (a_, t_, None, None)
         value = b * price if price is not None else None
         rows.append(dict(account=acc, isin=isin, qty=b, cost=cost, price=price, price_date=p.date if p else None,
                          price_kind=p.kind if p else "none", stale=p.stale if p else True, value=value,

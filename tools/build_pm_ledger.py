@@ -41,6 +41,18 @@ def _sha(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()[:16]
 
 
+def bridged_gaps(spans) -> list:
+    """(account, from, to) for each gap between two depository statements of one demat whose holdings are the same on both sides.
+    `spans`: (account, first date, last date, {isin: qty})."""
+    out = []
+    for acc in sorted({s[0] for s in spans}):
+        mine = sorted((s for s in spans if s[0] == acc), key=lambda s: s[2])
+        for (_, b1, e1, h1), (_, b2, e2, h2) in zip(mine, mine[1:]):
+            if b2 > e1 + timedelta(days=1) and h1 == h2:
+                out.append((acc, e1 + timedelta(days=1), b2 - timedelta(days=1)))
+    return out
+
+
 def ipo_payment_line(stm: dict, cost: float, d: date, taken=frozenset()):
     """(2026-10-31) The one bank debit of exactly an IPO allotment's amount, from 10 days before to 3 days after it, that is not already a
     transfer: (account, line), or None when there is none or more than one (then nothing is guessed)."""
@@ -267,7 +279,7 @@ def build(src: dict, root: Path) -> tuple:
     # --- depository statements: dormant-demat opening lots and holdings checks -----------------------------
     cas_cfg = src.get("cas") or {"files": []}
     dp_alias = {v["cas_dp"]: k for k, v in src["accounts"].items() if v.get("cas_dp")}
-    snaps = []
+    snaps, spans = [], []
     for f in cas_cfg["files"]:
         c = casm.parse_pdf(root / f, _pw(cas_cfg.get("password_env")))
         alias = {casm.demat_account_id(a): dp_alias.get(a.dp_id) for a in c.accounts}
@@ -284,6 +296,14 @@ def build(src: dict, root: Path) -> tuple:
             beg = end.replace(day=1)
         for acc in sorted(set(snap["account"].dropna())) or sorted(set(alias.values()) - {None}):
             periods.append({"account_id": acc, "kind": "cas", "file_sha": _sha(root / f), "first_date": beg, "last_date": end, "n_rows": int(len(snap))})
+            mine = snap[snap["account"] == acc]
+            spans.append((acc, beg, end, {i: float(q) for i, q in zip(mine["isin"], mine["qty"])}))
+    # (2026-10-31) NSDL sends no statement for a month in which nothing changed: a gap between two statements of one demat whose holdings are the
+    # same on both sides is covered (nothing could have changed them), named in the notes; a gap with different holdings stays a hole
+    for acc, a_, b_ in bridged_gaps(spans):
+        periods.append({"account_id": acc, "kind": "cas", "file_sha": None, "first_date": a_, "last_date": b_, "n_rows": 0})
+        notes.append(f"{acc}: no depository statement for {a_} to {b_}; the holdings are the same on both sides, so nothing changed (none is sent "
+                     "for a month without a change)")
     if not snaps:                                                       # (2026-10-30) no depository statement yet: built without opening lots
         check("a depository statement (CAS) is given", False, "no CAS yet: holdings from before the tradebooks are not in the ledger")
         first_end, first = date.min, pd.DataFrame({"account": pd.Series([], dtype=object), "isin": pd.Series([], dtype=object),

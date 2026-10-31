@@ -223,3 +223,26 @@ def test_a_label_question_the_code_has_since_explained_is_withdrawn(tmp_path):
     df["category"] = "ipo_payment"                                                          # explained by the next build
     bl.ask(con, bl.groups({"HDFC_0001": df}), NOW)
     assert [k for k, _, _ in questions.open_questions(con)] == []
+
+
+def test_a_month_with_no_depository_statement_is_covered_when_the_holdings_did_not_change():
+    """2026-10-31: NSDL sends no statement for a month in which nothing changed; that gap kept the picture 'partial' for good."""
+    b = _bpl()
+    h = {"INE000A01011": 10.0, "INE000A01029": 5.0}
+    spans = [("DEMAT_X", date(2026, 6, 1), date(2026, 6, 30), h), ("DEMAT_X", date(2026, 8, 1), date(2026, 8, 31), dict(h)),
+             ("ZER", date(2026, 6, 1), date(2026, 6, 30), {"INE000A01011": 1.0}), ("ZER", date(2026, 8, 1), date(2026, 8, 31), {"INE000A01011": 2.0})]
+    assert b.bridged_gaps(spans) == [("DEMAT_X", date(2026, 7, 1), date(2026, 7, 31))]          # changed holdings: the hole stays
+
+
+def test_a_late_first_statement_is_opened_then_once_he_confirms_every_account_and_file(tmp_path):
+    from pflab.ingest import coverage as cv
+    con = store.connect(tmp_path / "l.duckdb")
+    con.execute("INSERT INTO accounts (account_id, kind, provider, dp_or_folio) VALUES ('SBI_9001', 'bank', 'SBI', '00009001'), "
+                "('ZER', 'broker', 'Zerodha', '12000001')")
+    for acc, kind, a, b in (("SBI_9001", "bank", date(2026, 4, 1), date(2026, 10, 25)), ("ZER", "funds_ledger", date(2026, 6, 14), date(2026, 10, 25))):
+        con.execute("INSERT INTO statement_periods (account_id, kind, file_sha, first_date, last_date, n_rows, built_at) VALUES (?,?,'s',?,?,1,?)",
+                    [acc, kind, a, b, NOW])
+    zer = lambda: next(r for r in cv.matrix(con, NOW) if "ZER" in r["account"])
+    assert not zer()["verified"] and "later than the rest" in zer()["next"]
+    cv.confirm_inventory(con, NOW)
+    assert zer()["verified"]

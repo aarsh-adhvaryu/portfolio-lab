@@ -292,6 +292,9 @@ def freshness(rt, now: datetime) -> List[dict]:
     add("Kite snapshot", snap, "clock", ok=3, stale=10, line=f"holdings read from Kite {str(snap)[:16]}" if snap else "never logged in")
     mc = rt.mc_cache()
     add("Fall-limit simulation", (datetime.fromisoformat(str(mc["at"])[:19]) if mc and mc.get("at") else None), "clock", ok=7, stale=30)
+    err = getattr(rt, "mc_error", None)
+    if err:                                                       # a crash is a failure on the screen, not "nothing yet"
+        rows[-1].update(state=DOWN, line=f"failed: {err}" + (f" (showing the result from {str(mc['at'])[:16]})" if mc else ""))
     try:
         from pflab.pm import today
         td = today.build(con, now.date())["today"]

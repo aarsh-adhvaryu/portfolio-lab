@@ -77,6 +77,7 @@ def test_kite_still_shows_what_you_hold_before_any_statement_has_set_up_an_accou
     t = today.build(ctx.con, NOW.date())
     assert t["today"]["source"] == "kite" and t["today"]["account"] == today.KITE_ONLY
     assert [r.isin for r in t["positions"].itertuples()] == ["INE000A01011"]
+    assert t["positions"]["bucket"].iloc[0] == "equity"                                       # (2026-10-31) not in the master yet: equity by its ISIN, never "review"
 
 
 def test_email_is_gone_no_job_no_connector_no_tool_no_screen(ctx):

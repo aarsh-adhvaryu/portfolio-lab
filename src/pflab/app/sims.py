@@ -110,9 +110,18 @@ def current_mix(con, asof: date) -> Dict[str, float]:
     """Today's holdings as the simulator's assets: stocks as "mine", funds as the Nifty 500, cash with debt."""
     from pflab.pm import today
     b = today.build(con, asof)["buckets"]
-    inv = sum(b.values()) or 1.0
-    return {"mine": b.get("equity", 0) / inv, "stocks": 0.0, "n500": b.get("equity_fund", 0) / inv, "mom50": 0.0,
+    inv = sum(v for k, v in b.items() if k in MAPPED) or 1.0     # (2026-10-31) a bucket the simulator has no series for (`review`) is left out and
+    return {"mine": b.get("equity", 0) / inv, "stocks": 0.0, "n500": b.get("equity_fund", 0) / inv, "mom50": 0.0,     # named, never a crash
             "gold": b.get("gold", 0) / inv, "debt": (b.get("debt", 0) + b.get("cash", 0)) / inv, "cash": 0.0}
+
+
+MAPPED = ("equity", "equity_fund", "gold", "debt", "cash")
+
+
+def left_out(con, asof: date) -> Dict[str, float]:
+    """Buckets the simulator cannot model (an instrument still to be classified, say), as rupees."""
+    from pflab.pm import today
+    return {k: float(v) for k, v in today.build(con, asof)["buckets"].items() if k not in MAPPED and v}
 
 
 def invested(con, asof: date) -> float:

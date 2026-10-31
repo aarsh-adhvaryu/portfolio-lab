@@ -89,6 +89,16 @@ def jobs_view(rt, now: datetime) -> List[dict]:
             state = "idle"
         else:
             state = "ok"
+        hq_round = getattr(rt, "hq_last_round", None)
+        if r["job"] == "hq" and hq_round and not waiting_icon:
+            # (2026-10-31) with the window open the HQ runs on its own thread every 30 s, never as this job: the job row stayed "due" forever
+            at, failed = hq_round
+            when, state = "every 30 s while the window is open", ("down" if failed else "waiting" if paused else "ok")
+            why = (f"last round {at:%H:%M:%S}" + (f"; failed: {', '.join(failed)}" if failed else "") + ("; paused" if paused else ""))
+            out.append({"job": "hq", "group": GROUP_OF.get("hq", "other"), "when": when, "state": state, "why": why, "last_success": f"{at:%Y-%m-%d %H:%M}",
+                        "last": {"status": "failed" if failed else "ok", "at": f"{at:%Y-%m-%d %H:%M}", "seconds": None,
+                                 "detail": ", ".join(failed) or None}, "done_today": at.date() == now.date() and not failed})
+            continue
         out.append({"job": r["job"], "group": GROUP_OF.get(r["job"], "other"), "when": when, "state": state, "why": why[:140],
                     "last_success": str(r["last_success"])[:16] if r["last_success"] else None,
                     "last": lr and {"status": lr[0], "at": str(lr[1])[:16], "seconds": round((lr[2] - lr[1]).total_seconds(), 1) if lr[2] else None,
