@@ -30,29 +30,45 @@ def stcg_rate() -> Optional[float]:
 
 
 def estimates(con, asof: date, rate: Optional[float] = None) -> List[dict]:
-    """One estimate per holding Kite shows beyond the ledger. Empty when Kite has no snapshot newer than the statements or nothing differs."""
+    """One estimate per holding Kite's LATEST snapshot shows beyond the record (all accounts). The snapshot may be older than the statements (the statements
+    are dated to a day, a Kite login is not daily): its date is said on the line, and a holding the record now has is not estimated."""
+    import pandas as pd
+    from pflab.calc import networth as nw
     from pflab.calc import valuation as val
     from pflab.pm import today
     rate = stcg_rate() if rate is None else rate
-    info = today.build(con, asof).get("today") or {}
-    if info.get("source") != "kite":
+    acc = today.broker(con)
+    snap = today.latest(con, acc, asof) if acc else None
+    if snap is None or snap.empty:
         return []
+    taken = pd.Timestamp(snap["taken_at"].iloc[0]).to_pydatetime()
+    kq, kpx, ksym, klast = {}, {}, {}, {}
+    for r in snap[snap["kind"] != "cash"].itertuples():
+        if not isinstance(r.isin, str) or not r.isin:
+            continue
+        kq[r.isin] = kq.get(r.isin, 0.0) + float(r.qty)
+        ksym.setdefault(r.isin, r.symbol)
+        if (r.kind == "today" and r.qty > 0) or (r.kind in ("holding", "fund") and r.isin not in kpx):
+            kpx[r.isin] = float(r.avg_price or 0) or kpx.get(r.isin, 0.0)
+    pos = nw.build(con, asof)["positions"]
+    have = pos.groupby("isin")["qty"].sum().to_dict() if len(pos) else {}
     price_fn = val.store_price_fn(con)
     out = []
-    for d in info.get("diffs") or []:
-        extra = float(d["kite"]) - float(d["ledger"])
-        if extra <= 0:                                           # Kite shows fewer than the ledger: a sale, not a new holding
+    for isin, q in kq.items():
+        extra = q - float(have.get(isin, 0.0))
+        if extra <= 1e-6:                                          # the record has it (or more): not a new holding
             continue
-        cost = float(d.get("price_used") or 0.0)
-        p = price_fn(d["isin"], asof)
+        cost = float(kpx.get(isin) or 0.0)
+        p = price_fn(isin, asof)
         px = float(p.value) if p is not None else cost
         gain = (px - cost) * extra
         tax = max(gain, 0.0) * rate if rate is not None else None
-        out.append({"isin": d["isin"], "symbol": d.get("symbol"), "label": LABEL, "quantity": extra, "average_price": cost, "price_now": px,
-                    "price_date": str(getattr(p, "date", "") or "")[:10], "cost_total": cost * extra, "value_now": px * extra,
-                    "unrealised_gain": gain, "short_term_rate": rate, "tax_if_sold_now": tax,
+        out.append({"isin": isin, "symbol": ksym.get(isin), "label": LABEL, "kite_view_at": taken.isoformat(timespec="minutes"), "quantity": extra,
+                    "average_price": cost, "price_now": px, "price_date": str(getattr(p, "date", "") or "")[:10], "cost_total": cost * extra,
+                    "value_now": px * extra, "unrealised_gain": gain, "short_term_rate": rate, "tax_if_sold_now": tax,
                     "assumes": ["the shares were bought within the last year (short-term rate); if older the real tax is lower",
                                 "Kite's average price is the cost (brokerage and statutory charges are not in it)",
+                                f"Kite's view is from {taken:%Y-%m-%d %H:%M}; a later sale or purchase is not in it",
                                 "a loss gives no tax and none is refunded or carried forward here"],
                     "replaced_by": "the tradebook or contract note and the depository statement: the tax engine then works from the real lot",
                     "not_a_lot": True})
@@ -61,5 +77,5 @@ def estimates(con, asof: date, rate: Optional[float] = None) -> List[dict]:
 
 def lines(est: List[dict]) -> List[str]:
     return [f"{e['symbol'] or e['isin']}: {e['quantity']:g} share(s), cost Rs {e['average_price']:,.2f} each ({LABEL}), now Rs {e['price_now']:,.2f}: gain Rs "
-            f"{e['unrealised_gain']:,.0f}, tax if sold now about Rs {e['tax_if_sold_now']:,.0f} at {e['short_term_rate']:.0%} (ESTIMATE: the statements have not caught up)"
+            f"{e['unrealised_gain']:,.0f}, tax if sold now about Rs {e['tax_if_sold_now']:,.0f} at {e['short_term_rate']:.0%} (ESTIMATE: the statements have not caught up; Kite's view of {e['kite_view_at']})"
             for e in est if e["tax_if_sold_now"] is not None]
