@@ -41,6 +41,17 @@ def _sha(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()[:16]
 
 
+def ipo_payment_line(stm: dict, cost: float, d: date, taken=frozenset()):
+    """(2026-10-31) The one bank debit of exactly an IPO allotment's amount, from 10 days before to 3 days after it, that is not already a
+    transfer: (account, line), or None when there is none or more than one (then nothing is guessed)."""
+    hits = []
+    for acc_, df_ in stm.items():
+        m = ((df_["debit"] - cost).abs() < 0.005) & (df_["date"] >= d - timedelta(days=10)) & (df_["date"] <= d + timedelta(days=3)) \
+            & (df_["category"] != "broker_transfer") & (df_["rule_id"] != "auto_own")
+        hits += [(acc_, r_) for r_ in df_[m].itertuples() if (acc_, r_.ref_id) not in taken]
+    return hits[0] if len(hits) == 1 else None
+
+
 def _contract_notes(path: Path) -> list:
     """A contract-note workbook (many notes), or one note's PDF (2026-10-31: a PDF was set aside unread), opened with the saved passwords."""
     if path.suffix.lower() != ".pdf":
@@ -185,6 +196,34 @@ def build(src: dict, root: Path) -> tuple:
     # its bank payment later. Before 2026-10-30 such a row blocked the whole ledger.
     auto, pending_ipo = set(), []
     isin_by_symbol = _isins_by_symbol()
+    taken = set()
+
+    def ipo_payment(sym, d, cost):
+        """(2026-10-31) The bank debit that paid an IPO allotment: the exchange takes the allotted amount through his UPI mandate, so it is a debit
+        of exactly that amount from 10 days before to 3 days after the allotment. Only one such line, not already a transfer, is taken; it is
+        then a transfer to the broker account (the money bought the shares), never 'spending', and the shares are not funded from nowhere."""
+        hit = ipo_payment_line(stm, cost, d, taken)
+        if hit is None:
+            return None
+        acc_, r_ = hit
+        taken.add((acc_, r_.ref_id))
+        stm[acc_].loc[stm[acc_]["ref_id"] == r_.ref_id, ["category", "rule_id"]] = ["ipo_payment", "auto_ipo"]
+        ref_ = f"bank:{acc_}:{r_.ref_id}"
+        skip.add(ref_)
+        events[:] = [e for e in events if e.ref != ref_]                # already booked as a withdrawal (an IPO resolved after the banks)
+        events.append(Event("cash_transfer", acc_, r_.date, amount=cost, counter_account=zer, ref=f"ipo_pay:{sym}:{d}"))
+        return acc_, r_.date
+
+    def book_ipo(r, isin):
+        cost = round(float(r["qty"]) * float(r["price"]), 2)
+        paid = ipo_payment(r["symbol"], r["date"], cost)
+        on = max(r["date"], paid[1]) if paid else r["date"]
+        if not paid:
+            events.append(Event("deposit", zer, r["date"], amount=cost, ref=f"ipo_unlinked:{r['symbol']}:{r['date']}:fund"))
+        events.append(Event("buy", zer, on, isin=isin, qty=float(r["qty"]), price=float(r["price"]), ref=f"ipo_unlinked:{r['symbol']}:{r['date']}",
+                            tax_class=tax(isin)))
+        return cost, paid
+
     for r in ipo_rows:
         k = (r["symbol"], r["date"], float(r["qty"]))
         if k in want:
@@ -193,14 +232,11 @@ def build(src: dict, root: Path) -> tuple:
         if not isin:
             pending_ipo.append(r)                              # resolved from the depository statements below, or named
             continue
-        cost = round(float(r["qty"]) * float(r["price"]), 2)
-        events.append(Event("deposit", zer, r["date"], amount=cost, ref=f"ipo_unlinked:{r['symbol']}:{r['date']}:fund"))
-        events.append(Event("buy", zer, r["date"], isin=isin, qty=float(r["qty"]), price=float(r["price"]), ref=f"ipo_unlinked:{r['symbol']}:{r['date']}",
-                            tax_class=tax(isin)))
+        cost, paid = book_ipo(r, isin)
         names.setdefault(isin, {}).setdefault("symbol", r["symbol"])
         auto.add(k)
-        notes.append(f"IPO {r['symbol']} x {float(r['qty']):g} at {float(r['price']):,.2f} on {r['date']}: booked from the tradebook; its bank payment is not "
-                     "linked (Setup's IPO form links it)")
+        notes.append(f"IPO {r['symbol']} x {float(r['qty']):g} at {float(r['price']):,.2f} on {r['date']}: booked from the tradebook; "
+                     + (f"paid from {paid[0]} on {paid[1]}" if paid else "its bank payment is not found (Setup's IPO form links it)"))
 
     for acc, df in stm.items():
         ev, rep = bank.to_events(df, acc, broker_account=zer, existing_refs=skip, source_doc_sha=_sha(root / next(
@@ -213,7 +249,7 @@ def build(src: dict, root: Path) -> tuple:
     # given) is booked on the Zerodha account and named; the bank side stays a visible difference. Before 2026-10-30 one missing bank
     # statement left Zerodha's cash negative and refused the whole ledger.
     seen = sorted((e.date, e.amount if e.counter_account == zer else -e.amount) for e in events
-                  if e.kind == "cash_transfer" and zer in (e.account_id, e.counter_account))
+                  if e.kind == "cash_transfer" and zer in (e.account_id, e.counter_account) and not e.ref.startswith("ipo_pay:"))
     used, unmatched = [False] * len(seen), []
     fl = zl.bank_flows(zdf) if zdf is not None else no_flows
     for d, a in sorted(zip(fl["date"], fl["amount"])):
@@ -300,14 +336,11 @@ def build(src: dict, root: Path) -> tuple:
         if not isin:
             notes.append(f"IPO {r['symbol']} x {float(r['qty']):g} on {r['date']}: its security could not be told from the files; add it in Setup's IPO form")
             continue
-        cost = round(float(r["qty"]) * float(r["price"]), 2)
-        events.append(Event("deposit", zer, r["date"], amount=cost, ref=f"ipo_unlinked:{r['symbol']}:{r['date']}:fund"))
-        events.append(Event("buy", zer, r["date"], isin=isin, qty=float(r["qty"]), price=float(r["price"]), ref=f"ipo_unlinked:{r['symbol']}:{r['date']}",
-                            tax_class=tax(isin)))
+        cost, paid = book_ipo(r, isin)
         names.setdefault(isin, {}).setdefault("symbol", r["symbol"])
         auto.add((r["symbol"], r["date"], float(r["qty"])))
         notes.append(f"IPO {r['symbol']} x {float(r['qty']):g} at {float(r['price']):,.2f} on {r['date']}: booked from the tradebook (security from the "
-                     "depository statement); its bank payment is not linked (Setup's IPO form links it)")
+                     "depository statement); " + (f"paid from {paid[0]} on {paid[1]}" if paid else "its bank payment is not found (Setup's IPO form links it)"))
     check("tradebook IPO rows all recorded", listed <= (want | auto), f"tradebook {sorted(listed - want - auto)}")
 
     # Within a day the ledger orders by kind, then insertion: put each day's inflows (deposits, income) before
