@@ -79,12 +79,12 @@ SYSTEMS = {
 
 READ_TOOLS = ("picture", "portfolio", "stocks_overview", "stock_facts", "readings", "graph_timeline", "notes", "memory_recall", "journal", "research_flags",
               "price_history", "market_context", "who_is_buying", "growth", "findings", "comovement", "themes", "system_status", "cases", "experiments",
-              "hypotheses", "tax_plan", "forecasts", "ipo_plan", "ready_plans", "recall", "rules", "envelope")
+              "hypotheses", "tax_plan", "forecasts", "ipo_plan", "ready_plans", "recall", "rules", "envelope", "paper_book")
 TOOLS = {
-    "coordinator": READ_TOOLS + ("plan_mission", "submit_answer", "frame_objective", "case_evidence", "propose_software_change", "proposals"),
+    "coordinator": READ_TOOLS + ("plan_mission", "submit_answer", "frame_objective", "case_evidence", "propose_software_change", "proposals", "paper_decide"),
     "research": READ_TOOLS + ("web_search", "fetch_cited", "case_evidence", "request_report", "request_artifact", "frame_objective", "proposals"),
     "quant": READ_TOOLS + ("measure", "quant", "simulation", "scenario", "policy_scenarios", "exposure_shock", "ipo_policy_study", "case_calculate", "register_experiment",
-                           "case_evidence", "request_artifact", "reproduce_calc", "frame_objective", "make_proposal", "proposals"),
+                           "case_evidence", "request_artifact", "reproduce_calc", "frame_objective", "make_proposal", "proposals", "paper_decide"),
     "review": READ_TOOLS + ("reproduce_calc", "submit_review", "case_evidence", "proposals"),
 }
 # role -> (governor key, model, effort). S70 (measured: docs/protocols/s70_roles_protocol.md, STUDIES.md): Sonnet holds the reviewer's seat and the coordinator's
@@ -233,6 +233,9 @@ def _dossier(con, cid: int, task: dict, now: datetime, role: Optional[str] = Non
     m = missions.mission_of(con, cid)
     from pflab.hq import plans, proposals, triggers
     lines = [f"MISSION #{m['id']} (snapshot {m['snapshot']}): {m['goal']}", f"STATE: {m['state']}, review round {m['round']}"]
+    if m.get("origin") == "paper":                           # S76: the paper portfolio the system runs by itself: its book, rails, record and what he asked
+        from pflab.paper import manager as paper
+        lines.append(paper.dossier_text(con, cid, now, role))
     ins = plans.instructions_text(con, cid)
     if ins:
         lines.append(ins)

@@ -78,6 +78,15 @@ def cycle(rt, collect: bool = True, get=None) -> dict:
         except Exception as e:
             con.execute("UPDATE learn_sources SET status='failed', why=? WHERE src_id=?", [f"{type(e).__name__}: {e}"[:300], sid])
     out["claims"] = len(read)
+    try:                                     # S76: the after-a-fall and rebalancing-band claims (docs/protocols/s76_learner_protocol.md), registered once
+        from pflab.learner import s76
+        out["s76"] = len(s76.register_all(con, proto_dir, now))
+    except Exception as e:
+        out["s76"] = f"not run: {type(e).__name__}: {str(e)[:150]}"
+    try:                                     # a test-code change leaves untested claims under the old code: registered again (amendment 4; none of them has run)
+        out["reregistered"] = claims.reregister_stale(con, proto_dir, now)
+    except Exception as e:
+        out["reregistered"] = f"not run: {type(e).__name__}: {str(e)[:150]}"
     for (cid,) in con.execute("SELECT claim_id FROM learn_claims WHERE status='proposed' ORDER BY claim_id").fetchall():
         claims.register(con, cid, proto_dir, now)
     tested = {}

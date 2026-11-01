@@ -342,3 +342,107 @@ function renderPortfolioOverview(d) {
   document.querySelectorAll('[data-del]').forEach((b) => { b.onclick = () => api(`/api/notes/${b.dataset.del}`, { method: 'DELETE' }).then(() => load(true)); });
   document.querySelectorAll('[data-isin]').forEach((b) => { b.onclick = () => { S.selected = b.dataset.isin; location.hash = '#/portfolio/holdings'; }; });
 }
+
+/* ---------- S75: working memory, house rules, the envelope and the scorecard ---------- */
+const MEM_WORD = { method_reused: 'a checked calculation re-run', conclusion_cited: 'an earlier conclusion cited', contradiction_addressed: 'a contradiction taken up', question_closed: 'an open request closed' };
+function memoryList(title, items, empty) {
+  return `<div class="card"><span class="lbl">${esc(title)}</span>${items.length ? items.join('') : `<div class="small muted">${esc(empty)}</div>`}</div>`;
+}
+function renderMemory(d) {
+  const e = d.effects_last_30_days || {};
+  const used = e.investigations_that_used_it || 0, off = e.investigations_offered_memory || 0;
+  const kinds = Object.entries(e.by_kind || {}).map(([k, n]) => `${esc(MEM_WORD[k] || k)} ${n}`).join(' · ') || 'nothing yet';
+  const about = S.memAbout || '';
+  const has = (d.subjects || []).length > 0;
+  const concl = (d.conclusions || []).map((c) => `<div class="item"><span class="chip">${c.status === 'older' ? 'older view' : 'current'}</span>
+      <div style="flex:1"><b>#${c.case_id}</b> ${esc(c.at || '')}: <b>${esc(c.decision)}</b> — ${esc(c.reason || c.answer || '')}
+      ${c.review ? `<div class="tiny muted">independent review: ${esc(c.review)}</div>` : ''}${c.limits ? `<div class="tiny muted">limits then: ${esc(c.limits)}</div>` : ''}
+      ${c.newer_case ? `<div class="tiny warn">investigation #${c.newer_case} is newer on the same subject</div>` : ''}</div></div>`);
+  const contra = (d.contradictions || []).map((x) => `<div class="item"><div style="flex:1">${esc(x.text)}<div class="tiny muted">${esc(x.at || '')}${x.after_conclusion ? ' · came after the conclusion' : ''}</div></div></div>`);
+  const methods = (d.methods || []).map((m) => `<div class="item"><div style="flex:1"><b>${esc(m.tool)}</b> (${esc(m.params)})<div class="tiny muted">calculation #${m.calc_id} in investigation #${m.case_id} · ${esc(m.how)}</div></div></div>`);
+  const changed = (d.changed || []).map((x) => `<div class="item"><div style="flex:1">${esc(x)}</div></div>`);
+  const open = (d.open || []).map((x) => `<div class="item"><div style="flex:1">${esc(x.what)}</div></div>`);
+  $('screen').insertAdjacentHTML('beforeend', `<div class="cols"><section class="stack" style="flex:2 1 560px">
+      <div class="card"><span class="lbl">Does memory change the work?</span>
+        <div style="font-size:26px;font-weight:600;margin:4px 0">${used} of ${off}</div>
+        <div class="small muted">recent investigations were offered something from memory and used it (last ${e.days || 30} days)</div>
+        <div class="tiny muted" style="margin-top:4px">${kinds}</div>
+        <div class="tiny muted" style="margin-top:4px">Counted by what the work really did with it, not by how much is stored.</div></div>
+      <div class="card"><span class="lbl">Ask memory about a subject</span>
+        <div class="row" style="gap:6px;margin-top:6px"><input id="memAbout" placeholder="a company, a sector, a theme or a question" value="${esc(about)}" style="flex:1"><button class="btn primary" id="memGo">Recall</button></div></div>
+      ${has ? '' : (about ? '<div class="card"><span class="small muted">Nothing earlier is recorded on that subject.</span></div>' : '')}
+      ${has ? memoryList('What was concluded before, and why', concl, 'Nothing was concluded before.') : ''}
+      ${has ? memoryList('What goes against it', contra, 'Nothing has come up against it.') : ''}
+      ${has ? memoryList('Already checked (re-run, not rewritten)', methods, 'No checked calculation yet.') : ''}
+      ${has ? memoryList('What changed since', changed, 'Nothing recorded.') : ''}
+      ${has ? memoryList('Still open', open, 'Nothing open.') : ''}</section></div>`);
+  const go = () => { S.memAbout = $('memAbout').value.trim(); load(true); };
+  $('memGo').onclick = go;
+  $('memAbout').onkeydown = (ev) => { if (ev.key === 'Enter') go(); };
+}
+function renderRules(rl, env, sc) {
+  const act = (rl.active || []).map((r) => `<div class="item"><div style="flex:1"><b>${esc(r.name)}</b> <span class="chip">${esc(r.kind.replace(/_/g, ' '))}</span> <span class="tiny muted">v${r.version} · ${esc(String(r.at).slice(0, 10))}</span>
+      <div class="small">${esc(r.text)}</div></div><button class="btn" data-undo="${r.rule_id}">Undo</button></div>`);
+  const wait = (rl.waiting || []).map((r) => `<div class="item"><div style="flex:1"><b>${esc(r.name)}</b> <span class="chip warn">waits for your yes</span>
+      <div class="small">${esc(r.text)}</div><div class="tiny muted">About money, so it applies only after you say yes.</div></div>
+      <button class="btn primary" data-rdec="yes" data-rid="${r.rule_id}">Yes</button><button class="btn" data-rdec="no" data-rid="${r.rule_id}">No</button></div>`);
+  const trows = (sc.table || []).map((t) => `<tr><td>${esc(t.action)}</td><td>${esc((t.market_state || '').replace(/_/g, ' '))}</td><td>${t.n}</td><td>${t.good}</td>
+      <td>${t.rate != null ? (t.rate * 100).toFixed(0) + '%' : '<span class="muted">' + esc(t.note || '') + '</span>'}</td><td>${t.skeptical_rate != null ? (t.skeptical_rate * 100).toFixed(0) + '%' : ''}</td></tr>`);
+  const props = (sc.proposals || []).slice(0, 12).map((p) => `<div class="item"><div style="flex:1"><b>Proposal #${p.proposal_id}</b>: ${esc(p.verdict)}
+      <div class="tiny muted">${(p.horizons || []).map((h) => `${h.days} days ${esc(h.outcome)}`).join(' · ')}</div></div></div>`);
+  $('screen').insertAdjacentHTML('beforeend', `<div class="cols"><section class="stack" style="flex:1 1 460px">
+      <div class="card"><div class="row" style="justify-content:space-between"><span class="lbl">House rules</span><span class="tiny muted">version ${rl.version}</span></div>
+        ${act.join('') || '<div class="small muted">None yet. Tell the assistant how the system should work from now on, for example "no new tech until I say".</div>'}
+        <div class="tiny muted" style="margin-top:6px">Every agent reads these. A rule that touches no money takes effect at once; Undo brings back the version it replaced.</div></div>
+      ${wait.length ? `<div class="card"><span class="lbl">Waiting for your yes</span>${wait.join('')}</div>` : ''}
+      <div class="card"><span class="lbl">Monthly envelope</span><div class="small" style="margin-top:6px">${esc(env.in_words || '')}</div>
+        ${env.active ? `<dl class="facts"><dt>Available now</dt><dd>${esc(rs(env.available_now))}</dd><dt>Bought since ${esc(env.start)}</dt><dd>${esc(rs(env.bought_since_start))}</dd>${env.overspent_by ? `<dt class="warn">Over by</dt><dd class="warn">${esc(rs(env.overspent_by))}</dd>` : ''}</dl>` : ''}</div></section>
+    <section class="stack" style="flex:1 1 460px"><div class="card"><span class="lbl">How the recommendations have turned out</span>
+        ${trows.length ? `<table class="tbl"><thead><tr><th>Decision</th><th>Market</th><th>Scored</th><th>Held</th><th>Rate</th><th>Skeptical</th></tr></thead><tbody>${trows.join('')}</tbody></table>`
+          : '<div class="small muted">Nothing is scored yet: each recommendation is checked at 5, 20 and 60 sessions.</div>'}
+        <div class="tiny muted" style="margin-top:6px">A rate is shown only from 20 scored claims. The skeptical rate is what it is probably at least. This describes; it never changes a limit.</div></div>
+      <div class="card"><span class="lbl">Recent recommendations</span>${props.join('') || '<div class="small muted">None yet.</div>'}</div></section></div>`);
+  document.querySelectorAll('[data-undo]').forEach((b) => { b.onclick = async () => { try { await post(`/api/rules/${b.dataset.undo}/undo`, {}); } catch (x) { alert(x.message); } load(true); }; });
+  document.querySelectorAll('[data-rdec]').forEach((b) => { b.onclick = async () => { try { await post(`/api/rules/${b.dataset.rid}/decide`, { yes: b.dataset.rdec === 'yes' }); } catch (x) { alert(x.message); } load(true); }; });
+}
+
+/* ---------- S76: the paper portfolio the system runs by itself ---------- */
+function renderPaper(d) {
+  if (!d.started) { $('screen').insertAdjacentHTML('beforeend', `<div class="card"><span class="lbl">Paper portfolio</span><div class="small muted" style="margin-top:6px">${esc(d.note || '')}</div></div>`); return; }
+  const r = d.returns || {}, g = d.gate || {}, m = d.money || {};
+  const hold = (d.holdings || []).map((h) => `<tr><td><b>${esc(h.symbol)}</b><div class="tiny muted">${esc(h.sector || h.kind || '')}</div></td><td>${num(h.qty, 0)}</td><td>${rs(h.value)}</td><td>${pct(h.weight)}</td><td class="${ud(h.gain)}">${rs(h.gain, true)}</td></tr>`);
+  const dec = (d.recent_decisions || []).map((x) => `<div class="item"><span class="chip ${x.status === 'executed' ? '' : 'warn'}">${esc(x.status.replace(/_/g, ' '))}</span>
+      <div style="flex:1"><b>${esc(x.action)} ${esc(x.symbol || 'cash')}</b>${x.amount ? ' ' + rs(x.amount) : ''}${x.fraction ? ' ' + pct(x.fraction, 0) + ' of the holding' : ''} <span class="tiny muted">${esc(x.at)} · investigation #${x.case_id}</span>
+      <div class="small">${esc(x.reason)}</div></div></div>`);
+  const trades = (d.trades || []).map((t) => `<tr><td>${esc(t.day)}</td><td>${esc(t.side)}</td><td>${esc(t.symbol || '')}</td><td>${num(t.qty, 0)}</td><td>${num(t.price)}</td><td>${rs(t.charges)}</td><td>${t.tax != null ? rs(t.tax) : ''}</td></tr>`);
+  const inputs = (d.inputs || []).map((i) => `<div class="item"><span class="chip">${esc(i.status)}</span><div style="flex:1">${esc(i.text)}${i.answer ? `<div class="tiny muted">${esc(i.answer.slice(0, 400))}</div>` : ''}</div></div>`);
+  const rec = (d.record || {}).by_action || [];
+  const recRows = rec.map((x) => `<tr><td>${esc(x.action)}</td><td>${x.n}</td><td>${x.good}</td><td>${x.rate != null ? pct(x.rate, 0) : '<span class="muted">from 20</span>'}</td><td>${x.skeptical_rate != null ? pct(x.skeptical_rate, 0) : ''}</td></tr>`);
+  $('screen').insertAdjacentHTML('beforeend', `<div class="cols"><section class="stack" style="flex:2 1 560px">
+      <div class="card"><div class="row" style="justify-content:space-between"><span class="lbl">Paper portfolio</span><span class="tiny muted">since ${esc(d.started)} · run by the system, no approvals</span></div>
+        <div style="font-size:26px;font-weight:600;margin:4px 0">${rs(d.value)}</div>
+        <div class="small">${r.twr != null ? `Return since the start ${pct(r.twr, 1, true)} (money added taken out), worst fall ${pct(r.worst_fall, 1)}, ${r.sessions} session(s).` : 'No session since the start yet.'} Cash ${rs(d.cash)}.</div>
+        ${d.days && d.days.length > 1 ? `<div style="margin-top:6px">${spark(d.days.map((x) => x.value), 320, 40)}</div>` : ''}
+        <div class="tiny muted" style="margin-top:6px">A copy of your portfolio without FDs (the US sleeve comes later). The system decides, the independent review judges, code executes at the close with charges and tax. Nothing reaches a broker.</div></div>
+      <div class="card"><span class="lbl">Holdings</span>${hold.length ? `<table class="tbl"><thead><tr><th>Name</th><th>Qty</th><th>Value</th><th>Weight</th><th>Gain</th></tr></thead><tbody>${hold.join('')}</tbody></table>` : '<div class="small muted">All in cash.</div>'}
+        ${(d.over_rails || []).length ? `<div class="small warn" style="margin-top:6px">${d.over_rails.map(esc).join('<br>')}</div>` : ''}
+        <div class="tiny muted" style="margin-top:6px">Rails: ${Object.entries(d.rails || {}).map(([k, v]) => esc(k + ': ' + v)).join(' · ')}</div></div>
+      <div class="card"><span class="lbl">Its decisions</span>${dec.join('') || '<div class="small muted">None yet: the first review is under way or due.</div>'}
+        ${d.working_on ? `<div class="tiny muted" style="margin-top:6px">Working now: investigation #${d.working_on}</div>` : ''}</div>
+      <div class="card"><span class="lbl">Trades on paper</span>${trades.length ? `<table class="tbl"><thead><tr><th>Day</th><th>Side</th><th>Name</th><th>Qty</th><th>Price</th><th>Charges</th><th>Tax</th></tr></thead><tbody>${trades.join('')}</tbody></table>` : '<div class="small muted">None yet.</div>'}
+        <div class="tiny muted" style="margin-top:6px">Tax is an estimate from the lots (first in, first out), taken from the cash at each sale; cess and surcharge are not added.</div></div></section>
+    <section class="stack" style="flex:1 1 400px">
+      <div class="card"><span class="lbl">Ask it to look into something</span>
+        <div class="row" style="gap:6px;margin-top:6px"><input id="paperAsk" placeholder="for example: is there an AI bubble, should it invest in AI names and how much" style="flex:1"><button class="btn primary" id="paperGo">Send</button></div>
+        <div class="tiny muted" style="margin-top:4px">One input it weighs. It decides, and says so when it goes against you.</div>${inputs.join('')}</div>
+      <div class="card"><span class="lbl">Is its judgement holding up?</span><div class="small" style="margin-top:4px">${esc((d.record || {}).summary || '')}</div>
+        ${recRows.length ? `<table class="tbl"><thead><tr><th>Decision</th><th>Scored</th><th>Held</th><th>Rate</th><th>Skeptical</th></tr></thead><tbody>${recRows.join('')}</tbody></table>` : ''}
+        <div class="tiny muted" style="margin-top:6px">Each decision is checked after 7, 28, 84 and 182 days against the Nifty 500 (keeping cash: against what cash earned).</div></div>
+      <div class="card"><span class="lbl">Gate to your real money</span><div class="small" style="margin-top:4px">${esc(g.status || '')}</div>
+        ${g.paper_return != null ? `<dl class="facts"><dt>Paper</dt><dd>${pct(g.paper_return, 1, true)} · worst ${pct(g.paper_worst_fall, 1)}</dd><dt>Nifty 500</dt><dd>${pct(g.nifty500_return, 1, true)} · worst ${pct(g.nifty500_worst_fall, 1)}</dd></dl>` : ''}
+        <div class="tiny muted" style="margin-top:4px">Past the gate, its decisions also come to you as proposals for your real money, each waiting for your yes.</div></div>
+      <div class="card"><span class="lbl">Its money</span><div class="small" style="margin-top:4px">${rs(m.this_month)} of ${rs(m.monthly)} this month on the team's work.</div></div></section></div>`);
+  const go = async () => { const t = $('paperAsk').value.trim(); if (!t) return; try { await post('/api/paper/ask', { text: t }); $('paperAsk').value = ''; } catch (x) { alert(x.message); } load(true); };
+  $('paperGo').onclick = go;
+  $('paperAsk').onkeydown = (ev) => { if (ev.key === 'Enter') go(); };
+}

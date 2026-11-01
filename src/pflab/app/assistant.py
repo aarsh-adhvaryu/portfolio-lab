@@ -59,14 +59,14 @@ SYSTEM = (
     "rule about an amount or a limit (kind monthly_envelope, dip_tranche, max_position) waits for his yes, then decide_rule. Say what it covers and how to undo it. Do not put "
     "a standing instruction in remember_fact: that is a note, not a rule. 14. Before you start or discuss an investigation of a company, sector or theme, call recall: tell him what "
     "was concluded before and why, what has gone against it since, and what is still open, and say whether it still holds. Use envelope when he asks what he can invest this "
-    "month and scorecard when he asks how the recommendations have done.")
+    "month and scorecard when he asks how the recommendations have done. 15. The PAPER PORTFOLIO is the system's own copy of his portfolio (without FDs) that it runs by itself: paper_book shows it. When he asks the paper portfolio to look into something (\"look into the AI bubble for the paper portfolio\"), call paper_ask with his words: it is one input the paper team weighs and may overrule with reasons; say so. Never place, size or change a paper decision yourself.")
 
 READ = ("picture", "portfolio", "stocks_overview", "stock_facts", "readings", "graph_timeline", "notes", "memory_recall", "journal", "research_flags",
         "price_history", "market_context", "who_is_buying", "growth", "findings", "comovement", "themes", "system_status", "cases", "experiments",
-        "hypotheses", "tax_plan", "forecasts", "ipo_plan", "ready_plans", "simulation", "scenario", "measure", "quant", "recall", "rules", "envelope", "scorecard", "waiting")
+        "hypotheses", "tax_plan", "forecasts", "ipo_plan", "ready_plans", "simulation", "scenario", "measure", "quant", "recall", "rules", "envelope", "scorecard", "waiting", "paper_book")
 ACT = ("open_workspace", "policy_scenarios", "exposure_shock", "ipo_policy_study", "case_calculate", "register_experiment", "frame_objective", "case_evidence", "start_investigation",
        "work_status", "remember_fact", "web_search", "fetch_cited", "amend_investigation", "decide_plan", "make_proposal", "proposals", "decide_proposal",
-       "add_rule", "undo_rule", "decide_rule", "answer_question")
+       "add_rule", "undo_rule", "decide_rule", "answer_question", "paper_ask")
 TOOLS = READ + ACT
 
 

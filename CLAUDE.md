@@ -27,7 +27,8 @@ no copy of his store): it runs the beta on what the collectors bring; his record
 7. **Money is float rupees; dates are `datetime.date`;** long-format parquet, DuckDB for queries, pandas for logic. Tests are synthetic.
 8. **Maths decides; models read, connect and explain.** No model-made numbers; no trading path (Kite stays read-only; a GTT is an
    order: never placed); tax rows sourced and dated; estimates labelled. Local drafts pass `llm/guard.py`; the API analyst's answers
-   pass `analyst.only_sourced_numbers`; order "tickets" are text for him to enter himself.
+   pass `analyst.only_sourced_numbers`; order "tickets" are text for him to enter himself. The paper portfolio (`paper/`, A35, his decision 2026-11-01) is
+   the system's own: there it decides alone (direction and reasons by the team, sizes, rails, fills and tax by code, the reviewer judges); nothing reaches a broker.
 9. **Models.** Local: qwen3:8b-q8_0 and nomic-embed-text (never delete). API: Claude Opus 5.5 through the doorbell in
    `agents/analyst.py`; his portfolio may go (holdings, amounts, weights, goals), his identity and banking details never. Any model
    change is a measured decision.

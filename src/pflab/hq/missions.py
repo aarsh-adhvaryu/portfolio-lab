@@ -381,7 +381,12 @@ def extra_budget(con, cid: int) -> float:
 
 def cap_of(con=None, cid: Optional[int] = None) -> float:
     have = con is not None and bool(cid)
-    return _policy_cap(budget_class(con, cid) if have else DEFAULT_CLASS) + (extra_budget(con, cid) if have else 0.0)
+    cap = _policy_cap(budget_class(con, cid) if have else DEFAULT_CLASS) + (extra_budget(con, cid) if have else 0.0)
+    if have:                                              # S76: a paper mission has its own ceiling, whatever the flat per-investigation cap says
+        from pflab.paper import manager as paper
+        if paper.is_paper(con, cid):                      # its own ceiling (the first rehearsal's review, with one revision round, cost Rs 134 before the chain was cut)
+            cap = paper.settings()["mission_rupees"]
+    return cap
 
 
 def allow_more(con, now: datetime, cid: int, rupees: float, by: str = "the investor") -> dict:
@@ -748,7 +753,7 @@ def system_spend_month(con, now: datetime) -> float:
     return float(con.execute(
         "SELECT coalesce(sum(a.cost_inr), 0) FROM api_calls a WHERE a.created_at >= ? AND a.status IN ('done','refused','submitted','queued','sending') "
         "AND a.task_id IN (SELECT t.task_id FROM hq_tasks t JOIN hq_missions m ON m.case_id = t.case_id WHERE m.origin='system')",
-        [datetime(now.year, now.month, 1)]).fetchone()[0])
+        [__import__("pflab.agents.analyst", fromlist=["month_start"]).month_start(now)]).fetchone()[0])
 
 
 def _weights(con, now: datetime) -> Optional[dict]:
@@ -855,7 +860,7 @@ def due_reviews(rt) -> List[int]:
     con, now = rt.cursor(), rt.clock()
     out = []
     for (cid,) in con.execute("SELECT m.case_id FROM hq_missions m JOIN hq_cases c ON c.case_id = m.case_id WHERE m.state='done' AND c.next_review_at IS NOT NULL "
-                              "AND c.next_review_at <= ? ORDER BY c.next_review_at", [now]).fetchall():
+                              "AND c.next_review_at <= ? AND m.origin <> 'paper' ORDER BY c.next_review_at", [now]).fetchall():   # S76: the paper portfolio looks again by its own clock
         if started_today(con, now) + len(out) >= DAILY_NEW * 2:
             break
         r = reopen(con, now, cid, f"its scheduled review day came ({now:%Y-%m-%d})")

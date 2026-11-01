@@ -775,6 +775,41 @@ MIGRATIONS = [
         scored_at TIMESTAMP, outcome VARCHAR, outcome_json VARCHAR, UNIQUE (proposal_id, horizon_days)
     );
     """),
+    # 2026-11-01: S76. The paper portfolio the system runs by itself (his decision 2026-11-01): a copy of his record without FDs, its own lots, cash, orders, fills and
+    # days; every decision it makes with its reasons, the review's verdict and the claim it is scored on; what he tells it (one input it may overrule).
+    (56, "paper_portfolio_s76", """
+    CREATE TABLE paper_lots (
+        lot_id INTEGER PRIMARY KEY, isin VARCHAR NOT NULL, symbol VARCHAR, acq_date DATE NOT NULL, qty DOUBLE NOT NULL, cost_per_unit DOUBLE NOT NULL,
+        tax_class VARCHAR, origin VARCHAR NOT NULL
+    );
+    CREATE TABLE paper_cash (
+        entry_id INTEGER PRIMARY KEY, day DATE NOT NULL, amount DOUBLE NOT NULL, kind VARCHAR NOT NULL, ref VARCHAR, logged_at TIMESTAMP NOT NULL
+    );
+    CREATE TABLE paper_orders (
+        order_id INTEGER PRIMARY KEY, placed_at TIMESTAMP NOT NULL, decision_id INTEGER, isin VARCHAR NOT NULL, symbol VARCHAR, side VARCHAR NOT NULL,
+        qty DOUBLE, amount DOUBLE, status VARCHAR NOT NULL, fill_day DATE, note VARCHAR
+    );
+    CREATE TABLE paper_trades (
+        trade_id INTEGER PRIMARY KEY, day DATE NOT NULL, order_id INTEGER, decision_id INTEGER, isin VARCHAR NOT NULL, symbol VARCHAR, side VARCHAR NOT NULL,
+        qty DOUBLE NOT NULL, price DOUBLE NOT NULL, charges DOUBLE NOT NULL, realised DOUBLE, tax DOUBLE, detail_json VARCHAR
+    );
+    CREATE TABLE paper_days (
+        day DATE PRIMARY KEY, value DOUBLE NOT NULL, cash DOUBLE NOT NULL, invested DOUBLE NOT NULL, flows DOUBLE NOT NULL, holdings_json VARCHAR
+    );
+    CREATE TABLE paper_decisions (
+        decision_id INTEGER PRIMARY KEY, made_at TIMESTAMP NOT NULL, case_id INTEGER, action VARCHAR NOT NULL, isin VARCHAR, symbol VARCHAR, amount DOUBLE, fraction DOUBLE,
+        reason VARCHAR NOT NULL, alternatives VARCHAR, review_condition VARCHAR, his_view VARCHAR, status VARCHAR NOT NULL, note VARCHAR, ref_date DATE, ref_close DOUBLE,
+        state VARCHAR, decided_at TIMESTAMP
+    );
+    CREATE TABLE paper_claims (
+        claim_id INTEGER PRIMARY KEY, decision_id INTEGER NOT NULL, isin VARCHAR NOT NULL, action VARCHAR NOT NULL, kind VARCHAR NOT NULL, ref_date DATE NOT NULL,
+        ref_close DOUBLE NOT NULL, state VARCHAR, horizon_days INTEGER NOT NULL, due_on DATE NOT NULL, scored_at TIMESTAMP, outcome VARCHAR, outcome_json VARCHAR,
+        UNIQUE (decision_id, horizon_days)
+    );
+    CREATE TABLE paper_inputs (
+        input_id INTEGER PRIMARY KEY, logged_at TIMESTAMP NOT NULL, text VARCHAR NOT NULL, status VARCHAR NOT NULL, case_id INTEGER, answer VARCHAR
+    );
+    """),
 ]
 
 

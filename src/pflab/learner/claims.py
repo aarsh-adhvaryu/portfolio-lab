@@ -79,7 +79,8 @@ def params_of(c: dict) -> Tuple[str, dict]:
     t = c.get("template", "none")
     keys = {"cross_section": ("signal", "direction", "months"), "event_study": ("kind", "direction", "sessions"),
             "calendar": ("effect", "direction"), "holder_event": ("kind", "direction", "sessions"),
-            "sector_reversion": ("direction",), "rule_filter": ("rule", "direction", "months")}.get(t, ())
+            "sector_reversion": ("direction",), "rule_filter": ("rule", "direction", "months"),
+            "fall_response": ("depth", "confirm", "direction", "months"), "rebalance_bands": ("mix", "band", "against", "check")}.get(t, ())
     return t, {k: c.get(k) for k in keys}
 
 
@@ -130,6 +131,9 @@ NAMES = {
     "rsi_below_30": r"oversold|rsi|relative strength index",
     # S64: reversion against a cointegrated sector index
     "sector_reversion": r"cointegrat\w*|mean[- ]revers\w*|revert\w*|relative to (its |the )?sector|sector index|sector",
+    # S76 (docs/protocols/s76_learner_protocol.md)
+    "fall_response": r"fall\w*|fell|fallen|drop\w*|below (their |its )?(one-year |year'?s )?high|drawdown",
+    "rebalance_bands": r"rebalanc\w*|drift\w*|bands?",
 }
 
 
@@ -142,7 +146,7 @@ def fits(claim: str, quote: str, template: str, params: dict) -> bool:
     """The claim and its quote name the signal, filing kind or calendar effect its test measures, and the claim sentence
     says the effect exists (a quote may deny another effect on its way: "no low-volatility anomaly; high volatility pays")."""
     key = params.get("signal") or params.get("kind") or params.get("effect") or params.get("rule") or (
-        "sector_reversion" if template == "sector_reversion" else None)
+        template if template in ("sector_reversion", "fall_response", "rebalance_bands") else None)
     named = key in NAMES and re.search(r"\b(" + NAMES[key] + r")", f"{claim} {quote}", re.I)
     return bool(named) and not ABSENT.search(claim or "")
 

@@ -23,7 +23,7 @@ SENSES = [("markets", "Market data", ["collect", "prices", "nav", "global", "bac
           ("broker", "Kite", ["tradecheck", "idle_cash"], "holdings, funds, trades"),
           ("record", "Your record", ["ledger", "deposits"], "your statements and deposits, built into one record by itself"),
           ("us", "US sleeve", ["us_fx"], "USDINR rates")]
-ROUTINES = [("thinking", "Thinking rounds", ["hq", "conductor", "research", "analyst", "forecast", "comove", "scans", "twin", "companion", "review", "learner"],
+ROUTINES = [("thinking", "Thinking rounds", ["hq", "conductor", "research", "analyst", "forecast", "comove", "scans", "twin", "paper", "companion", "review", "learner"],
              "the brain, research, forecasts, the learner"),
             ("plans", "Plans and alerts", ["plans", "guards", "watches", "watches_close"], "ready plans, guards, price watches"),
             ("reports", "Reports", ["summary_morning", "summary_evening", "outbox"], "the morning and evening summaries")]

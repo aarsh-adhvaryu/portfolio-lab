@@ -5,8 +5,8 @@
 /* the screens (S68 redesign): Assistant, World, Portfolio, Research, Inbox, System, and Settings under the rail; ui.js draws the new ones */
 const NAV = [['assistant', 'Assistant', '◉'], ['world', 'World', '◌'], ['portfolio', 'Portfolio', '▤'], ['research', 'Research', '⌕'], ['inbox', 'Inbox and files', '⇩'], ['system', 'System', '⚙']];
 const SUBS = {
-  portfolio: [['overview', 'Overview'], ['holdings', 'Holdings and lots'], ['watch', 'Watch list']],
-  research: [['work', 'Investigations'], ['recs', 'Recommendations'], ['plans', 'Plans and ideas'], ['sims', 'Simulations'], ['graph', 'Knowledge graph']],
+  portfolio: [['overview', 'Overview'], ['holdings', 'Holdings and lots'], ['paper', 'Paper portfolio'], ['watch', 'Watch list']],
+  research: [['work', 'Investigations'], ['recs', 'Recommendations'], ['memory', 'Memory'], ['rules', 'Rules and money'], ['plans', 'Plans and ideas'], ['sims', 'Simulations'], ['graph', 'Knowledge graph']],
   system: [['now', 'Now'], ['limits', 'Limits and spend'], ['schedule', 'Schedule']],
 };
 const TITLES = { assistant: 'Assistant', world: 'The world', portfolio: 'Portfolio', research: 'Research', inbox: 'Inbox and files', system: 'System', settings: 'Settings', setup: 'Setup' };
@@ -1423,10 +1423,13 @@ async function load(force = false) {
     }
     if (screen === 'portfolio' && sub === 'overview') { const d = S.data.command; if (fresh()) keepInputs(() => { $('screen').innerHTML = ''; renderPortfolioOverview(d); }); }
     else if (screen === 'portfolio' && sub === 'holdings') { const d = await api('/api/portfolio' + (S.selected ? '?isin=' + encodeURIComponent(S.selected) : '')); if (fresh()) renderPortfolio(d); }
+    else if (screen === 'portfolio' && sub === 'paper') { const d = await api('/api/paper'); if (fresh()) keepInputs(() => { $('screen').innerHTML = ''; renderPaper(d); }); }
     else if (screen === 'portfolio' && sub === 'watch') { const d = await api('/api/watch'); if (fresh()) keepInputs(() => renderWatch(d)); }
     else if (screen === 'world') { const d = await api('/api/world'); if (fresh()) renderWorld(d); }
     else if (screen === 'research' && sub === 'work') { const d = await api('/api/investigations'); if (fresh()) keepInputs(() => { $('screen').innerHTML = ''; renderInvestigations(d); }); }
     else if (screen === 'research' && sub === 'recs') { const [d, r] = await Promise.all([api('/api/proposals'), api('/api/routing').catch(() => ({ decisions: [] }))]); if (fresh()) keepInputs(() => { $('screen').innerHTML = ''; renderProposals(d, r); }); }
+    else if (screen === 'research' && sub === 'memory') { const d = await api('/api/recall?' + new URLSearchParams({ about: S.memAbout || '' })); if (fresh()) keepInputs(() => { $('screen').innerHTML = ''; renderMemory(d); }); }
+    else if (screen === 'research' && sub === 'rules') { const [rl, env, sc] = await Promise.all([api('/api/rules'), api('/api/envelope'), api('/api/scorecard')]); if (fresh()) keepInputs(() => { $('screen').innerHTML = ''; renderRules(rl, env, sc); }); }
     else if (screen === 'research' && sub === 'plans') { const d = await api('/api/research' + (S.rsel ? '?isin=' + encodeURIComponent(S.rsel) : '')); if (fresh()) keepInputs(() => renderResearch(d)); }
     else if (screen === 'research' && sub === 'sims') { const d = await api('/api/sims'); if (fresh()) renderSims(d); }
     else if (screen === 'research' && sub === 'graph') { const d = await api('/api/graph?' + new URLSearchParams({ kinds: (S.gKinds || ['company', 'sector', 'verdict', 'org', 'person']).join(','), ...(S.gUptoDate ? { upto: S.gUptoDate } : {}) })); if (fresh()) renderGraph(d); }

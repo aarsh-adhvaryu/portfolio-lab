@@ -1041,6 +1041,8 @@ def request_artifact(ctx: Ctx, a: dict) -> dict:
     from pflab.hq import missions
     if not ctx.task_id:
         return {"queued": False, "problem": "only a worker task can wait for another's work"}
+    if ctx.role and a["role"] == ctx.role:                  # S76: the first paper rehearsal chained eight quant tasks, each asking the next for the same thing; do it yourself
+        return {"queued": False, "problem": f"you are the {ctx.role}: do this yourself, and ask another role only for what is theirs (evidence from research, a calculation from the quant)"}
     out = missions.add_task(ctx.con, ctx.now, int(a["case_id"]), a["role"], _checked(ctx, a["what"]), promise=json.loads(a.get("promise_json") or "{}"),
                             asked_by=ctx.task_id)
     if not out.get("task_id"):
@@ -1141,6 +1143,9 @@ def make_proposal(ctx: Ctx, a: dict) -> dict:
     cid = int(a["case_id"]) if a.get("case_id") else None
     if cid and _cases.get(ctx.con, cid) is None:               # a recommendation may be linked to a finished investigation (it is a link, not new evidence in it)
         return {"stored": False, "problem": f"no case #{cid}"}
+    from pflab.paper import manager as _pm
+    if _pm.is_paper(ctx.con, cid):                              # S76: a paper mission decides for the paper portfolio, never for his money
+        return {"stored": False, "problem": "this mission manages the paper portfolio: record the decision with paper_decide"}
     inputs = {k: a.get(k) for k in ("action", "symbol", "isin", "qty", "amount_rupees", "full_exit", "assumptions", "review_condition")}
     inputs["reason"] = _checked(ctx, a.get("reason", ""))
     inputs["alternatives"] = _checked(ctx, a.get("alternatives", ""))
@@ -1164,6 +1169,42 @@ def make_proposal(ctx: Ctx, a: dict) -> dict:
     if out.get("stored") and cid:
         note_artifact(ctx, cid, "proposal", out["proposal_id"], f"{str(a['action']).upper()} v{out['version']}")
     return out
+
+
+def paper_book_tool(ctx: Ctx, a: dict) -> dict:
+    """S76: the paper portfolio the system runs by itself: holdings, cash, rails, open orders, recent decisions, its record and the gate to his money."""
+    from pflab.paper import book, manager
+    if not book.started(ctx.con):
+        return {"started": False, "note": "the paper portfolio has not started yet"}
+    v = manager.book_view(ctx.con, ctx.now.date())
+    v["gate"] = manager.gate(ctx.con, ctx.rt.data_root)
+    return v
+
+
+def paper_decide(ctx: Ctx, a: dict) -> dict:
+    """S76: one decision for the paper portfolio (a paper mission only): code sizes it; it is executed at the close only if the review approves the mission."""
+    from pflab.paper import manager
+    if ctx.shadow:
+        return _SHADOW_CASE
+    cid = int(a["case_id"]) if a.get("case_id") else None
+    if cid is None:
+        r = ctx.con.execute("SELECT case_id FROM hq_tasks WHERE task_id=?", [ctx.task_id]).fetchone() if ctx.task_id else None
+        cid = int(r[0]) if r and r[0] else None
+    inputs = dict(a)
+    inputs["reason"] = _checked(ctx, a.get("reason", ""))
+    inputs["alternatives"] = _checked(ctx, a.get("alternatives", ""))
+    out = manager.decide(ctx.con, ctx.now, cid, inputs, manager._index(ctx.rt.data_root))
+    if out.get("stored"):
+        note_artifact(ctx, cid, "proposal", out["decision_id"], f"paper {out['action']}")
+    return out
+
+
+def paper_ask(ctx: Ctx, a: dict) -> dict:
+    """S76: he asks the paper portfolio to look into something (one input it may overrule)."""
+    from pflab.paper import manager
+    if ctx.shadow:
+        return _SHADOW_CASE
+    return manager.add_input(ctx.con, ctx.now, a.get("text", ""))
 
 
 def proposals_tool(ctx: Ctx, a: dict) -> dict:
@@ -1738,6 +1779,20 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
           "machine_json": _s("sector_exclusion: {\"terms\": [\"tech\", \"software\"]}; max_position: {\"max_weight_pct\": 8}; monthly_envelope: {\"amount_rupees\": 50000, \"until\": \"2027-01-31\", "
                              "\"carry_over\": true}; dip_tranche: {\"extra_rupees\": 25000, \"below_high_pct\": 10}; method and note: {}", 400), "name": _s("a short name", 40)},
          ("kind", "text"), add_rule),
+    Tool("paper_book", "read", "The paper portfolio the system runs by itself (a copy of his portfolio without FDs): holdings with weights and gains, cash, the rails, "
+         "holdings over a rail, open orders, recent decisions, its record (decisions scored later) and the gate to his real money.", {}, (), paper_book_tool),
+    Tool("paper_decide", "action", "A decision for the PAPER portfolio (paper missions only): BUY, ADD, REDUCE, SELL, HOLD or WAIT with the evidence, the alternatives and, for HOLD and WAIT, "
+         "the condition for looking again. You choose the direction; code sizes it against the cash and the rails and tells you the numbers. It is executed on paper at the close "
+         "only if the independent review approves the mission.",
+         {"action": _s("the decision", enum=["BUY", "ADD", "REDUCE", "SELL", "HOLD", "WAIT"]), "symbol": _s("the company or ETF symbol (none for WAIT in cash)", 20),
+          "reason": _s("the evidence and reason in plain words", 1200), "alternatives": _s("what else was considered and why not", 800),
+          "amount_rupees": _n("for BUY/ADD: rupees to put in", 1, 10 ** 9), "target_weight_pct": _n("for BUY/ADD: the weight to reach instead of an amount", 0.1, 35),
+          "fraction": _n("for REDUCE: the share of the holding to sell", 0.01, 1), "review_condition": _s("for HOLD and WAIT: what reopens it", 300),
+          "his_view": _s("if he asked about this: what he said and whether this follows or goes against it, and why", 400), "case_id": _i("the mission's investigation", 1, 10 ** 9)},
+         ("action", "reason", "alternatives"), paper_decide),
+    Tool("paper_ask", "action", "He asks the paper portfolio to look into something (for example 'is there an AI bubble, should it invest in AI names and how much'). It is one input: "
+         "the paper team decides, and may go against him with reasons. Use only when his message asks for the paper portfolio.",
+         {"text": _s("what he asked, in his words", 1000)}, ("text",), paper_ask),
     Tool("undo_rule", "action", "He asks to undo a house rule (by its id or name); the version it replaced comes back. Only when his message says so.",
          {"rule": _s("the rule's id or name", 60)}, ("rule",), undo_rule),
     Tool("decide_rule", "action", "His yes or no to a house rule about money that waits for it. Use it only when his message in this turn says so; the system checks his words.",
@@ -1752,7 +1807,7 @@ MAX_OPTIONAL = 24                                  # optional parameters across 
 
 WORKER_ONLY = ("reproduce_calc", "submit_review", "request_artifact", "plan_mission", "submit_answer", "start_investigation", "open_workspace", "work_status",
                "remember_fact", "amend_investigation", "decide_plan", "make_proposal", "proposals", "decide_proposal",
-               "add_rule", "undo_rule", "decide_rule", "answer_question")      # S68: the workers' tools; the brain's list is unchanged
+               "add_rule", "undo_rule", "decide_rule", "answer_question", "paper_decide", "paper_ask")      # S68: the workers' tools; the brain's list is unchanged
 
 
 def definitions(names=None) -> List[dict]:

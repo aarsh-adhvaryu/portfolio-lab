@@ -15,6 +15,10 @@ code, before any claim is run. A claim that fits no template is recorded as unte
                     against it (bottom quintile of the spread's z) against the sector's next-month return, long only
     rule_filter     S64 (docs/protocols/s64_rules_protocol.md): a yes/no rule (P/E above 50, near the 52-week low, below the
                     200-day average, ...): the group that meets it against all members the next month
+    fall_response   S76 (docs/protocols/s76_learner_protocol.md): stocks 30% below their one-year high, today or for 20 or 60
+                    sessions in a row, against all members over the next three months: hold (they rebound) or sell (they lag)
+    rebalance_bands S76: equity, gold and cash at fixed weights, set back only when a weight drifts by a band, against never
+                    touching them or setting them back every month, after charges and tax, with a worst-fall guard
 
 Periods (as every study here; 2022-2025 are spent, CLAUDE.md 2): development 2010-2017 and validation 2018-2021 (filings:
 2015-2018 and 2019-2021, BSE announcements start in 2015). The rule, the same for every claim: the claimed direction in
@@ -66,6 +70,9 @@ SCHEMA = {
     "sector_reversion": {"direction": ["low", "high"]},
     "rule_filter": {"rule": ["pe_above_50", "pe_below_15", "near_52w_low_5", "below_sma200", "volume_spike_2", "ath_fall_40",
                              "rsi_below_30"], "direction": ["out", "under"], "months": [1]},
+    # S76 (docs/protocols/s76_learner_protocol.md): after a fall, hold or sell, with a confirmation window; rebalancing bands with gold
+    "fall_response": {"depth": [30], "confirm": [0, 20, 60], "direction": ["out", "under"], "months": [3]},
+    "rebalance_bands": {"mix": ["60_20_20", "70_30_0"], "band": [5, 10, 20], "against": ["never", "monthly"], "check": ["month_end", "daily"]},
 }
 
 # S64 protocol (fixed before the run): the sector TRI of an industry, by the sector map's taxonomy at the month end.
@@ -618,6 +625,121 @@ def rule_filter(root: Path, rule: str, direction: str, months: int, round_trip_p
     return {"decision": d, "why": why, **res}
 
 
+# --- S76: after a fall, and rebalancing bands with gold (docs/protocols/s76_learner_protocol.md) ----------------------------------
+
+def fall_frame(w: Dict[str, pd.DataFrame], depth: int, confirm: int) -> pd.DataFrame:
+    """1.0 where the adjusted close has been at least `depth`% below its 252-session high on every one of the last `confirm` + 1 sessions, 0.0 where not, NaN where
+    it cannot be told (rows up to i use only sessions <= i)."""
+    adj = w["adj"]
+    hi = adj.rolling(HISTORY, min_periods=200).max()
+    down = (adj <= (1 - depth / 100.0) * hi).astype(float).where(hi.notna() & adj.notna())
+    return down.rolling(confirm + 1, min_periods=confirm + 1).min() if confirm else down
+
+
+def fall_response(root: Path, depth: int, confirm: int, direction: str, months: int, round_trip_pct: float, periods=(DEV, VAL),
+                  threshold_dev: float = T_DEV) -> dict:
+    mem = members(root)
+    w = wide_panel(root, sorted(set(mem["isin"])), "2008-06-01", "2022-06-30")
+    frame = fall_frame(w, depth, confirm)
+    sign = 1 if direction == "out" else -1
+    res = {}
+    for name, (a, b) in zip(("development", "validation"), periods):
+        s = rule_filter_series(w, mem, frame, direction, months, a, b, round_trip_pct)
+        m, t, n = nw_t(s.values, lags=max(1, months))
+        res[name] = {"mean": m, "t": t, "n": n, "per": f"{months}-month excess of the fallen group over all members" + (" after charges" if direction == "out" else "")}
+        if name == "development":
+            res[name]["_returns"] = [float(sign * v) for v in s.values]
+    d, why = decide(res["development"], res["validation"], sign, MIN_MONTHS, 0.0, "months", threshold_dev)
+    return {"decision": d, "why": why, **res}
+
+
+GOLD_ISINS = (("INF732E01102", None, "2019-12-19"), ("INF204KB17I5", "2019-12-20", None))   # GOLDBEES before and after its ISIN change
+REB_CASH_PA, REB_TAX, REB_SIDE = 0.07, 0.125, ETF_ROUND_TRIP_PCT / 100 / 2
+MIXES = {"60_20_20": (0.60, 0.20, 0.20), "70_30_0": (0.70, 0.30, 0.0)}
+WORSE_FALL_PP = 1.0
+
+
+def gold_series(root: Path) -> pd.Series:
+    """Rupee gold, daily: the gold ETF's closes joined across its ISIN change; a one-day move beyond 50% is a unit split (removed at the nearest power of ten)."""
+    parts = []
+    for isin, a, b in GOLD_ISINS:
+        q = f"select date, close from '{root}/panel/prices.parquet' where isin = '{isin}' and close > 0" + (f" and date >= DATE '{a}'" if a else "") + (f" and date <= DATE '{b}'" if b else "")
+        parts.append(_duck.sql(q).df())
+    px = pd.concat(parts).assign(date=lambda d: pd.to_datetime(d["date"])).drop_duplicates("date").set_index("date")["close"].sort_index()
+    r = px / px.shift(1)
+    for t, ratio in r[(r > 1.5) | (r < 0.5)].items():
+        k = 10.0 ** round(math.log10(ratio))
+        px.loc[px.index >= t] = px.loc[px.index >= t] / k
+    return px
+
+
+def rebalance_path(eq: pd.Series, gold: pd.Series, mix: str, policy: str, band: float = 0.0, check: str = "month_end") -> pd.Series:
+    """Month-end values of Rs 100 run under a policy ('band', 'never', 'monthly') from the first common session, net of charges and tax at each trade."""
+    target = np.array(MIXES[mix])
+    df = pd.concat([eq.rename("e"), gold.rename("g")], axis=1).dropna()
+    if df.empty:
+        return pd.Series(dtype=float)
+    ends = set(df.groupby([df.index.year, df.index.month]).tail(1).index)
+    cash_d = (1 + REB_CASH_PA) ** (1 / 252) - 1
+    val = 100.0 * target
+    basis = val.copy()
+    prev = df.iloc[0].values
+    out = {}
+    for t, row in df.iterrows():
+        cur = row.values
+        val = val * np.array([cur[0] / prev[0], cur[1] / prev[1], 1 + cash_d])
+        prev = cur
+        tot = val.sum()
+        month_end = t in ends
+        go = (policy == "monthly" and month_end) or (policy == "band" and (check == "daily" or month_end) and np.max(np.abs(val / tot - target)) * 100 >= band)
+        if go:
+            want = tot * target
+            delta = want - val
+            fee = float(np.sum(np.abs(delta[:2]))) * REB_SIDE
+            tax = 0.0
+            for i in (0, 1):
+                if delta[i] < 0 and val[i] > 0:
+                    f = -delta[i] / val[i]
+                    tax += REB_TAX * max(0.0, f * (val[i] - basis[i]))
+                    basis[i] *= (1 - f)
+                elif delta[i] > 0:
+                    basis[i] += delta[i]
+            val = want.copy()
+            val[2] -= fee + tax
+        if month_end:
+            out[t] = float(val.sum())
+    return pd.Series(out, dtype=float)
+
+
+def rebalance_bands(root: Path, mix: str, band: int, against: str, check: str, periods=(DEV, VAL), threshold_dev: float = T_DEV,
+                    eq: Optional[pd.Series] = None, gold: Optional[pd.Series] = None) -> dict:
+    if eq is None:
+        from pflab.data import indices
+        df = indices.load("NIFTY500_TRI", root)
+        eq = df.assign(date=pd.to_datetime(df["date"])).set_index("date")["close"].sort_index()
+    gold = gold_series(root) if gold is None else gold
+    res, guard = {}, []
+    for name, (a, b) in zip(("development", "validation"), periods):
+        e, g = eq[(eq.index >= pd.Timestamp(a)) & (eq.index <= pd.Timestamp(b))], gold[(gold.index >= pd.Timestamp(a)) & (gold.index <= pd.Timestamp(b))]
+        p1 = rebalance_path(e, g, mix, "band", band, check)
+        p0 = rebalance_path(e, g, mix, against)
+        r1, r0 = pd.concat([pd.Series([100.0]), p1]).pct_change().dropna(), pd.concat([pd.Series([100.0]), p0]).pct_change().dropna()
+        diff = (r1.values - r0.values)
+        m, t, n = nw_t(diff, lags=1)
+        dd1, dd0 = float((p1 / p1.cummax() - 1).min()) * 100, float((p0 / p0.cummax() - 1).min()) * 100
+        res[name] = {"mean": m, "t": t, "n": n, "per": "monthly net return of the band policy minus the other, after charges and tax",
+                     "worst_fall_pct": round(dd1, 2), "other_worst_fall_pct": round(dd0, 2), "end_value": round(float(p1.iloc[-1]), 2) if len(p1) else None,
+                     "other_end_value": round(float(p0.iloc[-1]), 2) if len(p0) else None}
+        if dd1 < dd0 - WORSE_FALL_PP:
+            guard.append(f"{name}: its worst fall {dd1:.1f}% was deeper than the other's {dd0:.1f}% by more than {WORSE_FALL_PP:g} point")
+        if name == "development":
+            res[name]["_returns"] = [float(v) for v in diff]
+    d, why = decide(res["development"], res["validation"], 1, MIN_MONTHS, 0.0, "months", threshold_dev)
+    if d == "pass" and guard:
+        d, why = "fail", "; ".join(guard)
+    return {"decision": d, "why": why, **res}
+
+
 def run(root: Path, template: str, params: dict, threshold_dev: float = T_DEV) -> dict:
     """Run a registered claim's template; the decision comes from `decide`, never from a model."""
     from pflab.hq import stocks
@@ -636,4 +758,8 @@ def run(root: Path, template: str, params: dict, threshold_dev: float = T_DEV) -
         return sector_reversion(root, params["direction"], rt, threshold_dev=threshold_dev)
     if template == "rule_filter":
         return rule_filter(root, params["rule"], params["direction"], int(params["months"]), rt, threshold_dev=threshold_dev)
+    if template == "fall_response":
+        return fall_response(root, int(params["depth"]), int(params["confirm"]), params["direction"], int(params["months"]), rt, threshold_dev=threshold_dev)
+    if template == "rebalance_bands":
+        return rebalance_bands(root, params["mix"], int(params["band"]), params["against"], params["check"], threshold_dev=threshold_dev)
     return calendar(root, params["effect"], params["direction"], threshold_dev)

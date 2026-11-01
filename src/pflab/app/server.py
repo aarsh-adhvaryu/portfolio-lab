@@ -452,6 +452,17 @@ def create_app(rt) -> FastAPI:
             rt.bump("command", "chat")
         return out
 
+    @app.post("/api/rules/{rule_id}/decide")
+    def rules_decide(rule_id: int, yes: bool = Body(..., embed=True)):
+        """His button for a rule about money: yes applies it, no discards it (the same act as saying so in the conversation)."""
+        from pflab.hq import rules
+        con = rt.cursor()
+        out = rules.decide(con, rt.clock(), rule_id, bool(yes))
+        if out.get("decided"):
+            rules.render(con, rt.pm_dir)
+            rt.bump("command", "chat")
+        return out
+
     @app.get("/api/recall")
     def recall(about: str = "", case_id: int = 0):
         """Working memory on a subject: what was concluded before and why, what goes against it, what was checked, what changed, what is open."""
@@ -466,6 +477,21 @@ def create_app(rt) -> FastAPI:
         from pflab.plan import envelope
         s = envelope.status(rt.cursor(), rt.clock().date(), daily._index(rt))
         return json.loads(json.dumps({**s, "in_words": envelope.explain(s)}, default=str))
+
+    @app.get("/api/paper")
+    def paper_view():
+        """S76: the paper portfolio the system runs by itself: its value against the Nifty 500, holdings, decisions with the review's verdict, trades, its record and the gate."""
+        from pflab.paper import manager
+        return json.loads(json.dumps(manager.status(rt.cursor(), rt.data_root), default=str))
+
+    @app.post("/api/paper/ask")
+    def paper_ask(text: str = Body(..., embed=True)):
+        """He asks the paper portfolio to look into something: one input the paper team weighs (and may overrule, with reasons)."""
+        from pflab.paper import manager
+        out = manager.add_input(rt.cursor(), rt.clock(), text)
+        if not out.get("stored"):
+            raise HTTPException(400, out.get("problem", "not stored"))
+        return out
 
     @app.get("/api/scorecard")
     def scorecard_view():
