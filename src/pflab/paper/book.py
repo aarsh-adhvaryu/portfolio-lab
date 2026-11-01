@@ -57,11 +57,31 @@ def sessions_after(con, after: date, upto: date) -> List[date]:
     return [r[0] for r in con.execute("SELECT DISTINCT date FROM prices WHERE date > ? AND date <= ? AND source='nse_bhavcopy' ORDER BY 1", [after, upto]).fetchall()]
 
 
+_SECTORS: dict = {}
+
+
+def _industry(isin: str) -> Optional[str]:
+    """The industry label of the system's sector map (Nifty 500 names), when the instruments table has none: the 25% rail needs a label to count by. Cached."""
+    if isin not in _SECTORS:
+        try:
+            from pflab.data import sector_map
+            if "table" not in _SECTORS:
+                _SECTORS["table"] = sector_map.load()
+            lab = sector_map.sector_at(_SECTORS["table"], [isin], date.today(), allow_later=True)
+            _SECTORS[isin] = (lab["industry"].iloc[0] if len(lab) else None) or None
+        except Exception:
+            _SECTORS[isin] = None
+    return _SECTORS[isin]
+
+
 def inst(con, isin: str) -> dict:
     r = con.execute("SELECT symbol, name, asset_class, tax_class, sector, listed FROM instruments WHERE isin=?", [isin]).fetchone()
     if not r:
         return {"symbol": None, "name": None, "asset_class": None, "tax_class": None, "sector": None, "listed": None}
-    return dict(zip(("symbol", "name", "asset_class", "tax_class", "sector", "listed"), r))
+    d = dict(zip(("symbol", "name", "asset_class", "tax_class", "sector", "listed"), r))
+    if not d["sector"] and d["asset_class"] == "equity":
+        d["sector"] = _industry(isin)
+    return d
 
 
 def isin_of(con, symbol: str) -> Optional[str]:
