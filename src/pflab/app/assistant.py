@@ -44,13 +44,19 @@ SYSTEM = (
     "then tell him in two sentences what will run and that you will report back; do not wait for it. 8. Ask him only what only he can answer, grouped in one "
     "message; remember his goals and answers with remember_fact. 9. End each answer with what you did, what it rests on, and what happens next, in at most "
     "150 words unless he asks for detail. 10. When he asks what you are doing, what is running, what is stuck or what you need from him, call work_status (and "
-    "system_status for health) FIRST and answer from it, never from memory of the conversation: states change between messages.")
+    "system_status for health) FIRST and answer from it, never from memory of the conversation: states change between messages. "
+    "11. A request he makes becomes an investigation whose PLAN waits once for his yes (work_status shows it as awaiting approval): when he says yes call decide_plan "
+    "approve; when he changes his mind about what is investigated, call amend_investigation with his words (scope_change if it changes the question, financial_policy if "
+    "it touches an amount or rule of his money; those wait for his yes again): it takes effect without anything being released. 12. Recommendations are proposals "
+    "(BUY, ADD, HOLD, REDUCE, SELL, DIVERSIFY, WAIT), made by the workers or by you with make_proposal: you give the direction and reasons, the system computes sizes, costs "
+    "and tax from his record and lists what is missing. Never force a buy or a sale; a supported WAIT or HOLD is a real answer. He may discuss, amend, accept, reject or withdraw "
+    "one (decide_proposal needs his own words); accepting is his decision to act himself: you place no order and say so.")
 
 READ = ("picture", "portfolio", "stocks_overview", "stock_facts", "readings", "graph_timeline", "notes", "memory_recall", "journal", "research_flags",
         "price_history", "market_context", "who_is_buying", "growth", "findings", "comovement", "themes", "system_status", "cases", "experiments",
         "hypotheses", "tax_plan", "forecasts", "ipo_plan", "ready_plans", "simulation", "scenario", "measure", "quant")
 ACT = ("open_workspace", "policy_scenarios", "exposure_shock", "ipo_policy_study", "case_calculate", "register_experiment", "frame_objective", "case_evidence", "start_investigation",
-       "work_status", "remember_fact", "web_search", "fetch_cited")
+       "work_status", "remember_fact", "web_search", "fetch_cited", "amend_investigation", "decide_plan", "make_proposal", "proposals", "decide_proposal")
 TOOLS = READ + ACT
 
 

@@ -320,7 +320,8 @@ def tl_cap() -> int:
     return tools.TASK_CAPS["case_calculate"]
 
 
-def test_a_mission_that_has_spent_its_budget_drops_what_has_not_started_and_goes_to_review(rt, con, monkeypatch):
+def test_a_mission_that_has_spent_its_budget_parks_what_has_not_started_and_does_not_publish_from_it(rt, con, monkeypatch):
+    """S69 (it used to drop the work and go to review): unfinished required work is kept with a resume condition; no answer is made from half the work."""
     _fake_calc(monkeypatch)
     _run(rt, monkeypatch, _happy_scripts())
     board.run_one(rt, roster.runners())                                           # the coordinator plans: research and quant queued
@@ -331,10 +332,17 @@ def test_a_mission_that_has_spent_its_budget_drops_what_has_not_started_and_goes
                 "VALUES (900, ?, 'live', ?, 'q', '', '{}', 'done', 400.0, NULL, 1)", [NOW + timedelta(seconds=30), gv.OPUS])      # a calculation writer's call inside its window
     assert 400.0 <= missions.mission_cost(con, 1, NOW + timedelta(hours=1)) < 410.0
     missions.tick(rt)
-    states = {x["role"]: x["status"] for x in missions._tasks(con, 1) if x["role"] in ("research", "quant")}
-    assert states["quant"] == "dismissed" and "budget" in con.execute("SELECT result FROM hq_tasks WHERE role='quant'").fetchone()[0]
-    assert missions.card(con, 1)["state"] == "reviewing"                          # not blocked: the mission goes on to be judged on what exists
+    rows = {x["role"]: x for x in missions._tasks(con, 1) if x["role"] in ("research", "quant")}
+    assert rows["research"]["status"] == "waiting" and rows["research"]["waiting_on"] == "mission_budget" and "budget" in rows["research"]["resume"]
+    assert rows["quant"]["status"] == "waiting"                                   # the quant waits for the research, which waits for the money
+    card = missions.card(con, 1)
+    assert card["state"] == "working" and "used Rs" in card["blocker"]            # parked, not reviewed, not answered
+    assert not any(x["role"] == "review" for x in missions._tasks(con, 1))
     assert any(e[0] == "budget" for e in con.execute("SELECT event FROM hq_case_log WHERE case_id=1").fetchall())
+    assert missions.allow_more(con, NOW, 1, 300.0)["resumed"] >= 1               # his word to spend more: the parked work is queued again
+    assert next(x for x in missions._tasks(con, 1) if x["role"] == "research")["status"] == "queued"
+    missions.tick(rt)
+    assert next(x for x in missions._tasks(con, 1) if x["role"] == "research")["status"] == "queued" and missions.card(con, 1)["blocker"] is None
 
 
 def test_a_daily_tool_cap_is_a_wait_until_it_resets_not_a_failure(rt, con, monkeypatch):

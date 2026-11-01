@@ -1029,6 +1029,8 @@ def submit_review(ctx: Ctx, a: dict) -> dict:
                      {"approve": "approved", "revise": "revise", "reject": "rejected"}[a["verdict"]], note])
     cases.log(ctx.con, c["id"], ctx.now, "independent review", f"{a['verdict']}: {note[:300]}")
     note_artifact(ctx, c["id"], "review", rid, a["verdict"])
+    from pflab.hq import proposals
+    proposals.review_case(ctx.con, ctx.now, c["id"], a["verdict"], note)
     return {"stored": True, "review_id": rid, "verdict": a["verdict"]}
 
 
@@ -1064,10 +1066,130 @@ def submit_answer(ctx: Ctx, a: dict) -> dict:
     invalidate it, what is monitored next. Closing the case with `case_close` follows."""
     from pflab.hq import missions
     c = _case(ctx, a)
-    out = missions.set_answer(ctx.con, ctx.now, c["id"], _checked(ctx, a["answer"]), _checked(ctx, a["limitations"]), _checked(ctx, a["monitor_next"]))
+    try:
+        trig = json.loads(a.get("triggers_json") or "[]")
+        if not isinstance(trig, list):
+            raise ValueError("not a list")
+    except ValueError as e:
+        return {"stored": False, "problem": f"triggers_json must be a JSON list of trigger objects ({e})"}
+    out = missions.set_answer(ctx.con, ctx.now, c["id"], _checked(ctx, a["answer"]), _checked(ctx, a["limitations"]), _checked(ctx, a["monitor_next"]),
+                              triggers=trig, change=a.get("change", ""))
     if out.get("stored"):
         note_artifact(ctx, c["id"], "answer", out["mission_id"], "final")
     return out
+
+
+def _his_message(ctx: Ctx) -> str:
+    """What he just typed, as the assistant received it (the text after HIS MESSAGE in the first turn). Approval is his word, not the model's."""
+    src = ctx.source or ""
+    i = src.rfind("HIS MESSAGE:")
+    return src[i + len("HIS MESSAGE:"):].split("\n\n", 1)[0].strip() if i >= 0 else ""
+
+
+_YES = __import__("re").compile(r"\b(approve[ds]?|yes|yep|yeah|go ahead|go on|proceed|do it|okay|ok|sure|start it|run it|looks good|fine by me|accept(ed)?)\b", __import__("re").I)
+_NO = __import__("re").compile(r"\b(no|not|don't|dont|do not|wait|stop|hold off|reject|decline|cancel|withdraw|never)\b", __import__("re").I)
+
+
+def _said_yes(ctx: Ctx) -> bool:
+    m = _his_message(ctx)
+    return bool(m) and bool(_YES.search(m)) and not _NO.search(m)
+
+
+def _said_no(ctx: Ctx) -> bool:
+    m = _his_message(ctx)
+    return bool(m) and bool(_NO.search(m))
+
+
+def amend_investigation(ctx: Ctx, a: dict) -> dict:
+    """He changes an instruction in conversation ("also look at X", "use a smaller amount", "ignore the first source"): it becomes the next numbered version of that
+    investigation and persists, without any release. The coordinator replans only what changes. A change of scope or a financial policy waits for his yes again."""
+    from pflab.hq import plans, pool
+    out = plans.amend(ctx.con, ctx.now, int(a["case_id"]), _checked(ctx, a["instruction"]), scope_change=bool(a.get("scope_change")),
+                      financial_policy=bool(a.get("financial_policy")), by="the investor (chat)")
+    if out.get("amended"):
+        pool.wake()
+        wake = getattr(ctx.rt, "wake_hq", None)
+        if wake:
+            wake()
+    return out
+
+
+def decide_plan(ctx: Ctx, a: dict) -> dict:
+    """His yes (or no) to the plan that waits. Only his own words in this message count: the tool checks them, the model's say-so is not enough."""
+    from pflab.hq import plans, pool
+    if a["decision"] == "approve":
+        if not _said_yes(ctx):
+            return {"approved": False, "why": "his message does not clearly approve; ask him to say 'approve' (or 'no' to decline)"}
+        out = plans.approve(ctx.con, ctx.now, int(a["case_id"]), by="the investor (chat)", note=_his_message(ctx)[:120])
+        pool.wake()
+    else:
+        if not _said_no(ctx):
+            return {"declined": False, "why": "his message does not clearly decline the plan"}
+        out = plans.decline(ctx.con, ctx.now, int(a["case_id"]), by="the investor (chat)", note=_his_message(ctx)[:120])
+    wake = getattr(ctx.rt, "wake_hq", None)
+    if wake:
+        wake()
+    return out
+
+
+def make_proposal(ctx: Ctx, a: dict) -> dict:
+    """A buy, add, hold, reduce, sell, diversify or wait recommendation. You give the direction, the company and the reasons; the system computes every number
+    (price and date, cash, size, charges, weights, tax from the lots) from the record, and says what is missing. Never an order."""
+    from pflab.hq import proposals
+    if ctx.shadow:
+        return _SHADOW_CASE
+    cid = int(a["case_id"]) if a.get("case_id") else None
+    if cid:
+        _case(ctx, a)
+    inputs = {k: a.get(k) for k in ("action", "symbol", "isin", "qty", "amount_rupees", "full_exit", "assumptions", "review_condition")}
+    inputs["reason"] = _checked(ctx, a.get("reason", ""))
+    inputs["alternatives"] = _checked(ctx, a.get("alternatives", ""))
+    try:
+        inputs["evidence_ids"] = json.loads(a.get("evidence_ids_json") or "[]")
+    except ValueError:
+        inputs["evidence_ids"] = []
+    if a.get("proposal_id"):
+        old = proposals.get(ctx.con, int(a["proposal_id"]))
+        if not old or old["status"] != "proposed":
+            return {"stored": False, "problem": "only a proposal that is still open can be amended"}
+        b = proposals.build(ctx.con, ctx.now, {**inputs, "isin": old["isin"]})
+        if "problem" in b:
+            return {"stored": False, "problem": b["problem"]}
+        from pflab.hq import missions
+        snap = missions.snapshot_id(ctx.con, ctx.rt.pm_dir)
+        b["payload"]["portfolio"] = {**(b["payload"].get("portfolio") or {}), "snapshot": snap}
+        out = proposals.amend_stored(ctx.con, ctx.now, int(a["proposal_id"]), b, snap, f"{ctx.role or 'assistant'}", why=inputs["reason"][:160])
+    else:
+        out = proposals.create(ctx.con, ctx.now, inputs, pm_dir=ctx.rt.pm_dir, case_id=cid, by=ctx.role or "assistant")
+    if out.get("stored") and cid:
+        note_artifact(ctx, cid, "proposal", out["proposal_id"], f"{str(a['action']).upper()} v{out['version']}")
+    return out
+
+
+def proposals_tool(ctx: Ctx, a: dict) -> dict:
+    from pflab.hq import proposals
+    if a.get("proposal_id"):
+        p = proposals.get(ctx.con, int(a["proposal_id"]))
+        return {"proposal": p, "stale": proposals.stale_reason(ctx.con, p, ctx.rt.pm_dir) if p else None} if p else {"error": "no such proposal"}
+    rows = proposals.listing(ctx.con, status=a.get("status"), case_id=int(a["case_id"]) if a.get("case_id") else None, limit=12)
+    return {"proposals": [{"id": p["proposal_id"], "action": p["action"], "symbol": p["symbol"], "status": p["status"], "review": p["review_status"], "version": p["version"],
+                           "snapshot": p["snapshot_id"], "strategy": p["strategy_version"], "case": p["case_id"], "missing": p["missing"][:3],
+                           "size": (p["payload"].get("size") or {}).get("qty"), "made": p["created_at"][:10]} for p in rows]}
+
+
+def decide_proposal(ctx: Ctx, a: dict) -> dict:
+    """Discuss, accept, reject or withdraw a proposal. Accept and reject are his decisions: they need his own words in this message. Accepting records that HE
+    will act; it places no order."""
+    from pflab.hq import proposals
+    pid = int(a["proposal_id"])
+    d = a["decision"]
+    if d == "discuss":
+        return proposals.discuss(ctx.con, ctx.now, pid, _checked(ctx, a.get("note", ""))[:500], by="the investor (chat)")
+    if d == "accept" and not _said_yes(ctx):
+        return {"ok": False, "why": "his message does not clearly accept; ask him to say 'accept' (nothing is ordered either way)"}
+    if d in ("reject", "withdraw") and not _said_no(ctx):
+        return {"ok": False, "why": "his message does not clearly reject or withdraw it"}
+    return proposals.decide(ctx.con, ctx.now, pid, d, by="the investor (chat)", note=_his_message(ctx)[:160])
 
 
 def policy_scenarios(ctx: Ctx, a: dict) -> dict:
@@ -1422,7 +1544,36 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
     Tool("submit_answer", "journal", "The final answer for the investor, in plain words he can act on: what the evidence and calculations show with their ids, assumptions, what ran, "
          "what could invalidate it, and what you will watch next. Only numbers that the case's artifacts hold.",
          {"case_id": _i("the case", 1, 10 ** 9), "answer": _s("the answer", 3500), "limitations": _s("what could invalidate the conclusion", 800),
-          "monitor_next": _s("what will be monitored next and the trigger for looking again", 600)}, ("case_id", "answer", "limitations", "monitor_next"), submit_answer),
+          "monitor_next": _s("what will be monitored next and the trigger for looking again", 600),
+          "triggers_json": _s("the monitors the system will actually check, as a JSON list: {kind: price_below|price_above (symbol, value), move_pct (symbol, pct), "
+                              "new_document (symbol), review_on (date YYYY-MM-DD)}. A monitoring sentence with no trigger here is not a monitor", 800),
+          "change": _s("on a review or an update: did the conclusion change", enum=["first", "changed", "unchanged"])},
+         ("case_id", "answer", "limitations", "monitor_next"), submit_answer),
+    Tool("amend_investigation", "action", "He changed an instruction in conversation (also look at X, use a different amount, drop a source): record it as the next "
+         "numbered version of that investigation. It persists and the workers replan only what changes. Set scope_change when it changes the question or adds a "
+         "different kind of work, and financial_policy when it touches an amount, rule or limit of his money: those wait for his yes again.",
+         {"case_id": _i("the investigation", 1, 10 ** 9), "instruction": _s("the new instruction in his words", 900),
+          "scope_change": {"type": "boolean", "description": "changes the question or adds a different kind of work"},
+          "financial_policy": {"type": "boolean", "description": "touches an amount, rule or limit of his money"}}, ("case_id", "instruction"), amend_investigation),
+    Tool("decide_plan", "action", "His yes or no to a plan that waits for approval. Use it only when his message in this turn says so; the system checks his words.",
+         {"case_id": _i("the investigation", 1, 10 ** 9), "decision": _s("his decision", enum=["approve", "decline"])}, ("case_id", "decision"), decide_plan),
+    Tool("make_proposal", "journal", "A buy, add, hold, reduce, sell, diversify or wait recommendation for the investor, with the evidence and the alternatives. You choose the "
+         "direction and give the reasons; the system computes every number from his record (price and date, cash, size, charges, weights, tax from the lots) and lists what is "
+         "missing. HOLD, WAIT and DIVERSIFY need a concrete condition for looking again. It is advice, never an order. To change an open proposal pass its proposal_id.",
+         {"action": _s("the decision", enum=["BUY", "ADD", "HOLD", "REDUCE", "SELL", "DIVERSIFY", "WAIT"]), "symbol": _s("the company's symbol", 20),
+          "reason": _s("the evidence and reason in plain words", 1200), "alternatives": _s("what else was considered: waiting, holding, doing less, and why not", 800),
+          "review_condition": _s("for HOLD, WAIT, DIVERSIFY: the concrete condition (a price, date, document or cash) that reopens it", 300),
+          "qty": _n("shares, for BUY/ADD/REDUCE", 1, 10 ** 7), "amount_rupees": _n("an amount instead of shares", 1, 10 ** 9),
+          "full_exit": {"type": "boolean", "description": "SELL the whole holding"}, "assumptions": _s("assumptions made", 500),
+          "evidence_ids_json": _s("JSON list of the case's evidence ids it rests on", 200), "case_id": _i("the investigation", 1, 10 ** 9),
+          "proposal_id": _i("amend this open proposal", 1, 10 ** 9)}, ("action", "reason", "alternatives"), make_proposal),
+    Tool("proposals", "read", "The recommendations on record (buy, add, hold, reduce, sell, diversify, wait): status, review, the snapshot and strategy version they used, "
+         "what is missing. With proposal_id: all of one, with its log.", {"proposal_id": _i("one proposal", 1, 10 ** 9), "status": _s("filter", enum=["proposed", "accepted",
+         "rejected", "withdrawn", "executed", "partly_executed", "superseded"]), "case_id": _i("one investigation", 1, 10 ** 9)}, (), proposals_tool),
+    Tool("decide_proposal", "action", "Discuss a proposal with him, or record his accept, reject or withdraw (his own words in this message are required for those). "
+         "Accepting places no order: he enters any trade himself.",
+         {"proposal_id": _i("the proposal", 1, 10 ** 9), "decision": _s("what", enum=["discuss", "accept", "reject", "withdraw"]), "note": _s("his comment, if discussing", 400)},
+         ("proposal_id", "decision"), decide_proposal),
     Tool("policy_scenarios", "journal", "A HYPOTHETICAL SCENARIO study of how to put a waiting sum into shares: all-in now, his current equal monthly tranches, phased buying "
          "under explicit rules (a reserve bought on a fall) and cash held until a fall, across a sharp fall, a prolonged decline, a fall and recovery, and no crash. You state "
          "the assumptions (the sum, the size of the fall, the horizon, rates); they are shown with the results and nothing is a forecast. Kept as a reproducible calculation.",
@@ -1473,7 +1624,7 @@ MAX_OPTIONAL = 24                                  # optional parameters across 
 
 
 WORKER_ONLY = ("reproduce_calc", "submit_review", "request_artifact", "plan_mission", "submit_answer", "start_investigation", "open_workspace", "work_status",
-               "remember_fact")      # S68: the workers' tools; the brain's list is unchanged
+               "remember_fact", "amend_investigation", "decide_plan", "make_proposal", "proposals", "decide_proposal")      # S68: the workers' tools; the brain's list is unchanged
 
 
 def definitions(names=None) -> List[dict]:

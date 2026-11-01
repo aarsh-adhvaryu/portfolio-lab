@@ -726,6 +726,39 @@ MIGRATIONS = [
     (53, "experiment_contract_s68", """
     ALTER TABLE learn_experiments ADD COLUMN contract VARCHAR;
     """),
+    # S69: the workflow made explicit and durable. A paid call and a task carry the task that made them (parallel tasks cannot be told apart by time);
+    # a mission's plan has numbered versions (proposed, approved, superseded) so an amendment is a new version and a result can say which it read;
+    # a monitoring wish is an executable trigger the system checks; buy/sell/hold proposals with their log; the local model's routing decisions;
+    # the strategy (policy) versions, with proposals kept apart from the active one.
+    (54, "workflow_s69", """
+    ALTER TABLE api_calls ADD COLUMN task_id INTEGER;
+    ALTER TABLE hq_tasks ADD COLUMN instruction_version INTEGER;
+    CREATE TABLE hq_plan_versions (
+        case_id INTEGER NOT NULL, version INTEGER NOT NULL, created_at TIMESTAMP NOT NULL, source VARCHAR NOT NULL, instruction VARCHAR,
+        plan_json VARCHAR, status VARCHAR NOT NULL, decided_at TIMESTAMP, decided_by VARCHAR, note VARCHAR, material BOOLEAN,
+        PRIMARY KEY (case_id, version)
+    );
+    CREATE TABLE hq_triggers (
+        trigger_id INTEGER PRIMARY KEY, case_id INTEGER NOT NULL, created_at TIMESTAMP NOT NULL, kind VARCHAR NOT NULL, params_json VARCHAR NOT NULL,
+        status VARCHAR NOT NULL, text VARCHAR, ref_value DOUBLE, last_checked TIMESTAMP, fired_at TIMESTAMP, fire_note VARCHAR
+    );
+    CREATE TABLE hq_proposals (
+        proposal_id INTEGER PRIMARY KEY, created_at TIMESTAMP NOT NULL, updated_at TIMESTAMP NOT NULL, case_id INTEGER, action VARCHAR NOT NULL,
+        isin VARCHAR, symbol VARCHAR, status VARCHAR NOT NULL, review_status VARCHAR NOT NULL, version INTEGER NOT NULL, snapshot_id VARCHAR,
+        strategy_version VARCHAR, payload_json VARCHAR NOT NULL, missing_json VARCHAR, executed_event_ids VARCHAR, plan_version INTEGER
+    );
+    CREATE TABLE hq_proposal_log (
+        log_id INTEGER PRIMARY KEY, proposal_id INTEGER NOT NULL, logged_at TIMESTAMP NOT NULL, event VARCHAR NOT NULL, actor VARCHAR, version INTEGER, note VARCHAR
+    );
+    CREATE TABLE hq_routing (
+        decision_id INTEGER PRIMARY KEY, decided_at TIMESTAMP NOT NULL, kind VARCHAR NOT NULL, subject VARCHAR, candidates_json VARCHAR, chosen_json VARCHAR,
+        outcome VARCHAR NOT NULL, tries INTEGER, model VARCHAR, raw VARCHAR, note VARCHAR
+    );
+    CREATE TABLE hq_policy (
+        version INTEGER PRIMARY KEY, created_at TIMESTAMP NOT NULL, status VARCHAR NOT NULL, body_json VARCHAR NOT NULL, source VARCHAR,
+        decided_at TIMESTAMP, decided_by VARCHAR, note VARCHAR
+    );
+    """),
 ]
 
 
@@ -768,11 +801,30 @@ def migrate(con, migrations=None) -> list:
     return applied
 
 
+_ISSUED: dict = {}                                       # (table, column) -> (id, thread, monotonic time) of the last id handed out
+_ID_LOCK = threading.Lock()
+_ID_WINDOW_S = 30.0
+
+
 def next_id(con, table: str, column: str) -> int:
     """The next id for `table`: its largest `column` + 1. Used instead of DuckDB sequences, which a killed process
     can leave behind its own rows (2026-10-17: after a stopped run, nextval returned 1 while rows 1..63 were kept,
-    and every later insert failed). The store has one writer at a time, so max + 1 cannot collide."""
-    return int(con.execute(f"SELECT coalesce(max({column}), 0) + 1 FROM {table}").fetchone()[0])
+    and every later insert failed). The store has one process; S69: several worker threads share it, and two of them
+    asking before either inserts would get the same id, so an id another thread was handed a moment ago, and has perhaps
+    not inserted yet, is not handed out again. A single thread sees exactly the old rule (max + 1)."""
+    import time
+    n = int(con.execute(f"SELECT coalesce(max({column}), 0) + 1 FROM {table}").fetchone()[0])
+    me, now = threading.get_ident(), time.monotonic()
+    try:                                                  # the file this connection is on: two stores in one process never share a counter
+        db = con.execute("SELECT coalesce(path, 'memory') FROM duckdb_databases() WHERE database_name = current_database()").fetchone()[0]
+    except Exception:
+        db = "?"
+    with _ID_LOCK:
+        rec = _ISSUED.get((db, table, column))
+        if rec and rec[1] != me and now - rec[2] < _ID_WINDOW_S and rec[0] >= n:
+            n = rec[0] + 1
+        _ISSUED[(db, table, column)] = (n, me, now)
+    return n
 
 
 _OPEN_TX: set = set()

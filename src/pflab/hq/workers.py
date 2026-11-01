@@ -45,7 +45,9 @@ SYSTEMS = {
         "a baseline for any strategy test and what would invalidate the result. Do not do the work yourself and do not approve every step: the "
         "workers choose their own tool calls. For the final answer (after the independent review): call submit_answer with a plain-words answer "
         "that uses only the case's evidence and calculation ids, what ran, what could invalidate it, and what is monitored next; if the review "
-        "did not approve, say what it still objects to. The system closes the case after your answer."),
+        "did not approve, say what it still objects to. Say what the independent review's verdict actually was. Monitoring is executable only if you pass "
+        "triggers_json (a price level, a move, a new document, a date); a sentence alone is not a monitor, and you must say so if you have no trigger. "
+        "On a review or update of an earlier investigation say whether the conclusion changed or stands (`change`). The system closes the case after your answer."),
     "research": COMMON + (
         "ROLE research. Gather and weigh evidence for your step. Use the read tools, web_search and fetch_cited for public facts (never put his "
         "holdings or amounts in a search), and record each finding with case_evidence (stance for/against/neutral/missing, the source, the date "
@@ -59,25 +61,30 @@ SYSTEMS = {
         "baseline; it is evaluated by trusted code on fixed periods and counted; a failed strategy is a result). Say which kind each result is. "
         "If the sandbox is not available the task waits; do not work around it. If you need evidence from research, request_artifact with role research. "
         "Each task may make at most 4 case_calculate calls and 4 policy_scenarios calls in all: prefer policy_scenarios for deployment questions (it is reviewed, "
-        "reproducible and costs nothing to run), write code only for what it cannot do, and report honestly what you could not measure."),
+        "reproducible and costs nothing to run), write code only for what it cannot do, and report honestly what you could not measure. When the question is a decision about a "
+        "holding (buy more, hold, reduce, sell, diversify or wait), finish with make_proposal for the direction the evidence supports, giving the reasons and the alternatives "
+        "(the system computes the sizes, costs and tax from his record and says what is missing): a supported WAIT or HOLD is as good as a trade, and you never force a buy or a "
+        "sale to have something to show. A WAIT, HOLD or DIVERSIFY names the concrete condition that would reopen it."),
     "review": COMMON + (
         "ROLE review, in a fresh and independent context. You see only the case dossier. Check: that every number in the evidence and "
         "calculations traces to a source or a calculation id; run reproduce_calc on each calculation and compare with the kept result; that "
         "assumptions are labelled and sensitivities shown; that any strategy test has a baseline, costs and information limited to what was "
         "known at each decision; that scenario weights are not presented as estimated; that stale or undated evidence is not used as today's "
-        "cause; that the conclusion does not outrun the evidence. Then call submit_review: approve, or revise with specific requests (role and "
-        "what to fix), or reject. Be specific; do not rewrite the work."),
+        "cause; that the conclusion does not outrun the evidence. If the mission made proposals (read them with `proposals`), check that each has evidence, "
+        "alternatives, its missing inputs stated, no tax or size claimed where the record cannot support it, and a concrete condition for a wait or hold. If the dossier "
+        "names tasks that ran under an older instruction version, say for each whether its result still holds. Then call submit_review: approve, or revise with "
+        "specific requests (role and what to fix), or reject. Be specific; do not rewrite the work."),
 }
 
 READ_TOOLS = ("picture", "portfolio", "stocks_overview", "stock_facts", "readings", "graph_timeline", "notes", "memory_recall", "journal", "research_flags",
               "price_history", "market_context", "who_is_buying", "growth", "findings", "comovement", "themes", "system_status", "cases", "experiments",
               "hypotheses", "tax_plan", "forecasts", "ipo_plan", "ready_plans")
 TOOLS = {
-    "coordinator": READ_TOOLS + ("plan_mission", "submit_answer", "frame_objective", "case_evidence", "propose_software_change"),
-    "research": READ_TOOLS + ("web_search", "fetch_cited", "case_evidence", "request_report", "request_artifact", "frame_objective"),
+    "coordinator": READ_TOOLS + ("plan_mission", "submit_answer", "frame_objective", "case_evidence", "propose_software_change", "proposals"),
+    "research": READ_TOOLS + ("web_search", "fetch_cited", "case_evidence", "request_report", "request_artifact", "frame_objective", "proposals"),
     "quant": READ_TOOLS + ("measure", "quant", "simulation", "scenario", "policy_scenarios", "exposure_shock", "ipo_policy_study", "case_calculate", "register_experiment",
-                           "case_evidence", "request_artifact", "reproduce_calc", "frame_objective"),
-    "review": READ_TOOLS + ("reproduce_calc", "submit_review", "case_evidence"),
+                           "case_evidence", "request_artifact", "reproduce_calc", "frame_objective", "make_proposal", "proposals"),
+    "review": READ_TOOLS + ("reproduce_calc", "submit_review", "case_evidence", "proposals"),
 }
 # role -> (governor key, model, effort)
 SPECS = {"coordinator": ("w_coord", gv.OPUS, "medium"), "research": ("w_research", gv.SONNET, "medium"), "quant": ("w_quant", gv.SONNET, "medium"),
@@ -187,7 +194,14 @@ def converse(rt, con, ctx, messages: list, *, system: str, tools: list, model: s
 def _dossier(con, cid: int, task: dict, now: datetime) -> str:
     from pflab.hq import cases, missions
     m = missions.mission_of(con, cid)
+    from pflab.hq import plans, proposals, triggers
     lines = [f"MISSION #{m['id']} (snapshot {m['snapshot']}): {m['goal']}", f"STATE: {m['state']}, review round {m['round']}"]
+    ins = plans.instructions_text(con, cid)
+    if ins:
+        lines.append(ins)
+    sup = plans.superseded_tasks(con, cid)
+    if sup:
+        lines.append("RESULTS FROM AN OLDER INSTRUCTION VERSION (to be rechecked before they are relied on): " + ", ".join(f"task #{x['id']} ({x['role']}, v{x['version']})" for x in sup))
     if m["plan"]:
         lines.append("PLAN: " + " | ".join(f"{s['key']} [{s['role']}] {s['goal'][:140]}" for s in m["plan"]))
     lines.append(cases.brief(con, [cid], now, evidence_lines=30))
@@ -198,6 +212,15 @@ def _dossier(con, cid: int, task: dict, now: datetime) -> str:
         lines.append(f"CALC #{cid_} [{st}]: {q[:160]} -> {str(res)[:500]}")
     for (rid, oc, note) in con.execute("SELECT review_id, outcome, note FROM hq_case_reviews WHERE case_id=? AND outcome IS NOT NULL ORDER BY review_id", [cid]).fetchall():
         lines.append(f"REVIEW #{rid} [{oc}]: {(note or '')[:500]}")
+    for (eid, st, why, hyp) in con.execute("SELECT DISTINCT e.exp_id, e.status, coalesce(e.decision_why, ''), e.hypothesis FROM hq_artifacts a JOIN learn_experiments e "
+                                           "ON e.exp_id = cast(a.ref AS INTEGER) WHERE a.case_id=? AND a.kind='experiment' ORDER BY 1", [cid]).fetchall():
+        lines.append(f"EXPERIMENT #{eid} [{st}]: {hyp[:160]} -> {why[:300]}")
+    for p in proposals.listing(con, case_id=cid, limit=6):
+        z = p["payload"]
+        lines.append(f"PROPOSAL #{p['proposal_id']} {p['action']} {p['symbol'] or ''} [{p['status']}, review {p['review_status']}, v{p['version']}, snapshot {p['snapshot_id']}]: "
+                     f"{z.get('reason', '')[:240]} | size {z.get('size')} | tax {(z.get('tax_effect') or {}).get('status')} | missing: {'; '.join(p['missing'])[:240]}")
+    for t in triggers.active(con, cid):
+        lines.append(f"TRIGGER #{t['id']} [{t['status']}]: {t['describe']}")
     if task["body"].get("asked_by"):
         lines.append(f"(this task was asked for by task #{task['body']['asked_by']}: its result goes back to that task)")
     return "\n".join(lines)
@@ -244,6 +267,7 @@ def run_task(rt, task: dict, client=None, gate=None, cfg=None) -> Reply:
     ctx = tl.Ctx(rt, pid, model, False, {}, gate, now, client=client, mode=mode, source=stable, case_ids=[cid], task_id=task["id"], role=role,
                  allowed=frozenset(n for n in TOOLS[role] if n in tl.TOOLS))
     messages: list = [{"role": "user", "content": [{"type": "text", "text": stable}]}]
+    tok = an.CURRENT_TASK.set(task["id"])                        # S69: every paid call made for this task (its turns and the writers it rings) carries its id
 
     def unmet_note(note_: str) -> Optional[str]:
         miss_ = missions.unmet(con, task["id"], promise)
@@ -251,9 +275,12 @@ def run_task(rt, task: dict, client=None, gate=None, cfg=None) -> Reply:
             return None
         return ("Your task is NOT finished: it promised " + json.dumps(promise) + " and the system finds " + "; ".join(miss_)
                 + ". Produce what is missing with your tools (or request_artifact / request_report if it needs someone else), then report.")
-    conv = converse(rt, con, ctx, messages, system=SYSTEMS[role], tools=_tool_defs(role), model=model, agent=agent, effort=_effort, max_out=gv.LIMITS[agent].max_out,
-                    client=client, gate=gate, cfg=cfg or an.config(), mode=mode, his=his, private_first=stable, question=f"{role} task #{task['id']}",
-                    check=unmet_note)
+    try:
+        conv = converse(rt, con, ctx, messages, system=SYSTEMS[role], tools=_tool_defs(role), model=model, agent=agent, effort=_effort, max_out=gv.LIMITS[agent].max_out,
+                        client=client, gate=gate, cfg=cfg or an.config(), mode=mode, his=his, private_first=stable, question=f"{role} task #{task['id']}",
+                        check=unmet_note)
+    finally:
+        an.CURRENT_TASK.reset(tok)
     cost, note, nudges, stop_exc, turns, first_call = conv.cost, conv.note, conv.nudges, conv.stop_exc, conv.turns, conv.first_call
     summary = _summary(ctx, note)
     missing = missions.unmet(con, task["id"], promise)

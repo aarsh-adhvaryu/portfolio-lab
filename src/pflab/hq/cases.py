@@ -115,12 +115,37 @@ def add_evidence(con, cid: int, now: datetime, text: str, *, stance: str = "neut
         raise ValueError(f"stance must be one of {STANCES}")
     if not text.strip():
         raise ValueError("evidence needs text")
+    twin = same_evidence(con, cid, text, stance, source_id, published_at)
+    if twin is not None:                                    # S69: the same finding again is one piece of evidence, said once in the log
+        log(con, cid, now, "merged", f"evidence #{twin} already says this ({stance}, {source_id or 'no source id'}); the copy was merged, not added")
+        return twin
     eid = _id(con, "hq_case_evidence", "ev_id")
     con.execute("INSERT INTO hq_case_evidence VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 [eid, cid, now, kind, stance, text.strip()[:1200], source_id, source_kind, published_at, event_at, retrieved_at or now,
                  calc_id, json.dumps(data or {}, default=str)])
     con.execute("UPDATE hq_cases SET updated_at=? WHERE case_id=?", [now, cid])
     return eid
+
+
+def _norm(text: str) -> str:
+    import re
+    return re.sub(r"[^a-z0-9%.]+", " ", text.lower()).strip()
+
+
+def same_evidence(con, cid: int, text: str, stance: str, source_id: Optional[str], published_at) -> Optional[int]:
+    """The id of evidence already in the case that says the same thing with the same stance (the same words, or the same source and date with a
+    near-identical sentence). Evidence from the same source that takes the OPPOSITE stance is never merged: a contradiction is material and stays."""
+    import difflib
+    n = _norm(text)
+    for ev_id, st, t, sid, pub in con.execute("SELECT ev_id, stance, text, source_id, published_at FROM hq_case_evidence WHERE case_id=? ORDER BY ev_id", [cid]).fetchall():
+        if st != stance or stance == "missing":
+            continue
+        m = _norm(t)
+        if m == n:
+            return int(ev_id)
+        if source_id and sid == source_id and (published_at is None or pub is None or pub == published_at)                 and difflib.SequenceMatcher(None, m, n).ratio() >= 0.92:
+            return int(ev_id)
+    return None
 
 
 def evidence(con, cid: int) -> List[dict]:

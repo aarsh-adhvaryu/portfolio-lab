@@ -189,14 +189,18 @@ def start(rt) -> dict:
 def drive_missions(rt, stop=None, attended: bool = True, rounds: int = 12) -> dict:
     """Move every active mission on, then run what that made runnable, and again, until nothing moves (bounded): the plan, its steps, the review and
     the answer follow one another without waiting for the next HQ round. State lives in the store, so a stop at any point is resumed by the next call."""
-    from pflab.hq import board, missions, roster
+    from pflab.hq import board, missions, pool, roster
     moved: dict = {}
+    if getattr(rt, "pool_active", False):                        # S69: the pool's threads run the worker tasks; this only moves the state machine on
+        moved.update(missions.tick(rt))
+        pool.wake()
+        return moved
     for _ in range(rounds):
         if stop is not None and stop.is_set():
             break
         step = missions.tick(rt)
         moved.update(step)
-        n = board.run_all(rt, roster.runners(), deliver(rt), max_n=6 if attended else 3, stop=stop)
+        n = board.run_parallel(rt, roster.runners(), deliver(rt), max_n=6 if attended else 3, stop=stop)     # independent tasks overlap
         if not n and not step:
             break
     return moved
@@ -216,7 +220,8 @@ def round_(rt, stop=None, attended: bool = True) -> dict:
             out[name] = f"failed: {type(e).__name__}: {str(e)[:200]}"
             out.setdefault("failed", {})[name] = out[name][len("failed: "):]
 
-    part("board", lambda: board.run_all(rt, roster.runners(), deliver(rt), max_n=20 if attended else 8, stop=stop, his_only=hold))
+    part("board", lambda: board.run_all(rt, roster.runners(), deliver(rt), max_n=20 if attended else 8, stop=stop, his_only=hold,
+                                        skip="w_" if getattr(rt, "pool_active", False) else None))
     if hold:                                                     # paused: his own orders and the safety checks only
         part("reminders", lambda: messenger.due(rt))
         part("security", lambda: security.egress(rt))
@@ -228,8 +233,11 @@ def round_(rt, stop=None, attended: bool = True) -> dict:
         return inbox.retry_blocked(rt)
     part("blocked_files", blocked_files)
     part("cases", lambda: len(cases.sweep(rt.cursor(), rt.clock())))     # S67: what a waiting investigation needed may have arrived (free, code only)
+    part("proposals", lambda: len(__import__("pflab.hq.proposals", fromlist=["reconcile"]).reconcile(rt.cursor(), rt.clock())))   # S69: a trade he made is matched to the proposal he accepted
     if preset != "off" and paid_allowed(rt):                     # S68: the system chooses work itself (signals, due reviews); paid work only where paid work is allowed
         part("autonomy", lambda: __import__("pflab.hq.missions", fromlist=["scan"]).scan(rt))
+        part("triggers", lambda: len(__import__("pflab.hq.triggers", fromlist=["check"]).check(rt)))        # S69: executable monitors fire by code
+        part("arrivals", lambda: __import__("pflab.hq.arrivals", fromlist=["scan"]).scan(rt))               # S69: a file he dropped finds its investigation
     part("missions", lambda: drive_missions(rt, stop, attended))     # S68: each mission moves on from what its tasks have produced
     if rt.settings.get("drop_watch", True):
         def drop():

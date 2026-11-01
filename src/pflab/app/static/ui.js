@@ -7,7 +7,23 @@ function fmt(text) {
   return esc(text || '').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/^- /gm, '• ');
 }
 const pill = (state, label) => `<span class="pillst st-${state}">${esc(label || state)}</span>`;
-const STATE_WORD = { planning: ['working', 'planning'], working: ['working', 'working'], reviewing: ['working', 'being reviewed'], synthesising: ['working', 'writing the answer'], done: ['done', 'finished'], blocked: ['blocked', 'stuck'] };
+const STATE_WORD = { planning: ['working', 'planning'], awaiting_approval: ['wait', 'needs your yes'], working: ['working', 'working'], reviewing: ['working', 'being reviewed'], synthesising: ['working', 'writing the answer'], done: ['done', 'finished'], blocked: ['blocked', 'stuck'], declined: ['wait', 'declined'] };
+/* what a task's state means, in words (S69): waiting always says for what and how it resumes; registered is not finished; merged is not stuck */
+const TASK_WORD = { queued: 'ready to run', running: 'running now', waiting: 'waiting', retry: 'will try again', needs_approval: 'waits for your yes to the plan', done: 'done', failed: 'failed', dismissed: 'replaced or dropped', held: 'held' };
+function taskWord(t) {
+  const w = TASK_WORD[t.status] || t.status;
+  if (t.status === 'waiting' || t.status === 'retry') return `${w}: ${t.resume || t.waiting_on || 'a retry'}`;
+  return w;
+}
+function outputWord(o) {
+  if (o.kind === 'experiment') return `experiment #${esc(o.ref)} ${o.detail === 'registered' ? 'REGISTERED, not yet run (no result)' : esc(o.detail || '')}`;
+  if (o.kind === 'experiment_result') return `experiment #${esc(o.ref)} RESULT: ${esc(o.detail || '')}`;
+  if (o.kind === 'proposal') return `recommendation #${esc(o.ref)} ${esc(o.detail || '')}`;
+  return `${esc(o.kind)} ${esc(o.ref)} ${esc(o.detail || '')}`;
+}
+const LOG_WORD = { merged: 'merged (a copy of what was already there, not a problem)', covered: 'covered by another investigation (not stuck)', 'plan approved': 'plan approved', 'plan declined': 'plan declined', amendment: 'new instruction', 'trigger fired': 'a watch fired', arrival: 'new file', 'experiment finished': 'experiment finished', budget: 'budget', 'budget extra': 'more budget allowed', 'proposal executed': 'your trade is in the record' };
+const PROP_WORD = { proposed: 'proposed', accepted: 'accepted by you', rejected: 'rejected', withdrawn: 'withdrawn', executed: 'done: your trade is in the record', partly_executed: 'partly done', superseded: 'replaced' };
+const REVIEW_WORD = { unreviewed: 'not yet reviewed', approved: 'review approved', revise: 'review wants changes', rejected: 'review rejected' };
 
 function subnavHtml(screen, sub) {
   const items = SUBS[screen];
@@ -46,7 +62,15 @@ function missionCard(c) {
     <dl class="facts"><dt>Owner</dt><dd>${esc(c.owner || '—')}</dd><dt>Now</dt><dd>${esc(c.current_action || (c.state === 'done' ? 'finished' : '—'))}</dd>
       <dt>Made</dt><dd>${Object.keys(outs).length ? Object.entries(outs).map(([k, v]) => `${v} ${esc(k)}`).join(', ') : 'nothing yet'}</dd>
       ${c.blocker ? `<dt class="warn">Waiting</dt><dd class="warn">${esc(c.blocker)}</dd>` : ''}
-      <dt>Next</dt><dd>${esc(c.next_trigger || '—')}</dd><dt>Last progress</dt><dd>${esc(c.last_useful_progress || '—')}</dd></dl></div>`;
+      <dt>Next</dt><dd>${esc(c.next_trigger || '—')}</dd><dt>Last progress</dt><dd>${esc(c.last_useful_progress || '—')}</dd>
+      <dt>Instructions</dt><dd>version ${c.instruction_version || '—'}${c.awaiting_approval ? ' <b class="warn">· a plan waits for your yes</b>' : ''}</dd>
+      ${(c.triggers || []).filter((t) => t.status === 'active').length ? `<dt>Watching</dt><dd>${(c.triggers || []).filter((t) => t.status === 'active').map((t) => esc(t.describe)).join('; ')}</dd>` : ''}
+      ${(c.experiments_pending || []).length ? `<dt class="warn">Experiment</dt><dd class="warn">${c.experiments_pending.map((e) => '#' + e.id + ' ' + esc(e.status)).join(', ')}: not finished, so no conclusion yet</dd>` : ''}</dl>
+    ${c.awaiting_approval ? `<div class="row" style="gap:8px"><button class="btn primary" data-approve="${c.case_id}">Approve the plan</button><button class="btn" data-decline="${c.case_id}">Decline</button></div>` : ''}</div>`;
+}
+function wireMissionButtons(root) {
+  (root || document).querySelectorAll('[data-approve]').forEach((b) => { b.onclick = async (e) => { e.stopPropagation(); try { await post(`/api/investigations/${b.dataset.approve}/approve`, { note: '' }); } catch (x) { alert(x.message); } load(true); }; });
+  (root || document).querySelectorAll('[data-decline]').forEach((b) => { b.onclick = async (e) => { e.stopPropagation(); try { await post(`/api/investigations/${b.dataset.decline}/decline`, { note: '' }); } catch (x) { alert(x.message); } load(true); }; });
 }
 function todayCard(d) {
   const h = d && d.holdings;
@@ -107,6 +131,7 @@ async function renderAssistant(h, inv, cmd, sys) {
     $('arail').innerHTML = railHtml(h, inv, cmd, sys);
     Object.entries(keep).forEach(([id, v]) => { const i = $(id); if (i) i.value = v; });
     document.querySelectorAll('[data-mission]').forEach((c) => { c.onclick = () => showMission(Number(c.dataset.mission)); });
+    wireMissionButtons($('arail'));
     document.querySelectorAll('[data-answer]').forEach((b) => { b.onclick = async () => { const v = $('qa' + b.dataset.answer).value.trim(); if (!v) return; await post(`/api/questions/${b.dataset.answer}/answer`, { text: v }); load(true); }; });
   }
   th.querySelectorAll('[data-sugg]').forEach((b) => { b.onclick = () => sendAssistant(b.dataset.sugg); });
@@ -126,26 +151,83 @@ async function attachToAssistant(files) {
   await uploadAll(files, { chat: h.chat_id });
 }
 async function showMission(cid) {
-  const d = await api('/api/cases/' + cid);
+  const [d, pr] = await Promise.all([api('/api/cases/' + cid), api('/api/proposals?case_id=' + cid).catch(() => ({ proposals: [] }))]);
   const m = d.mission;
   const ans = m && m.answer;
   const box = document.createElement('dialog');
-  box.style.cssText = 'max-width:820px;width:92vw;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:18px';
+  box.style.cssText = 'max-width:900px;width:94vw;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:18px;max-height:90vh;overflow:auto';
+  const vers = (m && m.plan_versions) || [];
+  const tasks = (m && m.tasks) || [];
   box.innerHTML = `<div style="display:flex;flex-direction:column;gap:10px"><b style="font-size:16px">${esc(d.question || (m && m.goal) || '')}</b>
-    ${m ? `<div class="row wrapr" style="gap:6px">${pill((STATE_WORD[m.state] || ['wait'])[0], (STATE_WORD[m.state] || ['', m.state])[1])}<span class="chip">snapshot ${esc(m.snapshot)}</span><span class="chip">review round ${m.round}</span></div>
-      <div class="small"><b>Tasks</b><ul>${m.tasks.map((t) => `<li>#${t.id} ${esc(t.role)}: ${esc(t.status)}${t.waiting_on ? ' (waiting for ' + esc(t.waiting_on) + ')' : ''}</li>`).join('')}</ul></div>
-      <div class="small"><b>What it made</b><ul>${m.outputs.map((o) => `<li>${esc(o.kind)} ${esc(o.ref)} ${esc(o.detail || '')} <span class="tiny muted">(task #${o.task})</span></li>`).join('') || '<li>nothing yet</li>'}</ul></div>
-      ${m.blocker ? `<div class="note"><span>${esc(m.blocker)}</span></div>` : ''}
-      ${ans ? `<div class="small"><b>Answer</b><div style="white-space:pre-wrap;line-height:1.55;margin-top:4px">${fmt(ans.answer)}</div><div style="margin-top:6px"><b>What could invalidate it:</b> ${esc(ans.limitations)}</div><div><b>Watching next:</b> ${esc(ans.monitor_next)}</div></div>` : ''}` : ''}
+    ${m ? `<div class="row wrapr" style="gap:6px">${pill((STATE_WORD[m.state] || ['wait'])[0], (STATE_WORD[m.state] || ['', m.state])[1])}<span class="chip">snapshot ${esc(m.snapshot)}</span><span class="chip">instructions v${m.instruction_version || '—'}</span><span class="chip">review round ${m.round}</span>
+        <span class="chip">spent Rs ${num((m.budget || {}).spent, 0)} of Rs ${num((m.budget || {}).cap, 0)}</span>${ans && ans.review_verdict ? `<span class="chip">independent review: ${esc(ans.review_verdict)}</span>` : ''}</div>
+      ${m.blocker ? `<div class="note"><span><b>Why it waits:</b> ${esc(m.blocker)}</span></div>` : ''}
+      <div class="small"><b>Next trigger:</b> ${esc(m.next_trigger || '—')}</div>
+      ${m.awaiting_approval ? `<div class="row" style="gap:8px"><button class="btn primary" data-approve="${cid}">Approve the plan (nothing is ordered; it starts the research and calculations)</button><button class="btn" data-decline="${cid}">Decline</button></div>` : ''}
+      ${(m.blocker || '').includes('used Rs') ? `<div class="row" style="gap:8px"><button class="btn warnb" id="mMore">Allow Rs 150 more for this investigation</button><span class="tiny muted">The parked work resumes; nothing is thrown away.</span></div>` : ''}
+      <div class="small"><b>Instructions and plan</b><ul>${vers.map((v) => `<li>v${v.version} <span class="chip">${esc(v.status)}</span> <span class="tiny muted">${esc(v.source)} · ${esc(v.at)}${v.decided_by ? ' · ' + esc(v.decided_by) : ''}</span><br>${esc(v.instruction)}${v.steps.length ? `<br><span class="tiny muted">steps: ${v.steps.map((x) => esc(x.key) + ' (' + esc(x.role) + ')').join(', ')}</span>` : ''}</li>`).join('') || '<li>none</li>'}</ul></div>
+      <div class="small"><b>Tasks</b> <span class="tiny muted">(who owns what, what it waits for, which instruction version it ran under)</span>
+        <div class="scroll"><table style="min-width:780px"><thead><tr><th>#</th><th>Owner</th><th>What</th><th>State</th><th>Depends on</th><th>v</th><th>Started</th><th>Finished</th><th>Made</th></tr></thead><tbody>
+        ${tasks.map((t) => `<tr><td>${t.id}</td><td>${esc(t.role)}</td><td class="small" style="text-align:left">${esc(t.what || '')}</td><td class="small" style="text-align:left">${esc(taskWord(t))}</td><td>${(t.depends_on || []).map((x) => '#' + x).join(', ') || '—'}</td><td>${t.instruction_version ?? '—'}</td><td class="tiny">${esc((t.started || '').slice(11) || '—')}</td><td class="tiny">${esc((t.finished || '').slice(11) || '—')}</td><td class="tiny">${Object.entries(t.outputs || {}).map(([k, v]) => v + ' ' + esc(k)).join(', ') || '—'}</td></tr>`).join('')}</tbody></table></div></div>
+      <div class="small"><b>What it made</b><ul>${m.outputs.map((o) => `<li>${outputWord(o)} <span class="tiny muted">(task #${o.task ?? 'the system'})</span></li>`).join('') || '<li>nothing yet</li>'}</ul></div>
+      ${(m.triggers || []).length ? `<div class="small"><b>Watching (checked by the system)</b><ul>${m.triggers.map((t) => `<li>${esc(t.describe)} <span class="chip">${esc(t.status)}</span>${t.note ? ' ' + esc(t.note) : ''}</li>`).join('')}</ul></div>` : (ans ? '<div class="small warn">No executable watch is set: the "watching next" sentence below is only a sentence.</div>' : '')}
+      ${ans ? `<div class="small"><b>Answer</b>${ans.change ? ` <span class="chip">${esc(ans.change)}</span>` : ''}<div style="white-space:pre-wrap;line-height:1.55;margin-top:4px">${fmt(ans.answer)}</div><div style="margin-top:6px"><b>What could invalidate it:</b> ${esc(ans.limitations)}</div><div><b>Watching next:</b> ${esc(ans.monitor_next)}</div></div>` : ''}` : ''}
+    ${(pr.proposals || []).length ? `<div class="small"><b>Recommendations from this investigation</b>${(pr.proposals || []).map(proposalHtml).join('')}</div>` : ''}
+    ${m ? `<div class="small"><b>Change an instruction</b> <span class="tiny muted">(applies at once; a change of the question or of a money rule waits for your yes)</span>
+      <div class="row"><input class="inp" id="mAmend" placeholder="e.g. Also use a 0.5% charge on every trade"><button class="btn" id="mAmendGo">Send</button></div>
+      <label class="tiny"><input type="checkbox" id="mScope"> this changes the question</label> <label class="tiny"><input type="checkbox" id="mFin"> this touches an amount or rule of my money</label></div>` : ''}
     <div class="small"><b>Evidence</b><ul>${(d.evidence || []).map((e) => `<li><b>${esc(e.stance)}</b> ${esc(e.source_kind || '')}: ${esc(e.text)} <span class="tiny muted">(published ${esc(String(e.published || e.event || 'undated').slice(0, 10))})</span></li>`).join('') || '<li>none yet</li>'}</ul></div>
     <div class="small"><b>Calculations</b><ul>${(d.calculations || []).map((k) => `<li>#${k.id} ${esc(k.status)}${k.contained ? ', in the sandbox' : ''}: ${esc(JSON.stringify(k.result).slice(0, 300))}</li>`).join('') || '<li>none</li>'}</ul></div>
     <div class="small"><b>Independent reviews</b><ul>${(d.reviews || []).map((r) => `<li>${esc(r.outcome || 'process check')}: ${esc((r.note || (r.flags || []).join('; ') || '').slice(0, 400))}</li>`).join('') || '<li>none yet</li>'}</ul></div>
+    <div class="small"><b>Why it changed</b><ul>${(d.log || []).slice(-14).map((l) => `<li><span class="tiny muted">${esc(l.at)}</span> ${esc(LOG_WORD[l.event] || l.event)}: ${esc(String(l.detail || '').slice(0, 180))}</li>`).join('')}</ul></div>
     <div class="row" style="gap:8px">${m && m.state === 'blocked' ? '<button class="btn warnb" id="mRetry">Try the failed steps again</button>' : ''}<button class="btn" id="mClose">Close</button></div></div>`;
   document.body.appendChild(box);
   box.querySelector('#mClose').onclick = () => { box.close(); box.remove(); };
   const rb = box.querySelector('#mRetry');
   if (rb) rb.onclick = async () => { try { await post(`/api/investigations/${cid}/retry`); } catch (e) { alert(e.message); } box.close(); box.remove(); load(true); };
+  const more = box.querySelector('#mMore');
+  if (more) more.onclick = async () => { try { await post(`/api/investigations/${cid}/allow`, { rupees: 150 }); } catch (e) { alert(e.message); } box.close(); box.remove(); load(true); };
+  const am = box.querySelector('#mAmendGo');
+  if (am) am.onclick = async () => { const t = box.querySelector('#mAmend').value.trim(); if (!t) return; try { await post(`/api/investigations/${cid}/amend`, { instruction: t, scope_change: box.querySelector('#mScope').checked, financial_policy: box.querySelector('#mFin').checked }); } catch (e) { alert(e.message); return; } box.close(); box.remove(); load(true); };
+  wireMissionButtons(box); wireProposalButtons(box);
   box.showModal();
+}
+/* a recommendation: the direction, the facts the system computed, what is missing, the review, and what he can do with it (S69) */
+function proposalHtml(p) {
+  const z = p.payload || {}, sz = z.size, tx = z.tax_effect, pe = z.portfolio_effect;
+  const kv = [];
+  if (z.price) kv.push(['Price', `Rs ${num(z.price.value, 2)} (close of ${esc(z.price.as_of)})`]);
+  if (sz) {
+    kv.push(['Quantity', `${num(sz.qty, 0)} shares${z.exit ? ' (' + z.exit + ' exit)' : ''}`], ['Value', `Rs ${num(sz.notional, 0)}`], ['Charges (estimate)', sz.charges_estimate != null ? `Rs ${num(sz.charges_estimate, 0)}` : 'unknown']);
+    if (sz.proceeds_estimate != null) kv.push(['Proceeds (estimate)', `Rs ${num(sz.proceeds_estimate, 0)}`]);
+    if (sz.cash_after != null) kv.push(['Cash after', `Rs ${num(sz.cash_after, 0)}${sz.cash_shortfall ? ' <b class="warn">(short by Rs ' + num(sz.cash_shortfall, 0) + ')</b>' : ''}`]);
+  } else if (['BUY', 'ADD', 'REDUCE', 'SELL'].includes(p.action)) kv.push(['Size', '<b class="warn">not given: the record is not whole enough</b>']);
+  if (tx) kv.push(['Tax effect', tx.status === 'estimate' ? `Rs ${num(tx.extra_tax, 0)} extra this year (estimate)` : `<b class="warn">unknown</b> — ${esc(tx.why || '')}`]);
+  if (pe && pe.weight_before != null) kv.push(['Weight', `${(pe.weight_before * 100).toFixed(1)}% → ${pe.weight_after != null ? (pe.weight_after * 100).toFixed(1) + '%' : '—'}`]);
+  const open = ['proposed', 'accepted'].includes(p.status);
+  return `<div class="card" style="margin-top:6px"><div class="row wrapr" style="justify-content:space-between;gap:8px"><b>#${p.proposal_id} ${esc(p.action)} ${esc(p.symbol || '')}</b>
+      <span><span class="chip">${esc(PROP_WORD[p.status] || p.status)}</span> <span class="chip">${esc(REVIEW_WORD[p.review_status] || p.review_status)}</span> <span class="chip">v${p.version}</span></span></div>
+    <div class="small" style="margin:4px 0">${esc(z.reason || '')}</div>
+    <dl class="facts">${kv.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('')}<dt>Instead</dt><dd>${esc(z.alternatives || '')}</dd>${z.review_condition ? `<dt>Look again when</dt><dd>${esc(z.review_condition)}</dd>` : ''}
+      ${(p.missing || []).length ? `<dt class="warn">Missing</dt><dd class="warn">${p.missing.map(esc).join('; ')}</dd>` : ''}
+      <dt>Made on</dt><dd class="tiny">snapshot ${esc(p.snapshot_id || '—')} · strategy ${esc(p.strategy_version || '—')} · ${esc(p.created_at)}${p.stale ? ' · <b class="warn">' + esc(p.stale) + '</b>' : ''}</dd></dl>
+    <div class="tiny muted">${esc(z.not_an_order || '')}</div>
+    ${open ? `<div class="row wrapr" style="gap:6px;margin-top:6px">${p.status === 'proposed' ? `<button class="btn primary" data-pdec="accept" data-pid="${p.proposal_id}">Accept (I will act myself)</button><button class="btn" data-pdec="reject" data-pid="${p.proposal_id}">Reject</button>` : `<button class="btn" data-pdec="withdraw" data-pid="${p.proposal_id}">Withdraw</button>`}</div>` : ''}
+    <details class="tiny"><summary>Log (${(p.log || []).length})</summary>${(p.log || []).map((l) => `<div>${esc(l.at)} ${esc(l.event)} — ${esc(l.note || '')}</div>`).join('')}</details></div>`;
+}
+function wireProposalButtons(root) {
+  (root || document).querySelectorAll('[data-pdec]').forEach((b) => { b.onclick = async (e) => { e.stopPropagation(); try { await post(`/api/proposals/${b.dataset.pid}/${b.dataset.pdec}`, { note: '' }); } catch (x) { alert(x.message); } load(true); }; });
+}
+function renderProposals(d, routing) {
+  const ps = d.proposals || [];
+  $('screen').insertAdjacentHTML('beforeend', `<div class="cols"><section class="stack" style="flex:2 1 560px">
+      <div class="card"><div class="row" style="justify-content:space-between"><span class="lbl">Recommendations: buy, add, hold, reduce, sell, diversify, wait</span><span class="small muted">${ps.length} · strategy ${esc(d.strategy_version || '')}</span></div>
+        <span class="tiny muted">Each is advice with its evidence, the alternatives and what is missing. The system places no order: you enter any trade yourself, and when its confirmation arrives the record, the cash and the related research update by themselves.</span></div>
+      ${ps.map(proposalHtml).join('') || '<div class="card"><span class="small muted">None yet. A supported WAIT is a valid answer; nothing is forced.</span></div>'}</section>
+    <section class="stack" style="flex:1 1 360px"><div class="card"><span class="lbl">What the local model decided about new files</span>
+      ${((routing || {}).decisions || []).map((r) => `<div class="item"><span class="dot" style="background:${r.outcome === 'local' || r.outcome === 'local_retry' ? 'var(--up)' : 'var(--warn)'}"></span><div style="min-width:0"><div class="small">${esc(r.subject)} → case ${r.chosen && r.chosen.case_id != null ? r.chosen.case_id : '—'} · ${esc((r.chosen || {}).effect || '')}</div><div class="tiny muted">${esc(r.outcome)} (${r.tries ?? 0} ${r.tries === 1 ? 'try' : 'tries'}, ${esc(r.model || 'code')}) · ${esc(r.note || '')} · ${esc(r.at)}</div></div></div>`).join('') || '<span class="small muted">No file has needed a decision yet.</span>'}
+      <span class="tiny muted">The local model only chooses where a file goes; invalid answers are asked again once, then a plain rule or the cloud coordinator decides.</span></div></section></div>`);
+  wireProposalButtons();
 }
 
 /* ---------- the assistant, one click away on every other screen ---------- */
@@ -205,6 +287,7 @@ function renderInvestigations(d) {
         ${calcs.map((c) => `<div class="item"><span class="dot" style="background:${c.status === 'checked' ? 'var(--up)' : 'var(--warn)'}"></span><div style="min-width:0"><div class="small">#${c.id} ${esc(String(c.question).slice(0, 110))}</div><div class="tiny muted">${esc(c.status)} · ${c.trusted ? 'trusted code' : 'sandbox'} · case ${c.case_id ?? '—'} · ${esc(c.at)}</div></div></div>`).join('') || '<span class="small muted">None yet.</span>'}</div>
     </section></div>`);
   document.querySelectorAll('[data-mission]').forEach((c) => { c.onclick = () => showMission(Number(c.dataset.mission)); });
+  wireMissionButtons();
   $('invGo').onclick = async () => { const g = $('invGoal').value.trim(); if (!g) return; try { await post('/api/investigations', { goal: g }); $('invGoal').value = ''; load(true); } catch (e) { alert(e.message); } };
 }
 

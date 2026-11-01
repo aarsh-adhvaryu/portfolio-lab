@@ -28,7 +28,7 @@ class Desk:
         self.catching_up: Optional[str] = None
 
     def cursor(self):
-        return self.con
+        return self.con.cursor()                         # S69: worker threads each take their own (the store is shared, the connection object is not)
 
     def mc_path(self) -> Path:
         return self.pm_dir / "app" / "cache" / "montecarlo.json"

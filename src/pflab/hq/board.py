@@ -78,11 +78,36 @@ def get(con, tid: int) -> Optional[dict]:
     return d
 
 
-def next_queued(con, now: Optional[datetime] = None, his_only: bool = False) -> Optional[int]:
-    """The oldest task to run: queued, or a retry whose time has come. `his_only` (paused): only a task he ordered himself."""
-    r = con.execute("SELECT min(task_id) FROM hq_tasks WHERE (status='queued' OR (status='retry' AND (next_review_at IS NULL "
-                    "OR next_review_at <= ?)))" + (" AND from_agent='investor'" if his_only else ""), [now or datetime.now()]).fetchone()
+def next_queued(con, now: Optional[datetime] = None, his_only: bool = False, prefix: Optional[str] = None, skip: Optional[str] = None) -> Optional[int]:
+    """The oldest task to run: queued, or a retry whose time has come. `his_only` (paused): only a task he ordered himself. `prefix`: only the
+    tasks of agents whose name starts with it (the worker pool takes 'w_', the HQ round everything)."""
+    q = ("SELECT min(task_id) FROM hq_tasks WHERE (status='queued' OR (status='retry' AND (next_review_at IS NULL OR next_review_at <= ?)))"
+         + (" AND from_agent='investor'" if his_only else "") + (" AND starts_with(to_agent, ?)" if prefix else "")
+         + (" AND NOT starts_with(to_agent, ?)" if skip else ""))
+    r = con.execute(q, [now or datetime.now(), *([prefix] if prefix else []), *([skip] if skip else [])]).fetchone()
     return r[0] if r and r[0] is not None else None
+
+
+_CLAIM = threading.Lock()
+
+
+def claim(con, now: datetime, his_only: bool = False, prefix: Optional[str] = None, skip: Optional[str] = None) -> Optional[int]:
+    """Take the oldest due task for this thread, atomically (S69: several workers share the queue). The process lock keeps two threads from choosing the
+    same row; the conditional UPDATE ... RETURNING is the store's own check that it was still queued; the lease says who holds it. None: nothing due."""
+    import os
+    with _CLAIM:
+        for _ in range(3):
+            tid = next_queued(con, now, his_only, prefix, skip)
+            if tid is None:
+                return None
+            got = con.execute("UPDATE hq_tasks SET status='running', started_at=?, attempts=coalesce(attempts, 0) + 1, next_review_at=NULL, "
+                              "lease_owner=?, lease_until=? WHERE task_id=? AND status IN ('queued','retry') RETURNING task_id",
+                              [now, f"pid:{os.getpid()}:{threading.get_ident()}", now + timedelta(minutes=45), tid]).fetchall()
+            if got:
+                with _LIVE_LOCK:
+                    _LIVE.add(tid)                         # this process owns it until it ends: a wake must not reap it
+                return int(tid)
+    return None
 
 
 def once(con, task_id: Optional[int], key: str, kind: str, now: datetime, do: Callable[[], object], detail: str = "") -> bool:
@@ -158,16 +183,15 @@ def live_ids() -> set:
         return set(_LIVE)
 
 
-def run_one(rt, agents: Dict[str, Callable], deliver: Optional[Callable[[dict], None]] = None, his_only: bool = False) -> Optional[dict]:
+def run_one(rt, agents: Dict[str, Callable], deliver: Optional[Callable[[dict], None]] = None, his_only: bool = False,
+            prefix: Optional[str] = None, skip: Optional[str] = None) -> Optional[dict]:
     """Take the oldest task due, run its agent, keep the result, hand on its follow-ups, deliver the answer. A failure that may
     pass becomes `retry` (bounded by MAX_ATTEMPTS); an agent that needs data returns status 'waiting' and is resumed by `wake`."""
     con = rt.cursor()
     now = rt.clock()
-    tid = next_queued(con, now, his_only)
+    tid = claim(con, now, his_only, prefix, skip)
     if tid is None:
         return None
-    with _LIVE_LOCK:
-        _LIVE.add(tid)                                     # this process owns it until it ends: a wake must not reap it
     try:
         return _run_claimed(rt, agents, deliver, con, tid, now)
     finally:
@@ -176,8 +200,6 @@ def run_one(rt, agents: Dict[str, Callable], deliver: Optional[Callable[[dict], 
 
 
 def _run_claimed(rt, agents: Dict[str, Callable], deliver, con, tid: int, now: datetime) -> Optional[dict]:
-    con.execute("UPDATE hq_tasks SET status='running', started_at=?, attempts=coalesce(attempts, 0) + 1, next_review_at=NULL "
-                "WHERE task_id=? AND status IN ('queued','retry')", [now, tid])
     t = get(con, tid)
     fn = agents.get(t["to"])
     transient = False
@@ -228,13 +250,50 @@ def _run_claimed(rt, agents: Dict[str, Callable], deliver, con, tid: int, now: d
     return t
 
 
-def run_all(rt, agents: Dict[str, Callable], deliver=None, max_n: int = 20, stop=None, his_only: bool = False) -> int:
+def run_all(rt, agents: Dict[str, Callable], deliver=None, max_n: int = 20, stop=None, his_only: bool = False, prefix: Optional[str] = None,
+            skip: Optional[str] = None) -> int:
     n = 0
     while n < max_n and (stop is None or not stop.is_set()):
-        if run_one(rt, agents, deliver, his_only) is None:
+        if run_one(rt, agents, deliver, his_only, prefix, skip) is None:
             break
         n += 1
     return n
+
+
+WORKERS = 3                                               # tasks of the worker agents that may run at the same time
+
+
+def run_parallel(rt, agents: Dict[str, Callable], deliver=None, workers: int = WORKERS, max_n: int = 12, stop=None, his_only: bool = False,
+                 prefix: str = "w_") -> int:
+    """Run the due tasks of the worker agents on up to `workers` threads until none is due and none is running (or `max_n` were taken). Independent tasks
+    overlap; a task whose dependency is not done is parked (never queued) and so never takes a thread; what a running task queues (a coordinator's plan) is
+    picked up by the threads that are waiting for it. Returns how many ran."""
+    import time
+    taken, busy = [0], [0]
+    lock = threading.Lock()
+
+    def loop():
+        while stop is None or not stop.is_set():
+            with lock:
+                if taken[0] >= max_n:
+                    return
+                busy[0] += 1
+            ran = run_one(rt, agents, deliver, his_only, prefix)
+            with lock:
+                busy[0] -= 1
+                if ran is not None:
+                    taken[0] += 1
+                    continue
+                idle = busy[0] == 0
+            if idle:
+                return
+            time.sleep(0.05)                                   # a sibling is still running and may queue more work
+    ts = [threading.Thread(target=loop, name=f"worker-{i + 1}", daemon=True) for i in range(max(1, workers))]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    return taken[0]
 
 
 def recent(con, limit: int = 40) -> List[dict]:
