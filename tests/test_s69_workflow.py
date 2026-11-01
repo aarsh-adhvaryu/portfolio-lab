@@ -445,3 +445,21 @@ def test_new_material_during_a_running_investigation_gives_the_research_a_task(r
 def test_routing_is_visible_on_the_screen_api(tmp_path):
     from fastapi.testclient import TestClient
     assert True
+
+
+def test_a_read_file_whose_content_lives_in_the_graph_is_still_routed_from_the_stored_file(rt, con, monkeypatch, tmp_path):
+    """Found in the rehearsal: a dropped note is 'in the graph' with no text on its inbox row, so nothing was ever routed."""
+    cid = _finished_mission(rt, con, monkeypatch)
+    f = tmp_path / "note.txt"
+    f.write_text(DOC, encoding="utf-8")
+    con.execute("INSERT INTO inbox_items (item_id, name, kind, path, sha, status, created_at, updated_at) VALUES (1,'note.txt','other',?,?,'in the graph',?,?)", [str(f), "sha1", NOW, NOW])
+    assert arrivals.file_text(str(f)).startswith("Analyst note")
+    out = arrivals.scan(rt, ask=lambda item, cands, err: {"raw": json.dumps({"case_id": cid, "effect": "new_information", "confidence": 0.9, "why": "further cuts"}), "model": "m"})
+    assert out["routed"] == 1 and missions.mission_of(con, cid)["state"] == "planning"
+    assert arrivals.file_text(str(tmp_path / "missing.pdf")) == "" and arrivals.file_text(str(tmp_path / "x.bin")) == ""
+
+
+def test_the_deployment_study_tool_takes_a_trading_charge_so_an_amendment_about_costs_can_be_carried_out():
+    tool = tl.TOOLS["policy_scenarios"]
+    assert tl.validate(tool, {"case_id": 1, "why": "costs", "cost_bps": 50}) is None
+    assert tl.validate(tool, {"case_id": 1, "why": "costs", "cost_bps": 5000}) is not None

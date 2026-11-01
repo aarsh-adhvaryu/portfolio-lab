@@ -178,13 +178,48 @@ def _reopened_today(con, now: datetime) -> int:
                            [datetime(now.year, now.month, now.day)]).fetchone()[0])
 
 
+def file_text(path: str, limit: int = 6000) -> str:
+    """The words in a dropped file, read on this PC (a note, csv, json, pdf or spreadsheet). The inbox keeps a read file's content in the graph, not in the
+    item row, so the router reads the stored file itself. Empty when it cannot be read (the file is then simply not routed)."""
+    from pathlib import Path
+    try:
+        p = Path(path)
+        if not p.is_file():
+            return ""
+        ext = p.suffix.lower()
+        if ext in (".txt", ".md", ".csv", ".json", ".tsv", ".log"):
+            return p.read_text(encoding="utf-8", errors="replace")[:limit]
+        if ext == ".pdf":
+            from pypdf import PdfReader
+            return "\n".join((pg.extract_text() or "") for pg in PdfReader(str(p)).pages[:12])[:limit]
+        if ext in (".xlsx", ".xlsm"):
+            import openpyxl
+            wb = openpyxl.load_workbook(str(p), read_only=True, data_only=True)
+            rows = []
+            for ws in wb.worksheets[:3]:
+                for r in ws.iter_rows(min_row=1, max_row=60, values_only=True):
+                    rows.append(" ".join(str(c) for c in r if c is not None))
+            return "\n".join(rows)[:limit]
+    except Exception:
+        return ""
+    return ""
+
+
 def pending_items(con, limit: int = PER_ROUND) -> List[dict]:
     from pflab.app.inbox import EVIDENCE_STATES
     q = ",".join("?" * len(EVIDENCE_STATES))
-    rows = con.execute(f"SELECT item_id, name, kind, coalesce(text, ''), sha, created_at FROM inbox_items WHERE status IN ({q}) AND kind NOT IN ('statement','ledger','tradebook','contract_note') "
-                       f"AND length(coalesce(text, '')) > 80 AND 'inbox:' || cast(item_id AS VARCHAR) NOT IN (SELECT subject FROM hq_routing WHERE kind='inbox') "
-                       f"ORDER BY item_id LIMIT ?", [*EVIDENCE_STATES, limit]).fetchall()
-    return [{"id": r[0], "name": r[1], "kind": r[2], "text": r[3], "sha": r[4], "at": r[5]} for r in rows]
+    rows = con.execute(f"SELECT item_id, name, kind, coalesce(text, ''), sha, created_at, path FROM inbox_items WHERE status IN ({q}) "
+                       f"AND kind NOT IN ('statement','ledger','tradebook','contract_note') "
+                       f"AND 'inbox:' || cast(item_id AS VARCHAR) NOT IN (SELECT subject FROM hq_routing WHERE kind='inbox') ORDER BY item_id LIMIT ?",
+                       [*EVIDENCE_STATES, limit * 4]).fetchall()
+    out = []
+    for iid, name, kind, text, sha, at, path in rows:
+        text = text if len(text) > 80 else file_text(path or "")
+        if len(text) > 80:
+            out.append({"id": iid, "name": name, "kind": kind, "text": text, "sha": sha, "at": at})
+        if len(out) >= limit:
+            break
+    return out
 
 
 def scan(rt, ask=None) -> dict:

@@ -1582,7 +1582,8 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
           "recover_months": _i("months to recover after the fall", 3, 36), "drift_pa": _n("yearly drift of the base path, as a fraction", -0.1, 0.3),
           "vol_pa": _n("yearly noise around each path, as a fraction", 0.0, 0.5), "cash_rate_pa": _n("what waiting cash earns, yearly fraction", 0.0, 0.15),
           "staged_months": _i("months of his current staged approach", 2, 24), "dip_trigger": _n("fall from the peak that releases the reserve, as a fraction", 0.02, 0.4),
-          "wait_trigger": _n("fall from the start at which held cash goes in, as a fraction", 0.02, 0.5)}, ("case_id", "why"), policy_scenarios),
+          "wait_trigger": _n("fall from the start at which held cash goes in, as a fraction", 0.02, 0.5),
+          "cost_bps": _n("charge on every trade, in basis points (50 = 0.5 percent)", 0, 500)}, ("case_id", "why"), policy_scenarios),
     Tool("exposure_shock", "journal", "What a stated equity fall (for example 10, 20 and 35 percent) would cost the portfolio as it stands, holding by holding, using each "
          "holding beta (default 1). Trusted code on the current snapshot, reproducible by the reviewer; the falls and betas are your stated assumptions. Use it for the "
          "arithmetic of a fall instead of writing code.", {"case_id": _i("the case", 1, 10 ** 9), "falls_json": _s("JSON list of index falls in percent, e.g. [10, 20, 35]", 60),

@@ -129,17 +129,17 @@ class Scripted:
 
     # --- research ---
     def _research(self, con, first, n):
-        tid = int(re.search(r"TASK #(\d+)", first).group(1))
+        text = first.split("\n")[0]                                    # "TASK #n (research): <this task's goal>": the dossier below it mentions every step
         if n:
             return _say("Recorded.")
-        if "new note" in first or "New material arrived" in first:
+        if "new note" in text or "New material arrived" in text:
             return _use(("case_evidence", {"case_id": 1, "stance": "neutral", "text": "The new analyst note repeats the earlier concern and adds that part of the fall is already priced in; it does not change the supported conclusion to wait.",
                                           "source_kind": "article", "published": "2026-11-01"}))
-        if "verified size" in first or "Provide" in first:
-            return _use(("case_evidence", {"case_id": 1, "stance": "for", "text": "Prices of AI-linked large caps fell about 8 percent over the five sessions to the verification date, per stored closes.", "source_kind": "observation"}))
+        if "Provide the verified" in text:
+            return _use(("case_evidence", {"case_id": 1, "stance": "for", "text": "Prices of AI-linked large caps fell over the last five sessions, per the stored closes.", "source_kind": "observation"}))
         return _use(("case_evidence", {"case_id": 1, "stance": "for", "text": "A published note reports that large buyers cut AI chip spending next quarter.", "source_kind": "article", "published": "2026-10-28", "source_id": "note:1"}),
                     ("case_evidence", {"case_id": 1, "stance": "for", "text": "A published note reports that large buyers cut AI chip spending next quarter.", "source_kind": "article", "published": "2026-10-28", "source_id": "note:1"}),
-                    ("case_evidence", {"case_id": 1, "stance": "against", "text": "Indian IT and consumer holdings fell far less than AI-linked names over the same days, per stored closes.", "source_kind": "observation"}))
+                    ("case_evidence", {"case_id": 1, "stance": "against", "text": "Indian IT and consumer holdings fell far less than AI-linked names over the same days, per the stored closes.", "source_kind": "observation"}))
 
     # --- quant ---
     def _quant(self, con, first, n):
@@ -153,7 +153,8 @@ class Scripted:
             return _use(("policy_scenarios", {"case_id": 1, "why": "deployment comparison with a 0.5 percent charge", "amount": 1000000, "horizon_months": 12, "cost_bps": 50}))
         if "Compare deployment policies" in text:
             if not checkpoint:
-                return _use(("request_artifact", {"case_id": 1, "role": "research", "what": "Provide the verified size of the AI-linked fall over the last five sessions from stored closes."}))
+                return _use(("request_artifact", {"case_id": 1, "role": "research", "what": "Provide the verified size of the AI-linked fall over the last five sessions from stored closes.",
+                                                    "promise_json": "{\"evidence\": 1}"}))
             return _use(("policy_scenarios", {"case_id": 1, "why": "deployment policies across fall, decline, recovery and no-crash paths", "amount": 1000000, "horizon_months": 12}))
         if "bounded experiment" in text:
             return _use(("register_experiment", {"hypothesis": "Holding cash after a 10 percent fall in the index and investing the rest later beats investing the whole sum at the start, after costs.",
@@ -290,7 +291,7 @@ def drive(profile: Path, port: int, delay: float, out: Path) -> int:
     ans = d.chat("Investigate: " + GOAL)
     d.say("assistant:", ans["text"][:120])
     c = d.wait("a plan that waits for his yes", lambda c: c["state"] == "awaiting_approval", 300)
-    d.check("1 the plan waits for his yes and nothing has run", c["awaiting_approval"] and all(t["status"] in ("done", "needs_approval") for t in c["tasks"]),
+    d.check("1 the plan waits for his yes and nothing has run", c["awaiting_approval"] and all(t["status"] == "needs_approval" for t in c["tasks"] if t["role"] in ("research", "quant")) and not any(o["kind"] in ("evidence", "calc") for o in c["outputs"]),
             [(t["id"], t["role"], t["status"]) for t in c["tasks"]])
     steps = c["plan_versions"][0]["steps"]
     d.check("1 the plan shows owners and dependencies", len(steps) == 5 and any(t["depends_on"] for t in c["tasks"]), [s["key"] for s in steps])
