@@ -152,7 +152,8 @@ def converse(rt, con, ctx, messages: list, *, system: str, tools: list, model: s
             p["tool_choice"] = {"type": "none"}
         try:
             s = llm.call(con, agent, p, client, now=rt.clock(), mode=mode, private_text=private_first if turn == 1 else "", gate=gate,
-                         doc_kinds=("portfolio",), topic="mission", question=f"{question}, turn {turn}", cfg=cfg, turn=turn, his_order=his)
+                         doc_kinds=("portfolio",), topic="mission", question=f"{question}, turn {turn}", cfg=cfg, turn=turn, his_order=his,
+                         egress_skip=("address_word",))   # S69: "Address the dip rule" is English; his address words, PIN codes, flat/house numbers, name and ids still block
         except Exception as e:                                # refused, blocked, or the provider failed: the caller decides (wait or fail)
             out.stop_exc = e
             return out

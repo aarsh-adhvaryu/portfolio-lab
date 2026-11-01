@@ -475,3 +475,23 @@ def test_the_assistant_can_make_a_recommendation_linked_to_a_finished_investigat
                                  "alternatives": "Buying or holding were compared and are not stronger.", "review_condition": "AAA closes below Rs 100"})
     assert out["stored"] and out["proposal_id"] == 1
     assert tl.make_proposal(ctx, {"action": "WAIT", "symbol": "AAA", "case_id": 999, "reason": "x" * 30, "alternatives": "y" * 20, "review_condition": "z" * 10})["stored"] is False
+
+
+def test_the_everyday_word_address_does_not_stop_a_worker_but_his_own_address_still_does():
+    """Found live: a reviewer's revision request began 'Address the dip rule' and the privacy gate blocked the task and with it the investigation."""
+    import inspect
+    from pflab.hq import egress, llm, workers
+    gate = egress.Gate(address=["testlane"], names=["ravi kumar"])
+    egress.check("Address the active dip rule in the proposal.", gate, skip=("address_word",))
+    for bad in ("flat no 4 somewhere", "He lives at testlane road", "pin code 400001", "house no 9", "Ravi Kumar asked"):
+        try:
+            egress.check(bad, gate, skip=("address_word",))
+            raise AssertionError(bad)
+        except egress.EgressBlocked:
+            pass
+    try:
+        egress.check("Address the dip rule", gate)                                  # everywhere else the bare word still blocks
+        raise AssertionError("strict default lost")
+    except egress.EgressBlocked:
+        pass
+    assert "egress_skip" in inspect.signature(llm.call).parameters and 'egress_skip=("address_word",)' in inspect.getsource(workers.converse)

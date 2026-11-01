@@ -80,11 +80,12 @@ def _count_kwargs(p: Dict[str, Any]) -> Dict[str, Any]:
 
 def call(con, agent: str, params: Dict[str, Any], client, *, now: datetime, mode: str, private_text: str,
          gate: egress.Gate, doc_kinds: Sequence[str] = (), topic: str = "", question: str = "",
-         cfg: Optional[dict] = None, approved: bool = False, turn: int = 1, extra_in: int = 0, his_order: bool = False) -> Sent:
+         cfg: Optional[dict] = None, approved: bool = False, turn: int = 1, extra_in: int = 0, his_order: bool = False,
+         egress_skip: Sequence[str] = ()) -> Sent:
     """Raises egress.EgressBlocked, governor.BudgetRefused (logged as over_limit) or analyst.NeedsApproval. `extra_in`:
     input the count cannot see (a page web fetch will read, at its cap), priced as the worst case."""
     cfg = cfg or an.config()
-    egress.check(private_text, gate, doc_kinds)
+    egress.check(private_text, gate, doc_kinds, skip=egress_skip)
     if any(k in ("dataset", "email") for k in doc_kinds):  # (audit 2026-10-30) an upload is never sent on its kind alone
         egress.check(_outgoing_text(params), gate)
     body_check(params, gate)
