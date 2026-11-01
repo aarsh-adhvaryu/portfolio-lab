@@ -248,3 +248,10 @@ def test_a_worker_cannot_ask_its_own_role_for_an_artifact(con, rt):
     assert mine["queued"] is False and "do this yourself" in mine["problem"]
     theirs = tl.request_artifact(ctx, {"case_id": cid, "role": "research", "what": "evidence on the sector's results"})
     assert theirs["queued"] is True
+
+
+def test_a_share_with_no_sector_in_the_instruments_table_gets_the_sector_maps_industry(con, monkeypatch):
+    con.execute("UPDATE instruments SET sector = NULL WHERE isin = ?", [AAA])
+    book._SECTORS.clear()
+    monkeypatch.setattr(book, "_industry", lambda isin: "COMPUTERS - SOFTWARE" if isin == AAA else None)
+    assert book.inst(con, AAA)["sector"] == "COMPUTERS - SOFTWARE" and book.inst(con, ETF)["sector"] is None
