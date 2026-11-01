@@ -66,6 +66,8 @@ def test_telegram_api_and_sandbox_colours_come_from_real_use(rt, monkeypatch):
     monkeypatch.setattr(sb, "status", lambda *a, **k: {"ok": True, "why": ""})
     assert {c["id"]: c for c in system.connectors(rt, NOW)}["sandbox"]["state"] == system.WARN         # works, but containment not yet proven
     system.record_check(con, "sandbox", True, NOW - timedelta(days=1), "all checks passed")
+    assert {c["id"]: c for c in system.connectors(rt, NOW)}["sandbox"]["state"] == system.WARN         # S70: a proof that names no release proves nothing about this one
+    system.record_check(con, "sandbox", True, NOW - timedelta(days=1), sb.release_marker() + "; all checks passed")
     assert {c["id"]: c for c in system.connectors(rt, NOW)}["sandbox"]["state"] == system.OK
     system.record_check(con, "sandbox", False, NOW, "network_closed")
     sx = {c["id"]: c for c in system.connectors(rt, NOW)}["sandbox"]

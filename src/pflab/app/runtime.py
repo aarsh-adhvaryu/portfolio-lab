@@ -91,6 +91,15 @@ class Runtime:
         return self.settings
 
     # --- threads --------------------------------------------------------------------------------------------------------
+    def _keep_local_calls(self) -> None:
+        """S70: every call to the local model is kept in `llm_runs` (the table was never written by the app: its workload was invisible)."""
+        from pflab.llm import client, registry
+
+        def keep(d: dict) -> None:
+            registry.log_run(self.cursor(), self.clock(), d["model"], role=d.get("purpose") or None, model_digest=d.get("digest"), tokens_in=d.get("tokens_in", 0),
+                             tokens_out=d.get("tokens_out", 0), seconds=d.get("seconds", 0.0), status=d.get("status", "ok"), note=d.get("note", ""))
+        client.set_sink(keep)
+
     def start(self) -> None:
         from pflab.service import jobs
         jobs.reap_at_start(self.cursor(), self.clock())     # S66: runs left "running" by a stopped process are due again
@@ -101,6 +110,7 @@ class Runtime:
                 log.info("scrubbed %d stored text(s) that held a credential-shaped string", n)
         except Exception:
             log.exception("scrub of stored text failed")
+        self._keep_local_calls()
         last_run = self.cursor().execute("SELECT max(started_at) FROM job_runs").fetchone()[0]
         if last_run is not None and self.clock() - last_run > timedelta(hours=6):
             self.catching_up, self._woke_at = f"started after {int((self.clock() - last_run).total_seconds() // 3600)} h off", self.clock()
@@ -118,6 +128,11 @@ class Runtime:
         Monte Carlo, simulations: caches written whole) get `others_s` and are dropped with the process."""
         self.stop.set()
         self._wake.set()
+        try:                                                 # S70: the local-call record belongs to this runtime's store
+            from pflab.llm import client
+            client.set_sink(None)
+        except Exception:
+            pass
         end = _time.time() + wait_s
         for t in self.threads:
             t.join(max(0.0, end - _time.time()) if t.name == "scheduler" else others_s)

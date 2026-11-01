@@ -66,4 +66,4 @@ def chosen_llm() -> Optional[Callable[[str], str]]:
     """The general model the S42 evaluation chose (`pflab llm decide12 --record`), else None (facts only)."""
     from pflab.llm import client, registry
     m = registry.chosen("general")
-    return client.as_llm(m, num_predict=400) if m else None
+    return client.as_llm(m, num_predict=400, purpose="brief") if m else None

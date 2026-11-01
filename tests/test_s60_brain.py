@@ -223,6 +223,8 @@ def test_a_pass_looks_with_tools_records_in_shadow_and_checks_the_note(con, tmp_
     assert gv.calls_today(con, "brain", NOW) == 0     # S68: his question ("asked") is not counted against the system's passes a day
     sent = c.messages.sent
     assert all(m["tools"] and m["system"][0]["cache_control"] for m in sent)
+    assert all(m["cache_control"] == {"type": "ephemeral"} for m in sent)            # S70: the growing history is cached on every turn
+    assert all(json.dumps(m).count('"cache_control"') <= 4 for m in sent)             # the API allows 4 breakpoints (system, first message, the automatic one)
     assert sent[0]["messages"][0]["content"][0]["cache_control"] == {"type": "ephemeral"}
     assert sent[1]["messages"][1]["content"][0]["type"] == "thinking"             # thinking blocks passed back
     assert [b["type"] for b in sent[1]["messages"][2]["content"]] == ["tool_result", "tool_result"]   # one message
@@ -266,7 +268,7 @@ def test_the_last_turn_has_no_tools_and_a_refused_turn_stops_the_pass(con, tmp_p
     con.execute("DELETE FROM api_calls")
     con.execute("UPDATE hq_passes SET passed_at = passed_at - INTERVAL 2 DAY")
     big = Fake([_tool_msg(("journal", {}))] * 3)
-    cfg = {**CFG, "cap": 1.0}                                         # the layer's share refuses the second turn
+    cfg = {**CFG, "cap": 3.0}                                         # the layer's share (15% = 0.45) fits the first turn (0.3) and refuses the second
     with pytest.MonkeyPatch.context() as m:
         m.setattr(gv, "cost_inr", lambda *a, **k: 0.3)
         pid = brain.think(rt, "asked", [], big, egress.Gate(), cfg=cfg)
@@ -307,7 +309,7 @@ def test_governor_counts_passes_not_turns(con):
         con.execute("INSERT INTO api_calls (call_id, created_at, mode, model, question, request_sha, request_json, status, "
                     "cost_inr, agent, turn) VALUES (?,?,?,?,?,?,?,?,?,?,?)", [10 + k, NOW, "live", gv.OPUS, "q", "", "{}",
                                                                               "done", 1.0, "brain", 1])
-    with pytest.raises(gv.BudgetRefused, match="4 calls today"):
+    with pytest.raises(gv.BudgetRefused, match="calls today"):                          # S70: economy allows two passes a day (it was four)
         gv.check(con, "brain", 1.0, 100, 100, NOW, "economy", CFG)
     assert gv.check(con, "brain", 1.0, 100, 100, NOW, "economy", CFG, turn=3) == []      # a pass already admitted
     with pytest.raises(gv.BudgetRefused, match="input tokens"):

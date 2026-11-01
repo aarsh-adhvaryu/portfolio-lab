@@ -26,6 +26,7 @@ MAX_TURNS = 10
 NUDGES = 2                                  # times a worker is told its promise is unmet before the task fails
 PROVIDER_RETRIES = 6                        # provider errors (with back-off) before a task gives up
 RESOLVED = ("coordinator", "research", "quant", "review")
+CACHE = {"type": "ephemeral"}               # top-level automatic caching: composes with the system block's own breakpoint (S70)
 
 COMMON = (
     "You are one specialist in a private investor's portfolio system in India. He is not a trader: plain words, what a number means for him. "
@@ -86,9 +87,39 @@ TOOLS = {
                            "case_evidence", "request_artifact", "reproduce_calc", "frame_objective", "make_proposal", "proposals"),
     "review": READ_TOOLS + ("reproduce_calc", "submit_review", "case_evidence", "proposals"),
 }
-# role -> (governor key, model, effort)
+# role -> (governor key, model, effort). S70 (measured: docs/protocols/s70_roles_protocol.md, STUDIES.md): Sonnet holds the reviewer's seat and the coordinator's
+# PLANNING step; Opus keeps the coordinator's final answer and the review of work that ends in a proposal of real money (`seat_model`).
 SPECS = {"coordinator": ("w_coord", gv.OPUS, "medium"), "research": ("w_research", gv.SONNET, "medium"), "quant": ("w_quant", gv.SONNET, "medium"),
-         "review": ("w_review", gv.OPUS, "medium")}
+         "review": ("w_review", gv.SONNET, "medium")}
+REVIEW_OPUS_ABOVE = 25_000.0                # rupees: a proposal this large or larger has its review by Opus ([policy] review_opus_above_rupees)
+
+
+def high_stakes(con, cid: int) -> bool:
+    """True when a live proposal of this investigation is for REVIEW_OPUS_ABOVE rupees or more (its size, from the record; none if the record cannot size it)."""
+    from pflab.agents import analyst as an
+    from pflab.hq import proposals
+    try:
+        limit = float(((an.config().get("policy") or {}).get("review_opus_above_rupees")) or REVIEW_OPUS_ABOVE)
+    except Exception:
+        limit = REVIEW_OPUS_ABOVE
+    for p in proposals.listing(con, case_id=cid, limit=20):
+        if p["status"] in ("withdrawn", "rejected"):
+            continue
+        size = (p.get("payload") or {}).get("size") or {}
+        if float(size.get("notional") or 0.0) >= limit:
+            return True
+    return False
+
+
+def seat_model(con, role: str, body: dict, cid: int) -> str:
+    """The model for this task: the role's default, except that the coordinator PLANS with Sonnet (its final answer stays with Opus) and the reviewer is Opus
+    when the work ends in a proposal of REVIEW_OPUS_ABOVE rupees or more."""
+    model = SPECS[role][1]
+    if role == "coordinator" and body.get("step") == "plan":
+        return gv.SONNET
+    if role == "review" and high_stakes(con, cid):
+        return gv.OPUS
+    return model
 
 
 def _params(role: str, messages: list, last: bool) -> dict:
@@ -96,7 +127,8 @@ def _params(role: str, messages: list, last: bool) -> dict:
     agent, model, effort = SPECS[role]
     names = frozenset(n for n in TOOLS[role] if n in tl.TOOLS)
     p = {"model": model, "max_tokens": gv.LIMITS[agent].max_out, "system": [{"type": "text", "text": SYSTEMS[role], "cache_control": {"type": "ephemeral"}}],
-         "thinking": {"type": "adaptive"}, "output_config": {"effort": effort}, "tools": tl.definitions(names), "messages": messages}
+         "thinking": {"type": "adaptive"}, "output_config": {"effort": effort}, "tools": tl.definitions(names), "messages": messages,
+         "cache_control": CACHE}
     if last:
         p["tool_choice"] = {"type": "none"}
     return p
@@ -147,7 +179,8 @@ def converse(rt, con, ctx, messages: list, *, system: str, tools: list, model: s
     for turn in range(1, max_turns + 1):
         out.turns = turn
         p = {"model": model, "max_tokens": max_out, "system": sys_blocks, "thinking": {"type": "adaptive"}, "output_config": {"effort": effort},
-             "tools": tools, "messages": messages}
+             "tools": tools, "messages": messages,
+             "cache_control": CACHE}                      # S70: the growing conversation is cached (it was re-sent at full price on every turn)
         if turn == max_turns:
             p["tool_choice"] = {"type": "none"}
         try:
@@ -192,7 +225,10 @@ def converse(rt, con, ctx, messages: list, *, system: str, tools: list, model: s
     return out
 
 
-def _dossier(con, cid: int, task: dict, now: datetime) -> str:
+def _dossier(con, cid: int, task: dict, now: datetime, role: Optional[str] = None) -> str:
+    """What a worker is handed. The reviewer sees all of it (it must trace every number to a source); the others a slimmer view (S70: the dossier
+    is re-read on every turn): the newest evidence lines and shorter calculation results, the counts always, the rest one `cases` call away."""
+    slim = role in ("coordinator", "research", "quant")
     from pflab.hq import cases, missions
     m = missions.mission_of(con, cid)
     from pflab.hq import plans, proposals, triggers
@@ -205,12 +241,19 @@ def _dossier(con, cid: int, task: dict, now: datetime) -> str:
         lines.append("RESULTS FROM AN OLDER INSTRUCTION VERSION (to be rechecked before they are relied on): " + ", ".join(f"task #{x['id']} ({x['role']}, v{x['version']})" for x in sup))
     if m["plan"]:
         lines.append("PLAN: " + " | ".join(f"{s['key']} [{s['role']}] {s['goal'][:140]}" for s in m["plan"]))
-    lines.append(cases.brief(con, [cid], now, evidence_lines=30))
+    lines.append(cases.brief(con, [cid], now, evidence_lines=12 if slim else 30))
     arts = missions.artifacts(con, cid)
     if arts:
         lines.append("ARTIFACTS SO FAR (kind ref detail, by task): " + "; ".join(f"{a['kind']} {a['ref']} {a['detail'] or ''} (task #{a['task_id']})" for a in arts[-40:]))
-    for (cid_, q, st, res) in con.execute("SELECT calc_id, question, status, result_json FROM hq_calcs WHERE case_id=? ORDER BY calc_id", [cid]).fetchall():
-        lines.append(f"CALC #{cid_} [{st}]: {q[:160]} -> {str(res)[:500]}")
+    for (cid_, q, st, res, chk) in con.execute("SELECT calc_id, question, status, result_json, check_json FROM hq_calcs WHERE case_id=? ORDER BY calc_id", [cid]).fetchall():
+        why = ""
+        if st == "failed":                                   # S70: a failed calculation says WHY (the live check's reviewer saw only an empty result and asked for a reason)
+            try:
+                probs = json.loads(chk or "{}").get("problems") or []
+            except ValueError:
+                probs = []
+            why = f" | FAILED because: {str(probs[0])[:220]}" if probs else " | FAILED (no reason was recorded)"
+        lines.append(f"CALC #{cid_} [{st}]: {q[:160]} -> {str(res)[:200 if slim else 500]}{why}")
     for (rid, oc, note) in con.execute("SELECT review_id, outcome, note FROM hq_case_reviews WHERE case_id=? AND outcome IS NOT NULL ORDER BY review_id", [cid]).fetchall():
         lines.append(f"REVIEW #{rid} [{oc}]: {(note or '')[:500]}")
     for (eid, st, why, hyp) in con.execute("SELECT DISTINCT e.exp_id, e.status, coalesce(e.decision_why, ''), e.hypothesis FROM hq_artifacts a JOIN learn_experiments e "
@@ -252,14 +295,15 @@ def run_task(rt, task: dict, client=None, gate=None, cfg=None) -> Reply:
     if dep is not None:                                      # woken by something else: still waiting for the task it depends on
         return Reply(f"waiting for task #{dep}", status="waiting", data={"waiting_on": f"task:{dep}", "wait_kind": "task", "resume_condition": f"task #{dep} finishes"})
     promise = body.get("promise") or missions.DEFAULT_PROMISE[role]
-    agent, model, _effort = SPECS[role]
+    agent, _default, _effort = SPECS[role]
+    model = seat_model(con, role, body, cid)
     mode = rt.settings.get("brain", "economy")
     his = (cases.get(con, cid) or {}).get("origin") == "investor"
     client = client or service.client(rt)
     gate = gate or service.gate(rt)
     ck = json.loads(con.execute("SELECT coalesce(checkpoint_json, '{}') FROM hq_tasks WHERE task_id=?", [task["id"]]).fetchone()[0])
     con.execute("UPDATE hq_tasks SET lease_owner=?, lease_until=? WHERE task_id=?", [f"pid:{__import__('os').getpid()}", now + timedelta(minutes=45), task["id"]])
-    dossier = _dossier(con, cid, task, now)
+    dossier = _dossier(con, cid, task, now, role)
     opening = [f"TASK #{task['id']} ({role}): {task['text']}", f"YOU MUST PRODUCE: {json.dumps(promise)}", dossier]
     if ck.get("summary"):
         opening.append(f"YOUR EARLIER WORK ON THIS TASK (checkpoint): {ck['summary']}")

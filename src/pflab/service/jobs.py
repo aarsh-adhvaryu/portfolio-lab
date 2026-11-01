@@ -49,6 +49,7 @@ class Job:
     description: str = ""
     cooldown_minutes: int = 30
     enabled_fn: Optional[Callable[[Ctx], Tuple[bool, str]]] = None
+    redo_fn: Optional[Callable[[Ctx], Optional[str]]] = None       # S70: a reason when the slot's earlier success no longer counts (the job is then due again)
 
 
 @dataclass(frozen=True)
@@ -112,16 +113,30 @@ def is_due(ctx: Ctx, job: Job) -> Tuple[bool, str]:
     done = ctx.con.execute("SELECT 1 FROM job_runs WHERE job=? AND status IN ('ok','skipped') AND started_at >= ? LIMIT 1",
                            [job.name, slot]).fetchone()
     if done:
-        return False, f"done for slot {slot:%Y-%m-%d %H:%M}"
+        again = job.redo_fn(ctx) if job.redo_fn is not None else None
+        if not again:
+            return False, f"done for slot {slot:%Y-%m-%d %H:%M}"
     cool = ctx.con.execute("SELECT max(started_at) FROM job_runs WHERE job=? AND status IN ('failed','running') "
                            "AND detail IS DISTINCT FROM 'abandoned: the process stopped before it finished' AND started_at >= ?",
                            [job.name, slot]).fetchone()[0]
     if cool is not None and ctx.now - cool < timedelta(minutes=job.cooldown_minutes):
         return False, f"cooling down after a failed or running attempt at {cool:%H:%M}"
-    return True, f"due for slot {slot:%Y-%m-%d %H:%M}"
+    return True, f"due for slot {slot:%Y-%m-%d %H:%M}" + (f" (again: {again})" if done else "")
 
 
 # --- run ----------------------------------------------------------------------------------------------------
+
+_OFFLINE_NAMES = {"ConnectionError", "ConnectTimeout", "ReadTimeout", "Timeout", "NameResolutionError", "MaxRetryError", "ConnectionResetError",
+                  "ConnectionAbortedError", "TimeoutError", "gaierror"}
+_OFFLINE_WORDS = ("NameResolutionError", "getaddrinfo failed", "Max retries exceeded", "Connection aborted", "Temporary failure in name resolution")
+
+
+def offline(x) -> bool:
+    """S70: a lost connection (no network, a DNS failure, a timeout), by the exception's class or, for a part's reason kept as text, by its words.
+    A bug is never offline: it would fail the same way with the network back."""
+    if isinstance(x, BaseException):
+        return any(c.__name__ in _OFFLINE_NAMES for c in type(x).__mro__)
+    return any(w in str(x) for w in _OFFLINE_WORDS)
 
 def run_job(ctx: Ctx, job: Job, slot: Optional[datetime] = None) -> RunResult:
     """Run one job now, under its lock, recording the outcome. Never raises for a job's own failure."""
@@ -149,6 +164,10 @@ def run_job(ctx: Ctx, job: Job, slot: Optional[datetime] = None) -> RunResult:
         failed = out.get("failed")                      # S67: a job whose sub-step failed has failed (its other work stays done)
         if isinstance(failed, dict) and failed:
             out["failed"] = {k: _redact(ctx, str(v))[:300] for k, v in failed.items()}
+        if isinstance(failed, dict) and failed and isinstance(job.schedule, Interval) and all(offline(v) for v in failed.values()):
+            out["offline"] = out.pop("failed")                 # S70: every part that failed lost its connection; the next slot is minutes away and tries again
+            out["skipped"] = "offline: no connection; tried again at the next slot"
+            failed = None
         detail = _redact(ctx, json.dumps(out, default=str, sort_keys=True))      # S68: every part of the result, not only `failed`
         status = "failed" if isinstance(failed, dict) and failed else "skipped" if out.get("skipped") else "ok"
         con.execute("UPDATE job_runs SET status=?, finished_at=?, detail=? WHERE run_id=?",
@@ -156,6 +175,10 @@ def run_job(ctx: Ctx, job: Job, slot: Optional[datetime] = None) -> RunResult:
         return RunResult(job.name, status, detail, rid)
     except Exception as e:   # a job failing is recorded, never fatal to the tick
         msg = _redact(ctx, f"{type(e).__name__}: {e}")
+        if isinstance(job.schedule, Interval) and offline(e):  # S70: not a failure of the job: no connection just now (it runs again at its next slot)
+            msg = "offline: " + msg[:250]
+            con.execute("UPDATE job_runs SET status='skipped', finished_at=?, detail=? WHERE run_id=?", [done(), msg, rid])
+            return RunResult(job.name, "skipped", msg, rid)
         con.execute("UPDATE job_runs SET status='failed', finished_at=?, detail=? WHERE run_id=?", [done(), msg, rid])
         return RunResult(job.name, "failed", msg, rid)
     finally:

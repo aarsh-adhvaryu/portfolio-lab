@@ -26,7 +26,8 @@ from pflab.hq import governor as gv
 TITLE = "Assistant"
 MODEL = gv.SONNET
 MAX_TURNS = 10
-_WORK = threading.Lock()
+AT_ONCE = 3                                   # S70: his questions are answered at the same time, up to this many (one mutex made a quick question wait behind a long answer)
+_WORK = threading.BoundedSemaphore(AT_ONCE)
 
 SYSTEM = (
     "You are the assistant of a private investor's portfolio system in India: the one conversation he has with it, all in one. He is not a trader. Talk "

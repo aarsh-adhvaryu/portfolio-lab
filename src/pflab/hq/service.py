@@ -95,7 +95,7 @@ def brain_wake(rt) -> dict:
         cal = mcal.load()
     except Exception:
         cal = None
-    return brain.wake(rt, client(rt), gate(rt), held=held, listed=listed, cal=cal)
+    return brain.wake(rt, client(rt), gate(rt), held=held, listed=listed, cal=cal, rival=False)   # S70: the Sonnet rival only re-ran every pass to compare
 
 
 def brain_now(rt, question: Optional[str] = None, rival: bool = True, history: str = "") -> dict:

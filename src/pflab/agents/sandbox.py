@@ -288,10 +288,11 @@ def installed_app() -> bool:
         return False
 
 
-def pick(python: str = sys.executable):
+def pick(python: str = sys.executable, want: Optional[str] = None):
     """Docker when it works. Otherwise `SandboxUnavailable`: there is no fallback to the host. `PFLAB_SANDBOX=local` (the test suite, the
-    developer's workshop) names the subprocess explicitly and is refused in an installed app; =docker insists on Docker."""
-    want = os.environ.get("PFLAB_SANDBOX", "").lower()
+    developer's workshop) names the subprocess explicitly and is refused in an installed app; =docker insists on Docker. `want` names the
+    setting directly (S70: the containment proof asks for "local" without touching the environment other threads read)."""
+    want = (os.environ.get("PFLAB_SANDBOX", "") if want is None else want).lower()
     if want == "local":
         if installed_app():
             raise SandboxUnavailable("the uncontained subprocess is refused in the installed app; start Docker Desktop")
@@ -300,3 +301,37 @@ def pick(python: str = sys.executable):
     if not s["ok"]:
         raise SandboxUnavailable(s["why"] or "the sandbox is not available")
     return Docker()
+
+
+def host_refused() -> bool:
+    """Proof by use that model-written code cannot be handed to the host here: asking for the uncontained subprocess by name is refused.
+    True in an installed app; False in the workshop, whose explicit setting allows it (S70, A34)."""
+    try:
+        pick(want="local")
+    except SandboxUnavailable:
+        return True
+    return False
+
+
+def release_marker() -> str:
+    """Which release and which runner a containment proof belongs to (written into the probe's record, so a proof made before an update
+    is not taken for a proof of the new release)."""
+    try:
+        from pflab import release
+        tag = (((release.load() or {}).get("app") or {}).get("tag")) or "workshop"
+    except Exception:
+        tag = "workshop"
+    return f"release={tag} runner={runner_sha()[:12]}"
+
+
+def rebuild_image(root: Path, runner: Callable = subprocess.run, image: str = IMAGE, timeout_s: int = 900) -> tuple:
+    """Build the sandbox image from the release's Dockerfile (the image carries the runner). (ok, last words of Docker's output)."""
+    root = Path(root)
+    if not (root / "sandbox" / "Dockerfile").exists():
+        return False, "no sandbox/Dockerfile in this folder"
+    try:
+        p = runner(["docker", "build", "-q", "-t", image, "-f", "sandbox/Dockerfile", "."], cwd=str(root), capture_output=True, timeout=timeout_s)
+    except Exception as e:
+        return False, f"{type(e).__name__}: {str(e)[:160]}"
+    out = ((p.stdout or b"") + (p.stderr or b"")).decode("utf-8", "replace") if isinstance(p.stdout, (bytes, type(None))) else str(p.stdout)
+    return p.returncode == 0, out.strip()[-200:]

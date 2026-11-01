@@ -90,6 +90,8 @@ def run(profile: Path, goal: str, wait_min: float, port: int) -> int:
             time.sleep(0.5)
     from pflab.hq import service
     service.start(rt)                                                  # recover what a stopped process left (the same call the app makes at start)
+    from pflab.hq import pool
+    pool.start(rt)                                                     # S70: the worker pool also drives the experiments a mission waits for (the app starts it in Runtime.start)
     hq = threading.Thread(target=rt._guard(rt._hq_loop) if hasattr(rt, "_guard") else rt._hq_loop, daemon=True)
     hq.start()
     existing = requests.get(base + "/api/investigations", timeout=10).json()["investigations"]

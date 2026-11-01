@@ -31,7 +31,7 @@ AGENT_OF = {"coordinator": "w_coord", "research": "w_research", "quant": "w_quan
 PROMISE_KINDS = ("evidence", "calc", "scenario", "experiment", "review", "plan", "answer", "proposal")
 DEFAULT_PROMISE = {"coordinator": {"plan": 1}, "research": {"evidence": 2}, "quant": {"calc": 1}, "review": {"review": 1}}
 MAX_TASKS = 24                                         # tasks in one mission, all rounds: a plan cannot run away
-MAX_ROUNDS = 2                                         # review rounds that may ask for revisions
+MAX_ROUNDS = 1                                         # review rounds that may ask for revisions (S70: one; it was two, and each round re-runs the dear review). A remaining objection is stated in the answer
 OPEN_TASK = ("queued", "running", "waiting", "retry", "needs_approval")
 ACTIVE = ("planning", "awaiting_approval", "working", "reviewing", "synthesising")
 SKIPPED = ("superseded", "not started")                # a dismissed task whose result starts so was replaced on purpose, not failed
@@ -72,7 +72,7 @@ def snapshot_id(con, pm_dir) -> str:
 # --- creating, planning ----------------------------------------------------------------------------------------------------------------------
 
 def create(con, now: datetime, goal: str, *, pm_dir=None, origin: str = "investor", subject: Optional[str] = None, why: str = "", revisit: str = "",
-           key: Optional[str] = None, isin: Optional[str] = None) -> dict:
+           key: Optional[str] = None, isin: Optional[str] = None, budget: Optional[str] = None) -> dict:
     """Open the investigation and its mission, and queue the coordinator. The same goal on the same day is the same mission. `why` is why the system
     chose it (for work nobody asked for) and `revisit` what would justify looking again: both are kept in the case's log and on its card."""
     from pflab.hq import board, cases, plans
@@ -94,6 +94,8 @@ def create(con, now: datetime, goal: str, *, pm_dir=None, origin: str = "investo
                      body={"case_id": cid, "role": "coordinator", "promise": DEFAULT_PROMISE["coordinator"], "goal": goal, "step": "plan"})
     _tag(con, tid, cid, "coordinator", snap, None, version=ver)
     cases.log(con, cid, now, "mission", f"mission #{mid} opened; coordinator task #{tid}; reads snapshot {snap}")
+    klass = budget if budget in CLASS_CAPS else (DEFAULT_CLASS if origin == "investor" else "quick")
+    cases.log(con, cid, now, "budget class", f"{klass} (up to Rs {_policy_cap(klass):,.0f}; he can allow more)")
     if why:
         cases.log(con, cid, now, "chosen", f"why: {why[:300]} | revisit when: {revisit[:200] or 'its review date'}")
     return {"mission_id": mid, "case_id": cid, "task_id": tid, "state": "planning", "new": True, "snapshot": snap}
@@ -316,7 +318,10 @@ def _tell(con, now: datetime, cid: int, state: str) -> None:
         pass
 
 
-MISSION_CAP_RS = 250.0                                 # what one mission may spend in all (workers and the calculation writers); [policy] mission_rupees
+# S70: a mission's money by class, shown on the plan card before his yes (it was one flat Rs 250 for everything, and real ones cost Rs 300-400).
+# What a mission may spend in all (workers and the calculation writers). `[policy] mission_classes` sets the three; a flat `[policy] mission_rupees` still wins.
+CLASS_CAPS = {"quick": 20.0, "standard": 80.0, "deep": 200.0}
+DEFAULT_CLASS = "standard"                             # what he asks for; work the system chooses itself is always quick
 
 
 def verdict_of(outcome: Optional[str]) -> str:
@@ -344,12 +349,23 @@ def mission_cost(con, cid: int, now: Optional[datetime] = None) -> float:
     return tagged + legacy
 
 
-def _policy_cap() -> float:
+def _policy_cap(klass: str = DEFAULT_CLASS) -> float:
+    klass = klass if klass in CLASS_CAPS else DEFAULT_CLASS
     try:
         from pflab.agents import analyst as an
-        return float(((an.config().get("policy") or {}).get("mission_rupees")) or MISSION_CAP_RS)
+        pol = an.config().get("policy") or {}
+        if pol.get("mission_rupees"):                  # an explicit flat cap in his file still wins (S69)
+            return float(pol["mission_rupees"])
+        return float((pol.get("mission_classes") or {}).get(klass) or CLASS_CAPS[klass])
     except Exception:
-        return MISSION_CAP_RS
+        return CLASS_CAPS[klass]
+
+
+def budget_class(con, cid: int) -> str:
+    """The class this investigation was opened in (quick, standard or deep), from its log; standard when none was recorded (older ones)."""
+    r = con.execute("SELECT detail FROM hq_case_log WHERE case_id=? AND event='budget class' ORDER BY log_id DESC LIMIT 1", [cid]).fetchone()
+    word = (r[0] or "").split()[:1] if r else []
+    return word[0] if word and word[0] in CLASS_CAPS else DEFAULT_CLASS
 
 
 def extra_budget(con, cid: int) -> float:
@@ -364,7 +380,8 @@ def extra_budget(con, cid: int) -> float:
 
 
 def cap_of(con=None, cid: Optional[int] = None) -> float:
-    return _policy_cap() + (extra_budget(con, cid) if con is not None and cid else 0.0)
+    have = con is not None and bool(cid)
+    return _policy_cap(budget_class(con, cid) if have else DEFAULT_CLASS) + (extra_budget(con, cid) if have else 0.0)
 
 
 def allow_more(con, now: datetime, cid: int, rupees: float, by: str = "the investor") -> dict:
@@ -706,16 +723,36 @@ def card(con, cid: int) -> Optional[dict]:
                               for v in vers],
             "instruction_version": plans.active_number(con, cid), "awaiting_approval": plans.waiting(con, cid) is not None,
             "triggers": trg.active(con, cid), "experiments_pending": exps, "proposals": props,
-            "budget": {"spent": round(mission_cost(con, cid), 2), "cap": cap_of(con, cid)}}
+            "budget": {"spent": round(mission_cost(con, cid), 2), "cap": cap_of(con, cid), "class": budget_class(con, cid)}}
 
 
 # --- autonomy: work the system chooses (S68) ---------------------------------------------------------------------------------------------------
 
-DAILY_NEW = 3                                         # missions the system may start by itself in a day (twice as many in the acceptance window)
+DAILY_NEW = 1                                         # missions the system may start by itself in a day (S70: one, it was three; twice as many in the acceptance window)
+SYSTEM_SHARE = 0.30                                    # of the month's cap that missions the system chose itself may spend in all (S70)
+MIN_WEIGHT = 0.02                                      # a document moves the system to start a mission only for a holding of at least this share (S70)
 
 
 def started_today(con, now: datetime) -> int:
     return int(con.execute("SELECT count(*) FROM hq_missions WHERE origin='system' AND created_at >= ?", [datetime(now.year, now.month, now.day)]).fetchone()[0])
+
+
+def system_spend_month(con, now: datetime) -> float:
+    """Rupees this month on missions the system chose itself (every paid call tied to one of their tasks)."""
+    return float(con.execute(
+        "SELECT coalesce(sum(a.cost_inr), 0) FROM api_calls a WHERE a.created_at >= ? AND a.status IN ('done','refused','submitted','queued','sending') "
+        "AND a.task_id IN (SELECT t.task_id FROM hq_tasks t JOIN hq_missions m ON m.case_id = t.case_id WHERE m.origin='system')",
+        [datetime(now.year, now.month, 1)]).fetchone()[0])
+
+
+def _weights(con, now: datetime) -> Optional[dict]:
+    """isin -> share of what he can invest, from the record; None when the figures cannot be built (then nothing is held back on weight)."""
+    try:
+        from pflab.hq import stocks
+        bk = stocks.book(con, now.date())
+        return {i: v / bk.investable for i, v in bk.values.items()} if bk.investable and bk.investable > 0 else None
+    except Exception:
+        return None
 
 
 def adopt(rt) -> dict:
@@ -726,7 +763,9 @@ def adopt(rt) -> dict:
     from pflab.hq import cases, service
     con, now = rt.cursor(), rt.clock()
     cap = DAILY_NEW * (2 if an.acceptance(an.config(), now) else 1)
-    out = {"started": [], "held_back": 0}
+    out = {"started": [], "held_back": 0, "noted": 0}
+    share_cap = SYSTEM_SHARE * float(an.config().get("cap") or 0)
+    weights = None                                        # built once, only if a document needs it
     # only the signals worth a team: new evidence about a held or watched name, and an IPO allotment. A hypothesis to decide, a thesis ending, an unscored
     # prediction and a held task stay with the brain's own case pass (cheaper, and they are housekeeping of its own journal).
     rows = con.execute("SELECT case_id, question, subject, isin, subject_key FROM hq_cases WHERE origin='code' AND status='queued' "
@@ -751,9 +790,14 @@ def adopt(rt) -> dict:
             question = (question + " Other documents of the same kind, read in the same period: " + " | ".join(r[1][:160] for r in rest[:5]))[:1200]
             for r in rest:
                 _cover(con, now, r[0], f"folded into case #{cid} (the same company, the same kind of signal)")
-        if started_today(con, now) >= cap:
-            out["held_back"] += 1
+        if started_today(con, now) >= cap or (share_cap > 0 and system_spend_month(con, now) >= share_cap):
+            out["held_back"] += 1                         # the day's start is used, or the system's own share of the month is spent
             continue
+        if kind0 == "reading":                            # S70: a document is worth a team only for a holding that matters to him; the rest waits for the daily review
+            weights = weights if weights is not None else (_weights(con, now) or {})
+            if weights and (weights.get(isin) or 0.0) < MIN_WEIGHT:
+                out["noted"] += 1
+                continue
         kind = key.split(":")[1]
         why = {"reading": "a material document about a name he holds or watches was read and nothing connects it to his plan yet",
                "ipo": "an IPO allotment is in hand and the decision must be made before the listing",
@@ -791,6 +835,7 @@ def _adopt_case(con, now: datetime, cid: int, question: str, subject, isin, why:
     _tag(con, tid, cid, "coordinator", snap, None, version=ver)
     cases.log(con, cid, now, "chosen", f"why: {why} | revisit when: {revisit}")
     cases.log(con, cid, now, "mission", f"mission #{mid} opened by the system; coordinator task #{tid}; reads snapshot {snap}")
+    cases.log(con, cid, now, "budget class", f"quick (up to Rs {_policy_cap('quick'):,.0f}; he can allow more)")
     try:
         from pflab.app import assistant
         assistant.notify(con, now, f"While you were away I started looking into: {goal[:200]}\nWhy: {why}.\nI will come back with what I find.", f"chosen:{cid}")

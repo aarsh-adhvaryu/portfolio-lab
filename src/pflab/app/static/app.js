@@ -275,7 +275,7 @@ function coverageCard(s) {
 }
 function showCase(c) {
   const ev = c.evidence.map((e) => `<li><b>${esc(e.stance)}</b>${e.source_kind ? ' · ' + esc(e.source_kind) : ''}: ${esc(e.text)} <span class="tiny muted">(published ${esc((e.published || e.event || 'undated').toString().slice(0, 10))}, retrieved ${esc((e.retrieved || '').toString().slice(0, 10))})</span></li>`).join('');
-  const calc = c.calculations.map((k) => `<li>calculation #${k.id}: ${esc(k.status)}${k.contained ? ', contained' : ''}; data: ${esc(k.datasets.join(', '))}; result: ${esc(JSON.stringify(k.result))}</li>`).join('');
+  const calc = c.calculations.map((k) => `<li>calculation #${k.id}: ${esc(k.status)}, ${esc(k.where || '')}; data: ${esc(k.datasets.join(', '))}; result: ${esc(JSON.stringify(k.result))}</li>`).join('');
   const log = c.log.map((l) => `<li><span class="tiny muted">${esc(l.at)}</span> ${esc(l.event)}: ${esc(l.detail || '')}</li>`).join('');
   const rv = c.reviews.map((r) => `<li>${r.flags.length ? esc(r.flags.join('; ')) : 'no process problems found'}${r.outcome ? ' · outcome later: ' + esc(r.outcome) : ''}</li>`).join('');
   const box = document.createElement('dialog');

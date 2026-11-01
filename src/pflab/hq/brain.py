@@ -383,7 +383,7 @@ def params(messages: list, model: str, effort: str, max_out: int, last: bool = F
     p = {"model": model, "max_tokens": max_out,
          "system": [{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
          "thinking": {"type": "adaptive"}, "output_config": {"effort": effort}, "tools": tl.definitions(),
-         "messages": messages}
+         "messages": messages, "cache_control": {"type": "ephemeral"}}   # S70: the tool loop's growing history is cached too
     if last:
         p["tool_choice"] = {"type": "none"}
     return p

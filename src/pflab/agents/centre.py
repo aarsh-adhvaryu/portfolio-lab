@@ -125,7 +125,7 @@ def ask(con, q: str, asof: date, *, llm: Optional[Callable[[str], str]] = None, 
     if llm is not None:
         chain = [("given", llm)]
     elif not chain and model:
-        chain = [("local", client.as_llm(model, SYSTEM, num_predict=500))]
+        chain = [("local", client.as_llm(model, SYSTEM, num_predict=500, purpose="answers"))]
     for who, fn in chain:                                        # no model at all: facts only (PLAN A6)
         try:
             out = graphs.run(fn, prompt, facts, sources, allow_cited_source_numbers=True)

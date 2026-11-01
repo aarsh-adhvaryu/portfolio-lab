@@ -56,7 +56,7 @@ def record(con, cid: Optional[int], now: datetime, name: str, question: str, par
     con.execute("INSERT INTO hq_calcs (calc_id, case_id, created_at, question, code, code_sha, alt_code, datasets_json, params_json, result_json, "
                 "status, contained, attempts, check_json, workshop_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 [kid, cid, now, question[:600], code, hashlib.sha256(code.encode()).hexdigest(), None, json.dumps(sorted(inputs)),
-                 json.dumps(params, default=str, sort_keys=True), json.dumps(res), "checked", False, 1,
+                 json.dumps(params, default=str, sort_keys=True), json.dumps(res), "checked", None, 1,        # contained NULL: reviewed code ran, no model-written code did (S70)
                  json.dumps({"trusted": True, "kind": KIND.get(name), "version": res.get("version"), "test": {}}), f"trusted:{name}"])
     con.execute("UPDATE hq_calcs SET versions_json=? WHERE calc_id=?", [json.dumps(cases.runtime_versions()), kid])
     cases.snapshot_inputs(con, kid, inputs)

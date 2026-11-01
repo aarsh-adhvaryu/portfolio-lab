@@ -75,7 +75,7 @@ def test_an_unchanged_signal_is_not_adopted_twice_and_a_days_starts_are_bounded(
     monkeypatch.setattr(service, "names", lambda r: (isins, []))
     rt._hq_client = Model({"coordinator": [], "research": [], "quant": [], "review": []})
     first = missions.scan(rt)
-    assert len(first["started"]) == missions.DAILY_NEW and first["held_back"] == 2              # five signals, three starts a day
+    assert len(first["started"]) == missions.DAILY_NEW and first["held_back"] == len(isins) - missions.DAILY_NEW   # five signals, one start a day (S70)
     again = missions.scan(rt)
     assert again["started"] == [] and con.execute("SELECT count(*) FROM hq_missions").fetchone()[0] == missions.DAILY_NEW
 
