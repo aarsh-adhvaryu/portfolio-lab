@@ -463,3 +463,15 @@ def test_the_deployment_study_tool_takes_a_trading_charge_so_an_amendment_about_
     tool = tl.TOOLS["policy_scenarios"]
     assert tl.validate(tool, {"case_id": 1, "why": "costs", "cost_bps": 50}) is None
     assert tl.validate(tool, {"case_id": 1, "why": "costs", "cost_bps": 5000}) is not None
+
+
+def test_the_assistant_can_make_a_recommendation_linked_to_a_finished_investigation(rt, con, monkeypatch):
+    """Found in the rehearsal: make_proposal refused a case that had already been concluded."""
+    cid = _finished_mission(rt, con, monkeypatch)
+    con.execute("INSERT INTO instruments (isin, key_kind, asset_class, tax_class, listed, symbol, name, source, built_at) VALUES ('INE000A01011', 'isin', 'equity', 'EQUITY', TRUE, 'AAA', 'AAA Ltd', 's', now())")
+    con.execute("INSERT INTO prices VALUES ('INE000A01011', DATE '2026-10-30', 120.0, 'EQ', 's', now())")
+    ctx = tl.Ctx(rt, 1, "m", False, {}, None, NOW, role="assistant", allowed=frozenset({"make_proposal"}), his_text="propose a wait")
+    out = tl.make_proposal(ctx, {"action": "WAIT", "symbol": "AAA", "case_id": cid, "reason": "The evidence is mixed and nothing in the case argues for acting now.",
+                                 "alternatives": "Buying or holding were compared and are not stronger.", "review_condition": "AAA closes below Rs 100"})
+    assert out["stored"] and out["proposal_id"] == 1
+    assert tl.make_proposal(ctx, {"action": "WAIT", "symbol": "AAA", "case_id": 999, "reason": "x" * 30, "alternatives": "y" * 20, "review_condition": "z" * 10})["stored"] is False

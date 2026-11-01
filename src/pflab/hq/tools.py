@@ -1137,9 +1137,10 @@ def make_proposal(ctx: Ctx, a: dict) -> dict:
     from pflab.hq import proposals
     if ctx.shadow:
         return _SHADOW_CASE
+    from pflab.hq import cases as _cases
     cid = int(a["case_id"]) if a.get("case_id") else None
-    if cid:
-        _case(ctx, a)
+    if cid and _cases.get(ctx.con, cid) is None:               # a recommendation may be linked to a finished investigation (it is a link, not new evidence in it)
+        return {"stored": False, "problem": f"no case #{cid}"}
     inputs = {k: a.get(k) for k in ("action", "symbol", "isin", "qty", "amount_rupees", "full_exit", "assumptions", "review_condition")}
     inputs["reason"] = _checked(ctx, a.get("reason", ""))
     inputs["alternatives"] = _checked(ctx, a.get("alternatives", ""))
