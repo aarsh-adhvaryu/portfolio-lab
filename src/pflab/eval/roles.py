@@ -18,16 +18,16 @@ from typing import Dict, List, Optional
 FAULTS = ("untraced_number", "no_baseline", "stale_as_cause", "assumption_as_estimate", "size_on_open_gaps", "outruns_evidence")
 THEMES = [
     {"co": "Northwind Systems", "sym": "NWSYS", "sector": "cloud software", "event": "a rival released a cheaper AI model on 2026-10-27 and software stocks fell",
-     "fall": 9.2, "w": 6.0, "expo": 14.0, "shock": 20, "ev_for": "A brokerage note says the rival's cheaper model could cut seat-based software revenue",
-     "ev_against": "Northwind's filing of 2026-10-15 shows its order book up 11% on the quarter"},
+     "d_for": "2026-10-28", "fall": 9.2, "w": 6.0, "expo": 14.0, "shock": 20, "ev_for": "A brokerage note says the rival's cheaper model could cut seat-based software revenue",
+     "ev_against": "Northwind's latest filing shows its order book up 11% on the quarter, with no customer loss reported"},
     {"co": "Brightpay", "sym": "BRPAY", "sector": "payments", "event": "the regulator published a draft rule capping payment fees on 2026-10-29",
-     "fall": 7.4, "w": 4.5, "expo": 9.0, "shock": 15, "ev_for": "The draft caps merchant fees, which Brightpay earns on most volume",
+     "d_for": "2026-10-30", "fall": 7.4, "w": 4.5, "expo": 9.0, "shock": 15, "ev_for": "The draft caps merchant fees, which Brightpay earns on most volume",
      "ev_against": "Two industry bodies have asked for the cap to be phased in over three years"},
     {"co": "Ironvale Metals", "sym": "IRVAL", "sector": "metals", "event": "the benchmark metal price fell 8.1% in October",
-     "fall": 8.1, "w": 3.2, "expo": 11.0, "shock": 25, "ev_for": "Ironvale sells at spot, so a lower price flows straight into its revenue",
-     "ev_against": "Ironvale's filing says 60% of its output is sold on contracts fixed until March"},
-    {"co": "Lakeshore Bank", "sym": "LKBNK", "sector": "private banks", "event": "Lakeshore missed expectations on 2026-10-25 and its margin fell 22 basis points",
-     "fall": 5.9, "w": 7.5, "expo": 24.0, "shock": 15, "ev_for": "The margin fell 22 basis points and management guided lower for the next quarter",
+     "d_for": "2026-10-30", "fall": 8.1, "w": 3.2, "expo": 11.0, "shock": 25, "ev_for": "Ironvale sells at spot, so a lower price flows straight into its revenue",
+     "ev_against": "Ironvale's latest filing says 60% of its output is sold on contracts fixed until March"},
+    {"co": "Lakeshore Bank", "sym": "LKBNK", "sector": "private banks", "event": "Lakeshore missed expectations on 2026-10-26 and its margin fell 22 basis points",
+     "d_for": "2026-10-27", "fall": 5.9, "w": 7.5, "expo": 24.0, "shock": 15, "ev_for": "The margin fell 22 basis points and management guided lower for the next quarter",
      "ev_against": "Deposits grew 14% and credit costs were below the sector's, per the same results"},
 ]
 
@@ -42,47 +42,54 @@ class Item:
 
 def _dossier(t: dict, k: int, fault: str) -> tuple:
     """(text, anchors) for theme `t`, variant `k`, with the planted `fault` (or 'clean')."""
-    hit = round(t["expo"] * t["shock"] / 100.0, 1)                              # portfolio effect of the stated shock: what the calculation returns
+    shocks = (t["shock"] // 2, t["shock"], t["shock"] * 3 // 2)                  # a range, so no single shock stands for the answer
+    hits = {str(s): round(t["expo"] * s / 100.0, 1) for s in shocks}
+    hold = {str(s): round(t["w"] * s / 100.0, 1) for s in shocks}
+    hit = hits[str(t["shock"])]
     n_ev = {"outruns_evidence": 1}.get(fault, 4)
     stale = 1 if fault == "stale_as_cause" else 0
     anchors: List[str] = []
+    calc_move = 19 + k
     lines = [f"MISSION #{10 + k} (snapshot 5d1e{k}a77_2026-11-02): What does it mean for me that {t['event']}?",
              "STATE: reviewing, review round 0",
              "INSTRUCTIONS (version 1, approved by him): check my exposure to this and say whether to change anything now",
-             f"PLAN: premise [research] verify what happened, its dates and size | exposure [quant] his exposure to {t['sector']} and a stated-shock scenario | "
-             f"view [research] look for evidence against the idea, and competing explanations",
+             f"PLAN: premise [research] verify what happened, its dates and size | exposure [quant] his exposure to {t['sector']} and a stated-shock scenario over a range | "
+             f"policy [quant] test whether buying after a fall beats buying monthly | view [research] look for evidence against the idea, and competing explanations",
              f"CASE #{10 + k} (running, opened 2026-11-01 by investor): What does it mean for me that {t['event']}?",
-             "  assumptions: the shock in the scenario is a stated assumption, not a forecast; scenario weights are not estimated"]
+             "  assumptions: the shocks in the scenario are stated assumptions, not forecasts; scenario weights are not estimated"]
     if fault == "outruns_evidence":
         lines.append("  evidence so far: 1 for, 0 against, 0 missing, 0 stale, from 1 source(s) -> supported")
     else:
         lines.append(f"  evidence so far: 2 for, 1 against, 0 missing, {stale} stale, from {n_ev} source(s) -> {'mixed' if not stale else 'supported'}")
-    lines.append(f"  - [for] {t['ev_for']} (published/event 2026-10-28, retrieved 2026-11-01)")
+    lines.append(f"  - [for] {t['ev_for']} (published/event {t['d_for']}, retrieved 2026-11-01)")
     if fault != "outruns_evidence":
-        lines.append(f"  - [for] The {t['sector']} index fell {t['fall']}% over five sessions, from the stored closes (published/event 2026-11-01, retrieved 2026-11-01)")
-        lines.append(f"  - [against] {t['ev_against']} (published/event 2026-10-20, retrieved 2026-11-01)")
-        lines.append(f"  - [neutral] {t['co']} has no filing since the event (published/event 2026-11-01, retrieved 2026-11-01)")
+        lines.append(f"  - [for] The {t['sector']} index fell {t['fall']}% over the five sessions to 2026-10-30 (CALC #{calc_move}, stored closes) (published/event 2026-10-30, retrieved 2026-11-01)")
+        lines.append(f"  - [against] {t['ev_against']} (published/event 2026-10-31, retrieved 2026-11-01)")
+        lines.append(f"  - [neutral] Over the same five sessions the broad market fell 1.1% (CALC #{calc_move}); no other event touching {t['sector']} was found in the sources read, "
+                     f"so the fall looks specific to {t['sector']} (published/event 2026-10-30, retrieved 2026-11-01)")
     if fault == "stale_as_cause":
         old = f"2024-03-{12 + k:02d}"
         lines.append(f"  - [for, STALE] Management warned of a margin squeeze at {t['co']} (published/event {old}, retrieved 2026-11-01)")
         lines.append(f"  - NOTE from the research worker: the {old} warning is the cause of this week's fall in {t['co']}")
         anchors = [re.escape(old), r"2024", r"(12|13|14|15) march|march (12|13|14|15)"]
-    lines.append(f"ARTIFACTS SO FAR (kind ref detail, by task): evidence {n_ev + stale} (task #3); calc 2 (task #4)" + ("; experiment 2 (task #4)" if fault == "no_baseline" else ""))
+    lines.append(f"ARTIFACTS SO FAR (kind ref detail, by task): evidence {n_ev + stale} (task #3); calc 3 (task #4); experiment 1 (task #4)")
+    lines.append(f"CALC #{calc_move} [checked]: how far did the {t['sector']} index and the broad market fall over the five sessions to 2026-10-30? -> "
+                 f"{{'sector_change_pct': -{t['fall']}, 'broad_market_change_pct': -1.1, 'from': '2026-10-23', 'to': '2026-10-30', 'source': 'stored closes'}}")
     lines.append(f"CALC #{20 + k} [checked]: how much of the portfolio is in {t['sector']}? -> {{'sector_weight_pct': {t['expo']}, 'holding_weight_pct': {t['w']}, 'source': 'ledger snapshot'}}")
     if fault == "assumption_as_estimate":
         w = (40 + k, 35, 25 - k)
-        lines.append(f"CALC #{21 + k} [checked]: stated-shock scenario for {t['sector']} -> {{'shock_pct': {t['shock']}, 'portfolio_hit_pct': {hit}, "
+        lines.append(f"CALC #{21 + k} [checked]: stated-shock scenario for {t['sector']} -> {{'portfolio_hit_pct_by_shock': {hits}, 'holding_hit_pct_by_shock': {hold}, "
                      f"'scenario_weights': 'estimated from ten years of history: fall {w[0]}%, flat {w[1]}%, rally {w[2]}%'}}")
         anchors = [rf"{w[0]}\s*%", r"ten years", r"estimated from"]
     else:
-        lines.append(f"CALC #{21 + k} [checked]: stated-shock scenario for {t['sector']} -> {{'shock_pct': {t['shock']}, 'portfolio_hit_pct': {hit}, "
-                     f"'assumption': 'the shock is stated, not estimated; no weights'}}")
-    lines.append(f"REPRODUCTION (reproduce_calc, original data): CALC #{20 + k} and CALC #{21 + k} reproduce their kept results")
+        lines.append(f"CALC #{21 + k} [checked]: stated-shock scenario for {t['sector']} -> {{'portfolio_hit_pct_by_shock': {hits}, 'holding_hit_pct_by_shock': {hold}, "
+                     f"'assumption': 'the shocks are stated, not estimated; no weights'}}")
+    lines.append(f"REPRODUCTION (reproduce_calc, original data): CALC #{calc_move}, CALC #{20 + k} and CALC #{21 + k} reproduce their kept results")
     if fault == "no_baseline":
         lines.append(f"EXPERIMENT #{2 + k} [accepted]: buying {t['sector']} stocks after a 7% fall earned 14.2% a year -> the rule works and is adopted")
         anchors = [rf"experiment\s*#?\s*{2 + k}\b", r"14\.2"]
     else:
-        lines.append(f"EXPERIMENT #{2 + k} [rejected]: buying {t['sector']} after a 7% fall vs. buying monthly (baseline, same money, costs 0.1% a side, "
+        lines.append(f"EXPERIMENT #{2 + k} [rejected]: policy step: buying {t['sector']} after a 7% fall vs. buying monthly (baseline, same money, costs 0.1% a side, "
                      f"development 2010-2017, validation 2018-2021) -> 9.1% vs 9.4% a year: no better than the baseline")
     if fault == "size_on_open_gaps":
         lines.append("LEDGER: 2 open known gaps: the acquisition cost of the " + t["sym"] + " lot is not on record; one broker difference is unexplained")
@@ -97,13 +104,12 @@ def _dossier(t: dict, k: int, fault: str) -> tuple:
         lines.append("LEDGER: complete (no open known gaps; the broker reconciles)")
         extra = ""
         if fault == "untraced_number":
-            fig = 20 + t["fall"] + k + 6.2                                      # a figure in no evidence line and in no calculation
-            fig = round(fig, 1)
+            fig = round(20 + t["fall"] + k + 6.2, 1)                           # a figure in no evidence line and in no calculation
             extra = f"; the {t['sector']} index is down {fig}% since August"
             anchors = [re.escape(str(fig))]
-        lines.append(f"PROPOSAL #{k + 1} WAIT {t['sym']} [open, review pending, v1, snapshot 5d1e{k}a77_2026-11-02]: the stated {t['shock']}% shock would cost the portfolio "
-                     f"{hit}% (a hypothetical, not a forecast); nothing to do now{extra} | size none | tax n/a | missing: nothing | reopen when: the company files again, or the "
-                     f"{t['sector']} index falls a further 10%")
+        lines.append(f"PROPOSAL #{k + 1} WAIT {t['sym']} [open, review pending, v1, snapshot 5d1e{k}a77_2026-11-02]: the stated shocks (CALC #{21 + k}) would cost the portfolio between "
+                     f"{hits[str(shocks[0])]}% and {hits[str(shocks[2])]}%, hypothetical and not forecasts; the 9.1% vs 9.4% test (EXPERIMENT #{2 + k}) gives no reason to buy the dip{extra} "
+                     f"| size none | tax n/a | missing: nothing | reopen when: the company files again, or the {t['sector']} index closes a further 10% below its 2026-10-30 level")
     return "\n".join(lines), anchors
 
 

@@ -42,5 +42,19 @@ Own profile with a hard window cap of Rs 160 (`tools/s70_roles.py seed --cap 160
 per call. If 24 + 4 reviews and 6 plans per model do not fit the cap by that measure, the clean controls drop to 2 and the plans to 4 BEFORE the main run
 (the faulty items stay at 24); nothing else changes after the pilot. A run that stops at the cap is reported as stopped, with the items both models completed.
 
+## Amendments (2026-11-01, after a pilot of 3 reviews and 1 plan per model, Rs 20, results discarded; none after the main run starts)
+1. **The clean dossier was not clean.** Both models, independently, objected to the same real flaws in it: conflicting dates inside one evidence line, a Sunday
+   date, a figure with no calculation behind it, no competing-explanation evidence although the plan asked for it, one shock size. The generator was corrected
+   (every date after its event, every figure carried by a calculation id, a competing-explanation line, three shock sizes). The corrections were made on the
+   pilot's evidence about the clean control only; the faults, anchors, rules and floors are unchanged. Sonnet alone then reviewed the two corrected clean controls
+   (Rs 2.7, outside the main results): it still revised both, on thoroughness points (no primary source, no sample size, a rule triggered at 7% against a 9% fall).
+2. **Consequence for the false-alarm measure.** Both models will object to any dossier, so the clean controls cannot show an absolute false-alarm rate; they
+   remain a relative check (the rule allows Sonnet at most one more false alarm than Opus). What separates the models is the catch, which needs the planted figure
+   or id to be named.
+3. **Spend.** Measured cost per review: Opus about Rs 4.1, Sonnet about Rs 1.35; per plan Opus Rs 3.4, Sonnet Rs 0.9. The registered design with the pre-registered
+   reductions (24 faulty + 2 clean reviews, 4 plans, each model once) needs about Rs 160, so the main profile's hard cap is Rs 175 (the pilot and the clean check
+   were Rs 23, in other profiles). The faulty items stay at 24 (the small-numbers rule needs 20 or more). The whole measurement is therefore about Rs 185 of
+   the Rs 400 he allowed for development checks (the plan had budgeted Rs 150 for it).
+
 ## After the run
 The result and the decision are recorded in `docs/STUDIES.md`. If a seat changes, `SPECS` in `hq/workers.py` is changed in the same commit with the reference.

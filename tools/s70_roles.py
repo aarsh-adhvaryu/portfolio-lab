@@ -84,18 +84,20 @@ def plan_params(model: str, i: int) -> dict:
             "messages": [{"role": "user", "content": [{"type": "text", "text": R.plan_task_text(i)}]}]}
 
 
-def run(profile: Path, n_fault: int, n_clean: int, plans: int, out: Path) -> dict:
+def run(profile: Path, n_fault: int, n_clean: int, plans: int, out: Path, models: tuple = ("opus", "sonnet"), only_clean: bool = False) -> dict:
     from pflab.eval import roles as R
     con, client, gate, cfg = _open(profile)
     res = json.loads(out.read_text(encoding="utf-8")) if out.exists() else {"reviews": {}, "plans": {}}
     items = R.reviewer_set(n_fault, n_clean)
     # interleave the faulty and the clean ones so a stop part-way leaves both kinds
-    order = [i for pair in zip(items[:n_fault], items[n_fault:] + [None] * n_fault) for i in pair if i is not None] + items[n_fault + n_clean:]
-    order = sorted(set(order), key=lambda i: order.index(i))
-    jobs = [("review", i.id, i) for i in order] + [("plan", f"p{k + 1}", k) for k in range(plans)]
+    from itertools import zip_longest
+    order = [i for pair in zip_longest(items[:n_fault], items[n_fault:]) for i in pair if i is not None]
+    if only_clean:
+        order = [i for i in order if i.fault == "clean"]
+    jobs = [("review", i.id, i) for i in order] + ([] if only_clean else [("plan", f"p{k + 1}", k) for k in range(plans)])
     spent0 = float(con.execute("SELECT coalesce(sum(cost_inr),0) FROM api_calls WHERE status IN ('done','refused')").fetchone()[0])
     for kind, jid, payload in jobs:
-        for name, model in MODELS.items():
+        for name, model in ((n, m) for n, m in MODELS.items() if n in models):
             slot = res["reviews" if kind == "review" else "plans"].setdefault(jid, {})
             if name in slot:
                 continue
@@ -151,7 +153,8 @@ def report(out: Path) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["seed", "pilot", "run", "report"])
+    ap.add_argument("cmd", choices=["seed", "pilot", "run", "report", "check-clean"])
+    ap.add_argument("--models", default="opus,sonnet")
     ap.add_argument("--profile", type=Path)
     ap.add_argument("--cap", type=float, default=160.0)
     ap.add_argument("--n-fault", type=int, default=24)
@@ -163,8 +166,10 @@ def main() -> int:
         seed(a.profile, a.cap)
     elif a.cmd == "pilot":
         run(a.profile, 2, 1, 1, a.profile / "pilot.json")
+    elif a.cmd == "check-clean":                            # does a clean control draw an objection that is not about the planted fault? (a fixture check, Sonnet only by default)
+        run(a.profile, 0, a.n_clean, 0, a.profile / "clean_check.json", tuple(a.models.split(",")), only_clean=True)
     elif a.cmd == "run":
-        run(a.profile, a.n_fault, a.n_clean, a.plans, a.out or a.profile / "results.json")
+        run(a.profile, a.n_fault, a.n_clean, a.plans, a.out or a.profile / "results.json", tuple(a.models.split(",")))
     else:
         report(a.out)
     return 0
