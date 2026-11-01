@@ -105,6 +105,9 @@ def dossier_text(con, cid: int, now: datetime, role: Optional[str] = None) -> st
     if ins:
         lines.append("WHAT THE INVESTOR ASKED IT TO LOOK INTO (one input, not an order: weigh it like any evidence, and if you go against him say so plainly and why): "
                      + " | ".join(f"#{i} {t[:400]}" for i, t in ins))
+    lines.append("TOOLS AND THE PAPER BOOK: `paper_book` is the paper portfolio. The measuring tools (stocks_overview, exposure_shock, scenario, simulation, policy_scenarios, "
+                 "portfolio, picture) read HIS real record, whose holdings are the same names but whose cash is not the paper cash: say so on any result you use, and when a figure "
+                 "must be for the paper book, compute it with case_calculate from paper_book's holdings, weights and cash. A label must match what was computed.")
     if role in ("quant", "coordinator", None):
         lines.append("HOW TO DECIDE: read `paper_book`; for each holding or idea that deserves a decision call `paper_decide` with BUY, ADD, REDUCE, SELL, HOLD or WAIT, the "
                      "reasons and the alternatives (an amount in rupees or a target weight for a buy; a fraction for a reduce). Code sizes it against the cash and the rails and "
@@ -195,8 +198,15 @@ def decide(con, now: datetime, cid: int, a: dict, index: Optional[pd.Series] = N
             "sized": note, "executes": "only if the independent review approves this mission; then at the close"}
 
 
+def decisions_of(con, cid: int) -> List[dict]:
+    return [{"id": r[0], "action": r[1], "symbol": r[2], "amount_rupees": r[3], "fraction": r[4], "status": r[5], "reason": (r[6] or "")[:400], "sized": r[7]}
+            for r in con.execute("SELECT decision_id, action, symbol, amount, fraction, status, reason, note FROM paper_decisions WHERE case_id=? ORDER BY decision_id", [cid]).fetchall()]
+
+
 def execute(con, now: datetime, cid: int, root=None) -> dict:
-    """A finished paper mission: what the review approved becomes orders; the rest is kept as not approved. Idempotent."""
+    """A finished paper mission. APPROVED: its decisions become orders (HOLD and WAIT are simply adopted). REVISE (the review still objects after its revision round):
+    HOLD and WAIT, which move no money and are the book's default, are adopted with the objections on record; a trade is not executed. REJECTED or no verdict: nothing is.
+    Every decision, executed or refused, is scored later, so the record also shows whether the review was right to refuse. Idempotent."""
     from pflab.hq import missions
     from pflab.paper import book
     todo = con.execute("SELECT decision_id, action, isin, amount, fraction FROM paper_decisions WHERE case_id=? AND status='proposed' ORDER BY "
@@ -205,25 +215,44 @@ def execute(con, now: datetime, cid: int, root=None) -> dict:
         return {"orders": 0}
     r = con.execute("SELECT outcome, note FROM hq_case_reviews WHERE case_id=? AND outcome IS NOT NULL ORDER BY review_id DESC LIMIT 1", [cid]).fetchone()
     verdict = missions.verdict_of(r[0]) if r else "none"
-    if verdict != "approve":
-        con.execute("UPDATE paper_decisions SET status='not_approved', decided_at=?, note=coalesce(note,'') || ? WHERE case_id=? AND status='proposed'",
-                    [now, f" | the review did not approve ({verdict}): not executed", cid])
-        return {"orders": 0, "not_approved": len(todo)}
-    n = 0
-    gate_open = gate(con, root)["open"]
+    n, adopted, refused = 0, 0, 0
+    gate_open = gate(con, root)["open"] if verdict == "approve" else False
     for did, action, isin, amount, fraction in todo:
-        if action in ("BUY", "ADD"):
-            book.place(con, now, did, isin, "buy", amount=amount, note=f"decision #{did}")
-            n += 1
-        elif action in ("REDUCE", "SELL"):
-            qty = book.positions(con).get(isin, 0.0) * float(fraction or 1.0)
-            book.place(con, now, did, isin, "sell", qty=qty, note=f"decision #{did}")
-            n += 1
-        con.execute("UPDATE paper_decisions SET status='executed', decided_at=? WHERE decision_id=?", [now, did])
+        stays = action in ("HOLD", "WAIT")
+        if verdict == "approve" or (stays and verdict == "revise"):
+            if action in ("BUY", "ADD"):
+                book.place(con, now, did, isin, "buy", amount=amount, note=f"decision #{did}")
+                n += 1
+            elif action in ("REDUCE", "SELL"):
+                qty = book.positions(con).get(isin, 0.0) * float(fraction or 1.0)
+                book.place(con, now, did, isin, "sell", qty=qty, note=f"decision #{did}")
+                n += 1
+            else:
+                adopted += 1
+            note = "" if verdict == "approve" else " | adopted without the review's approval: it moves no money; the review's objections are in the case"
+            con.execute("UPDATE paper_decisions SET status='executed', decided_at=?, note=coalesce(note,'') || ? WHERE decision_id=?", [now, note, did])
+            if gate_open:
+                _to_real(con, now, cid, did)
+        else:
+            con.execute("UPDATE paper_decisions SET status='not_approved', decided_at=?, note=coalesce(note,'') || ? WHERE decision_id=?",
+                        [now, f" | the review did not approve ({verdict}): not executed (still scored, to see whether refusing was right)", did])
+            refused += 1
         register(con, did)
-        if gate_open:
-            _to_real(con, now, cid, did)
-    return {"orders": n, "decisions": len(todo)}
+    return {"orders": n, "adopted": adopted, "not_approved": refused}
+
+
+def sweep_stays(con, now: datetime) -> int:
+    """A HOLD or WAIT refused before 2026-11-02's rule (a revise verdict adopts what moves no money) is adopted and scored now. Idempotent."""
+    from pflab.hq import missions
+    n = 0
+    for did, cid in con.execute("SELECT decision_id, case_id FROM paper_decisions WHERE status='not_approved' AND action IN ('HOLD','WAIT') "
+                                "AND decision_id NOT IN (SELECT decision_id FROM paper_claims)").fetchall():
+        r = con.execute("SELECT outcome FROM hq_case_reviews WHERE case_id=? AND outcome IS NOT NULL ORDER BY review_id DESC LIMIT 1", [cid]).fetchone()
+        if r and missions.verdict_of(r[0]) == "revise":
+            con.execute("UPDATE paper_decisions SET status='executed', decided_at=?, note=coalesce(note,'') || ' | adopted afterwards: it moves no money' WHERE decision_id=?", [now, did])
+            register(con, did)
+            n += 1
+    return n
 
 
 def _to_real(con, now: datetime, cid: int, did: int) -> None:
@@ -300,22 +329,25 @@ def score_due(con, now: datetime, index: Optional[pd.Series]) -> int:
 
 
 def record(con) -> dict:
-    """How its judgement has held up: by kind of decision, the count, the plain rate (from 20) and the skeptical rate."""
+    """How its judgement has held up: by kind of decision, the count, the plain rate (from 20) and the skeptical rate; and, apart, the decisions the review refused
+    (scored the same way, so it shows whether refusing was right)."""
     from pflab.hq import scorecard
-    rows = []
-    for action, good, bad in con.execute("SELECT action, count(*) FILTER (WHERE outcome='good'), count(*) FILTER (WHERE outcome='bad') FROM paper_claims "
-                                         "WHERE outcome IN ('good','bad') GROUP BY 1 ORDER BY 1").fetchall():
+    rows, refused = [], []
+    for action, status, good, bad in con.execute(
+            "SELECT c.action, d.status, count(*) FILTER (WHERE c.outcome='good'), count(*) FILTER (WHERE c.outcome='bad') FROM paper_claims c JOIN paper_decisions d "
+            "ON d.decision_id = c.decision_id WHERE c.outcome IN ('good','bad') GROUP BY 1, 2 ORDER BY 1, 2").fetchall():
         n = int(good + bad)
         row = {"action": action, "n": n, "good": int(good)}
         if n >= scorecard.MIN_N:
             row.update({"rate": round(good / n, 3), "skeptical_rate": scorecard.skeptical(int(good), int(bad))})
-        rows.append(row)
+        (refused if status == "not_approved" else rows).append(row)
     made = con.execute("SELECT count(*), count(*) FILTER (WHERE status='executed'), count(*) FILTER (WHERE status='not_approved') FROM paper_decisions").fetchone()
-    tot = sum(r["n"] for r in rows)
-    good = sum(r["good"] for r in rows)
-    summary = (f"{made[0]} decision(s), {made[1]} executed, {made[2]} not approved by the review; {tot} claim(s) scored"
-               + (f", {good} held ({scorecard.skeptical(good, tot - good):.0%} is what the rate probably is at least)" if tot else " (none due yet)"))
-    return {"by_action": rows, "summary": summary}
+    tot, good = sum(r["n"] for r in rows), sum(r["good"] for r in rows)
+    rtot, rgood = sum(r["n"] for r in refused), sum(r["good"] for r in refused)
+    summary = (f"{made[0]} decision(s), {made[1]} executed, {made[2]} refused by the review; {tot} executed claim(s) scored"
+               + (f", {good} held ({scorecard.skeptical(good, tot - good):.0%} is what the rate probably is at least)" if tot else " (none due yet)")
+               + (f"; of {rtot} refused claim(s) scored, {rgood} would have held" if rtot else ""))
+    return {"by_action": rows, "refused": refused, "summary": summary}
 
 
 # --- the gate to his real money -----------------------------------------------------------------------------------------------------
@@ -402,6 +434,7 @@ def bookkeeping(rt) -> dict:
         out["seed"] = book.seed(con, last, now)
     out["book"] = book.catch_up(con, now.date(), now)
     index = _index(rt.data_root)
+    out["adopted_late"] = sweep_stays(con, now)
     out["scored"] = score_due(con, now, index)
     for (cid,) in con.execute("SELECT DISTINCT d.case_id FROM paper_decisions d JOIN hq_missions m ON m.case_id = d.case_id WHERE d.status='proposed' "
                               "AND m.state IN ('done','blocked','declined')").fetchall():
