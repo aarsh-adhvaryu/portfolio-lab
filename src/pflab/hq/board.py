@@ -41,8 +41,11 @@ class Reply:
 
 
 def post(con, to: str, text: str, now: datetime, *, frm: str = "investor", body: Optional[dict] = None,
-         parent: Optional[int] = None, channel: str = "dashboard", dedup_key: Optional[str] = None) -> int:
-    """A task on the board. With `dedup_key`, a task already open under the same key is returned instead of a second one."""
+         parent: Optional[int] = None, channel: str = "dashboard", dedup_key: Optional[str] = None, status: Optional[str] = None,
+         extra: Optional[dict] = None) -> int:
+    """A task on the board. With `dedup_key`, a task already open under the same key is returned instead of a second one. S69: `status` and `extra` (columns
+    such as case_id, role, depends_on, waiting_on) are written in the same INSERT, so a worker thread polling the queue can never take a task in the instant
+    between its creation and its being held for approval or parked on a dependency."""
     from pflab.pm.store import next_id
     if dedup_key:
         r = con.execute(f"SELECT task_id FROM hq_tasks WHERE dedup_key=? AND status IN ({','.join('?' * len(OPEN))}) "
@@ -54,14 +57,17 @@ def post(con, to: str, text: str, now: datetime, *, frm: str = "investor", body:
         r = con.execute("SELECT hops, channel FROM hq_tasks WHERE task_id=?", [parent]).fetchone()
         hops = (r[0] if r else 0) + 1
         channel = channel if channel != "dashboard" or not r else r[1]
-    status = "queued"
+    status = status or "queued"
     if hops > MAX_HOPS:                                    # the chain is too long: the brain looks at it instead
         body = {**(body or {}), "meant_for": to, "why": f"a chain of {hops} hops (more than {MAX_HOPS})"}
         to, status = "brain", "held"
     tid = next_id(con, "hq_tasks", "task_id")
-    con.execute("INSERT INTO hq_tasks (task_id, created_at, from_agent, to_agent, text, body_json, status, hops, parent_id, "
-                "channel, attempts, dedup_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                [tid, now, frm, to, text[:4000], json.dumps(body or {}, default=str), status, hops, parent, channel, 0, dedup_key])
+    cols = ["task_id", "created_at", "from_agent", "to_agent", "text", "body_json", "status", "hops", "parent_id", "channel", "attempts", "dedup_key"]
+    vals = [tid, now, frm, to, text[:4000], json.dumps(body or {}, default=str), status, hops, parent, channel, 0, dedup_key]
+    for k, v in (extra or {}).items():
+        cols.append(k)
+        vals.append(v)
+    con.execute(f"INSERT INTO hq_tasks ({', '.join(cols)}) VALUES ({','.join('?' * len(cols))})", vals)
     return tid
 
 
@@ -194,6 +200,10 @@ def run_one(rt, agents: Dict[str, Callable], deliver: Optional[Callable[[dict], 
         return None
     try:
         return _run_claimed(rt, agents, deliver, con, tid, now)
+    except Exception as e:                                   # S69: the store refused the write even after retries: the task is not left 'running'; it is run again from its checkpoint
+        con.execute("UPDATE hq_tasks SET status='retry', next_review_at=?, lease_owner=NULL, progress=?, result=? WHERE task_id=? AND status='running'",
+                    [rt.clock(), f"the store refused the result ({type(e).__name__}); it is run again", f"stopped: {type(e).__name__}: {str(e)[:160]}", tid])
+        return get(con, tid)
     finally:
         with _LIVE_LOCK:
             _LIVE.discard(tid)
@@ -225,18 +235,30 @@ def _run_claimed(rt, agents: Dict[str, Callable], deliver, con, tid: int, now: d
         rep.text += f" (attempt {t['attempts']} of {MAX_ATTEMPTS}: no more tries)"
     fin = None if rep.status in ("waiting", "retry") else rt.clock()
     from pflab.pm.store import transaction
-    with transaction(con):                                 # the answer and the hand-offs it names are saved together or not at all (audit F6)
-        con.execute("UPDATE hq_tasks SET status=?, result=?, result_json=?, cost_inr=coalesce(cost_inr, 0) + ?, finished_at=?, next_review_at=?, waiting_on=?, "
-                    "progress=?, wait_kind=?, resume_condition=?, lease_owner=NULL, lease_until=NULL, checkpoint_json=coalesce(?, checkpoint_json), "
-                    "artifacts_json=coalesce(?, artifacts_json) WHERE task_id=?",
-                    [rep.status, rep.text[:20000], json.dumps({"route": rep.route, **rep.data}, default=str), rep.cost or 0.0,
-                     fin, nxt, waiting_on, str(rep.data.get("progress") or "")[:300] or None,
-                     (rep.data.get("wait_kind") if rep.status in ("waiting", "retry") else None),
-                     (rep.data.get("resume_condition") if rep.status in ("waiting", "retry") else None),
-                     json.dumps(rep.data["checkpoint"], default=str) if rep.data.get("checkpoint") is not None else None,
-                     json.dumps(rep.data["artifacts"], default=str) if rep.data.get("artifacts") is not None else None, tid])
-        for agent, text in rep.then:
-            post(con, agent, text, rt.clock(), frm=t["to"], parent=tid, dedup_key=f"then:{tid}:{agent}:{hashlib.sha1(text.encode()).hexdigest()[:10]}")
+
+    def save():
+        with transaction(con):                             # the answer and the hand-offs it names are saved together or not at all (audit F6)
+            con.execute("UPDATE hq_tasks SET status=?, result=?, result_json=?, cost_inr=coalesce(cost_inr, 0) + ?, finished_at=?, next_review_at=?, waiting_on=?, "
+                        "progress=?, wait_kind=?, resume_condition=?, lease_owner=NULL, lease_until=NULL, checkpoint_json=coalesce(?, checkpoint_json), "
+                        "artifacts_json=coalesce(?, artifacts_json) WHERE task_id=?",
+                        [rep.status, rep.text[:20000], json.dumps({"route": rep.route, **rep.data}, default=str), rep.cost or 0.0,
+                         fin, nxt, waiting_on, str(rep.data.get("progress") or "")[:300] or None,
+                         (rep.data.get("wait_kind") if rep.status in ("waiting", "retry") else None),
+                         (rep.data.get("resume_condition") if rep.status in ("waiting", "retry") else None),
+                         json.dumps(rep.data["checkpoint"], default=str) if rep.data.get("checkpoint") is not None else None,
+                         json.dumps(rep.data["artifacts"], default=str) if rep.data.get("artifacts") is not None else None, tid])
+            for agent, text in rep.then:
+                post(con, agent, text, rt.clock(), frm=t["to"], parent=tid, dedup_key=f"then:{tid}:{agent}:{hashlib.sha1(text.encode()).hexdigest()[:10]}")
+
+    for attempt in (1, 2, 3):                              # S69: another thread touching the same rows is a conflict to wait out, never a lost answer
+        try:
+            save()
+            break
+        except Exception as e:
+            if attempt == 3 or "onflict" not in str(e):
+                raise
+            import time
+            time.sleep(0.05 * attempt)
     t = get(con, tid)
     if t["status"] == "done":                              # S68: whatever waited for this task goes on
         wake(con, f"task:{tid}", rt.clock(), f"task #{tid} finished")

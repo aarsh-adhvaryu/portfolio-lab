@@ -135,13 +135,23 @@ def add_task(con, now: datetime, cid: int, role: str, what: str, *, promise: Opt
     promise = {k: int(v) for k, v in (promise or DEFAULT_PROMISE[role]).items() if k in PROMISE_KINDS and int(v) > 0} or DEFAULT_PROMISE[role]
     deps = [int(d) for d in (depends_on or [])]
     dedup = f"mission:{cid}:{role}:{hashlib.sha1((key or what).encode()).hexdigest()[:10]}:{m['round']}"
-    tid = board.post(con, AGENT_OF[role], what[:2000], now, frm="mission", dedup_key=dedup,
-                     body={"case_id": cid, "role": role, "promise": promise, "goal": m["goal"], "asked_by": asked_by, "key": key})
-    _tag(con, tid, cid, role, m["snapshot"], deps, version=version)
+    from pflab.hq import plans
+    if version is None:
+        d = plans.drafting(con, cid)
+        version = int(d["version"]) if d else plans.active_number(con, cid)
+    extra = {"case_id": cid, "role": role, "input_version": m["snapshot"], "depends_on": json.dumps(deps), "instruction_version": version}
+    status = None
     if hold:                                               # a plan that waits for his yes: the tasks exist (owner, dependencies) and do not run
-        con.execute("UPDATE hq_tasks SET status='needs_approval', progress='waits for your approval of the plan' WHERE task_id=? AND status='queued'", [tid])
+        status, extra["progress"] = "needs_approval", "waits for your approval of the plan"
     else:
-        _park_if_waiting(con, tid, deps)
+        for dep in deps:                                   # a task whose dependencies are not all done is created waiting, never queued
+            st = con.execute("SELECT status FROM hq_tasks WHERE task_id=?", [dep]).fetchone()
+            if st and st[0] != "done":
+                status = "waiting"
+                extra.update(waiting_on=f"task:{dep}", wait_kind="task", resume_condition=f"task #{dep} finishes", progress=f"waiting for task #{dep}")
+                break
+    tid = board.post(con, AGENT_OF[role], what[:2000], now, frm="mission", dedup_key=dedup, status=status, extra=extra,
+                     body={"case_id": cid, "role": role, "promise": promise, "goal": m["goal"], "asked_by": asked_by, "key": key})
     return {"task_id": tid}
 
 
