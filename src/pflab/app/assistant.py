@@ -142,7 +142,7 @@ def answer(rt, con, cid: int, aid: int, q: str, context: str = "", client=None, 
         + (f"HE IS LOOKING AT: {context}\n\n" if context else "") + f"RECORD SNAPSHOT: {snap} (today {now:%Y-%m-%d %H:%M})\n\nHIS MESSAGE:\n{q}"
     pid = brain._record(con, now, "assistant", [], MODEL, "assistant", "running")
     ctx = tl.Ctx(rt, pid, MODEL, False, {}, gate, now, client=client, mode=mode, source=first, case_ids=[], task_id=None, role="assistant",
-                 allowed=frozenset(n for n in TOOLS if n in tl.TOOLS))
+                 allowed=frozenset(n for n in TOOLS if n in tl.TOOLS), his_text=q)
     steps: List[str] = []
 
     def step(name: str) -> None:

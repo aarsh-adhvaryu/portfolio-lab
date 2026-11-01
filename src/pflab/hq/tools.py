@@ -48,6 +48,7 @@ class Ctx:
     case_ids: List[int] = field(default_factory=list)     # S67: the cases this pass works on (opened or handed to it)
     task_id: Optional[int] = None                        # S68: the worker task this pass is carrying out (artifacts are credited to it)
     role: str = ""                                       # S68: coordinator | research | quant | review | assistant
+    his_text: str = ""                                   # S69: what he typed in this turn, exactly (approval and acceptance are checked against it, never against tool output)
     wait_for: Optional[str] = None                       # S68: a condition the task now waits on ("sandbox", "task:<id>"); the loop ends and the task parks
     limit_hit: Optional[tuple] = None                    # S68: (tool, cap) when today's cap for a tool refused a worker's call: the task waits for tomorrow, it does not fail
     allowed: Optional[frozenset] = None                  # S68: a worker may call only its role's tools (None: the brain's)
@@ -1080,10 +1081,8 @@ def submit_answer(ctx: Ctx, a: dict) -> dict:
 
 
 def _his_message(ctx: Ctx) -> str:
-    """What he just typed, as the assistant received it (the text after HIS MESSAGE in the first turn). Approval is his word, not the model's."""
-    src = ctx.source or ""
-    i = src.rfind("HIS MESSAGE:")
-    return src[i + len("HIS MESSAGE:"):].split("\n\n", 1)[0].strip() if i >= 0 else ""
+    """What he just typed, as the assistant received it. Approval is his word, not the model's, and not a tool result's."""
+    return (ctx.his_text or "").strip()
 
 
 _YES = __import__("re").compile(r"\b(approve[ds]?|yes|yep|yeah|go ahead|go on|proceed|do it|okay|ok|sure|start it|run it|looks good|fine by me|accept(ed)?)\b", __import__("re").I)

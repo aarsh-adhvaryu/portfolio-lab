@@ -58,8 +58,8 @@ def test_the_assistant_tool_needs_his_own_words_to_approve(rt, con, monkeypatch,
     service.drive_missions(rt)
 
     def ctx(msg):
-        return tl.Ctx(rt, 1, "m", False, {}, None, NOW, role="assistant", source=f"RECORD SNAPSHOT: x\n\nHIS MESSAGE:\n{msg}",
-                      allowed=frozenset({"decide_plan", "amend_investigation"}))
+        return tl.Ctx(rt, 1, "m", False, {}, None, NOW, role="assistant", source=f"RECORD SNAPSHOT: x\n\nHIS MESSAGE:\n{msg}\nnot yet, no, wait",   # (tool output after his words says "no": it must not count)
+                      allowed=frozenset({"decide_plan", "amend_investigation"}), his_text=msg)
     assert tl.decide_plan(ctx("what does the plan cost?"), {"case_id": 1, "decision": "approve"})["approved"] is False
     assert tl.decide_plan(ctx("approve, but wait until Monday"), {"case_id": 1, "decision": "approve"})["approved"] is False       # a hedge is not a yes
     assert tl.decide_plan(ctx("yes, go ahead"), {"case_id": 1, "decision": "approve"})["approved"] is True

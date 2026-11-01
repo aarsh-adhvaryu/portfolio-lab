@@ -221,3 +221,52 @@ def test_a_proposal_tool_cannot_be_used_to_place_an_order():
     names = " ".join(tl.TOOLS)
     assert "order" not in names.replace("order_research", "").replace("order_calculation", "")
     assert tl.TOOLS["make_proposal"].kind == "journal" and "never an order" in tl.TOOLS["make_proposal"].about
+
+
+# --- the confirmation comes through the REAL tradebook parser, twice ----------------------------------------------------------------------------
+
+def _tradebook(path, rows):
+    import pandas as pd
+    pd.DataFrame(rows, columns=["symbol", "isin", "trade_date", "exchange", "segment", "series", "trade_type", "auction", "quantity", "price", "trade_id", "order_id",
+                                "order_execution_time"]).to_csv(path, index=False)
+
+
+def test_a_synthetic_tradebook_with_a_purchase_and_a_sale_reconciles_once_even_if_ingested_twice(con, tmp_path):
+    from pflab.ingest import tradebook as tb
+    from pflab.ledger import events as ev
+    buy = pr.create(con, NOW, {"action": "BUY", "symbol": "BBB", "qty": 20, "reason": "The evidence supports a purchase at this price, sized to the cash.",
+                               "alternatives": "Waiting a month, or holding what he has."}, case_id=None)["proposal_id"]
+    sell = pr.create(con, NOW, {"action": "REDUCE", "symbol": "AAA", "qty": 4, "reason": "The position is larger than the thesis needs; trimming lowers the risk.",
+                                "alternatives": "Holding it all, or selling everything."}, case_id=None)["proposal_id"]
+    pr.decide(con, NOW, buy, "accept")
+    pr.decide(con, NOW, sell, "accept")
+    day = NOW.strftime("%Y-%m-%d")
+    f = tmp_path / "tradebook.csv"
+    _tradebook(f, [["BBB", BBB, day, "NSE", "EQ", "EQ", "buy", False, 12, 50.5, "T9001", "O1", f"{day}T10:00:00"],
+                   ["BBB", BBB, day, "NSE", "EQ", "EQ", "buy", False, 8, 50.75, "T9002", "O1", f"{day}T10:00:05"],
+                   ["AAA", AAA, day, "NSE", "EQ", "EQ", "sell", False, 4, 121.0, "T9003", "O2", f"{day}T11:00:00"]])
+
+    def ingest():
+        log = ev.load(con)
+        refs = {e.ref for e in log if e.ref}
+        events, rep = tb.to_events(tb.parse(f), "ZER", existing_refs=refs)
+        for e in events:
+            log.append(e)
+        ev.save(con, log)
+        return rep["events"], rep["skipped_existing"]
+    from pflab.app import views
+    cash_before = views.holdings(con, NOW.date())["cash"]
+    assert ingest() == (3, 0)
+    done = {d["proposal_id"]: d for d in pr.reconcile(con, NOW)}
+    assert done[buy]["status"] == "executed" and done[buy]["qty"] == 20 and done[buy]["avg_price"] == pytest.approx((12 * 50.5 + 8 * 50.75) / 20)
+    assert done[sell]["status"] == "executed" and done[sell]["qty"] == 4
+    assert ingest() == (0, 3)                                                   # the same file again adds nothing...
+    assert pr.reconcile(con, NOW) == []                                         # ...so nothing is counted twice
+    assert con.execute("SELECT count(*) FROM events WHERE ref IN ('T9001','T9002','T9003')").fetchone()[0] == 3
+    h = views.holdings(con, NOW.date())
+    held = {r["isin"]: r["qty"] for r in h["rows"]}
+    assert held[BBB] == 20 and held[AAA] == 6                                   # holdings follow the ledger: +20 bought, 4 of 10 sold
+    assert h["cash"] == pytest.approx(cash_before - (12 * 50.5 + 8 * 50.75) + 4 * 121.0)             # cash: paid for the purchase, received for the sale
+    from pflab.ledger.book import Ledger
+    real = Ledger.replay(ev.load(con)).realised
+    assert len(real) == 1 and real[0].gain == pytest.approx(4 * (121.0 - 100.0)) if hasattr(real[0], "gain") else len(real) == 1        # realised on the lot bought at 100
