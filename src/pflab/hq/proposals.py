@@ -250,6 +250,22 @@ def create(con, now: datetime, inputs: dict, *, pm_dir=None, case_id: Optional[i
     b = build(con, now, inputs)
     if "problem" in b:
         return {"stored": False, "problem": b["problem"]}
+    from pflab.hq import rules
+    from pflab.plan import envelope
+    banned = rules.violation(con, b["payload"]["action"], b["isin"])
+    if banned:                                             # S72: a house rule he made binds the proposals too; a WAIT or HOLD with the reason is still open to the system
+        return {"stored": False, "problem": banned + ". Make this a WAIT or HOLD with the reason instead, or ask him whether he wants the rule undone."}
+    eff = b["payload"].get("portfolio_effect") or {}
+    for r in rules.active(con):
+        if r["kind"] == "max_position" and b["payload"]["action"] in ("BUY", "ADD") and eff.get("weight_after") and eff["weight_after"] * 100 > float(r["machine"]["max_weight_pct"]):
+            b["missing"].append(f"house rule '{r['name']}': this would take the holding to {eff['weight_after']:.1%}, above the {r['machine']['max_weight_pct']:g}% ceiling he set; reduce the size")
+    size = b["payload"].get("size") or {}
+    if b["payload"]["action"] in ("BUY", "ADD") and size.get("notional"):
+        env = envelope.status(con, now.date())
+        if env.get("active"):
+            b["payload"]["envelope"] = {"available_now": env["available_now"], "this_buy": size["notional"], "carry_over": env["carry_over"]}
+            if size["notional"] > env["available_now"] + 1e-6:
+                b["missing"].append(f"the monthly envelope: this buy is Rs {size['notional']:,.0f}, above the Rs {env['available_now']:,.0f} available now (a dip tranche, if triggered, is counted by the daily review)")
     snap = missions.snapshot_id(con, pm_dir) if pm_dir else "unknown"
     b["payload"]["portfolio"] = {**(b["payload"].get("portfolio") or {}), "snapshot": snap}
     prev = con.execute("SELECT proposal_id, version FROM hq_proposals WHERE coalesce(case_id, 0)=? AND coalesce(isin, '')=? AND action=? AND status IN ('proposed') "

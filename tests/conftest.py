@@ -47,6 +47,13 @@ def _local_front_off(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _morning_pass_on(monkeypatch):
+    """S73: the brain's paid morning pass is retired in production (the daily review replaces it); the older brain tests exercise it, so they run with it on."""
+    from pflab.hq import brain
+    monkeypatch.setattr(brain, "morning_pass_on", lambda: True)
+
+
+@pytest.fixture(autouse=True)
 def _no_backup_decision(monkeypatch):
     """Tests never read the investor's own backup decision in configs/service.toml (S58b); a test that needs one sets it."""
     from pflab.service import backup

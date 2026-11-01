@@ -48,8 +48,10 @@ def name_of(fl: Dict[str, bool]) -> str:
     return "+".join(on) if on else "none"
 
 
-def build(goal: str, fl: Dict[str, bool]) -> Tuple[List[dict], str]:
-    """The steps (as `plan_mission` takes them) and the approach, for a question and its flags."""
+def build(goal: str, fl: Dict[str, bool], rec: Optional[dict] = None) -> Tuple[List[dict], str]:
+    """The steps (as `plan_mission` takes them) and the approach, for a question and its flags. `rec` is working memory on the subject (kg/memory.recall): a conclusion already
+    reached is to be checked, not redone; a calculation already checked is re-run on today's record; evidence that came after the earlier conclusion must be taken up; what was
+    left open is carried."""
     q = " ".join(goal.split())[:260]
     steps = [{"key": "premise", "role": "research", "promise": {"evidence": 2}, "depends_on": [],
               "goal": f"Verify what actually happened or is claimed, for this question: {q}. Establish the event, its dates and its size from dated sources, and say what could not be confirmed. "
@@ -75,6 +77,17 @@ def build(goal: str, fl: Dict[str, bool]) -> Tuple[List[dict], str]:
     steps.append({"key": "view", "role": "research", "promise": {"evidence": 1}, "depends_on": ["premise"],
                   "goal": "Look for evidence AGAINST the idea and for competing explanations of what happened; weigh them. Say what would change the view and what would invalidate the "
                           "conclusion, as a price, a date or a document that can be watched." + changed})
+    if rec:
+        by = {x["key"]: x for x in steps}
+        for c in (rec.get("conclusions") or [])[:2]:
+            by["premise"]["goal"] += (f" Memory: investigation #{c['case_id']} ({c['at']}) concluded '{c['decision']}': {(c['reason'] or c['answer'])[:160]}. Say whether this still holds on today's facts; "
+                                      "do not redo what it established.")
+        for m in (rec.get("methods") or [])[:2]:
+            if "exposure" in by:
+                by["exposure"]["goal"] += f" Memory: a checked {m['tool']} ({m['params']}) exists (calculation #{m['calc_id']}, investigation #{m['case_id']}): re-run it on today's record instead of writing new code."
+        extra = "".join(f" Memory: take up this evidence, which came after the earlier conclusion: {x['text'][:160]}." for x in (rec.get("contradictions") or [])[:3])
+        extra += "".join(f" Memory: still open from before: {o['what'][:140]}." for o in (rec.get("open") or [])[:3])
+        by["view"]["goal"] += extra
     return steps, f"A playbook plan ({name_of(fl)}): verify the premise first, compute his exposure with the reviewed tools, then set the idea against the evidence against it and the competing explanations."
 
 
@@ -100,11 +113,15 @@ def try_plan(con, cid: int, coordinator_task: int, now: datetime, chat=None) -> 
     fl, how = flags_for(m["goal"], chat)
     if not any(fl.values()):
         return None
-    steps, approach = build(m["goal"], fl)
+    from pflab.kg import memory
+    rec = memory.recall(con, memory.subjects_of(con, m["goal"]), now, exclude_case=cid)
+    steps, approach = build(m["goal"], fl, rec)
     out = missions.set_plan(con, now, cid, steps, approach)
     if not out.get("stored"):
         return None
     con.execute("INSERT INTO hq_artifacts VALUES (?,?,?,?,?,?,?)",
                 [next_id(con, "hq_artifacts", "artifact_id"), cid, coordinator_task, "plan", str(out["mission_id"]), f"{len(steps)} steps (playbook {name_of(fl)})", now])
-    cases.log(con, cid, now, "playbook", f"planned from the playbook {name_of(fl)} (chosen by {how}); the coordinator was not asked")
-    return {"name": name_of(fl), "how": how, "mission_id": out["mission_id"], "steps": len(steps)}
+    memory.offer(con, now, cid, rec)
+    cases.log(con, cid, now, "playbook", f"planned from the playbook {name_of(fl)} (chosen by {how}); the coordinator was not asked"
+              + (f"; memory offered {len(rec.get('conclusions', []))} earlier conclusion(s), {len(rec.get('methods', []))} checked method(s)" if rec.get("conclusions") or rec.get("methods") else ""))
+    return {"name": name_of(fl), "how": how, "mission_id": out["mission_id"], "steps": len(steps), "memory": bool(rec.get("conclusions") or rec.get("methods"))}

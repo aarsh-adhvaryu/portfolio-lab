@@ -759,6 +759,22 @@ MIGRATIONS = [
         decided_at TIMESTAMP, decided_by VARCHAR, note VARCHAR
     );
     """),
+    # 2026-11-01: S72-S73. House rules (what he tells every agent to do from now on, versioned, undoable), what memory offered an investigation and what it did with it,
+    # and the scorecard's claims (what each recommendation said would happen, scored at 5, 20 and 60 sessions).
+    (55, "rules_memory_scorecard_s72", """
+    CREATE TABLE hq_rules (
+        rule_id INTEGER PRIMARY KEY, kind VARCHAR NOT NULL, name VARCHAR NOT NULL, text VARCHAR NOT NULL, machine_json VARCHAR, version INTEGER NOT NULL,
+        status VARCHAR NOT NULL, by_who VARCHAR, created_at TIMESTAMP NOT NULL, source VARCHAR, supersedes INTEGER, decided_at TIMESTAMP, decided_by VARCHAR
+    );
+    CREATE TABLE hq_memory_effects (
+        effect_id INTEGER PRIMARY KEY, case_id INTEGER NOT NULL, kind VARCHAR NOT NULL, ref VARCHAR, detail VARCHAR, logged_at TIMESTAMP NOT NULL
+    );
+    CREATE TABLE hq_claims (
+        claim_id INTEGER PRIMARY KEY, proposal_id INTEGER NOT NULL, case_id INTEGER, isin VARCHAR NOT NULL, symbol VARCHAR, action VARCHAR NOT NULL, kind VARCHAR NOT NULL,
+        made_at TIMESTAMP NOT NULL, ref_date DATE NOT NULL, ref_close DOUBLE NOT NULL, state VARCHAR, horizon_days INTEGER NOT NULL, due_on DATE NOT NULL,
+        scored_at TIMESTAMP, outcome VARCHAR, outcome_json VARCHAR, UNIQUE (proposal_id, horizon_days)
+    );
+    """),
 ]
 
 

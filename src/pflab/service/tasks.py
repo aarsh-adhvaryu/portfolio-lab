@@ -524,6 +524,16 @@ def _sandbox_probe(ctx: Ctx) -> dict:
             "records_corrected": v["repaired"]}
 
 
+def _review(ctx: Ctx) -> dict:
+    """S73: the daily review (hq/daily.py): everything standing, looked at by code, one note in the conversation. Free."""
+    from pflab.hq import daily, desk
+    return daily.review(desk.from_ctx(ctx), ctx.now)
+
+
+register(Job("review", Daily(21, 20), _review, "the daily review: proposals, claims scored, the envelope, rules and requests waiting for him, conclusions with new evidence against them (code, free)",
+             cooldown_minutes=30))
+
+
 def _sandbox_unproven(ctx: Ctx) -> Optional[str]:
     """S70: a proof made for an older release is not a proof of this one: the job runs again after an update, not at tomorrow's 06:40."""
     from pflab.agents import sandbox as sb

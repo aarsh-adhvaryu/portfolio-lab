@@ -433,6 +433,48 @@ def create_app(rt) -> FastAPI:
         rt.wake_hq()
         return out
 
+    # --- S72-S73: house rules, working memory, the envelope, the scorecard ----------------------------------------------------------
+    @app.get("/api/rules")
+    def rules_list():
+        """The house rules he has made (active, waiting for his yes) and their readable copy."""
+        from pflab.hq import rules
+        con = rt.cursor()
+        return json.loads(json.dumps({"version": rules.version(con), "active": rules.active(con), "waiting": rules.pending(con)}, default=str))
+
+    @app.post("/api/rules/{rule_id}/undo")
+    def rules_undo(rule_id: int):
+        """The Undo button: the rule is undone and the version it replaced comes back."""
+        from pflab.hq import rules
+        con = rt.cursor()
+        out = rules.undo(con, rt.clock(), rule_id)
+        if out.get("undone"):
+            rules.render(con, rt.pm_dir)
+            rt.bump("command", "chat")
+        return out
+
+    @app.get("/api/recall")
+    def recall(about: str = "", case_id: int = 0):
+        """Working memory on a subject: what was concluded before and why, what goes against it, what was checked, what changed, what is open."""
+        from pflab.kg import memory
+        con = rt.cursor()
+        rec = memory.recall(con, about, rt.clock(), exclude_case=case_id or None)
+        return json.loads(json.dumps({**rec, "brief": memory.brief(rec), "effects_last_30_days": memory.effects_summary(con, 30, rt.clock())}, default=str))
+
+    @app.get("/api/envelope")
+    def envelope_status():
+        from pflab.hq import daily
+        from pflab.plan import envelope
+        s = envelope.status(rt.cursor(), rt.clock().date(), daily._index(rt))
+        return json.loads(json.dumps({**s, "in_words": envelope.explain(s)}, default=str))
+
+    @app.get("/api/scorecard")
+    def scorecard_view():
+        """How the recommendations turned out: claims, by decision and market state, with n; each proposal's verdict across its horizons."""
+        from pflab.hq import scorecard
+        con = rt.cursor()
+        per = [scorecard.proposal_view(con, pid) for (pid,) in con.execute("SELECT DISTINCT proposal_id FROM hq_claims ORDER BY proposal_id DESC LIMIT 40").fetchall()]
+        return json.loads(json.dumps({"table": scorecard.table(con), "proposals": per}, default=str))
+
     @app.get("/api/proposals")
     def proposals_list(status: str = "", case_id: int = 0):
         """The recommendations on record: buy, add, hold, reduce, sell, diversify, wait, each with its status, review and what is missing."""

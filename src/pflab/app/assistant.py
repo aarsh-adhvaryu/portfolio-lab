@@ -53,13 +53,20 @@ SYSTEM = (
     "it touches an amount or rule of his money; those wait for his yes again): it takes effect without anything being released. 12. Recommendations are proposals "
     "(BUY, ADD, HOLD, REDUCE, SELL, DIVERSIFY, WAIT), made by the workers or by you with make_proposal: you give the direction and reasons, the system computes sizes, costs "
     "and tax from his record and lists what is missing. Never force a buy or a sale; a supported WAIT or HOLD is a real answer. He may discuss, amend, accept, reject or withdraw "
-    "one (decide_proposal needs his own words); accepting is his decision to act himself: you place no order and say so.")
+    "one (decide_proposal needs his own words); accepting is his decision to act himself: you place no order and say so. "
+    "13. When he tells you how the system should work from now on (\"no new tech until I say\", \"always include a 0.5% charge in cost tests\", \"never use that source\", "
+    "\"I invest Rs 50,000 a month till January, unspent carries over\"), call add_rule with his words: a rule that touches no money takes effect at once and he can undo it; a "
+    "rule about an amount or a limit (kind monthly_envelope, dip_tranche, max_position) waits for his yes, then decide_rule. Say what it covers and how to undo it. Do not put "
+    "a standing instruction in remember_fact: that is a note, not a rule. 14. Before you start or discuss an investigation of a company, sector or theme, call recall: tell him what "
+    "was concluded before and why, what has gone against it since, and what is still open, and say whether it still holds. Use envelope when he asks what he can invest this "
+    "month and scorecard when he asks how the recommendations have done.")
 
 READ = ("picture", "portfolio", "stocks_overview", "stock_facts", "readings", "graph_timeline", "notes", "memory_recall", "journal", "research_flags",
         "price_history", "market_context", "who_is_buying", "growth", "findings", "comovement", "themes", "system_status", "cases", "experiments",
-        "hypotheses", "tax_plan", "forecasts", "ipo_plan", "ready_plans", "simulation", "scenario", "measure", "quant")
+        "hypotheses", "tax_plan", "forecasts", "ipo_plan", "ready_plans", "simulation", "scenario", "measure", "quant", "recall", "rules", "envelope", "scorecard", "waiting")
 ACT = ("open_workspace", "policy_scenarios", "exposure_shock", "ipo_policy_study", "case_calculate", "register_experiment", "frame_objective", "case_evidence", "start_investigation",
-       "work_status", "remember_fact", "web_search", "fetch_cited", "amend_investigation", "decide_plan", "make_proposal", "proposals", "decide_proposal")
+       "work_status", "remember_fact", "web_search", "fetch_cited", "amend_investigation", "decide_plan", "make_proposal", "proposals", "decide_proposal",
+       "add_rule", "undo_rule", "decide_rule", "answer_question")
 TOOLS = READ + ACT
 
 
@@ -143,7 +150,9 @@ def answer(rt, con, cid: int, aid: int, q: str, context: str = "", client=None, 
     gate = gate or service.gate(rt)
     snap = missions.snapshot_id(con, rt.pm_dir)
     hist = _recent(con, cid, aid, gate=gate)
-    first = (f"THE CONVERSATION SO FAR:\n{hist}\n\n" if hist else "") \
+    from pflab.hq import rules as _rules
+    hr = _rules.active_text(con)
+    first = (f"{hr}\n\n" if hr else "") + (f"THE CONVERSATION SO FAR:\n{hist}\n\n" if hist else "") \
         + (f"HE IS LOOKING AT: {context}\n\n" if context else "") + f"RECORD SNAPSHOT: {snap} (today {now:%Y-%m-%d %H:%M})\n\nHIS MESSAGE:\n{q}"
     pid = brain._record(con, now, "assistant", [], MODEL, "assistant", "running")
     ctx = tl.Ctx(rt, pid, MODEL, False, {}, gate, now, client=client, mode=mode, source=first, case_ids=[], task_id=None, role="assistant",
