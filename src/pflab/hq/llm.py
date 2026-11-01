@@ -80,30 +80,32 @@ def _count_kwargs(p: Dict[str, Any]) -> Dict[str, Any]:
 
 def call(con, agent: str, params: Dict[str, Any], client, *, now: datetime, mode: str, private_text: str,
          gate: egress.Gate, doc_kinds: Sequence[str] = (), topic: str = "", question: str = "",
-         cfg: Optional[dict] = None, approved: bool = False, turn: int = 1, extra_in: int = 0, his_order: bool = False) -> Sent:
+         cfg: Optional[dict] = None, approved: bool = False, turn: int = 1, extra_in: int = 0, his_order: bool = False,
+         egress_skip: Sequence[str] = ()) -> Sent:
     """Raises egress.EgressBlocked, governor.BudgetRefused (logged as over_limit) or analyst.NeedsApproval. `extra_in`:
     input the count cannot see (a page web fetch will read, at its cap), priced as the worst case."""
     cfg = cfg or an.config()
-    egress.check(private_text, gate, doc_kinds)
+    egress.check(private_text, gate, doc_kinds, skip=egress_skip)
     if any(k in ("dataset", "email") for k in doc_kinds):  # (audit 2026-10-30) an upload is never sent on its kind alone
         egress.check(_outgoing_text(params), gate)
     body_check(params, gate)
     model = params["model"]
     n_in = int(client.messages.count_tokens(**_count_kwargs(params)).input_tokens) + int(extra_in)
     est = gv.cost_inr(model, n_in, int(params["max_tokens"]), cfg["usd_inr"])
-    try:
-        warn = gv.check(con, agent, est, n_in, int(params["max_tokens"]), now, mode, cfg, approved, turn, his_order=his_order)
-    except gv.BudgetRefused as e:
-        gv.log_refusal(con, agent, model, topic, question or topic, str(e), now)
-        raise
     from pflab.pm.store import next_id
-    cid = next_id(con, "api_calls", "call_id")
     body = json.dumps(params, sort_keys=True, default=str)
     policy = "acceptance" if an.acceptance(cfg, now) else "normal"
-    con.execute("INSERT INTO api_calls (call_id, created_at, mode, model, topic, question, request_sha, request_json, "
-                "status, cost_inr, agent, turn, policy, his_order) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                [cid, now, "live", model, topic, (question or topic)[:2000], hashlib.sha256(body.encode()).hexdigest(),
-                 body, "sending", est, agent, turn, policy, bool(his_order)])
+    with an.ADMIT:                                           # S69: parallel workers: the check and the reserving row (counted at its estimate) are one step
+        try:
+            warn = gv.check(con, agent, est, n_in, int(params["max_tokens"]), now, mode, cfg, approved, turn, his_order=his_order)
+        except gv.BudgetRefused as e:
+            gv.log_refusal(con, agent, model, topic, question or topic, str(e), now)
+            raise
+        cid = next_id(con, "api_calls", "call_id")
+        con.execute("INSERT INTO api_calls (call_id, created_at, mode, model, topic, question, request_sha, request_json, "
+                    "status, cost_inr, agent, turn, policy, his_order, task_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    [cid, now, "live", model, topic, (question or topic)[:2000], hashlib.sha256(body.encode()).hexdigest(),
+                     body, "sending", est, agent, turn, policy, bool(his_order), an.CURRENT_TASK.get()])
     try:
         if model == gv.HAIKU:
             msg = client.messages.create(**params)

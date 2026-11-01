@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 import sys
 import threading
 import time as _time
@@ -69,6 +70,7 @@ class Runtime:
         self.catching_up: Optional[str] = None        # S67: set after a wake or a start after a long stop, until the data is current again
         self._beat: Optional[datetime] = None
         self._woke_at: Optional[datetime] = None
+        self.pool_active = False                      # S69: the worker pool's threads run the worker tasks (hq/pool.py)
 
     # --- change signals ----------------------------------------------------------------------------------------------
     def bump(self, *topics: str) -> None:
@@ -107,6 +109,9 @@ class Runtime:
             t = threading.Thread(target=self._guard(fn), name=name, daemon=True)
             t.start()
             self.threads.append(t)
+        if not os.environ.get("PFLAB_NO_POOL"):               # S69: independent worker tasks run on their own threads
+            from pflab.hq import pool
+            self.threads.extend(pool.start(self))
 
     def shutdown(self, wait_s: float = 30.0, others_s: float = 3.0) -> None:
         """A running job gets `wait_s` to finish (it writes the store); the screen's own computations (watch list,

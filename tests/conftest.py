@@ -23,6 +23,14 @@ def _stable_channel(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _plans_run_unasked(monkeypatch):
+    """S69: a request from him waits once for his yes to the plan. The older mission tests exercise the work itself, so they run with the approval step off;
+    the tests of the approval step turn it on (`monkeypatch.setattr(missions, "plan_approval_mode", lambda: "investor")`)."""
+    from pflab.hq import missions
+    monkeypatch.setattr(missions, "plan_approval_mode", lambda: "none")
+
+
+@pytest.fixture(autouse=True)
 def _no_backup_decision(monkeypatch):
     """Tests never read the investor's own backup decision in configs/service.toml (S58b); a test that needs one sets it."""
     from pflab.service import backup

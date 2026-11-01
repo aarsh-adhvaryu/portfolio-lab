@@ -61,6 +61,9 @@ def load(con, path: Optional[Path] = None) -> Gate:
     return g
 
 
+ADDRESS_STRICT = re.compile(r"\b(pin ?code|postal code|flat no|house no)\b", re.I)
+
+
 def check(text: str, gate: Gate, doc_kinds: Sequence[str] = (), skip: Sequence[str] = ()) -> None:
     """Raise EgressBlocked naming what was found; return quietly when the call may go. `skip`: patterns not read
     (S60: a tool result skips "address", the word public filings use for a company's office; his own address words
@@ -69,6 +72,8 @@ def check(text: str, gate: Gate, doc_kinds: Sequence[str] = (), skip: Sequence[s
     if any(k not in DOC_KINDS for k in doc_kinds):
         found.append("a document that is not public or a portfolio view (statement files never leave)")
     for name, rx in NEVER.items():
+        if name == "address" and "address_word" in skip:           # S69 (his choice A): the bare word is ordinary English in a worker's task; a PIN code, "flat no" or "house no", his address words, name and ids still block
+            rx = ADDRESS_STRICT
         if name not in skip and rx.search(text):
             found.append(name)
     low = text.lower()

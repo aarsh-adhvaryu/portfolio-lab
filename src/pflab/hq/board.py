@@ -41,8 +41,11 @@ class Reply:
 
 
 def post(con, to: str, text: str, now: datetime, *, frm: str = "investor", body: Optional[dict] = None,
-         parent: Optional[int] = None, channel: str = "dashboard", dedup_key: Optional[str] = None) -> int:
-    """A task on the board. With `dedup_key`, a task already open under the same key is returned instead of a second one."""
+         parent: Optional[int] = None, channel: str = "dashboard", dedup_key: Optional[str] = None, status: Optional[str] = None,
+         extra: Optional[dict] = None) -> int:
+    """A task on the board. With `dedup_key`, a task already open under the same key is returned instead of a second one. S69: `status` and `extra` (columns
+    such as case_id, role, depends_on, waiting_on) are written in the same INSERT, so a worker thread polling the queue can never take a task in the instant
+    between its creation and its being held for approval or parked on a dependency."""
     from pflab.pm.store import next_id
     if dedup_key:
         r = con.execute(f"SELECT task_id FROM hq_tasks WHERE dedup_key=? AND status IN ({','.join('?' * len(OPEN))}) "
@@ -54,14 +57,17 @@ def post(con, to: str, text: str, now: datetime, *, frm: str = "investor", body:
         r = con.execute("SELECT hops, channel FROM hq_tasks WHERE task_id=?", [parent]).fetchone()
         hops = (r[0] if r else 0) + 1
         channel = channel if channel != "dashboard" or not r else r[1]
-    status = "queued"
+    status = status or "queued"
     if hops > MAX_HOPS:                                    # the chain is too long: the brain looks at it instead
         body = {**(body or {}), "meant_for": to, "why": f"a chain of {hops} hops (more than {MAX_HOPS})"}
         to, status = "brain", "held"
     tid = next_id(con, "hq_tasks", "task_id")
-    con.execute("INSERT INTO hq_tasks (task_id, created_at, from_agent, to_agent, text, body_json, status, hops, parent_id, "
-                "channel, attempts, dedup_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                [tid, now, frm, to, text[:4000], json.dumps(body or {}, default=str), status, hops, parent, channel, 0, dedup_key])
+    cols = ["task_id", "created_at", "from_agent", "to_agent", "text", "body_json", "status", "hops", "parent_id", "channel", "attempts", "dedup_key"]
+    vals = [tid, now, frm, to, text[:4000], json.dumps(body or {}, default=str), status, hops, parent, channel, 0, dedup_key]
+    for k, v in (extra or {}).items():
+        cols.append(k)
+        vals.append(v)
+    con.execute(f"INSERT INTO hq_tasks ({', '.join(cols)}) VALUES ({','.join('?' * len(cols))})", vals)
     return tid
 
 
@@ -78,11 +84,36 @@ def get(con, tid: int) -> Optional[dict]:
     return d
 
 
-def next_queued(con, now: Optional[datetime] = None, his_only: bool = False) -> Optional[int]:
-    """The oldest task to run: queued, or a retry whose time has come. `his_only` (paused): only a task he ordered himself."""
-    r = con.execute("SELECT min(task_id) FROM hq_tasks WHERE (status='queued' OR (status='retry' AND (next_review_at IS NULL "
-                    "OR next_review_at <= ?)))" + (" AND from_agent='investor'" if his_only else ""), [now or datetime.now()]).fetchone()
+def next_queued(con, now: Optional[datetime] = None, his_only: bool = False, prefix: Optional[str] = None, skip: Optional[str] = None) -> Optional[int]:
+    """The oldest task to run: queued, or a retry whose time has come. `his_only` (paused): only a task he ordered himself. `prefix`: only the
+    tasks of agents whose name starts with it (the worker pool takes 'w_', the HQ round everything)."""
+    q = ("SELECT min(task_id) FROM hq_tasks WHERE (status='queued' OR (status='retry' AND (next_review_at IS NULL OR next_review_at <= ?)))"
+         + (" AND from_agent='investor'" if his_only else "") + (" AND starts_with(to_agent, ?)" if prefix else "")
+         + (" AND NOT starts_with(to_agent, ?)" if skip else ""))
+    r = con.execute(q, [now or datetime.now(), *([prefix] if prefix else []), *([skip] if skip else [])]).fetchone()
     return r[0] if r and r[0] is not None else None
+
+
+_CLAIM = threading.Lock()
+
+
+def claim(con, now: datetime, his_only: bool = False, prefix: Optional[str] = None, skip: Optional[str] = None) -> Optional[int]:
+    """Take the oldest due task for this thread, atomically (S69: several workers share the queue). The process lock keeps two threads from choosing the
+    same row; the conditional UPDATE ... RETURNING is the store's own check that it was still queued; the lease says who holds it. None: nothing due."""
+    import os
+    with _CLAIM:
+        for _ in range(3):
+            tid = next_queued(con, now, his_only, prefix, skip)
+            if tid is None:
+                return None
+            got = con.execute("UPDATE hq_tasks SET status='running', started_at=?, attempts=coalesce(attempts, 0) + 1, next_review_at=NULL, "
+                              "lease_owner=?, lease_until=? WHERE task_id=? AND status IN ('queued','retry') RETURNING task_id",
+                              [now, f"pid:{os.getpid()}:{threading.get_ident()}", now + timedelta(minutes=45), tid]).fetchall()
+            if got:
+                with _LIVE_LOCK:
+                    _LIVE.add(tid)                         # this process owns it until it ends: a wake must not reap it
+                return int(tid)
+    return None
 
 
 def once(con, task_id: Optional[int], key: str, kind: str, now: datetime, do: Callable[[], object], detail: str = "") -> bool:
@@ -158,26 +189,23 @@ def live_ids() -> set:
         return set(_LIVE)
 
 
-def run_one(rt, agents: Dict[str, Callable], deliver: Optional[Callable[[dict], None]] = None, his_only: bool = False) -> Optional[dict]:
+def run_one(rt, agents: Dict[str, Callable], deliver: Optional[Callable[[dict], None]] = None, his_only: bool = False,
+            prefix: Optional[str] = None, skip: Optional[str] = None) -> Optional[dict]:
     """Take the oldest task due, run its agent, keep the result, hand on its follow-ups, deliver the answer. A failure that may
     pass becomes `retry` (bounded by MAX_ATTEMPTS); an agent that needs data returns status 'waiting' and is resumed by `wake`."""
     con = rt.cursor()
     now = rt.clock()
-    tid = next_queued(con, now, his_only)
+    tid = claim(con, now, his_only, prefix, skip)
     if tid is None:
         return None
-    with _LIVE_LOCK:
-        _LIVE.add(tid)                                     # this process owns it until it ends: a wake must not reap it
     try:
-        return _run_claimed(rt, agents, deliver, con, tid, now)
+        return _run_claimed(rt, agents, deliver, con, tid, now)      # (a failure to save the result stays 'running': `reap` runs the task again, as after a crash)
     finally:
         with _LIVE_LOCK:
             _LIVE.discard(tid)
 
 
 def _run_claimed(rt, agents: Dict[str, Callable], deliver, con, tid: int, now: datetime) -> Optional[dict]:
-    con.execute("UPDATE hq_tasks SET status='running', started_at=?, attempts=coalesce(attempts, 0) + 1, next_review_at=NULL "
-                "WHERE task_id=? AND status IN ('queued','retry')", [now, tid])
     t = get(con, tid)
     fn = agents.get(t["to"])
     transient = False
@@ -203,18 +231,30 @@ def _run_claimed(rt, agents: Dict[str, Callable], deliver, con, tid: int, now: d
         rep.text += f" (attempt {t['attempts']} of {MAX_ATTEMPTS}: no more tries)"
     fin = None if rep.status in ("waiting", "retry") else rt.clock()
     from pflab.pm.store import transaction
-    with transaction(con):                                 # the answer and the hand-offs it names are saved together or not at all (audit F6)
-        con.execute("UPDATE hq_tasks SET status=?, result=?, result_json=?, cost_inr=coalesce(cost_inr, 0) + ?, finished_at=?, next_review_at=?, waiting_on=?, "
-                    "progress=?, wait_kind=?, resume_condition=?, lease_owner=NULL, lease_until=NULL, checkpoint_json=coalesce(?, checkpoint_json), "
-                    "artifacts_json=coalesce(?, artifacts_json) WHERE task_id=?",
-                    [rep.status, rep.text[:20000], json.dumps({"route": rep.route, **rep.data}, default=str), rep.cost or 0.0,
-                     fin, nxt, waiting_on, str(rep.data.get("progress") or "")[:300] or None,
-                     (rep.data.get("wait_kind") if rep.status in ("waiting", "retry") else None),
-                     (rep.data.get("resume_condition") if rep.status in ("waiting", "retry") else None),
-                     json.dumps(rep.data["checkpoint"], default=str) if rep.data.get("checkpoint") is not None else None,
-                     json.dumps(rep.data["artifacts"], default=str) if rep.data.get("artifacts") is not None else None, tid])
-        for agent, text in rep.then:
-            post(con, agent, text, rt.clock(), frm=t["to"], parent=tid, dedup_key=f"then:{tid}:{agent}:{hashlib.sha1(text.encode()).hexdigest()[:10]}")
+
+    def save():
+        with transaction(con):                             # the answer and the hand-offs it names are saved together or not at all (audit F6)
+            con.execute("UPDATE hq_tasks SET status=?, result=?, result_json=?, cost_inr=coalesce(cost_inr, 0) + ?, finished_at=?, next_review_at=?, waiting_on=?, "
+                        "progress=?, wait_kind=?, resume_condition=?, lease_owner=NULL, lease_until=NULL, checkpoint_json=coalesce(?, checkpoint_json), "
+                        "artifacts_json=coalesce(?, artifacts_json) WHERE task_id=?",
+                        [rep.status, rep.text[:20000], json.dumps({"route": rep.route, **rep.data}, default=str), rep.cost or 0.0,
+                         fin, nxt, waiting_on, str(rep.data.get("progress") or "")[:300] or None,
+                         (rep.data.get("wait_kind") if rep.status in ("waiting", "retry") else None),
+                         (rep.data.get("resume_condition") if rep.status in ("waiting", "retry") else None),
+                         json.dumps(rep.data["checkpoint"], default=str) if rep.data.get("checkpoint") is not None else None,
+                         json.dumps(rep.data["artifacts"], default=str) if rep.data.get("artifacts") is not None else None, tid])
+            for agent, text in rep.then:
+                post(con, agent, text, rt.clock(), frm=t["to"], parent=tid, dedup_key=f"then:{tid}:{agent}:{hashlib.sha1(text.encode()).hexdigest()[:10]}")
+
+    for attempt in (1, 2, 3):                              # S69: another thread touching the same rows is a conflict to wait out, never a lost answer
+        try:
+            save()
+            break
+        except Exception as e:
+            if attempt == 3 or "onflict" not in str(e):
+                raise
+            import time
+            time.sleep(0.05 * attempt)
     t = get(con, tid)
     if t["status"] == "done":                              # S68: whatever waited for this task goes on
         wake(con, f"task:{tid}", rt.clock(), f"task #{tid} finished")
@@ -228,13 +268,50 @@ def _run_claimed(rt, agents: Dict[str, Callable], deliver, con, tid: int, now: d
     return t
 
 
-def run_all(rt, agents: Dict[str, Callable], deliver=None, max_n: int = 20, stop=None, his_only: bool = False) -> int:
+def run_all(rt, agents: Dict[str, Callable], deliver=None, max_n: int = 20, stop=None, his_only: bool = False, prefix: Optional[str] = None,
+            skip: Optional[str] = None) -> int:
     n = 0
     while n < max_n and (stop is None or not stop.is_set()):
-        if run_one(rt, agents, deliver, his_only) is None:
+        if run_one(rt, agents, deliver, his_only, prefix, skip) is None:
             break
         n += 1
     return n
+
+
+WORKERS = 3                                               # tasks of the worker agents that may run at the same time
+
+
+def run_parallel(rt, agents: Dict[str, Callable], deliver=None, workers: int = WORKERS, max_n: int = 12, stop=None, his_only: bool = False,
+                 prefix: str = "w_") -> int:
+    """Run the due tasks of the worker agents on up to `workers` threads until none is due and none is running (or `max_n` were taken). Independent tasks
+    overlap; a task whose dependency is not done is parked (never queued) and so never takes a thread; what a running task queues (a coordinator's plan) is
+    picked up by the threads that are waiting for it. Returns how many ran."""
+    import time
+    taken, busy = [0], [0]
+    lock = threading.Lock()
+
+    def loop():
+        while stop is None or not stop.is_set():
+            with lock:
+                if taken[0] >= max_n:
+                    return
+                busy[0] += 1
+            ran = run_one(rt, agents, deliver, his_only, prefix)
+            with lock:
+                busy[0] -= 1
+                if ran is not None:
+                    taken[0] += 1
+                    continue
+                idle = busy[0] == 0
+            if idle:
+                return
+            time.sleep(0.05)                                   # a sibling is still running and may queue more work
+    ts = [threading.Thread(target=loop, name=f"worker-{i + 1}", daemon=True) for i in range(max(1, workers))]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    return taken[0]
 
 
 def recent(con, limit: int = 40) -> List[dict]:

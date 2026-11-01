@@ -18,9 +18,11 @@ the exception. Prices are Anthropic's list prices (cached 2026-10-06); rupee cos
 """
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import json
 import re
+import threading
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -47,6 +49,10 @@ SYSTEM = ("You are an equity research analyst writing for a private investor in 
 
 class EgressBlocked(RuntimeError):
     """The request carries something personal: it never leaves the PC."""
+
+
+CURRENT_TASK: contextvars.ContextVar = contextvars.ContextVar("pflab_current_task", default=None)   # S69: the worker task a paid call is made for
+ADMIT = threading.Lock()                                     # S69: checking a limit and reserving the call's estimate are one step across worker threads
 
 
 class BudgetRefused(RuntimeError):
@@ -476,9 +482,9 @@ def _log(con, req: Request, mode: str, model: str, status: str, now: datetime, p
     except Exception:
         policy = None
     con.execute("INSERT INTO api_calls (call_id, created_at, mode, model, topic, question, request_sha, request_json, status, "
-                "cost_inr, policy) VALUES (?,?,?,?,?,?,?,?,?,?,?)",          # named: S59 added the `agent` column
+                "cost_inr, policy, task_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",          # named: S59 added the `agent` column
                 [cid, now, mode, model, req.topic, req.question, hashlib.sha256(body.encode()).hexdigest(), body, status,
-                 cost_inr, policy])
+                 cost_inr, policy, CURRENT_TASK.get()])
     return cid
 
 
