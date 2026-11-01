@@ -614,6 +614,12 @@ def tick(rt) -> dict:
                 cases.conclude(con, cid, now, decision, m["result"]["answer"][:500], uncertainty=m["result"].get("limitations", "")[:400],
                                next_review_at=now + timedelta(days=cases.REVIEW_DAYS))
                 _set(con, cid, now, state="done", last_progress_at=now, next_trigger=m["result"].get("monitor_next", "")[:300] or "the case review date", blocker=None)
+                try:                                                  # S72: the conclusion, its methods and what it is about join the graph; what memory offered is compared with what was used
+                    from pflab.kg import memory
+                    memory.record_case(con, cid, now)
+                    memory.observe(con, now, cid)
+                except Exception:
+                    pass
                 moved[cid] = "done"
     return moved
 

@@ -233,7 +233,7 @@ def round_(rt, stop=None, attended: bool = True) -> dict:
         return inbox.retry_blocked(rt)
     part("blocked_files", blocked_files)
     part("cases", lambda: len(cases.sweep(rt.cursor(), rt.clock())))     # S67: what a waiting investigation needed may have arrived (free, code only)
-    part("proposals", lambda: len(__import__("pflab.hq.proposals", fromlist=["reconcile"]).reconcile(rt.cursor(), rt.clock())))   # S69: a trade he made is matched to the proposal he accepted
+    part("proposals", lambda: __import__("pflab.hq.daily", fromlist=["reconcile_and_tell"]).reconcile_and_tell(rt))   # S69/S73: a trade he made is matched to the proposal he accepted, the graph and his envelope follow
     if preset != "off" and paid_allowed(rt):                     # S68: the system chooses work itself (signals, due reviews); paid work only where paid work is allowed
         part("autonomy", lambda: __import__("pflab.hq.missions", fromlist=["scan"]).scan(rt))
         part("triggers", lambda: len(__import__("pflab.hq.triggers", fromlist=["check"]).check(rt)))        # S69: executable monitors fire by code

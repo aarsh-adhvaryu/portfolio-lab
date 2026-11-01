@@ -79,7 +79,7 @@ SYSTEMS = {
 
 READ_TOOLS = ("picture", "portfolio", "stocks_overview", "stock_facts", "readings", "graph_timeline", "notes", "memory_recall", "journal", "research_flags",
               "price_history", "market_context", "who_is_buying", "growth", "findings", "comovement", "themes", "system_status", "cases", "experiments",
-              "hypotheses", "tax_plan", "forecasts", "ipo_plan", "ready_plans")
+              "hypotheses", "tax_plan", "forecasts", "ipo_plan", "ready_plans", "recall", "rules", "envelope")
 TOOLS = {
     "coordinator": READ_TOOLS + ("plan_mission", "submit_answer", "frame_objective", "case_evidence", "propose_software_change", "proposals"),
     "research": READ_TOOLS + ("web_search", "fetch_cited", "case_evidence", "request_report", "request_artifact", "frame_objective", "proposals"),
@@ -236,6 +236,19 @@ def _dossier(con, cid: int, task: dict, now: datetime, role: Optional[str] = Non
     ins = plans.instructions_text(con, cid)
     if ins:
         lines.append(ins)
+    from pflab.hq import rules
+    from pflab.kg import memory
+    hr = rules.active_text(con)                              # S72: what he told every agent to do from now on
+    if hr:
+        lines.append(hr)
+    try:
+        rec = memory.recall(con, memory.subjects_of(con, m["goal"]), now, exclude_case=cid)          # S72: what is already known about this, so it is checked, not redone
+        mb = memory.brief(rec)
+        if mb:
+            lines.append(mb)
+            memory.offer(con, now, cid, rec)
+    except Exception:                                        # memory never stops a task
+        pass
     sup = plans.superseded_tasks(con, cid)
     if sup:
         lines.append("RESULTS FROM AN OLDER INSTRUCTION VERSION (to be rechecked before they are relied on): " + ", ".join(f"task #{x['id']} ({x['role']}, v{x['version']})" for x in sup))

@@ -256,6 +256,15 @@ def screen(events_: List[dict], gate: egress.Gate) -> Tuple[List[dict], int]:
     return keep, withheld
 
 
+def morning_pass_on() -> bool:
+    """`[policy] morning_pass = "on"` in api_budget.toml brings the Opus morning pass back; by default the daily review does the looking (S73)."""
+    try:
+        from pflab.agents import analyst as an
+        return str(((an.config().get("policy") or {}).get("morning_pass")) or "off").lower() == "on"
+    except Exception:
+        return False
+
+
 def due_scheduled(con, now: datetime, cal=None) -> Optional[str]:
     """'morning' on a trading day after MORNING_AT, 'reflection' on Saturday morning, once each; else None."""
     if now.weekday() == REFLECT_DAY and (now.hour, now.minute) >= REFLECT_AT:
@@ -267,7 +276,7 @@ def due_scheduled(con, now: datetime, cal=None) -> Optional[str]:
                                       [week0]).fetchone():
             return "reflection"
     trading = cal.is_trading_day(now.date()) if cal is not None else now.weekday() < 5
-    if trading and (now.hour, now.minute) >= MORNING_AT:
+    if trading and (now.hour, now.minute) >= MORNING_AT and morning_pass_on():           # S73: the daily review (hq/daily.py, code, free) replaces the paid morning pass
         day0 = datetime.combine(now.date(), datetime.min.time())
         if not con.execute("SELECT 1 FROM hq_passes WHERE trigger='morning' AND role='brain' AND status NOT IN ('not made', 'stopped') "
                            "AND passed_at >= ?", [day0]).fetchone():      # S68: a pass that was refused or stopped did not review the morning

@@ -1312,6 +1312,109 @@ def remember_fact(ctx: Ctx, a: dict) -> dict:
     return {"remembered": mid, "note": "kept; this does not change any target, limit or the stock list"}
 
 
+def recall_tool(ctx: Ctx, a: dict) -> dict:
+    """Working memory on a subject (S72): what the system concluded before and why, what goes against it, which checked calculations can be re-run, what changed, what is open."""
+    from pflab.kg import memory
+    rec = memory.recall(ctx.con, (a.get("about") or ctx.source or "")[:1500], ctx.now, exclude_case=(ctx.case_ids[0] if ctx.case_ids else None))
+    return {"brief": memory.brief(rec) or "nothing earlier on this subject", "subjects": rec["subjects"], "conclusions": rec["conclusions"], "contradictions": rec["contradictions"],
+            "methods": rec["methods"], "changed": rec["changed"], "open": rec["open"], "effects_last_30_days": memory.effects_summary(ctx.con, 30, ctx.now),
+            "note": "a conclusion marked older has a newer investigation on the same subject; a method listed is re-run on today's record, not rewritten"}
+
+
+def rules_tool(ctx: Ctx, a: dict) -> dict:
+    from pflab.hq import rules
+    return {"version": rules.version(ctx.con), "active": [{k: r[k] for k in ("rule_id", "kind", "name", "text", "version")} for r in rules.active(ctx.con)],
+            "waiting_for_his_yes": [{k: r[k] for k in ("rule_id", "kind", "name", "text")} for r in rules.pending(ctx.con)]}
+
+
+def envelope_tool(ctx: Ctx, a: dict) -> dict:
+    from pflab.hq import stocks
+    from pflab.plan import envelope
+    try:
+        index = stocks.index_series(ctx.rt.data_root)
+    except Exception:
+        index = None
+    s = envelope.status(ctx.con, ctx.now.date(), index)
+    return {**s, "in_words": envelope.explain(s)}
+
+
+def scorecard_tool(ctx: Ctx, a: dict) -> dict:
+    from pflab.hq import scorecard
+    n = ctx.con.execute("SELECT count(*), count(*) FILTER (WHERE outcome IN ('good', 'bad')) FROM hq_claims").fetchone()
+    return {"claims_stated": int(n[0]), "claims_scored": int(n[1]), "by_decision_and_market_state": scorecard.table(ctx.con),
+            "note": "a rate is shown only from 20 scored claims; the skeptical rate is the 20th percentile of Beta(1+good, 1+bad); it describes, it never changes a limit"}
+
+
+_UNDO = __import__("re").compile(r"\b(undo|remove|cancel|drop|forget|revoke|delete|stop (that|this|the)|never ?mind|take (that|it) back|no longer)\b", __import__("re").I)
+
+
+def add_rule(ctx: Ctx, a: dict) -> dict:
+    """He tells the system how to work from now on (a house rule). Not about money: active at once, with an Undo. About an amount or a limit: it waits for his yes."""
+    from pflab.hq import rules
+    if not _his_message(ctx):
+        return {"made": False, "why": "a house rule is made from his own message in this turn"}
+    try:
+        machine = json.loads(a.get("machine_json") or "{}")
+    except ValueError:
+        return {"made": False, "why": "machine_json must be a JSON object"}
+    out = rules.propose(ctx.con, ctx.now, a["kind"], a["text"], machine if isinstance(machine, dict) else {}, name=a.get("name", ""), by="the investor (chat)", source=_his_message(ctx))
+    if out.get("made"):
+        rules.render(ctx.con, ctx.rt.pm_dir)
+        out["note"] = ("It waits for his yes because it is about money: ask him to say yes, then call decide_rule." if out["needs_yes"]
+                       else "It is active now and every agent reads it; he can undo it by saying so. " + (f"It covers these sectors: {', '.join(out['covers'])}." if out.get("covers") else ""))
+    return out
+
+
+def undo_rule(ctx: Ctx, a: dict) -> dict:
+    from pflab.hq import rules
+    if not _UNDO.search(_his_message(ctx)):
+        return {"undone": False, "why": "his message does not ask to undo a rule; ask him"}
+    out = rules.undo(ctx.con, ctx.now, a["rule"])
+    if out.get("undone"):
+        rules.render(ctx.con, ctx.rt.pm_dir)
+    return out
+
+
+def decide_rule(ctx: Ctx, a: dict) -> dict:
+    """His yes or no to a house rule about money. Only his own words in this message count."""
+    from pflab.hq import rules
+    yes = a["decision"] == "approve"
+    if (yes and not _said_yes(ctx)) or (not yes and not _said_no(ctx)):
+        return {"decided": False, "why": "his message does not clearly say " + ("yes" if yes else "no") + " to this rule"}
+    out = rules.decide(ctx.con, ctx.now, int(a["rule_id"]), yes)
+    if out.get("decided"):
+        rules.render(ctx.con, ctx.rt.pm_dir)
+    return out
+
+
+def waiting_tool(ctx: Ctx, a: dict) -> dict:
+    """What waits for his yes about limits, theme baskets and the opportunity pot, each with its Q# (say the Q# when you put it to him: his answer is accepted only for a question he was just shown)."""
+    rows = ctx.con.execute("SELECT q_id, text, created_at FROM questions WHERE status = 'open' AND agent = 'limits' ORDER BY q_id").fetchall()
+    return {"waiting_for_his_yes": [{"q": f"Q#{q}", "text": t, "since": str(c)[:10]} for q, t, c in rows],
+            "how": "put one to him in plain words with its Q#; when he says yes or no in his next message, call answer_question"}
+
+
+def answer_question(ctx: Ctx, a: dict) -> dict:
+    """His yes or no to a limit, theme basket or the opportunity pot, the same act as the Needs-from-you button. Only his own clear yes or no counts, and only for a question
+    that was shown to him in the last few messages of this conversation (its Q# appears there)."""
+    from pflab.agents import questions as qs
+    from pflab.app import assistant
+    from pflab.risk import themes
+    qid = int(a["q_id"])
+    q = ctx.con.execute("SELECT agent, status, text FROM questions WHERE q_id = ?", [qid]).fetchone()
+    if q is None or q[1] != "open" or q[0] != "limits":
+        return {"answered": False, "why": "no open limit or pot question with that number"}
+    yes = a["answer"] == "yes"
+    if (yes and not _said_yes(ctx)) or (not yes and not _said_no(ctx)):
+        return {"answered": False, "why": "his message does not clearly say " + a["answer"]}
+    shown = " ".join(t for (t,) in ctx.con.execute("SELECT text FROM chat_messages WHERE chat_id = ? AND role = 'ai' AND status = 'done' ORDER BY msg_id DESC LIMIT 4",
+                                                    [assistant.thread(ctx.con, ctx.now)]).fetchall())
+    if f"Q#{qid}" not in shown:
+        return {"answered": False, "why": f"Q#{qid} was not put to him in this conversation just now; tell him what it is (with its Q#) and ask"}
+    qs.answer(ctx.con, qid, a["answer"], ctx.now)
+    return {"answered": True, "q": f"Q#{qid}", "applied": themes.resolve(ctx.con, ctx.now), "what": q[2][:200]}
+
+
 def propose_software_change(ctx: Ctx, a: dict) -> dict:
     """The system can say that a tool is missing or something is broken, with the evidence and, if it has one, a patch as TEXT. It never edits
     the application: a person takes the issue to the development workflow."""
@@ -1616,6 +1719,29 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
          {"kind": {"type": "string", "enum": ["targets", "stock_list", "api_cap"]}, "key": _s("targets: 'weights'; stock_list: add or remove; api_cap: monthly", 20),
           "value": _s("targets: JSON of the new weights; stock_list: the symbol; api_cap: rupees", 300),
           "why": _s("what he asked, in his words", 300)}, ("kind", "key", "value", "why"), change_preference),
+    Tool("recall", "read", "WORKING MEMORY on a subject: what the system concluded before and why (an older view is marked), what evidence goes against it, which checked calculations "
+         "can be re-run on today's record instead of written again, what changed since, what is still open. Look here before you start work on a company, a sector or a question that "
+         "may have been looked at; say in your answer whether the earlier conclusion still holds.", {"about": _s("the company, sector, theme or the question itself (default: this task)", 300)}, (), recall_tool),
+    Tool("waiting", "read", "What waits for his yes about limits, theme baskets and the opportunity pot, each with its Q#. Put one to him in plain words WITH its Q#, then call "
+         "answer_question when his next message says yes or no.", {}, (), waiting_tool),
+    Tool("answer_question", "action", "His yes or no to a limit, theme basket or opportunity-pot question that waits (the same act as the Needs-from-you button). Only his own clear "
+         "yes or no in this message counts, and only for a question whose Q# you showed him in the last few messages.",
+         {"q_id": _i("the question number (the digits of its Q#)", 1, 10 ** 9), "answer": _s("his answer", enum=["yes", "no"])}, ("q_id", "answer"), answer_question),
+    Tool("rules", "read", "The house rules he has made (what every agent must do from now on) and those waiting for his yes.", {}, (), rules_tool),
+    Tool("envelope", "read", "His monthly envelope for shares: the sum set aside, what the months so far have made available, what he has bought, what is available now, and whether the "
+         "dip tranche is triggered.", {}, (), envelope_tool),
+    Tool("scorecard", "read", "How the system's recommendations turned out: claims stated and scored at 5, 20 and 60 sessions, by kind of decision and market state, with n and a "
+         "skeptical rate (a count only under 20).", {}, (), scorecard_tool),
+    Tool("add_rule", "action", "He tells the system how to work from now on (for example 'no new tech until I say', 'always include a 0.5% charge in cost tests'): keep it as a house rule in "
+         "his words. Not about money: it takes effect at once and he can undo it. About an amount or a limit (a max position, the monthly envelope, a dip tranche): it waits for his yes.",
+         {"kind": _s("which kind", enum=["sector_exclusion", "max_position", "monthly_envelope", "dip_tranche", "method", "note"]), "text": _s("the rule in his words", 400),
+          "machine_json": _s("sector_exclusion: {\"terms\": [\"tech\", \"software\"]}; max_position: {\"max_weight_pct\": 8}; monthly_envelope: {\"amount_rupees\": 50000, \"until\": \"2027-01-31\", "
+                             "\"carry_over\": true}; dip_tranche: {\"extra_rupees\": 25000, \"below_high_pct\": 10}; method and note: {}", 400), "name": _s("a short name", 40)},
+         ("kind", "text"), add_rule),
+    Tool("undo_rule", "action", "He asks to undo a house rule (by its id or name); the version it replaced comes back. Only when his message says so.",
+         {"rule": _s("the rule's id or name", 60)}, ("rule",), undo_rule),
+    Tool("decide_rule", "action", "His yes or no to a house rule about money that waits for it. Use it only when his message in this turn says so; the system checks his words.",
+         {"rule_id": _i("the rule", 1, 10 ** 9), "decision": _s("his decision", enum=["approve", "decline"])}, ("rule_id", "decision"), decide_rule),
 ]}
 TOOLS["record_suggestion"].params["rested_on"]["items"]["enum"] = [n for n, t in TOOLS.items() if t.kind == "read"]
 
@@ -1625,7 +1751,8 @@ MAX_OPTIONAL = 24                                  # optional parameters across 
 
 
 WORKER_ONLY = ("reproduce_calc", "submit_review", "request_artifact", "plan_mission", "submit_answer", "start_investigation", "open_workspace", "work_status",
-               "remember_fact", "amend_investigation", "decide_plan", "make_proposal", "proposals", "decide_proposal")      # S68: the workers' tools; the brain's list is unchanged
+               "remember_fact", "amend_investigation", "decide_plan", "make_proposal", "proposals", "decide_proposal",
+               "add_rule", "undo_rule", "decide_rule", "answer_question")      # S68: the workers' tools; the brain's list is unchanged
 
 
 def definitions(names=None) -> List[dict]:
