@@ -245,8 +245,15 @@ def _dossier(con, cid: int, task: dict, now: datetime, role: Optional[str] = Non
     arts = missions.artifacts(con, cid)
     if arts:
         lines.append("ARTIFACTS SO FAR (kind ref detail, by task): " + "; ".join(f"{a['kind']} {a['ref']} {a['detail'] or ''} (task #{a['task_id']})" for a in arts[-40:]))
-    for (cid_, q, st, res) in con.execute("SELECT calc_id, question, status, result_json FROM hq_calcs WHERE case_id=? ORDER BY calc_id", [cid]).fetchall():
-        lines.append(f"CALC #{cid_} [{st}]: {q[:160]} -> {str(res)[:200 if slim else 500]}")
+    for (cid_, q, st, res, chk) in con.execute("SELECT calc_id, question, status, result_json, check_json FROM hq_calcs WHERE case_id=? ORDER BY calc_id", [cid]).fetchall():
+        why = ""
+        if st == "failed":                                   # S70: a failed calculation says WHY (the live check's reviewer saw only an empty result and asked for a reason)
+            try:
+                probs = json.loads(chk or "{}").get("problems") or []
+            except ValueError:
+                probs = []
+            why = f" | FAILED because: {str(probs[0])[:220]}" if probs else " | FAILED (no reason was recorded)"
+        lines.append(f"CALC #{cid_} [{st}]: {q[:160]} -> {str(res)[:200 if slim else 500]}{why}")
     for (rid, oc, note) in con.execute("SELECT review_id, outcome, note FROM hq_case_reviews WHERE case_id=? AND outcome IS NOT NULL ORDER BY review_id", [cid]).fetchall():
         lines.append(f"REVIEW #{rid} [{oc}]: {(note or '')[:500]}")
     for (eid, st, why, hyp) in con.execute("SELECT DISTINCT e.exp_id, e.status, coalesce(e.decision_why, ''), e.hypothesis FROM hq_artifacts a JOIN learn_experiments e "
