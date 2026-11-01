@@ -87,9 +87,39 @@ TOOLS = {
                            "case_evidence", "request_artifact", "reproduce_calc", "frame_objective", "make_proposal", "proposals"),
     "review": READ_TOOLS + ("reproduce_calc", "submit_review", "case_evidence", "proposals"),
 }
-# role -> (governor key, model, effort)
+# role -> (governor key, model, effort). S70 (measured: docs/protocols/s70_roles_protocol.md, STUDIES.md): Sonnet holds the reviewer's seat and the coordinator's
+# PLANNING step; Opus keeps the coordinator's final answer and the review of work that ends in a proposal of real money (`seat_model`).
 SPECS = {"coordinator": ("w_coord", gv.OPUS, "medium"), "research": ("w_research", gv.SONNET, "medium"), "quant": ("w_quant", gv.SONNET, "medium"),
-         "review": ("w_review", gv.OPUS, "medium")}
+         "review": ("w_review", gv.SONNET, "medium")}
+REVIEW_OPUS_ABOVE = 25_000.0                # rupees: a proposal this large or larger has its review by Opus ([policy] review_opus_above_rupees)
+
+
+def high_stakes(con, cid: int) -> bool:
+    """True when a live proposal of this investigation is for REVIEW_OPUS_ABOVE rupees or more (its size, from the record; none if the record cannot size it)."""
+    from pflab.agents import analyst as an
+    from pflab.hq import proposals
+    try:
+        limit = float(((an.config().get("policy") or {}).get("review_opus_above_rupees")) or REVIEW_OPUS_ABOVE)
+    except Exception:
+        limit = REVIEW_OPUS_ABOVE
+    for p in proposals.listing(con, case_id=cid, limit=20):
+        if p["status"] in ("withdrawn", "rejected"):
+            continue
+        size = (p.get("payload") or {}).get("size") or {}
+        if float(size.get("notional") or 0.0) >= limit:
+            return True
+    return False
+
+
+def seat_model(con, role: str, body: dict, cid: int) -> str:
+    """The model for this task: the role's default, except that the coordinator PLANS with Sonnet (its final answer stays with Opus) and the reviewer is Opus
+    when the work ends in a proposal of REVIEW_OPUS_ABOVE rupees or more."""
+    model = SPECS[role][1]
+    if role == "coordinator" and body.get("step") == "plan":
+        return gv.SONNET
+    if role == "review" and high_stakes(con, cid):
+        return gv.OPUS
+    return model
 
 
 def _params(role: str, messages: list, last: bool) -> dict:
@@ -258,7 +288,8 @@ def run_task(rt, task: dict, client=None, gate=None, cfg=None) -> Reply:
     if dep is not None:                                      # woken by something else: still waiting for the task it depends on
         return Reply(f"waiting for task #{dep}", status="waiting", data={"waiting_on": f"task:{dep}", "wait_kind": "task", "resume_condition": f"task #{dep} finishes"})
     promise = body.get("promise") or missions.DEFAULT_PROMISE[role]
-    agent, model, _effort = SPECS[role]
+    agent, _default, _effort = SPECS[role]
+    model = seat_model(con, role, body, cid)
     mode = rt.settings.get("brain", "economy")
     his = (cases.get(con, cid) or {}).get("origin") == "investor"
     client = client or service.client(rt)
