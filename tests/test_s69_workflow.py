@@ -506,7 +506,7 @@ def test_raising_the_cap_wakes_work_parked_on_the_budget_by_itself(rt, con, monk
     later = NOW + timedelta(days=7)
     con.execute("UPDATE hq_tasks SET status='retry', wait_kind='budget', next_review_at=?, resume_condition='the budget allows it again' WHERE task_id=?", [later, tid])
     con.execute("INSERT INTO api_calls (call_id, created_at, mode, model, question, request_sha, request_json, status, cost_inr, agent, turn) "
-                "VALUES (901, ?, 'live', ?, 'q', '', '{}', 'done', 2490.0, NULL, 1)", [NOW, gv.OPUS])                 # the month's Rs 2,500 is nearly spent: Rs 10 left
+                "VALUES (901, ?, 'live', ?, 'q', '', '{}', 'done', 2490.0, NULL, 1)", [NOW - timedelta(hours=20), gv.OPUS])                 # the month's Rs 2,500 is nearly spent: Rs 10 left
     assert 5.0 < missions.budget_room(con, NOW) < 10.0 and missions.wake_budget_waits(con, NOW) == 0
     assert con.execute("SELECT next_review_at FROM hq_tasks WHERE task_id=?", [tid]).fetchone()[0] == later
     monkeypatch.setattr(an, "config", lambda: {**CFG, "cap": 2800.0})                                                 # he raises the cap: Rs 310 of room
