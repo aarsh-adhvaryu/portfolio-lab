@@ -121,8 +121,12 @@ def config(path: Optional[Path] = None) -> dict:
             "adopted": bool(c.get("adopted", False)),
             # S68: the day limits and the bounded acceptance window are configuration, read on every call (live, no restart)
             "policy": whole.get("policy", {}), "acceptance": whole.get("acceptance", {}),
+            "paper": whole.get("paper", {}),               # S76: the paper portfolio's own settings (on, monthly_rupees, mission_rupees, start)
             # the investor 2026-10-23: Tijori exports are public company data, not his; they go to the analyst (set false to stop)
-            "tijori_to_analyst": bool(c.get("tijori_to_analyst", True))}
+            "tijori_to_analyst": bool(c.get("tijori_to_analyst", True)),
+            # S75 (his word 2026-11-01: "reset the limit and usage"): usage is counted from this moment if it is later than the first of the month. Nothing is deleted:
+            # the calls stay in `api_calls`, they just stop counting against the new month's cap.
+            "counted_since": c.get("counted_since")}
 
 
 # --- the egress gate -------------------------------------------------------------------------------------------------
@@ -365,8 +369,18 @@ def cost(input_tokens: int, output_tokens: int, batch: bool, usd_inr: float, mod
     return usd, usd * usd_inr
 
 
+def month_start(now: datetime, cfg: Optional[dict] = None) -> datetime:
+    """Where this month's usage is counted from: the first of the month, or the `[api] counted_since` moment if that is later (and not in the future)."""
+    first = datetime(now.year, now.month, 1)
+    try:
+        since = _when((cfg if cfg is not None else config()).get("counted_since"))
+    except Exception:
+        since = None
+    return since if since is not None and first < since <= now else first
+
+
 def month_spend_inr(con, now: datetime) -> float:
-    start = datetime(now.year, now.month, 1)
+    start = month_start(now)
     return float(con.execute("SELECT coalesce(sum(cost_inr), 0) FROM api_calls WHERE created_at >= ? AND status IN "
                              "('done','refused','submitted','queued')", [start]).fetchone()[0])
 

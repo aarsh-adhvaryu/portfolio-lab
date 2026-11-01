@@ -208,22 +208,57 @@ def run(con, root, now: datetime, sessions: Optional[List[date]] = None, levels:
     if last is None:
         day = sessions[-1]
         start(con, day, real_fn(day), levels, idx_at(day))
+        _styles_start(con, day)
         return {"started": str(day)}
     done = []
     prev = last[0]
+    _styles_start(con, prev)                                                       # an install that already has books gets the style books from its last night
     for day in [d for d in sessions if d > prev]:
         idx = idx_at(day)
         if not idx:
             continue
+        fl = flows(con, prev, day, accounts)
         step(con, day, prev, real_fn(day), levels, idx, side_cost, accounts)
+        _styles_step(con, day, fl, idx["N500"], side_cost)
         done.append(str(day))
         prev = day
     return {"sessions": len(done), "last": str(prev)}
 
 
+# --- the style books (S75): same money, a different way of using it; kept apart from BOOKS so the scoreboard's four stay four ---------------------------
+
+def _n500(con, upto: date) -> pd.Series:
+    rows = con.execute("SELECT day, holdings_json FROM twin_days WHERE book='N500' AND day <= ? ORDER BY day", [upto]).fetchall()
+    return pd.Series({pd.Timestamp(d): float(json.loads(h)["last"]) for d, h in rows}, dtype=float)
+
+
+def _targets():
+    try:
+        from pflab.plan import targets as tg
+        return tg.load()
+    except Exception:
+        return None
+
+
+def _styles_start(con, day: date) -> None:
+    from pflab.plan import styles
+    if all(styles._last(con, b) is not None for b in styles.STYLES):
+        return
+    s = _n500(con, day)
+    r = _last(con, "N500")
+    if s.empty or r is None or r[0] != day:
+        return
+    styles.start(con, day, float(r[1]), float(s.iloc[-1]), styles.gold_on(con, day), _targets())
+
+
+def _styles_step(con, day: date, fl: float, level: float, side_cost: float) -> None:
+    from pflab.plan import styles
+    styles.step(con, day, fl, level, styles.gold_on(con, day), index=_n500(con, day), side_cost=side_cost)
+
+
 def status(con) -> dict:
     """Each book's value now and since the start; a comparison only after MIN_SESSIONS sessions (descriptive, never an edge)."""
-    rows = con.execute("SELECT book, min(day), max(day), count(*) FROM twin_days GROUP BY book").fetchall()
+    rows = con.execute("SELECT book, min(day), max(day), count(*) FROM twin_days WHERE book IN ('REAL','SYSTEM','EW','N500') GROUP BY book").fetchall()
     if not rows:
         return {"started": False, "note": "the scoreboard starts on the first night the app runs with a ledger"}
     out = {"started": True, "books": {}}
@@ -244,5 +279,7 @@ def status(con) -> dict:
         out["vs_equal_weight"] = {b: round(v["value"] - base, 2) for b, v in out["books"].items() if b != "EW"}
         out["note"] = ("All four books got the same money on the same days. The gaps are descriptive: the equal-weight Nifty 500 is the bar; "
                        "an edge is only what a pre-registered test shows.")
+    from pflab.plan import styles
+    out["styles"] = styles.status(con)
     out["system_trades"] = con.execute("SELECT count(*) FROM twin_trades WHERE book='SYSTEM' AND rupees > 0").fetchone()[0]
     return out

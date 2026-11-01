@@ -309,6 +309,8 @@ def test_cycle_end_to_end_without_network(con, tmp_path, monkeypatch):
                                                          "validation": {}})
     monkeypatch.setattr(sources, "collect", lambda con, now, repo, text_dir, **k: {"drop": sources.drop(con, now, repo, text_dir)})
     monkeypatch.setattr(run, "proposal_draft", lambda rt: None)
+    from pflab.learner import s76
+    monkeypatch.setattr(s76, "register_all", lambda con, proto_dir, now: {})      # S76's own claims are tested in test_s76_learner
     out = run.cycle(rt)
     assert out["collected"] == {"drop": 1} and out["claims"] == 1
     assert list(out["tested"].values()) == ["pass"] and out["record"]["why"] == "weekly"

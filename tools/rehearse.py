@@ -23,6 +23,7 @@ from pathlib import Path
 
 ISINS = {"HINDUNILVR": ("INE030A01027", 120), "ITC": ("INE154A01025", 600), "LT": ("INE018A01030", 60), "MARUTI": ("INE585B01010", 15),
          "ASIANPAINT": ("INE021A01026", 40), "NESTLEIND": ("INE239A01024", 10)}                    # public identifiers, invented quantities
+ETFS = {"GOLDBEES": "INF204KB17I5", "NIFTYBEES": "INF204KB14I2"}                                   # S76: what the paper portfolio may buy besides the shares
 
 
 def seed(profile: Path, window_cap: float) -> None:
@@ -41,9 +42,14 @@ def seed(profile: Path, window_cap: float) -> None:
     for sym, (isin, qty) in ISINS.items():
         con.execute("""INSERT INTO instruments (isin, key_kind, asset_class, tax_class, listed, symbol, name, source, built_at)
                        VALUES (?, 'isin', 'equity', 'listed_equity', TRUE, ?, ?, 'synthetic rehearsal', now())""", [isin, sym, f"{sym} Limited"])
-    rows = _duck.sql(f"select date, isin, close from '{root}/panel/prices.parquet' where isin in ({','.join(repr(v[0]) for v in ISINS.values())}) "
-                     f"and date >= '2024-01-01' order by isin, date").df()
-    for r in rows.itertuples():
+    for sym, isin in ETFS.items():
+        con.execute("""INSERT INTO instruments (isin, key_kind, asset_class, tax_class, listed, symbol, name, source, built_at)
+                       VALUES (?, 'isin', 'etf', 'LISTED_NONEQUITY', TRUE, ?, ?, 'synthetic rehearsal', now())""", [isin, sym, f"{sym} ETF"])
+    every = [v[0] for v in ISINS.values()] + list(ETFS.values())
+    allrows = _duck.sql(f"select date, isin, close from '{root}/panel/prices.parquet' where isin in ({','.join(repr(i) for i in every)}) "
+                        f"and date >= '2024-01-01' order by isin, date").df()
+    rows = allrows[allrows["isin"].isin([v[0] for v in ISINS.values()])]
+    for r in allrows.itertuples():
         con.execute("INSERT INTO prices VALUES (?,?,?,?,?,?)", [r.isin, r.date.date() if hasattr(r.date, "date") else r.date, float(r.close), "EQ", "nse_bhavcopy", now])
     log = ev.EventLog()
     log.append(ev.Event(kind="deposit", account_id="ZERODHA", date=date(2023, 12, 20), amount=5_000_000.0, ref="SYNTH-FUNDS"))      # invented funds
@@ -56,7 +62,8 @@ def seed(profile: Path, window_cap: float) -> None:
     (pm / "api_budget.toml").write_text(
         "[api]\nmodel = \"claude-opus-5-5\"\nmonthly_cap_rupees = 2500\ndev_monthly_cap_rupees = 0\nask_above_rupees = 100\nusd_inr = 90.0\nadopted = true\n"
         "[egress]\nnames = [\"synthname\", \"synthsurname\"]\naddress = []\n"
-        f"[acceptance]\nsince = 2026-10-31T00:00:00\nuntil = 2026-11-07T23:59:00\ncap_rupees = {window_cap}\n", encoding="utf-8")
+        f"[acceptance]\nsince = 2026-10-31T00:00:00\nuntil = 2026-11-07T23:59:00\ncap_rupees = {window_cap}\n"
+        f"[paper]\nmonthly_rupees = {window_cap}\nmission_rupees = {window_cap}\n", encoding="utf-8")
     (pm / "app" / "settings.json").write_text(json.dumps({"theme": "dark", "port": 8791, "scheduler": True, "preset": "full", "brain": "normal",
                                                            "drop_watch": False, "telegram_send": False, "live_prices": False}), encoding="utf-8")
     (pm / "targets.toml").write_text("# synthetic rehearsal: no targets\n", encoding="utf-8")
@@ -126,6 +133,9 @@ def show(profile: Path, base: str = "") -> None:
     con = duckdb.connect(str(db), read_only=True)
     for t, q in (("tasks", "SELECT task_id, to_agent, status, attempts, wait_kind, cost_inr FROM hq_tasks ORDER BY task_id"),
                  ("artifacts", "SELECT kind, count(*) FROM hq_artifacts GROUP BY 1"),
+                 ("paper decisions", "SELECT decision_id, action, symbol, round(amount), fraction, status, left(reason, 160), left(note, 160) FROM paper_decisions ORDER BY 1"),
+                 ("paper orders", "SELECT order_id, symbol, side, round(qty), round(amount), status FROM paper_orders ORDER BY 1"),
+                 ("reviews", "SELECT case_id, outcome, left(note, 300) FROM hq_case_reviews ORDER BY review_id"),
                  ("calls", "SELECT agent, policy, count(*), round(sum(cost_inr), 1) FROM api_calls WHERE status='done' GROUP BY 1, 2 ORDER BY 1"),
                  ("spend", "SELECT round(sum(cost_inr), 1) FROM api_calls WHERE status='done'")):
         print(t, con.execute(q).fetchall())

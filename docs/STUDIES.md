@@ -51,6 +51,18 @@ evidence here) the gauge was on in Oct 2008, Mar 2020 and Jun 2022 and on about 
 Your book, the brain's own suggestions on paper, the equal-weight Nifty 500 (the bar) and the Nifty 500, all given the same money on the same days. Values only
 until 60 sessions; afterwards the gaps are descriptions. It is how the companion's usefulness is seen over months, beside the suggestion ledger's per-suggestion scores.
 
+## The paper portfolio (S76; a record of the system's own judgement, not a test)
+From 2026-11-02 the system runs a copy of his portfolio (without FDs) by itself (`paper/`, PLAN A35). Every decision states a claim (7, 28, 84 and 182 days, against
+the Nifty 500 with beta; keeping cash against what cash earned); the record shows the count and, from 20, the rate and the skeptical rate. After 40 sessions a gate
+(his choice of about two months): its time-weighted return after tax above the Nifty 500 total return and a smaller worst fall over the same days; then its new
+decisions also reach him as proposals for his real money, each waiting for his yes. Two months is short and partly luck: the gate opens a door to his yes, nothing more.
+
+## S76 learner families (registered 2026-11-01, `docs/protocols/s76_learner_protocol.md`, committed before any run)
+Twelve claims, tested by the app's learner three a night, counted in `learn_tests` (the bar rises with N): after a fall (30% below the one-year high, confirmed over
+0, 20 or 60 sessions; hold against sell, three months ahead) and rebalancing bands with gold (60/20/20 and 70/30 equity/gold/cash; bands of 5, 10 or 20 points
+against never and against monthly; checked at month ends or daily; after charges and tax; a worst-fall guard). The code was run before the tests only on the
+spent years 2022-2025 (that it runs; no 2010-2021 figure seen). Verdicts: pending.
+
 ## Results from the investor's other projects (not re-run here; context, never a live feature by themselves)
 - **portfolio_system_archive** (the earlier research harness, shelved 2026-10-01): 13 strategy verdicts; one ADOPT, E1d (volatility-scaled 6+12-month momentum, the
   Nifty 500 Momentum 50 index's own method), which is live here only as the Momentum 50 fund in his targets; E1, E1b, E1-P inconclusive; E1c, E2-A, E3-R and

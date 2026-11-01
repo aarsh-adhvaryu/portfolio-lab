@@ -238,6 +238,7 @@ def round_(rt, stop=None, attended: bool = True) -> dict:
         part("autonomy", lambda: __import__("pflab.hq.missions", fromlist=["scan"]).scan(rt))
         part("triggers", lambda: len(__import__("pflab.hq.triggers", fromlist=["check"]).check(rt)))        # S69: executable monitors fire by code
         part("arrivals", lambda: __import__("pflab.hq.arrivals", fromlist=["scan"]).scan(rt))               # S69: a file he dropped finds its investigation
+        part("paper", lambda: __import__("pflab.paper.manager", fromlist=["tick"]).tick(rt))                 # S76: the paper portfolio the system runs by itself
     part("missions", lambda: drive_missions(rt, stop, attended))     # S68: each mission moves on from what its tasks have produced
     if rt.settings.get("drop_watch", True):
         def drop():

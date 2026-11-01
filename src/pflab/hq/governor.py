@@ -140,7 +140,7 @@ def check(con, agent: str, est_inr: float, n_in: int, n_out: int, now: datetime,
     if not (his_order or window) and turn <= 1 and day + est_inr > day_cap:
         raise _refuse(f"the {lim.layer} have spent ~Rs {day:,.1f} today; this call up to ~Rs {est_inr:,.1f} "
                       f"would pass their Rs {day_cap:,.0f} a day", tomorrow)
-    month = _spent(con, peers, datetime(now.year, now.month, 1))
+    month = _spent(con, peers, an.month_start(now, cfg))
     if not window and month + est_inr > share * cfg["cap"]:
         raise _refuse(f"the {lim.layer} have spent ~Rs {month:,.0f} this month; their share is "
                       f"Rs {share * cfg['cap']:,.0f} of the Rs {cfg['cap']:,.0f} cap", next_month)
@@ -237,7 +237,7 @@ def agent_of(agent: Optional[str], mode: str, model: str, topic: Optional[str]) 
 def spend(con, now: datetime) -> dict:
     """This month's and today's spend per agent and per layer, with the limits, for the dashboard."""
     cfg = an.config()
-    month0, day0 = datetime(now.year, now.month, 1), datetime(now.year, now.month, now.day)
+    month0, day0 = an.month_start(now, cfg), datetime(now.year, now.month, now.day)
     rows = con.execute("SELECT agent, mode, model, topic, status, cost_inr, created_at FROM api_calls WHERE created_at >= ?",
                        [month0]).fetchall()
     per: Dict[str, dict] = {}

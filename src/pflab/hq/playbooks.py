@@ -91,6 +91,28 @@ def build(goal: str, fl: Dict[str, bool], rec: Optional[dict] = None) -> Tuple[L
     return steps, f"A playbook plan ({name_of(fl)}): verify the premise first, compute his exposure with the reviewed tools, then set the idea against the evidence against it and the competing explanations."
 
 
+def paper_steps(goal: str) -> Tuple[List[dict], str]:
+    """S76: a review of the paper portfolio: what changed (and what he asked) and the ideas worth acting on, researched in parallel with the measures of the book; then
+    the quant decides with paper_decide. The review that follows decides what is executed."""
+    q = " ".join(goal.split())[:300]
+    steps = [
+        {"key": "changes", "role": "research", "promise": {"evidence": 2}, "depends_on": [],
+         "goal": f"For the paper portfolio ({q}): what has changed for its holdings and for the market since its last review: results, filings, news, prices, from dated sources. "
+                 "If the investor asked it to look into something, research that too, with the evidence for and against. Never put amounts in a web search."},
+        {"key": "ideas", "role": "research", "promise": {"evidence": 2}, "depends_on": [],
+         "goal": "Find a few candidates the paper portfolio does not hold that could serve its long-term aim better than what it holds (listed shares or ETFs, gold included), "
+                 "each with dated evidence for it and AGAINST it. A candidate needs a reason, not a story."},
+        {"key": "measure", "role": "quant", "promise": {"calc": 1}, "depends_on": [],
+         "goal": "Measure the paper portfolio with the reviewed tools (paper_book, stocks_overview, exposure_shock, policy_scenarios): concentration by company and sector, "
+                 "valuation of the large holdings, what a market fall would cost it, and how much cash waits. State assumptions; compare with doing nothing."},
+        {"key": "decide", "role": "quant", "promise": {"proposal": 1}, "depends_on": ["changes", "ideas", "measure"],
+         "goal": "Decide for the paper portfolio with paper_decide: for each holding that needs a decision and each candidate worth acting on, BUY, ADD, REDUCE, SELL, HOLD or WAIT, "
+                 "with the evidence, the alternatives and, for HOLD and WAIT, the condition for looking again. Long term (3+ years), after tax and charges; a supported "
+                 "HOLD or WAIT is as good as a trade. If the investor asked something, say plainly whether this follows him or goes against him, and why (his_view)."},
+    ]
+    return steps, "The paper playbook: changes and ideas researched beside the book's measures, then decisions sized by code; the review decides what is executed."
+
+
 def enabled() -> bool:
     """`[policy] playbooks = "off"` in api_budget.toml sends every plan back to the coordinator."""
     try:
@@ -110,6 +132,15 @@ def try_plan(con, cid: int, coordinator_task: int, now: datetime, chat=None) -> 
         return None
     if con.execute("SELECT count(*) FROM hq_tasks WHERE case_id=? AND role IN ('research','quant','review')", [cid]).fetchone()[0]:
         return None                       # not the first plan: an amendment or a reopened review plans only what CHANGES, which takes the coordinator's reading of the case
+    if m.get("origin") == "paper":                         # S76: the paper portfolio's review is always the same shape
+        steps, approach = paper_steps(m["goal"])
+        out = missions.set_plan(con, now, cid, steps, approach)
+        if not out.get("stored"):
+            return None
+        con.execute("INSERT INTO hq_artifacts VALUES (?,?,?,?,?,?,?)",
+                    [next_id(con, "hq_artifacts", "artifact_id"), cid, coordinator_task, "plan", str(out["mission_id"]), f"{len(steps)} steps (playbook paper)", now])
+        cases.log(con, cid, now, "playbook", "planned from the paper playbook; the coordinator was not asked")
+        return {"name": "paper", "how": "origin", "mission_id": out["mission_id"], "steps": len(steps), "memory": False}
     fl, how = flags_for(m["goal"], chat)
     if not any(fl.values()):
         return None

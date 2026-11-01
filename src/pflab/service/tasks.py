@@ -551,7 +551,19 @@ def _twin(ctx: Ctx) -> dict:
     return twin.run(ctx.con, ctx.data_root, ctx.now)
 
 
-register(Job("twin", Daily(20, 55), _twin, "the scoreboard: your book, the brain's suggestions on paper, equal-weight Nifty 500, Nifty 500 (same money, same days)"))
+def _paper(ctx: Ctx) -> dict:
+    """S76: the paper portfolio's bookkeeping (paper/manager.py): its start, money in and out, fills at the close, the day's value, decisions scored. Free;
+    the team's work is opened by the HQ round."""
+    from pflab.hq import desk
+    from pflab.paper import manager
+    return manager.bookkeeping(desk.from_ctx(ctx))
+
+
+register(Job("paper", Daily(21, 5, weekdays_only=False), _paper, "the paper portfolio the system runs by itself: fills at the close, the day's value, decisions scored (code, free)",
+             cooldown_minutes=30))
+
+
+register(Job("twin", Daily(20, 55), _twin,"the scoreboard: your book, the brain's suggestions on paper, equal-weight Nifty 500, Nifty 500 (same money, same days)"))
 
 
 def _companion(ctx: Ctx) -> dict:
