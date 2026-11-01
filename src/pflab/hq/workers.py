@@ -294,6 +294,13 @@ def run_task(rt, task: dict, client=None, gate=None, cfg=None) -> Reply:
     dep = _unmet_deps(con, task)
     if dep is not None:                                      # woken by something else: still waiting for the task it depends on
         return Reply(f"waiting for task #{dep}", status="waiting", data={"waiting_on": f"task:{dep}", "wait_kind": "task", "resume_condition": f"task #{dep} finishes"})
+    if role == "coordinator" and body.get("step") == "plan":          # S71: a common kind of question is planned by code, not by a paid call
+        from pflab.hq import playbooks
+        if playbooks.enabled():
+            pb = playbooks.try_plan(con, cid, task["id"], now)
+            if pb:
+                return Reply(f"Planned from the playbook {pb['name']} (no model call).", ["playbook"],
+                             {"checkpoint": {}, "artifacts": [{"kind": "plan", "ref": str(pb["mission_id"])}], "pass": None, "progress": "done"}, 0.0, "done")
     promise = body.get("promise") or missions.DEFAULT_PROMISE[role]
     agent, _default, _effort = SPECS[role]
     model = seat_model(con, role, body, cid)

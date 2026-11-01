@@ -118,13 +118,15 @@ def _recent(con, cid: int, before: int, n: int = 8, gate=None) -> str:
 
 
 def _work(rt, cid: int, aid: int, q: str, context: str) -> None:
-    from pflab.app import chat
+    from pflab.app import chat, front
     con = rt.cursor()
-    with _WORK:
-        try:
-            out = answer(rt, con, cid, aid, q, context)
-        except Exception as e:                               # shown in the thread, never hidden
-            out = {"text": f"This could not be answered: {type(e).__name__}: {str(e)[:300]}", "route": ["error"], "meta": "", "status": "failed", "cost": None}
+    out = front.try_local(rt, con, cid, aid, q, context) if front.enabled() else None      # S71: the local model takes the turn when it is one it can do; else the cloud agent
+    if out is None:
+        with _WORK:
+            try:
+                out = answer(rt, con, cid, aid, q, context)
+            except Exception as e:                               # shown in the thread, never hidden
+                out = {"text": f"This could not be answered: {type(e).__name__}: {str(e)[:300]}", "route": ["error"], "meta": "", "status": "failed", "cost": None}
     chat._finish(con, aid, out["text"], out.get("route", []), out.get("meta", ""), rt.clock(), out.get("status", "done"), None, out.get("cost"))
     con.execute("UPDATE chats SET updated_at=? WHERE chat_id=?", [rt.clock(), cid])
     rt.bump("chat", "notifications")
