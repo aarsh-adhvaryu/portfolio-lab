@@ -199,11 +199,7 @@ def run_one(rt, agents: Dict[str, Callable], deliver: Optional[Callable[[dict], 
     if tid is None:
         return None
     try:
-        return _run_claimed(rt, agents, deliver, con, tid, now)
-    except Exception as e:                                   # S69: the store refused the write even after retries: the task is not left 'running'; it is run again from its checkpoint
-        con.execute("UPDATE hq_tasks SET status='retry', next_review_at=?, lease_owner=NULL, progress=?, result=? WHERE task_id=? AND status='running'",
-                    [rt.clock(), f"the store refused the result ({type(e).__name__}); it is run again", f"stopped: {type(e).__name__}: {str(e)[:160]}", tid])
-        return get(con, tid)
+        return _run_claimed(rt, agents, deliver, con, tid, now)      # (a failure to save the result stays 'running': `reap` runs the task again, as after a crash)
     finally:
         with _LIVE_LOCK:
             _LIVE.discard(tid)
