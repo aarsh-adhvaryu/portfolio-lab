@@ -495,3 +495,21 @@ def test_the_everyday_word_address_does_not_stop_a_worker_but_his_own_address_st
     except egress.EgressBlocked:
         pass
     assert "egress_skip" in inspect.signature(llm.call).parameters and 'egress_skip=("address_word",)' in inspect.getsource(workers.converse)
+
+
+def test_raising_the_cap_wakes_work_parked_on_the_budget_by_itself(rt, con, monkeypatch):
+    """Found live: a budget refusal parked a review until the end of the window; he raised the cap and nothing happened."""
+    _fake_calc(monkeypatch)
+    _run(rt, monkeypatch, _happy_scripts())
+    board.run_one(rt, roster.runners())
+    tid = missions._tasks(con, 1)[1]["id"]
+    later = NOW + timedelta(days=7)
+    con.execute("UPDATE hq_tasks SET status='retry', wait_kind='budget', next_review_at=?, resume_condition='the budget allows it again' WHERE task_id=?", [later, tid])
+    con.execute("INSERT INTO api_calls (call_id, created_at, mode, model, question, request_sha, request_json, status, cost_inr, agent, turn) "
+                "VALUES (901, ?, 'live', ?, 'q', '', '{}', 'done', 2490.0, NULL, 1)", [NOW, gv.OPUS])                 # the month's Rs 2,500 is nearly spent: Rs 10 left
+    assert 5.0 < missions.budget_room(con, NOW) < 10.0 and missions.wake_budget_waits(con, NOW) == 0
+    assert con.execute("SELECT next_review_at FROM hq_tasks WHERE task_id=?", [tid]).fetchone()[0] == later
+    monkeypatch.setattr(an, "config", lambda: {**CFG, "cap": 2800.0})                                                 # he raises the cap: Rs 310 of room
+    missions.tick(rt)
+    assert con.execute("SELECT next_review_at FROM hq_tasks WHERE task_id=?", [tid]).fetchone()[0] <= NOW
+    assert board.next_queued(con, NOW) == tid                                                                       # it is due now

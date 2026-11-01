@@ -465,12 +465,43 @@ def drive_experiments(rt) -> bool:
         _EXP_LOCK.release()
 
 
+MIN_ROOM = 25.0                                        # rupees of allowance left before a task parked on the budget is tried again
+
+
+def budget_room(con, now: datetime) -> float:
+    """What the governing cap still allows: the acceptance window's cap less its spend while the window is open, else the month's cap less the month's spend."""
+    from pflab.agents import analyst as an
+    cfg = an.config()
+    w = an.acceptance(cfg, now)
+    if w:
+        return float(w["cap"]) - an.window_spend(con, w["since"])
+    return float(cfg["cap"]) - an.month_spend_inr(con, now)
+
+
+def wake_budget_waits(con, now: datetime) -> int:
+    """S69 (found live): a budget refusal parks a task until the cap can next change (the window's end, a month away), so raising the cap did nothing and the
+    work sat there. Each round looks: when the allowance has room again the parked task is tried at once. Returns how many were woken."""
+    rows = con.execute("SELECT task_id FROM hq_tasks WHERE status='retry' AND wait_kind='budget' AND next_review_at > ?", [now]).fetchall()
+    if not rows:
+        return 0
+    try:
+        room = budget_room(con, now)
+    except Exception:
+        return 0
+    if room < MIN_ROOM:
+        return 0
+    for (tid,) in rows:
+        con.execute("UPDATE hq_tasks SET next_review_at=?, progress=? WHERE task_id=?", [now, f"the budget has room again (Rs {room:,.0f} left): trying again", tid])
+    return len(rows)
+
+
 def tick(rt) -> dict:
     """Move every active mission on by one step, from what the store says. Code only; safe to call as often as the HQ round does and after any
     restart. Returns {case_id: new state}."""
     from pflab.hq import board, cases
     con, now = rt.cursor(), rt.clock()
     moved = {}
+    wake_budget_waits(con, now)
     sandbox_ok = None
     for (cid,) in con.execute(f"SELECT case_id FROM hq_missions WHERE state IN ({','.join(repr(s) for s in ACTIVE)}) ORDER BY mission_id").fetchall():
         m = mission_of(con, cid)
