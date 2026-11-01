@@ -339,7 +339,7 @@ def test_a_mission_that_has_spent_its_budget_parks_what_has_not_started_and_does
     assert card["state"] == "working" and "used Rs" in card["blocker"]            # parked, not reviewed, not answered
     assert not any(x["role"] == "review" for x in missions._tasks(con, 1))
     assert any(e[0] == "budget" for e in con.execute("SELECT event FROM hq_case_log WHERE case_id=1").fetchall())
-    assert missions.allow_more(con, NOW, 1, 300.0)["resumed"] >= 1               # his word to spend more: the parked work is queued again
+    assert missions.allow_more(con, NOW, 1, 400.0)["resumed"] >= 1               # his word to spend more (Rs 80 standard + 400 covers the 400 spent): the parked work is queued again
     assert next(x for x in missions._tasks(con, 1) if x["role"] == "research")["status"] == "queued"
     missions.tick(rt)
     assert next(x for x in missions._tasks(con, 1) if x["role"] == "research")["status"] == "queued" and missions.card(con, 1)["blocker"] is None

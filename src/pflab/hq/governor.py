@@ -23,13 +23,16 @@ from pflab.agents import analyst as an
 OPUS, SONNET, HAIKU = "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"
 PRICES = {OPUS: (4.0, 20.0), SONNET: (2.0, 10.0), HAIKU: (0.10, 0.50)}
 CACHE_READ, CACHE_WRITE, BATCH = 0.10, 1.25, 0.5
+# S70: what a cache read costs as a share of the model's input price (Opus 5.5: $0.20 of $4.00; Sonnet 5.5: $0.20 of $2.00); any other model the old tenth
+CACHE_READ_OF = {OPUS: 0.05, SONNET: 0.10, HAIKU: 0.10}
 MODES = ("off", "economy", "normal")
 
 BudgetRefused = an.BudgetRefused
 
 # layer -> (share of the monthly cap, rupees a day). What is left of the cap (about a quarter) stays for the analyst's
 # own paths (deep research, web search, the workshop), which only the cap limits, as before.
-LAYERS: Dict[str, tuple] = {"readers": (0.06, 15.0), "workers": (0.30, 80.0), "brain": (0.40, 120.0)}
+# S70: with the monthly cap at Rs 1,000 and the brain down to a pass a day, the workers (his investigations and the system's) get most of it
+LAYERS: Dict[str, tuple] = {"readers": (0.06, 15.0), "workers": (0.55, 80.0), "brain": (0.15, 40.0)}
 
 
 @dataclass(frozen=True)
@@ -46,7 +49,7 @@ LIMITS: Dict[str, Limits] = {
     "wording": Limits("readers", 12_000, 2_000, {"off": 200, "economy": 200, "normal": 400}),   # S61: live answers' drafts
     "router": Limits("readers", 6_000, 1_600, {"off": 300, "economy": 300, "normal": 600}),    # S61: the ask centre's routing
     "worker": Limits("workers", 60_000, 16_000, {"off": 20, "economy": 20, "normal": 40}),
-    "brain": Limits("brain", 40_000, 6_000, {"off": 0, "economy": 4, "normal": 8}),
+    "brain": Limits("brain", 40_000, 6_000, {"off": 0, "economy": 2, "normal": 3}),   # S70: two passes a day (it was 4 and 8): the morning one and one for a case; its 15% of the month is the real guard
     "brain_rival": Limits("brain", 40_000, 6_000, {"off": 0, "economy": 4, "normal": 8}),
     "reflection": Limits("brain", 60_000, 12_000, {"off": 0, "economy": 1, "normal": 1}),
     "fetch": Limits("workers", 60_000, 4_000, {"off": 0, "economy": 10, "normal": 20}),
@@ -78,7 +81,8 @@ def passes_per_day(cfg: dict, agent: str, mode: str) -> int:
 def cost_inr(model: str, input_tokens: int, output_tokens: int, usd_inr: float, cache_read: int = 0,
              cache_write: int = 0, batch: bool = False) -> float:
     pin, pout = PRICES.get(model, PRICES[OPUS])
-    usd = (input_tokens * pin + cache_read * pin * CACHE_READ + cache_write * pin * CACHE_WRITE + output_tokens * pout) / 1e6
+    usd = (input_tokens * pin + cache_read * pin * CACHE_READ_OF.get(model, CACHE_READ) + cache_write * pin * CACHE_WRITE
+           + output_tokens * pout) / 1e6
     return usd * (BATCH if batch else 1.0) * usd_inr
 
 

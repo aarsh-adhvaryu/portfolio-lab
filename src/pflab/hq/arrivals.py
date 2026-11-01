@@ -67,7 +67,7 @@ def _ask_local(item: dict, cands: List[dict], error: str = "") -> dict:
     with _LOCAL:
         r = client.chat(model, [{"role": "system", "content": "You route documents to investigations for a private investor's system. You only choose; you never state facts "
                                  "or numbers of your own. Answer with a JSON object {case_id, effect, confidence, why}."},
-                                {"role": "user", "content": prompt}], num_predict=300, num_ctx=4096, fmt=SCHEMA)
+                                {"role": "user", "content": prompt}], num_predict=300, num_ctx=4096, fmt=SCHEMA, purpose="routing")
     return {"raw": r.text, "model": r.model}
 
 

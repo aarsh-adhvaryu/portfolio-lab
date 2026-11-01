@@ -94,6 +94,7 @@ def test_cost_prices_cache_and_batch():
     assert gv.cost_inr(gv.OPUS, 1_000_000, 0, 1.0) == pytest.approx(4.0)
     assert gv.cost_inr(gv.HAIKU, 0, 1_000_000, 1.0) == pytest.approx(0.5)
     assert gv.cost_inr(gv.SONNET, 0, 0, 1.0, cache_read=1_000_000) == pytest.approx(0.2)
+    assert gv.cost_inr(gv.OPUS, 0, 0, 1.0, cache_read=1_000_000) == pytest.approx(0.2)    # S70: Opus 5.5 reads at 0.05x ($0.20 of $4.00), not a tenth
     assert gv.cost_inr(gv.SONNET, 0, 0, 1.0, cache_write=1_000_000) == pytest.approx(2.5)
     assert gv.cost_inr(gv.OPUS, 1_000_000, 0, 90.0, batch=True) == pytest.approx(180.0)
 
@@ -104,20 +105,20 @@ def test_governor_limits_in_order(con):
     with pytest.raises(gv.BudgetRefused, match="does not run"):
         gv.check(con, "brain", 1.0, 100, 100, NOW, "off", CFG)
     gv.check(con, "brain", 1.0, 100, 100, NOW, "economy", CFG)
-    for k in range(4):                                       # economy: 4 brain calls a day
+    for k in range(4):                                       # economy: 2 brain passes a day (S70); four rows, for the month's sums below
         con.execute("INSERT INTO api_calls (call_id, created_at, mode, model, question, request_sha, request_json, status, "
                     "cost_inr, agent) VALUES (?,?,?,?,?,?,?,?,?,?)", [k + 1, NOW, "live", gv.OPUS, "q", "", "{}", "done", 5.0, "brain"])
-    with pytest.raises(gv.BudgetRefused, match="4 calls today"):
+    with pytest.raises(gv.BudgetRefused, match="calls today"):
         gv.check(con, "brain", 1.0, 100, 100, NOW, "economy", CFG)
     assert gv.check(con, "brain_rival", 1.0, 100, 100, NOW, "normal", CFG) == []
     with pytest.raises(gv.BudgetRefused, match="a day"):    # the layer's day: 20 spent + 101 > 120
         gv.check(con, "brain_rival", 101.0, 100, 100, NOW, "normal", CFG)
     con.execute("UPDATE api_calls SET created_at=? WHERE call_id < 4", [NOW - timedelta(days=3)])
-    con.execute("UPDATE api_calls SET cost_inr=330 WHERE call_id < 4")    # month 995 of the brain's 1,000
+    con.execute("UPDATE api_calls SET cost_inr=120 WHERE call_id < 4")    # month 365 of the brain's 375 (15% of 2,500; S70)
     with pytest.raises(gv.BudgetRefused, match="share"):
-        gv.check(con, "brain_rival", 10.0, 100, 100, NOW, "normal", CFG)
+        gv.check(con, "brain_rival", 20.0, 100, 100, NOW, "normal", CFG)
     with pytest.raises(gv.BudgetRefused, match="cap"):      # the system cap, whatever the layer
-        gv.check(con, "reader", 0.1, 100, 100, NOW, "economy", {**CFG, "cap": 900.0})
+        gv.check(con, "reader", 0.1, 100, 100, NOW, "economy", {**CFG, "cap": 300.0})
 
 
 

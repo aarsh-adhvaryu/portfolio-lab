@@ -57,9 +57,26 @@ def resolve(model: str, models: Dict[str, dict]) -> Optional[str]:
     return None
 
 
+SINK: Optional[Callable[[dict], None]] = None      # S70: the app's runtime sets one that keeps every call in `llm_runs` (who used the local model, how often, how long)
+
+
+def set_sink(fn: Optional[Callable[[dict], None]]) -> None:
+    global SINK
+    SINK = fn
+
+
+def _note(**row) -> None:
+    sink = SINK
+    if sink is not None:
+        try:
+            sink(row)
+        except Exception:                               # keeping the record must never break the call
+            pass
+
+
 def chat(model: str, messages: List[dict], *, think: bool = False, temperature: float = 0.0, seed: int = SEED,
          num_predict: int = 400, fmt: Optional[dict] = None, transport: Transport = http_transport,
-         timeout: int = 600, num_ctx: Optional[int] = None) -> Reply:
+         timeout: int = 600, num_ctx: Optional[int] = None, purpose: str = "") -> Reply:
     """One chat completion. `think=False` turns the reasoning trace off (fast, deterministic length);
     `fmt` is an optional JSON schema for constrained output. `num_ctx`: the context window to use; Ollama's
     default (4,096 tokens here) silently drops the start of a longer prompt (S44: long document prompts)."""
@@ -74,10 +91,16 @@ def chat(model: str, messages: List[dict], *, think: bool = False, temperature: 
     if fmt:
         payload["format"] = fmt
     t0 = time.time()
-    j = transport("POST", "/api/chat", payload, timeout)
-    return Reply(text=(j.get("message") or {}).get("content", ""), model=name, digest=models[name]["digest"],
-                 tokens_in=int(j.get("prompt_eval_count", 0)), tokens_out=int(j.get("eval_count", 0)),
-                 seconds=round(time.time() - t0, 2))
+    try:
+        j = transport("POST", "/api/chat", payload, timeout)
+    except Exception as e:
+        _note(model=name, purpose=purpose, status="failed", note=f"{type(e).__name__}: {str(e)[:200]}", seconds=round(time.time() - t0, 2), tokens_in=0, tokens_out=0,
+              digest=models[name].get("digest"))
+        raise
+    r = Reply(text=(j.get("message") or {}).get("content", ""), model=name, digest=models[name]["digest"],
+              tokens_in=int(j.get("prompt_eval_count", 0)), tokens_out=int(j.get("eval_count", 0)), seconds=round(time.time() - t0, 2))
+    _note(model=name, purpose=purpose, status="ok", note="", seconds=r.seconds, tokens_in=r.tokens_in, tokens_out=r.tokens_out, digest=r.digest)
+    return r
 
 
 def as_llm(model: str, system: str = "", **kw) -> Callable[[str], str]:

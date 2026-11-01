@@ -166,7 +166,7 @@ def local_draft(model: Optional[str] = None) -> Draft:
     def draft(system: str, prompt: str, schema: dict) -> dict:
         r = client.chat(model or models.model_id("learner_reading", {"models": {"learner_reading": "local"}}),
                         [{"role": "system", "content": system}, {"role": "user", "content": prompt}], fmt=schema,
-                        num_predict=1500, num_ctx=16384)
+                        num_predict=1500, num_ctx=16384, purpose="learner_reading")
         return json.loads(r.text)
     return draft
 

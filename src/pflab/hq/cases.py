@@ -395,8 +395,8 @@ def record_calc(con, cid: Optional[int], now: datetime, question: str, out, *, a
                 [kid, cid, now, question[:600], code, hashlib.sha256(code.encode()).hexdigest(), (spec.alt_code if spec else "") or None,
                  json.dumps(spec.datasets if spec else []), json.dumps((spec.params if spec else {}) or {}, default=str),
                  json.dumps(run.result if run else {}, default=str), getattr(out, "status", "failed"),
-                 bool(run and run.contained), attempts if attempts is not None else len(getattr(out, "attempts", []) or []),
-                 json.dumps({"test": (spec.test if spec else {}), "confirm": getattr(out, "confirm", None), "cross_checked": bool(run and run.cross_checked),
+                 (run.contained if run is not None else None), attempts if attempts is not None else len(getattr(out, "attempts", []) or []),   # S70: None = nothing ran
+                 json.dumps({"test": (spec.test if spec else {}), "confirm": getattr(out, "confirm", None), "cross_checked": bool(run and run.cross_checked), "measure": bool(getattr(out, "measure", None)),
                              "problems": (run.problems if run else [])}, default=str),
                  getattr(folder, "name", None)])
     con.execute("UPDATE hq_calcs SET versions_json=? WHERE calc_id=?", [json.dumps(runtime_versions()), kid])

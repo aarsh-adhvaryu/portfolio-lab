@@ -505,17 +505,34 @@ def _sandbox_enabled(ctx: Ctx) -> Tuple[bool, str]:
 def _sandbox_probe(ctx: Ctx) -> dict:
     """S67: containment proven by use, weekly: a container with the sandbox's flags tries the network, writes to the root and the job
     folder, looks for host paths and secrets, and a loop past its limit must be killed. The result is the sandbox's colour on the screen."""
+    from pflab import release
     from pflab.agents import sandbox as sb
     from pflab.app import system
+    from pflab.hq import containment
     r = sb.probe()
-    system.record_check(ctx.con, "sandbox", r["ok"], ctx.now, r["why"] if not r["ok"] else "all checks passed: " + ", ".join(sorted(r["checks"])))
+    rebuilt = None
+    if not r["ok"] and r["checks"].get("runner_matches_release") is False:      # S70: an update made while Docker was off left an old runner in the image: build it now
+        rebuilt = sb.rebuild_image(release.ROOT)
+        if rebuilt[0]:
+            r = sb.probe()
+    marker = sb.release_marker()
+    system.record_check(ctx.con, "sandbox", r["ok"], ctx.now, f"{marker}; " + (r["why"] if not r["ok"] else "all checks passed: " + ", ".join(sorted(r["checks"]))))
     if not r["ok"]:
-        raise RuntimeError(f"sandbox containment not proven: {r['why']}")
-    return {"checks": len(r["checks"])}
+        raise RuntimeError(f"sandbox containment not proven: {r['why']}" + (f" (the image rebuild: {rebuilt[1][-120:]})" if rebuilt and not rebuilt[0] else ""))
+    v = containment.run(ctx.con, ctx.pm_dir, ctx.now)                              # the proof is the probe AND the records agreeing; only then do warnings close
+    return {"checks": len(r["checks"]), "image_rebuilt": bool(rebuilt and rebuilt[0]), "proven": v["proven"], "warnings_closed": v["closed"],
+            "records_corrected": v["repaired"]}
+
+
+def _sandbox_unproven(ctx: Ctx) -> Optional[str]:
+    """S70: a proof made for an older release is not a proof of this one: the job runs again after an update, not at tomorrow's 06:40."""
+    from pflab.agents import sandbox as sb
+    r = ctx.con.execute("SELECT ok, detail FROM health_checks WHERE connector='sandbox' ORDER BY check_id DESC LIMIT 1").fetchone()
+    return None if (r and r[0] and sb.release_marker() in (r[1] or "")) else "no passing containment probe for this release yet"
 
 
 register(Job("sandbox", Daily(6, 40, weekdays_only=False), _sandbox_probe, "proves the calculation sandbox is contained (no network, read-only, killed at its limit)",
-             cooldown_minutes=30, enabled_fn=_sandbox_enabled))                  # a failed proof is looked at again in half an hour (Docker may just be starting)
+             cooldown_minutes=30, enabled_fn=_sandbox_enabled, redo_fn=_sandbox_unproven))                  # a failed proof is looked at again in half an hour (Docker may just be starting)
 
 
 def _twin(ctx: Ctx) -> dict:

@@ -63,9 +63,12 @@ def case_detail(con, cid: int) -> dict:
         raise LookupError(f"no case #{cid}")
     deps = [dict(zip(("key", "kind", "request", "status", "requested", "arrived"), r)) for r in con.execute(
         "SELECT dep_key, kind, request, status, requested_at, arrived_at FROM hq_case_deps WHERE case_id=? ORDER BY dep_id", [cid]).fetchall()]
-    calcs = [dict(zip(("id", "question", "status", "contained", "datasets", "result", "code_sha"), (r[0], r[1], r[2], r[3], json.loads(r[4] or "[]"),
-             json.loads(r[5] or "{}"), r[6]))) for r in con.execute(
-        "SELECT calc_id, question, status, contained, datasets_json, result_json, code_sha FROM hq_calcs WHERE case_id=? ORDER BY calc_id", [cid]).fetchall()]
+    from pflab.hq import containment
+    calcs = [{**dict(zip(("id", "question", "status", "contained", "datasets", "result", "code_sha"), (r[0], r[1], r[2], r[3], json.loads(r[4] or "[]"),
+              json.loads(r[5] or "{}"), r[6]))),
+              "ran": containment.state_of(r[3], containment.is_reviewed(r[7])), "where": containment.WORDS[containment.state_of(r[3], containment.is_reviewed(r[7]))]}
+             for r in con.execute(
+        "SELECT calc_id, question, status, contained, datasets_json, result_json, code_sha, check_json FROM hq_calcs WHERE case_id=? ORDER BY calc_id", [cid]).fetchall()]   # S70: where it ran, four ways
     log = [{"at": str(a)[:16], "event": e, "detail": d} for a, e, d in con.execute(
         "SELECT logged_at, event, detail FROM hq_case_log WHERE case_id=? ORDER BY log_id", [cid]).fetchall()]
     reviews = [{"at": str(a)[:16], **json.loads(p), "outcome": o, "note": n} for a, p, o, n in con.execute(

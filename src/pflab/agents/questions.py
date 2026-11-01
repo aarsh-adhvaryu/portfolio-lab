@@ -40,6 +40,15 @@ def answer(con, q_id: int, text: str, now: Optional[datetime] = None) -> int:
                            now=now)
 
 
+def close_with_evidence(con, subject_like: str, evidence: str, now: Optional[datetime] = None) -> int:
+    """Close open questions whose subject matches `subject_like` because the system itself proved what they asked about (S70, A34): the evidence is
+    kept as the question's answer. An answer by him is never what closes a warning of this kind. Returns how many were closed."""
+    rows = con.execute("SELECT q_id FROM questions WHERE subject_key LIKE ? AND status='open'", [subject_like]).fetchall()
+    for (q_id,) in rows:
+        con.execute("UPDATE questions SET status='dropped', answer=?, answered_at=? WHERE q_id=?", [f"closed by evidence: {evidence}"[:900], now or datetime.now(), q_id])
+    return len(rows)
+
+
 def drop(con, subject_key: str, now: Optional[datetime] = None) -> bool:
     """Close an open question the agent no longer needs (the gap resolved itself, e.g. the tradebook arrived)."""
     r = con.execute("SELECT q_id FROM questions WHERE subject_key=? AND status='open'", [subject_key]).fetchone()

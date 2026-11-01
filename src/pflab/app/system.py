@@ -95,6 +95,11 @@ def _docker() -> str:
     return _cached("docker", 300, _docker_probe, "checking")
 
 
+def sb_marker() -> str:
+    from pflab.agents import sandbox as sb
+    return sb.release_marker()
+
+
 def _sandbox_status() -> dict:
     from pflab.agents import sandbox as sb
     return _cached("sandbox", sb.CACHE_S, lambda: sb.status(force=True), {"ok": False, "why": "still checking"})
@@ -142,6 +147,31 @@ def _short_error(detail) -> str:
 def _last_run(con, job: str):
     return con.execute("SELECT started_at, status FROM job_runs WHERE job=? AND status IN ('ok','failed','skipped') "
                        "ORDER BY started_at DESC LIMIT 1", [job]).fetchone()
+
+
+def sandbox_line(con, now: datetime) -> tuple:
+    """(state, words) for the sandbox: Docker answering and the image built, a containment probe that passed FOR THIS RELEASE (S70), and the
+    records agreeing with it (hq/containment.py)."""
+    dk = _docker()
+    ss_ = _sandbox_status() if dk == "running" else {"ok": False, "why": {"not running": "Docker is not running", "checking": "still checking Docker"}.get(dk, "Docker is not installed")}
+    probe = con.execute("SELECT checked_at, ok, detail FROM health_checks WHERE connector='sandbox' ORDER BY check_id DESC LIMIT 1").fetchone()
+    if not ss_["ok"]:
+        sx = (WARN, f"{ss_['why']}: calculations wait; nothing generated is run outside a container")
+    elif probe is None:
+        sx = (WARN, "Docker works; containment has not been proven yet (the weekly probe or `pflab verify` does it)")
+    elif not probe[1]:
+        sx = (DOWN, f"containment probe FAILED {str(probe[0])[:16]}: {str(probe[2])[:100]}; calculations are blocked")
+    elif now - probe[0] > timedelta(days=14):
+        sx = (WARN, f"containment last proven {str(probe[0])[:10]}: older than two weeks")
+    elif sb_marker() not in (probe[2] or ""):                                  # S70: a proof made for an earlier release proves nothing about this one
+        sx = (WARN, f"containment not yet proven for this release (the last proof, {str(probe[0])[:16]}, was for an earlier one); it runs when Docker is up")
+    else:
+        verdict = latest_check(con, "containment")
+        if verdict and not verdict["ok"]:
+            sx = (WARN, f"the probe passed ({str(probe[0])[:16]}) but the records do not all agree: {str(verdict['detail'])[:140]}")
+        else:
+            sx = (OK, f"contained: no network, read-only files (proven {str(probe[0])[:16]} for this release)")
+    return sx
 
 
 def connectors(rt, now: datetime) -> List[dict]:
@@ -213,20 +243,7 @@ def connectors(rt, now: datetime) -> List[dict]:
              + (f"; last call worked {str(last[1])[:16]}" if last else "; not used yet"))
     out.append({"id": "api", "name": "Claude API", "state": a[0], "line": a[1], "action": None})
 
-    # Sandbox: Docker answering and the image built, and a containment probe that passed
-    dk = _docker()
-    ss_ = _sandbox_status() if dk == "running" else {"ok": False, "why": {"not running": "Docker is not running", "checking": "still checking Docker"}.get(dk, "Docker is not installed")}
-    probe = con.execute("SELECT checked_at, ok, detail FROM health_checks WHERE connector='sandbox' ORDER BY check_id DESC LIMIT 1").fetchone()
-    if not ss_["ok"]:
-        sx = (WARN, f"{ss_['why']}: calculations wait; nothing generated is run outside a container")
-    elif probe is None:
-        sx = (WARN, "Docker works; containment has not been proven yet (the weekly probe or `pflab verify` does it)")
-    elif not probe[1]:
-        sx = (DOWN, f"containment probe FAILED {str(probe[0])[:16]}: {str(probe[2])[:100]}; calculations are blocked")
-    elif now - probe[0] > timedelta(days=14):
-        sx = (WARN, f"containment last proven {str(probe[0])[:10]}: older than two weeks")
-    else:
-        sx = (OK, f"contained: no network, read-only files (proven {str(probe[0])[:16]})")
+    sx = sandbox_line(con, now)
     out.append({"id": "sandbox", "name": "Sandbox (Docker)", "state": sx[0], "line": sx[1], "action": None})
 
     r = release.load()

@@ -461,7 +461,7 @@ def local_writer(model: Optional[str] = None) -> Callable[[str], str]:
     def write(prompt: str) -> str:
         c = re.match(r"CONTRACT: (\w+)", prompt)
         system = contracts.CONTRACTS[c.group(1)].writer_system if c and c.group(1) in contracts.CONTRACTS else WRITER_SYSTEM
-        return client.chat(m, [{"role": "system", "content": system}, {"role": "user", "content": prompt}], num_predict=2500, num_ctx=8192).text
+        return client.chat(m, [{"role": "system", "content": system}, {"role": "user", "content": prompt}], num_predict=2500, num_ctx=8192, purpose="experiment_code").text
     return write
 
 

@@ -26,6 +26,7 @@ MAX_TURNS = 10
 NUDGES = 2                                  # times a worker is told its promise is unmet before the task fails
 PROVIDER_RETRIES = 6                        # provider errors (with back-off) before a task gives up
 RESOLVED = ("coordinator", "research", "quant", "review")
+CACHE = {"type": "ephemeral"}               # top-level automatic caching: composes with the system block's own breakpoint (S70)
 
 COMMON = (
     "You are one specialist in a private investor's portfolio system in India. He is not a trader: plain words, what a number means for him. "
@@ -96,7 +97,8 @@ def _params(role: str, messages: list, last: bool) -> dict:
     agent, model, effort = SPECS[role]
     names = frozenset(n for n in TOOLS[role] if n in tl.TOOLS)
     p = {"model": model, "max_tokens": gv.LIMITS[agent].max_out, "system": [{"type": "text", "text": SYSTEMS[role], "cache_control": {"type": "ephemeral"}}],
-         "thinking": {"type": "adaptive"}, "output_config": {"effort": effort}, "tools": tl.definitions(names), "messages": messages}
+         "thinking": {"type": "adaptive"}, "output_config": {"effort": effort}, "tools": tl.definitions(names), "messages": messages,
+         "cache_control": CACHE}
     if last:
         p["tool_choice"] = {"type": "none"}
     return p
@@ -147,7 +149,8 @@ def converse(rt, con, ctx, messages: list, *, system: str, tools: list, model: s
     for turn in range(1, max_turns + 1):
         out.turns = turn
         p = {"model": model, "max_tokens": max_out, "system": sys_blocks, "thinking": {"type": "adaptive"}, "output_config": {"effort": effort},
-             "tools": tools, "messages": messages}
+             "tools": tools, "messages": messages,
+             "cache_control": CACHE}                      # S70: the growing conversation is cached (it was re-sent at full price on every turn)
         if turn == max_turns:
             p["tool_choice"] = {"type": "none"}
         try:
@@ -192,7 +195,10 @@ def converse(rt, con, ctx, messages: list, *, system: str, tools: list, model: s
     return out
 
 
-def _dossier(con, cid: int, task: dict, now: datetime) -> str:
+def _dossier(con, cid: int, task: dict, now: datetime, role: Optional[str] = None) -> str:
+    """What a worker is handed. The reviewer sees all of it (it must trace every number to a source); the others a slimmer view (S70: the dossier
+    is re-read on every turn): the newest evidence lines and shorter calculation results, the counts always, the rest one `cases` call away."""
+    slim = role in ("coordinator", "research", "quant")
     from pflab.hq import cases, missions
     m = missions.mission_of(con, cid)
     from pflab.hq import plans, proposals, triggers
@@ -205,12 +211,12 @@ def _dossier(con, cid: int, task: dict, now: datetime) -> str:
         lines.append("RESULTS FROM AN OLDER INSTRUCTION VERSION (to be rechecked before they are relied on): " + ", ".join(f"task #{x['id']} ({x['role']}, v{x['version']})" for x in sup))
     if m["plan"]:
         lines.append("PLAN: " + " | ".join(f"{s['key']} [{s['role']}] {s['goal'][:140]}" for s in m["plan"]))
-    lines.append(cases.brief(con, [cid], now, evidence_lines=30))
+    lines.append(cases.brief(con, [cid], now, evidence_lines=12 if slim else 30))
     arts = missions.artifacts(con, cid)
     if arts:
         lines.append("ARTIFACTS SO FAR (kind ref detail, by task): " + "; ".join(f"{a['kind']} {a['ref']} {a['detail'] or ''} (task #{a['task_id']})" for a in arts[-40:]))
     for (cid_, q, st, res) in con.execute("SELECT calc_id, question, status, result_json FROM hq_calcs WHERE case_id=? ORDER BY calc_id", [cid]).fetchall():
-        lines.append(f"CALC #{cid_} [{st}]: {q[:160]} -> {str(res)[:500]}")
+        lines.append(f"CALC #{cid_} [{st}]: {q[:160]} -> {str(res)[:200 if slim else 500]}")
     for (rid, oc, note) in con.execute("SELECT review_id, outcome, note FROM hq_case_reviews WHERE case_id=? AND outcome IS NOT NULL ORDER BY review_id", [cid]).fetchall():
         lines.append(f"REVIEW #{rid} [{oc}]: {(note or '')[:500]}")
     for (eid, st, why, hyp) in con.execute("SELECT DISTINCT e.exp_id, e.status, coalesce(e.decision_why, ''), e.hypothesis FROM hq_artifacts a JOIN learn_experiments e "
@@ -259,7 +265,7 @@ def run_task(rt, task: dict, client=None, gate=None, cfg=None) -> Reply:
     gate = gate or service.gate(rt)
     ck = json.loads(con.execute("SELECT coalesce(checkpoint_json, '{}') FROM hq_tasks WHERE task_id=?", [task["id"]]).fetchone()[0])
     con.execute("UPDATE hq_tasks SET lease_owner=?, lease_until=? WHERE task_id=?", [f"pid:{__import__('os').getpid()}", now + timedelta(minutes=45), task["id"]])
-    dossier = _dossier(con, cid, task, now)
+    dossier = _dossier(con, cid, task, now, role)
     opening = [f"TASK #{task['id']} ({role}): {task['text']}", f"YOU MUST PRODUCE: {json.dumps(promise)}", dossier]
     if ck.get("summary"):
         opening.append(f"YOUR EARLIER WORK ON THIS TASK (checkpoint): {ck['summary']}")

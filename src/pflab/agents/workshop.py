@@ -315,7 +315,7 @@ def local_writer(model: Optional[str] = None) -> Callable[[str], str]:
     from pflab.llm import client, registry
     m = model or registry.chosen("general") or "qwen3:8b-q8_0"
     return lambda prompt: client.chat(m, [{"role": "system", "content": WRITER_SYSTEM}, {"role": "user", "content": prompt}],
-                                      num_predict=2500, num_ctx=8192).text
+                                      num_predict=2500, num_ctx=8192, purpose="workshop_writer").text
 
 
 @dataclass
@@ -525,7 +525,7 @@ def keep(pm_dir: Path, question: str, out: Outcome, now: datetime) -> Path:
             "datasets": out.spec.datasets if out.spec else [], "explain": out.spec.explain if out.spec else "",
             "test": out.spec.test if out.spec else {}, "result": out.run.result if out.run else {},
             "cross_checked": bool(out.run and out.run.cross_checked),
-            "contained": bool(out.run and out.run.contained),
+            "contained": (out.run.contained if out.run is not None else None),   # S70: True Docker, False host, None nothing ran
             "params": out.spec.params if out.spec else {}, "values": getattr(out, "values", None) or
             (defaults(out.spec) if out.spec else {}), "reused_from": getattr(out, "reused_from", None)}
     (d / "meta.json").write_text(json.dumps(meta, indent=1, default=str), encoding="utf-8")
@@ -728,7 +728,8 @@ def ask(con, question: str, pm_dir: Path, root: Path, asof: date, *, writer: str
         from pflab.agents import questions as qs
         qs.ask(con, "workshop", f"workshop:uncontained:{now:%Y-%m-%d}",
                "This calculation ran in the uncontained developer subprocess (PFLAB_SANDBOX=local), not in Docker. It is a workshop setting, "
-               "not for the app. Answer 'seen' when noted.", now)
+               "not for the app. Answering does not clear it: it closes when the system's own containment check passes (every result of "
+               "model-written code recorded as run in Docker, the host path refused, a probe passed for this release).", now)
     if out.status == "checked":
         summary = "; ".join(f"{k} {v}" for k, v in list(out.run.result.items())[:10])
         how = "reviewed measure" if out.measure else f"{UNREVIEWED}; second writing {(out.confirm or {}).get('status', 'n/a')}"
@@ -743,7 +744,7 @@ def _filler() -> Optional[Callable[[str], str]]:
     m = registry.chosen("general")
     if not m:
         return None
-    return lambda prompt: client.chat(m, [{"role": "user", "content": prompt}], num_predict=300, num_ctx=4096).text
+    return lambda prompt: client.chat(m, [{"role": "user", "content": prompt}], num_predict=300, num_ctx=4096, purpose="workshop_filler").text
 
 
 def _values(res: dict) -> List[str]:

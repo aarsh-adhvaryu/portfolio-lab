@@ -44,7 +44,7 @@ def test_the_live_failure_the_day_limit_refuses_background_work_with_the_month_n
 def test_the_window_lifts_day_limits_but_not_its_own_cap(con):
     _spend(con, "brain", 112.6)
     _spend(con, "brain", 1.0, turn=1)
-    gv.check(con, "brain", 17.2, 5000, 4000, NOW, "economy", WINDOW)                  # 4 passes a day and Rs 120 a day: not in the window
+    gv.check(con, "brain", 17.2, 5000, 4000, NOW, "economy", WINDOW)                  # two passes a day and Rs 40 a day: not in the window
     _spend(con, "brain", 1490.0)
     with pytest.raises(gv.BudgetRefused, match="acceptance window's cap") as e:
         gv.check(con, "brain", 17.2, 5000, 4000, NOW, "economy", WINDOW)
@@ -68,8 +68,8 @@ def test_limits_are_configuration_read_on_every_call(con):
     _spend(con, "brain", 112.6)
     raised = {**CFG, "policy": {"day_rupees": {"brain": 400}, "passes": {"brain": {"normal": 20}}}}
     gv.check(con, "brain", 17.2, 5000, 4000, NOW, "normal", raised)                  # the same state that refused above now passes
-    assert gv.layer_limits(CFG, "brain") == (0.40, 120.0) and gv.passes_per_day(CFG, "brain", "normal") == 8     # defaults are the old constants
-    assert gv.layer_limits(raised, "brain") == (0.40, 400.0)
+    assert gv.layer_limits(CFG, "brain") == (0.15, 40.0) and gv.passes_per_day(CFG, "brain", "normal") == 3     # S70: two passes a day in economy, three in normal (was 4 and 8)
+    assert gv.layer_limits(raised, "brain") == (0.15, 400.0)
 
 
 def test_his_questions_do_not_use_up_the_systems_day(con):
