@@ -183,17 +183,21 @@ class Scripted:
 
 # ----------------------------------------------------------------------------------------------------------------------------------------------
 
-def seed(profile: Path) -> None:
+def seed(profile: Path, cap: float = 100.0) -> None:
     import rehearse
-    rehearse.seed(profile, 100.0)
+    rehearse.seed(profile, cap)
+    with open(profile / "pm" / "api_budget.toml", "a", encoding="utf-8") as f:
+        f.write("[policy]\nmission_rupees = 420\n")                          # one investigation reopened twice: its own cap must not be the limit
     from pflab.pm import store
     con = store.connect(profile / "pm" / "ledger.duckdb")
     con.execute("UPDATE instruments SET tax_class='EQUITY'")           # the tax engine's own label for listed equity
     con.close()
 
 
-def serve(profile: Path, port: int, delay: float) -> int:
+def serve(profile: Path, port: int, delay: float, live: bool = False) -> int:
     os.environ["PFLAB_PM_DIR"] = str(profile / "pm")
+    if live:
+        os.environ["PFLAB_PAID"] = "1"                                   # the workshop's explicit switch for paid calls (src/pflab/guard.py)
     import uvicorn
     from pflab import scrub
     from pflab.app.runtime import Runtime
@@ -203,8 +207,12 @@ def serve(profile: Path, port: int, delay: float) -> int:
     import logging
     logging.basicConfig(filename=profile / "pm" / "app" / "rehearsal.log", level=logging.INFO, encoding="utf-8", format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     scrub.install()
-    rt = Runtime(profile / "pm", data_dir(), HERE.parent, secrets=None)
-    rt._hq_client = Scripted(rt, delay)
+    if live:
+        from pflab.pm import secrets as sec
+        rt = Runtime(profile / "pm", data_dir(), HERE.parent, secrets=sec.load())      # the real client, the real models
+    else:
+        rt = Runtime(profile / "pm", data_dir(), HERE.parent, secrets=None)
+        rt._hq_client = Scripted(rt, delay)
     app = create_app(rt)
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", access_log=False))
     threading.Thread(target=server.run, daemon=True).start()
@@ -219,8 +227,9 @@ def serve(profile: Path, port: int, delay: float) -> int:
 # ----------------------------------------------------------------------------------------------------------------------------------------------
 
 class Driver:
-    def __init__(self, profile: Path, port: int, delay: float):
+    def __init__(self, profile: Path, port: int, delay: float, live: bool = False):
         import requests
+        self.live = live
         self.r, self.profile, self.port, self.delay = requests, profile, port, delay
         self.base = f"http://127.0.0.1:{port}"
         self.proc = None
@@ -233,7 +242,7 @@ class Driver:
         self.log.append(line)
 
     def start(self):
-        self.proc = subprocess.Popen([sys.executable, str(HERE / "rehearse_s69.py"), "serve", "--profile", str(self.profile), "--port", str(self.port), "--delay", str(self.delay)],
+        self.proc = subprocess.Popen([sys.executable, str(HERE / "rehearse_s69.py"), "serve", "--profile", str(self.profile), "--port", str(self.port), "--delay", str(self.delay)] + (["--live"] if self.live else []),
                                      stdout=open(self.profile / "serve.out", "ab"), stderr=subprocess.STDOUT)
         for _ in range(120):
             try:
@@ -378,6 +387,87 @@ def drive(profile: Path, port: int, delay: float, out: Path) -> int:
     return 1 if bad else 0
 
 
+def drive_live(profile: Path, port: int, out: Path) -> int:
+    """The same path with the REAL cloud models (Opus coordinator and reviewer, Sonnet research, quant and assistant) inside the profile's own window cap.
+    Nothing is scripted: the checks are structural (states, artifacts, ids), and the answers are printed for a person to read."""
+    d = Driver(profile, port, 0, live=True)
+    d.start()
+    d.say("LIVE: server up, real cloud models, paid calls counted in this profile's own window cap")
+    ans = d.chat("Investigate: " + GOAL, wait=240)
+    d.say("assistant:", ans["text"][:300])
+    c = d.wait("a plan that waits for his yes", lambda c: c["state"] == "awaiting_approval", 900, 5)
+    d.check("1 the real coordinator's plan waits for his yes, nothing has run", c["awaiting_approval"] and all(t["status"] == "needs_approval" for t in c["tasks"] if t["role"] in ("research", "quant")),
+            [(t["id"], t["role"], t["status"], t["depends_on"]) for t in c["tasks"]])
+    d.say("PLAN:", json.dumps([(s_["key"], s_["role"], s_["goal"][:90]) for s_ in c["plan_versions"][0]["steps"]]))
+    ans = d.chat("Yes, approve the plan.", wait=240)
+    d.say("assistant:", ans["text"][:200])
+    d.check("1 the real assistant approved through his words", d.card()["plan_versions"][0]["status"] == "approved", d.card()["plan_versions"][0]["status"])
+    seen, t0 = 0, time.time()
+    while time.time() - t0 < 300:
+        c = d.card()
+        seen = max(seen, sum(1 for t in c["tasks"] if t["status"] == "running"))
+        if seen >= 2 or c["state"] in ("done", "blocked"):
+            break
+        time.sleep(1)
+    d.check("2 independent real tasks overlapped", seen >= 2, f"{seen} running together")
+    if seen >= 2 and c["state"] not in ("done", "blocked"):
+        d.say("hard kill of the server while", seen, "real tasks run")
+        d.kill()
+        d.start()
+        d.say("server restarted")
+    c = d.wait("done or blocked", lambda c: c["state"] in ("done", "blocked"), 2400, 10)
+    d.say("STATE:", c["state"], "| blocker:", c["blocker"], "| spent", c["budget"])
+    d.check("1 the real investigation reached done with a review verdict", c["state"] == "done" and bool((c["answer"] or {}).get("review_verdict")), (c["state"], c["blocker"], (c["answer"] or {}).get("review_verdict")))
+    a = c["answer"] or {}
+    d.say("ANSWER:", (a.get("answer") or "")[:1500])
+    d.say("LIMITS:", (a.get("limitations") or "")[:400])
+    kinds = {}
+    for o in c["outputs"]:
+        kinds[o["kind"]] = kinds.get(o["kind"], 0) + 1
+    d.say("OUTPUTS:", kinds)
+    d.say("TRIGGERS:", [t["describe"] for t in c["triggers"]], "| unsupported:", a.get("monitor_unsupported"))
+    d.check("4 the answer says honestly whether it has an executable monitor", "monitor_executable" in a, (a.get("monitor_executable"), a.get("triggers")))
+    props = d.get("/api/proposals")["proposals"]
+    d.say("PROPOSALS:", [(p["proposal_id"], p["action"], p["symbol"], p["status"], p["review_status"], p["missing"][:2]) for p in props])
+    d.check("5 the real quant produced a recommendation (a supported WAIT/HOLD is as good as a trade)", bool(props), [p["action"] for p in props])
+    v_before = c["instruction_version"]
+    ans = d.chat("Also redo the deployment comparison with a 0.5% charge on every trade.", wait=240)
+    d.say("assistant:", ans["text"][:250])
+    c = d.wait("the amendment is carried out", lambda c: c["instruction_version"] > v_before and c["state"] in ("done", "blocked", "awaiting_approval"), 1500, 8)
+    vs = {x["version"]: (x["status"], x["source"]) for x in c["plan_versions"]}
+    d.say("VERSIONS:", vs, "| state", c["state"], "| blocker", c["blocker"])
+    d.check("4 the real assistant recorded the amendment as a new version", len(vs) >= 2 and any(s_[1] == "amendment" for s_ in vs.values()), vs)
+    if c["state"] == "awaiting_approval":
+        d.say("the real assistant judged the amendment to need his yes again: approving through his words")
+        d.chat("Yes, approve the plan.", wait=240)
+        c = d.wait("amendment done", lambda c: c["state"] in ("done", "blocked"), 1500, 8)
+    d.check("4 the amended investigation finished", c["state"] == "done", (c["state"], c["blocker"]))
+    d.r.post(d.base + "/api/inbox/upload", data=DOC.encode(), headers={"x-filename": "ai_downturn_note.txt"}, timeout=60)
+    t0, routed = time.time(), None
+    while time.time() - t0 < 600:
+        rows = d.get("/api/routing")["decisions"]
+        if rows:
+            routed = rows[0]
+            break
+        time.sleep(5)
+    d.check("4 the local model routed the new file", bool(routed), routed)
+    c = d.wait("the file is dealt with", lambda c: c["state"] in ("done", "blocked") and c["plan_versions"][-1]["source"] == "review", 1500, 8)
+    d.say("AFTER THE FILE:", c["state"], "| change:", (c["answer"] or {}).get("change"), "|", ((c["answer"] or {}).get("answer") or "")[:500])
+    d.check("4 the file reopened the same investigation, which finished again", c["state"] == "done", (c["state"], c["blocker"]))
+    ans = d.chat("Propose a controlled buy of 20 ITC and a controlled reduction of 5 MARUTI for this test profile, as examples.", wait=300)
+    d.say("assistant:", ans["text"][:300])
+    props = d.get("/api/proposals")["proposals"]
+    d.say("PROPOSALS:", [(p["proposal_id"], p["action"], p["symbol"], (p["payload"].get("size") or {}).get("qty"), p["missing"][:2]) for p in props])
+    acts = {p["action"] for p in props}
+    d.check("5 both a BUY and a REDUCE exist, sized from the record", "BUY" in acts and ("REDUCE" in acts or "SELL" in acts), sorted(acts))
+    d.kill()
+    report = {"checks": d.checks, "log": d.log}
+    out.write_text(json.dumps(report, indent=1, default=str), encoding="utf-8")
+    bad = [x for x in d.checks if not x["pass"]]
+    d.say(f"{len(d.checks) - len(bad)} of {len(d.checks)} checks passed; report in {out}")
+    return 1 if bad else 0
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["seed", "serve", "drive"])
@@ -385,11 +475,13 @@ if __name__ == "__main__":
     ap.add_argument("--port", type=int, default=8793)
     ap.add_argument("--delay", type=float, default=2.5)
     ap.add_argument("--out", default="rehearsal_s69.json")
+    ap.add_argument("--live", action="store_true", help="the real cloud models (paid, inside the profile's own window cap)")
+    ap.add_argument("--cap", type=float, default=450.0)
     a = ap.parse_args()
     pr = Path(a.profile)
     if a.cmd == "seed":
-        seed(pr)
+        seed(pr, a.cap)
     elif a.cmd == "serve":
-        sys.exit(serve(pr, a.port, a.delay))
+        sys.exit(serve(pr, a.port, a.delay, a.live))
     else:
-        sys.exit(drive(pr, a.port, a.delay, Path(a.out)))
+        sys.exit(drive_live(pr, a.port, Path(a.out)) if a.live else drive(pr, a.port, a.delay, Path(a.out)))
