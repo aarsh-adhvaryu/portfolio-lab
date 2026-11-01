@@ -82,12 +82,50 @@ def test_a_buy_is_sized_by_code_and_cut_to_the_rails(con, rt):
     assert not bad["stored"]
 
 
+def test_a_review_that_still_objects_adopts_a_wait_but_never_a_trade_and_both_are_scored(con, rt):
+    _seed(con)
+    cid = _mission(con, rt)
+    idx = pd.Series([1000.0 + i for i in range(len(DAYS))], index=pd.to_datetime(DAYS))
+    manager.decide(con, datetime(2026, 11, 2, 10, 0), cid, {"action": "WAIT", "reason": "valuations are high and no candidate has the evidence to buy",
+                                                              "alternatives": "buy the index now", "review_condition": "a 10% fall in the Nifty 500"}, idx)
+    manager.decide(con, datetime(2026, 11, 2, 10, 0), cid, {"action": "SELL", "symbol": "BBB", "reason": "the thesis broke on the last two results of the company",
+                                                              "alternatives": "hold; reduce half"})
+    _review(con, cid, "revise")
+    out = manager.execute(con, datetime(2026, 11, 2, 12, 0), cid)
+    assert out == {"orders": 0, "adopted": 1, "not_approved": 1}
+    assert dict(con.execute("SELECT action, status FROM paper_decisions").fetchall()) == {"WAIT": "executed", "SELL": "not_approved"}
+    assert con.execute("SELECT count(*) FROM paper_orders").fetchone()[0] == 0                  # no trade without approval
+    assert con.execute("SELECT count(*) FROM paper_claims").fetchone()[0] == 8                  # the refused one is scored too
+    assert manager.execute(con, datetime(2026, 11, 2, 13, 0), cid) == {"orders": 0}              # once
+
+
+def test_a_rejection_adopts_nothing(con, rt):
+    _seed(con)
+    cid = _mission(con, rt)
+    manager.decide(con, datetime(2026, 11, 2, 10, 0), cid, {"action": "WAIT", "reason": "valuations are high and no candidate has the evidence to buy",
+                                                              "alternatives": "buy the index now", "review_condition": "a 10% fall in the Nifty 500"})
+    _review(con, cid, "rejected")
+    assert manager.execute(con, datetime(2026, 11, 2, 12, 0), cid) == {"orders": 0, "adopted": 0, "not_approved": 1}
+
+
+def test_the_proposals_tool_shows_a_paper_mission_its_own_decisions(con, rt):
+    from pflab.hq import tools as tl
+    _seed(con)
+    rt.cursor = lambda: con
+    cid = _mission(con, rt)
+    manager.decide(con, datetime(2026, 11, 2, 10, 0), cid, {"action": "WAIT", "reason": "valuations are high and no candidate has the evidence to buy",
+                                                              "alternatives": "buy the index now", "review_condition": "a 10% fall in the Nifty 500"})
+    ctx = tl.Ctx(rt, None, "m", False, {}, None, datetime(2026, 11, 2, 10, 5), role="review")
+    out = tl.proposals_tool(ctx, {"case_id": cid})
+    assert out["paper_decisions"][0]["action"] == "WAIT" and "paper" in out["note"]
+
+
 def test_nothing_runs_until_the_review_approves_and_a_rejected_mission_trades_nothing(con, rt):
     _seed(con)
     cid = _mission(con, rt)
     manager.decide(con, datetime(2026, 11, 2, 10, 0), cid, {"action": "SELL", "symbol": "BBB", "reason": "the thesis broke on the last two results",
                                                               "alternatives": "hold; reduce half"})
-    assert manager.execute(con, datetime(2026, 11, 2, 12, 0), cid) == {"orders": 0, "not_approved": 1}
+    assert manager.execute(con, datetime(2026, 11, 2, 12, 0), cid) == {"orders": 0, "adopted": 0, "not_approved": 1}      # no review at all: nothing runs
     assert con.execute("SELECT count(*) FROM paper_orders").fetchone()[0] == 0
     assert con.execute("SELECT status FROM paper_decisions").fetchone()[0] == "not_approved"
 
@@ -255,3 +293,15 @@ def test_a_share_with_no_sector_in_the_instruments_table_gets_the_sector_maps_in
     book._SECTORS.clear()
     monkeypatch.setattr(book, "_industry", lambda isin: "COMPUTERS - SOFTWARE" if isin == AAA else None)
     assert book.inst(con, AAA)["sector"] == "COMPUTERS - SOFTWARE" and book.inst(con, ETF)["sector"] is None
+
+
+def test_an_earlier_refused_wait_is_adopted_and_scored_once(con, rt):
+    _seed(con)
+    cid = _mission(con, rt)
+    idx = pd.Series([1000.0 + i for i in range(len(DAYS))], index=pd.to_datetime(DAYS))
+    manager.decide(con, datetime(2026, 11, 2, 10, 0), cid, {"action": "WAIT", "reason": "valuations are high and no candidate has the evidence to buy",
+                                                              "alternatives": "buy the index now", "review_condition": "a 10% fall in the Nifty 500"}, idx)
+    con.execute("UPDATE paper_decisions SET status='not_approved'")                            # as the first live run left it
+    _review(con, cid, "revise")
+    assert manager.sweep_stays(con, datetime(2026, 11, 3, 9, 0)) == 1 and manager.sweep_stays(con, datetime(2026, 11, 3, 9, 1)) == 0
+    assert con.execute("SELECT status FROM paper_decisions").fetchone()[0] == "executed" and con.execute("SELECT count(*) FROM paper_claims").fetchone()[0] == 4

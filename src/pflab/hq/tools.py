@@ -1209,6 +1209,10 @@ def paper_ask(ctx: Ctx, a: dict) -> dict:
 
 def proposals_tool(ctx: Ctx, a: dict) -> dict:
     from pflab.hq import proposals
+    from pflab.paper import manager as _pm
+    cid = int(a["case_id"]) if a.get("case_id") else (ctx.con.execute("SELECT case_id FROM hq_tasks WHERE task_id=?", [ctx.task_id]).fetchone() or [None])[0] if ctx.task_id else None
+    if _pm.is_paper(ctx.con, cid):                              # S76: a paper mission's decisions are paper decisions, not proposals for his money
+        return {"paper_decisions": _pm.decisions_of(ctx.con, int(cid)), "note": "these are the paper portfolio's decisions for this mission; they are executed on paper only if the review approves"}
     if a.get("proposal_id"):
         p = proposals.get(ctx.con, int(a["proposal_id"]))
         return {"proposal": p, "stale": proposals.stale_reason(ctx.con, p, ctx.rt.pm_dir) if p else None} if p else {"error": "no such proposal"}
