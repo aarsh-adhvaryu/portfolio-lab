@@ -31,6 +31,22 @@ def _plans_run_unasked(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _playbooks_off(monkeypatch):
+    """S71: common questions are planned by code (hq/playbooks.py). The older mission tests script the coordinator, so they run with playbooks off;
+    the playbook tests turn them on."""
+    from pflab.hq import playbooks
+    monkeypatch.setattr(playbooks, "enabled", lambda: False)
+
+
+@pytest.fixture(autouse=True)
+def _local_front_off(monkeypatch):
+    """S71: the local model takes the easy turns of the chat (app/front.py). The older chat tests script the cloud agent, so they run with the front off;
+    the front's own tests turn it on."""
+    from pflab.app import front
+    monkeypatch.setattr(front, "enabled", lambda: False)
+
+
+@pytest.fixture(autouse=True)
 def _no_backup_decision(monkeypatch):
     """Tests never read the investor's own backup decision in configs/service.toml (S58b); a test that needs one sets it."""
     from pflab.service import backup

@@ -92,7 +92,12 @@ def chat(model: str, messages: List[dict], *, think: bool = False, temperature: 
         payload["format"] = fmt
     t0 = time.time()
     try:
-        j = transport("POST", "/api/chat", payload, timeout)
+        from pflab.llm import queue
+        try:
+            with queue.GATE.slot(purpose):               # S71: one card, one call at a time, the most important first
+                j = transport("POST", "/api/chat", payload, timeout)
+        except queue.Busy as b:
+            raise OllamaError(str(b)) from b
     except Exception as e:
         _note(model=name, purpose=purpose, status="failed", note=f"{type(e).__name__}: {str(e)[:200]}", seconds=round(time.time() - t0, 2), tokens_in=0, tokens_out=0,
               digest=models[name].get("digest"))
