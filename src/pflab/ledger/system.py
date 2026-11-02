@@ -164,8 +164,8 @@ def switch(con, pm_dir: Path, asof: date, now: datetime, start_cash: float = STA
 # research, house rules, the paper portfolio's own tables, and the US sleeve's tables (the sleeve stays as a capability).
 PERSONAL_TABLES = ("fds", "fd_interest", "statement_periods", "known_gaps", "account_candidates", "recon_breaks", "kite_trades", "kite_snapshots", "tax_years", "carry_forward",
                    "inbox_items", "mail_seen", "mail_facts", "mail_scan", "bot_updates", "app_notes", "questions", "proposals", "decisions", "ready_plans", "limit_proposals",
-                   "pot_ideas", "theme_baskets", "targets", "twin_days", "twin_trades", "hq_proposals", "hq_proposal_log", "hq_claims", "chats", "chat_messages", "chat_summary",
-                   "theses", "watches", "hq_reminders", "datasets", "dataset_facts")
+                   "pot_ideas", "targets", "twin_days", "twin_trades", "hq_proposals", "hq_proposal_log", "hq_claims", "chats", "chat_messages", "chat_summary",
+                   "theses", "watches", "hq_reminders")                 # (datasets, dataset_facts and theme_baskets stay: company data sheets and theme lists are public research, not his record)
 PERSONAL_FILES = ("sources.toml", "sources.app.toml", "bank_rules.local.toml", "fd_holdings.toml", "targets.toml", "app/deposits.json", "app/ledger_build.json", "house_rules.md")
 PERSONAL_DIRS = ("inbox/screens", "inbox/locked")                   # inside the profile folder; `inbox/market` is public company data and stays
 APP_ROOT_JUNK = ("pm_old_*", "pm.zip", "backups", "verify")        # in the app's folder: old copies of the record, acceptance copies, the store backups
