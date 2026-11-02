@@ -503,7 +503,10 @@ def budget_room(con, now: datetime) -> float:
 def wake_budget_waits(con, now: datetime) -> int:
     """S69 (found live): a budget refusal parks a task until the cap can next change (the window's end, a month away), so raising the cap did nothing and the
     work sat there. Each round looks: when the allowance has room again the parked task is tried at once. Returns how many were woken."""
-    rows = con.execute("SELECT task_id FROM hq_tasks WHERE status='retry' AND wait_kind='budget' AND next_review_at > ?", [now]).fetchall()
+    # S78 (found live 2026-11-02: ~200 priced-and-refused attempts a minute): only a task parked by the CAP (the window's end or next month) is woken by room under the cap; one parked by a
+    # DAY limit (resume tomorrow 00:05) waits for tomorrow, because the cap having room says nothing about the day limit
+    beyond_tomorrow = datetime(now.year, now.month, now.day) + timedelta(days=1, minutes=6)
+    rows = con.execute("SELECT task_id FROM hq_tasks WHERE status='retry' AND wait_kind='budget' AND next_review_at > ?", [max(now, beyond_tomorrow)]).fetchall()
     if not rows:
         return 0
     try:

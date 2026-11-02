@@ -221,8 +221,30 @@ def create_app(rt) -> FastAPI:
         if not text.strip():
             raise HTTPException(400, "empty answer")
         qs.answer(rt.cursor(), qid, text.strip(), rt.clock())
-        rt.bump("notifications", "command", "chat")
-        return {"ok": True}
+        brought = _bring_in(text)
+        rt.bump("notifications", "command", "chat", "inbox")
+        return {"ok": True, **brought}
+
+    def _bring_in(text: str) -> dict:
+        """S78: an answer may carry a file path (the file is received like an attached one) or a link (the assistant is asked to read it): he need not type what a file says."""
+        import re
+        from pathlib import Path as _P
+        from pflab.app import assistant, inbox as ib
+        got, links = [], re.findall(r"https?://[^\s<>\"']+", text)
+        for m in re.finditer(r'"([^"]+)"|([A-Za-z]:\\[^\s"<>|*?]+)', text):
+            cand = _P((m.group(1) or m.group(2)).strip())
+            try:
+                if cand.is_file() and cand.stat().st_size <= MAX_UPLOAD:
+                    ib.receive(rt, cand.name, cand.read_bytes(), "", None, None)
+                    got.append(cand.name)
+            except (OSError, ValueError):
+                continue
+        if links:
+            try:
+                assistant.post(rt, "Please read this and tell me what it adds: " + " ".join(links[:3]), "an answer to one of your questions")
+            except Exception:
+                pass
+        return {"received": got, "links": links[:3]}
 
     # --- watch list, research and plans (S54c) ----------------------------------------------------------------------
     @app.get("/api/watch")

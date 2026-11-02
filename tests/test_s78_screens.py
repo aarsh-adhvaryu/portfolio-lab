@@ -97,7 +97,7 @@ def test_system_checks_show_the_groups_and_what_failed_and_the_button_runs_them(
     con = rt.cursor()
     rows = [("Agents", "probe: research", "ok", "answered"), ("Tools", "probe: chart_view", "bad", "no candles for the probe name"), ("Data and Kite", "Docker", "warn", "Docker is asleep")]
     for i, (g, n, s, nt) in enumerate(rows, 1):
-        con.execute("INSERT INTO selfchecks VALUES (?,?,?,?,?,?,?,?)", [i, 1, NOW, g, n, s, nt, 5])
+        con.execute("INSERT INTO selfchecks VALUES (?,?,?,?,?,?,?,?)", [i, 1, datetime.now(), g, n, s, nt, 5])      # (fresh: an old run would start by itself)
     steps = [("document.getElementById('screen').innerText", 1.5),
              ("!!document.getElementById('rdRun')", 0.1)]
     errors, res = _edge.shoot(f"http://127.0.0.1:{port}/#/system/checks", str(tmp_path / "sys.png"), 1500, 1000, 5, steps)

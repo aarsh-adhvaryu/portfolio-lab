@@ -1420,10 +1420,11 @@ async function load(force = false) {
   const showing = () => S.screen === screen;
   const fresh = () => showing() && gen > (S.drawn || 0) && ((S.drawn = gen), true);
   try {
-    if (!S.data.command || screen === 'portfolio' && S.sub === 'overview') { const c = await api('/api/command'); if (!showing()) return; S.data.command = c; }
+    let cmd = S.data.command;
+    if (!cmd || screen === 'portfolio' && S.sub === 'overview') { cmd = await api('/api/command'); if (!showing()) return; S.data.command = cmd; }
     if (!S.sys || Date.now() - (S.sysAt || 0) > (screen === 'system' && !(typeof RD !== 'undefined' && RD.handles(screen, S.sub)) ? 4000 : 60000)) { try { S.sys = await api('/api/system'); S.sysAt = Date.now(); } catch (e) { /* the chip is simply left out */ } }
-    S.settings = { ...S.settings, ...S.data.command.settings, abilities: S.settings.abilities, backup_dir: S.settings.backup_dir }; applyTheme();   // (the cached command snapshot never overwrites what he just switched)   // privacy and theme on every screen
-    renderStatus(S.data.command); renderTabs();
+    S.settings = { ...S.settings, ...cmd.settings, abilities: S.settings.abilities, backup_dir: S.settings.backup_dir }; applyTheme();   // (the cached command snapshot never overwrites what he just switched)   // privacy and theme on every screen
+    renderStatus(cmd); renderTabs();
     const sub = S.sub;
     if (typeof RD !== 'undefined' && RD.handles(screen, sub)) {          // S78: the redesigned screens (redesign.js)
       await RD.load(screen, sub, fresh);
@@ -1431,10 +1432,10 @@ async function load(force = false) {
       paintDock(); return;
     }
     if (screen === 'assistant') {
-      const [h, inv, pol] = await Promise.all([api('/api/assistant'), api('/api/investigations').catch(() => ({ investigations: [] })), api('/api/policy').catch(() => null)]);
-      if (!showing()) return; h.policy = pol; S.drawn = gen; renderAssistant(h, inv.investigations, S.data.command, S.sys); paintDock(); return;
+      const [h, inv, pol, paper] = await Promise.all([api('/api/assistant'), api('/api/investigations').catch(() => ({ investigations: [] })), api('/api/policy').catch(() => null), api('/api/paper').catch(() => null)]);
+      if (!showing()) return; h.policy = pol; h.paper = paper; S.drawn = gen; renderAssistant(h, inv.investigations, cmd, S.sys); paintDock(); return;
     }
-    if (screen === 'portfolio' && sub === 'overview') { const d = S.data.command; if (fresh()) keepInputs(() => { $('screen').innerHTML = ''; renderPortfolioOverview(d); }); }
+    if (screen === 'portfolio' && sub === 'overview') { const d = cmd; if (fresh()) keepInputs(() => { $('screen').innerHTML = ''; renderPortfolioOverview(d); }); }
     else if (screen === 'portfolio' && sub === 'holdings') { const d = await api('/api/portfolio' + (S.selected ? '?isin=' + encodeURIComponent(S.selected) : '')); if (fresh()) renderPortfolio(d); }
     else if (screen === 'portfolio' && sub === 'paper') { const d = await api('/api/paper'); if (fresh()) keepInputs(() => { $('screen').innerHTML = ''; renderPaper(d); }); }
     else if (screen === 'portfolio' && sub === 'watch') { const d = await api('/api/watch'); if (fresh()) keepInputs(() => renderWatch(d)); }
@@ -1447,7 +1448,7 @@ async function load(force = false) {
     else if (screen === 'research' && sub === 'sims') { const d = await api('/api/sims'); if (fresh()) renderSims(d); }
     else if (screen === 'research' && sub === 'graph') { const d = await api('/api/graph?' + new URLSearchParams({ kinds: (S.gKinds || ['company', 'sector', 'verdict', 'org', 'person']).join(','), ...(S.gUptoDate ? { upto: S.gUptoDate } : {}) })); if (fresh()) renderGraph(d); }
     else if (screen === 'inbox') { const d = await api('/api/inbox'); if (fresh()) keepInputs(() => renderInbox(d)); }
-    else if (screen === 'system' && sub === 'now') { const s = S.sys; if (fresh()) keepInputs(() => { $('screen').innerHTML = systemNowHtml(s, S.data.command); wireSystem(); }); }
+    else if (screen === 'system' && sub === 'now') { const s = S.sys; if (fresh()) keepInputs(() => { $('screen').innerHTML = systemNowHtml(s, cmd); wireSystem(); }); }
     else if (screen === 'system' && sub === 'limits') { const p = await api('/api/policy'); if (fresh()) { $('screen').innerHTML = ''; renderLimits(p); } }
     else if (screen === 'system' && sub === 'schedule') { const d = await api('/api/schedule'); if (fresh()) keepInputs(() => renderSchedule(d)); }
     else if (screen === 'settings') { const d = await api('/api/settings'); if (fresh()) { S.settings = d; renderSettings(d); } }

@@ -303,14 +303,33 @@ def test_backup_that_does_not_match_is_deleted(tmp_path, monkeypatch):
     def tampered(p):
         calls["n"] += 1
         c = real(p)
-        if calls["n"] == 1:
-            c["accounts"] = c.get("accounts", 0) + 1
+        c["accounts"] = c.get("accounts", 0) + 1                          # every copy disagrees with the ledger
         return c
 
     monkeypatch.setattr(bk, "_counts", tampered)
+    monkeypatch.setattr(bk.time, "sleep", lambda s: None)
     with pytest.raises(bk.BackupError, match="does not match"):
         bk.backup(con, tmp_path / "pm" / "ledger.duckdb", tmp_path / "usb", WED)
-    assert bk.listing(tmp_path / "usb") == []
+    assert calls["n"] == 3                                                # S78: it was taken three times before it gave up
+    assert not list((tmp_path / "usb").glob("ledger-*.duckdb"))           # and no wrong copy is left behind
+
+
+def test_a_copy_that_raced_a_write_is_taken_again_and_then_verifies(tmp_path, monkeypatch):
+    con = store.connect(tmp_path / "pm" / "ledger.duckdb")
+    real = bk._counts
+    calls = {"n": 0}
+
+    def tampered(p):
+        calls["n"] += 1
+        c = real(p)
+        if calls["n"] == 1:
+            c["accounts"] = c.get("accounts", 0) + 1                      # the first copy raced a write
+        return c
+
+    monkeypatch.setattr(bk, "_counts", tampered)
+    monkeypatch.setattr(bk.time, "sleep", lambda s: None)
+    out = bk.backup(con, tmp_path / "pm" / "ledger.duckdb", tmp_path / "usb", WED)
+    assert calls["n"] == 2 and len(list((tmp_path / "usb").glob("ledger-*.duckdb"))) == 1 and out["tables"] > 0
 
 
 def test_backup_target_comes_from_env_or_config(tmp_path, monkeypatch):

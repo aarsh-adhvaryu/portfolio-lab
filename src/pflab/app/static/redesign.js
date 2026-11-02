@@ -211,6 +211,12 @@ const RD = (() => {
     keepInputs(() => { el.innerHTML = `<div class="rd-fit" style="display:flex;flex-direction:column;gap:14px">${html}</div>`; el.dataset.sig = sig; });
     wire();
   }
+  let autoRan = false;
+  function staleRun(sc) {
+    if (autoRan || !sc || sc.running) return;
+    const at = sc.run ? new Date(String(sc.run.at).replace(' ', 'T')) : null;
+    if (!at || isNaN(at) || Date.now() - at > 6 * 3600e3) { autoRan = true; post('/api/selfcheck/run', {}).then(() => { S.last = 0; load(true); }).catch(() => {}); }
+  }
   let pollT = null;
   function pollWhileRunning(sc) {                                    // the run is shown happening: look again every second while it goes (one timer, whatever was redrawn)
     if (!sc || !sc.running || pollT) return;
@@ -221,7 +227,7 @@ const RD = (() => {
     else if (screen === 'account') { const d = await api('/api/paper'); if (fresh()) paint(account(d), wireAccount); }
     else if (screen === 'watchlist') { const d = await api('/api/watchlist'); if (fresh()) paint(watchlist(d.items || []), wireWatchlist); }
     else if (screen === 'research') { const [inv, ideas, d] = await Promise.all([api('/api/investigations').catch(() => ({ investigations: [] })), api('/api/learner/ideas?limit=12').catch(() => ({ ideas: [] })), api('/api/paper').catch(() => ({}))]); if (fresh()) paint(research(inv, ideas, d), () => {}); }
-    else if (screen === 'system') { const [sc, d, rel] = await Promise.all([api('/api/selfcheck'), api('/api/paper').catch(() => ({})), api('/api/release').catch(() => ({}))]); if (fresh()) { paint(system(sc, d, rel), () => wireSystem(sc)); pollWhileRunning(sc); } }
+    else if (screen === 'system') { const [sc, d, rel] = await Promise.all([api('/api/selfcheck'), api('/api/paper').catch(() => ({})), api('/api/release').catch(() => ({}))]); staleRun(sc); if (fresh()) { paint(system(sc, d, rel), () => wireSystem(sc)); pollWhileRunning(sc); } }
   }
   return { handles, load: loadScreen, abilities };
 })();

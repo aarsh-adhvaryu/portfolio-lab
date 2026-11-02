@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -77,21 +78,35 @@ def backup(con, db_path: Path, target: Path, now: datetime, keep: int = 30) -> d
         raise BackupError(f"backup target {target} is inside the PM directory {db_path.parent}")
     target.mkdir(parents=True, exist_ok=True)
     dest = target / f"{PREFIX}{now:%Y%m%d-%H%M%S}{SUFFIX}"
-    try:
-        con.execute("CHECKPOINT")
-        src = _counts_of(con)
-        con.execute(f"ATTACH '{dest.as_posix()}' AS pflab_backup")
+    diff = None
+    for attempt in range(3):                              # S78 (2026-11-02: the first real backup failed because the app was writing at that moment): try again, up to three times
         try:
-            con.execute("COPY FROM DATABASE " + _current_db(con) + " TO pflab_backup")
-        finally:
-            con.execute("DETACH pflab_backup")
-        got = _counts(dest)
-    except Exception as e:
-        dest.unlink(missing_ok=True)
-        raise BackupError(f"backup failed: {e}") from e
-    if src != got:
+            for _ in range(5):
+                try:
+                    con.execute("CHECKPOINT")
+                    break
+                except Exception:
+                    time.sleep(1.0)                       # writers busy: the copy below reads committed data anyway, so a missed checkpoint is not fatal
+            src = _counts_of(con)
+            con.execute(f"ATTACH '{dest.as_posix()}' AS pflab_backup")
+            try:
+                con.execute("COPY FROM DATABASE " + _current_db(con) + " TO pflab_backup")
+            finally:
+                con.execute("DETACH pflab_backup")
+            got = _counts(dest)
+        except Exception as e:
+            dest.unlink(missing_ok=True)
+            if attempt < 2:
+                time.sleep(3.0)
+                continue
+            raise BackupError(f"backup failed: {e}") from e
+        if src == got:
+            diff = None
+            break
         dest.unlink(missing_ok=True)
         diff = {t: (src.get(t), got.get(t)) for t in set(src) | set(got) if src.get(t) != got.get(t)}
+        time.sleep(3.0)                                   # the ledger changed while it was copied: take it again
+    if diff:
         raise BackupError(f"backup does not match the ledger: {diff}")
     pruned = prune(target, keep)
     return {"file": str(dest), "bytes": dest.stat().st_size, "tables": len(got), "rows": sum(got.values()),

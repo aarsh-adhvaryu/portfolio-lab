@@ -81,6 +81,11 @@ function todayCard(d) {
     <span class="tiny muted">${h.today ? (h.today.source === 'kite' ? 'per Kite ' + esc(String(h.today.snapshot_at).replace('T', ' ')) : 'from statements to ' + esc(h.today.documents_to)) : ''}${h.stale ? ` · ${h.stale} stale price(s)` : ''}${h.fd_estimated ? ' · FD values ESTIMATED' : ''}</span>
     <a href="#/portfolio/overview" class="small">Portfolio</a></div>`;
 }
+function paperCard(p) {
+  if (!p || !p.started) return '';
+  return `<div class="card"><span class="lbl">The account</span><span class="num money" style="font-size:24px;font-weight:600">${rs(p.value)}</span>
+    <span class="tiny muted">fake money, the system's own account · cash ${rs(p.cash)}</span><a href="#/account" class="small">Account</a></div>`;
+}
 function railHtml(h, inv, cmd, sys) {
   const working = (inv || []).filter((c) => !['done'].includes(c.state));
   const done = (inv || []).filter((c) => c.state === 'done').slice(0, 2);
@@ -92,11 +97,12 @@ function railHtml(h, inv, cmd, sys) {
     <div class="card"><div class="row" style="justify-content:space-between"><span class="lbl">Needs you</span><span class="small ${qs.length || others.length ? 'warn' : 'up'}">${qs.length || others.length ? (qs.length + others.length) + ' open' : 'nothing'}</span></div>
       ${qs.slice(0, 4).map((q) => `<div style="background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:6px">
         <span style="font-size:13px;line-height:1.45">${esc(q.text.length > 260 ? q.text.slice(0, 258) + '…' : q.text)}</span><span class="tiny muted">${esc(q.agent)} · ${esc(q.at)}</span>
-        <div class="row"><input class="inp" id="qa${q.id}" placeholder="Your answer"><button class="btn" data-answer="${q.id}">Answer</button></div></div>`).join('')}
+        <div class="row"><input class="inp" id="qa${q.id}" placeholder="Answer, paste a link or a file path"><button class="btn" data-attach="${q.id}" aria-label="Attach a file to this answer" title="Attach a file (a PDF, a sheet, a screenshot)">⎘</button><button class="btn" data-answer="${q.id}">Answer</button></div>
+        <input type="file" id="qf${q.id}" multiple style="display:none"></div>`).join('')}
       ${qs.length > 4 ? `<span class="tiny muted">and ${qs.length - 4} more: ask me about them in the chat</span>` : ''}
       ${others.slice(0, 3).map((i) => `<div class="item"><span class="dot" style="background:var(--warn)"></span><div style="font-size:13px">${esc(i.title)}<div class="tiny muted"><a href="${i.go === 'settings' ? '#/settings' : '#/assistant'}">open</a></div></div></div>`).join('')}
       ${!qs.length && !others.length ? '<span class="small muted">Nothing is waiting on you.</span>' : ''}</div>
-    ${todayCard(cmd)}
+    ${paperCard(h.paper)}
     ${h.policy ? `<div class="card"><span class="lbl">Spending</span><span class="small">${h.policy.policy === 'acceptance' ? `Acceptance window: Rs ${num(h.policy.window.spent, 0)} of Rs ${num(h.policy.window.cap, 0)} until ${esc(h.policy.window.until.slice(0, 10))}` : `This month Rs ${num(h.policy.month_spent, 0)} of Rs ${num(h.policy.cap, 0)}`}</span>
       <div class="bar" style="height:6px"><i style="width:${Math.min(100, (h.policy.window ? h.policy.window.spent / h.policy.window.cap : h.policy.month_spent / (h.policy.cap || 1)) * 100).toFixed(1)}%"></i></div>
       <a href="#/system/limits" class="small">Every limit in force</a></div>` : ''}</div>`;
@@ -144,6 +150,7 @@ async function renderAssistant(h, inv, cmd, sys) {
     Object.entries(keep).forEach(([id, v]) => { const i = $(id); if (i) i.value = v; });
     document.querySelectorAll('[data-mission]').forEach((c) => { c.onclick = () => showMission(Number(c.dataset.mission)); });
     wireMissionButtons($('arail'));
+    document.querySelectorAll('[data-attach]').forEach((b) => { const q = b.dataset.attach; b.onclick = () => $('qf' + q).click(); $('qf' + q).onchange = async () => { const fs = [...$('qf' + q).files]; if (!fs.length) return; await attachToAssistant(fs); await post(`/api/questions/${q}/answer`, { text: 'Attached: ' + fs.map((f) => f.name).join(', ') }); load(true); }; });
     document.querySelectorAll('[data-answer]').forEach((b) => { b.onclick = async () => { const v = $('qa' + b.dataset.answer).value.trim(); if (!v) return; await post(`/api/questions/${b.dataset.answer}/answer`, { text: v }); load(true); }; });
   }
   th.querySelectorAll('[data-sugg]').forEach((b) => { b.onclick = () => sendAssistant(b.dataset.sugg); });

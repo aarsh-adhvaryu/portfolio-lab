@@ -104,10 +104,10 @@ def _spent_system(con, agents: List[str], since: datetime) -> float:
                              [*agents, since, *COUNTED]).fetchone()[0])
 
 
-def calls_today(con, agent: str, now: datetime) -> int:
+def calls_today(con, agent: str, now: datetime, since: Optional[datetime] = None) -> int:
     """Calls (for the brain: passes) today: the later turns of a tool loop belong to the pass its first turn opened. His questions are not
     counted (S68): the system's own passes a day are measured without them."""
-    day = datetime(now.year, now.month, now.day)
+    day = since or datetime(now.year, now.month, now.day)
     return int(con.execute(f"SELECT count(*) FROM api_calls WHERE agent = ? AND created_at >= ? AND coalesce(turn, 1) = 1 "
                            f"AND coalesce(his_order, FALSE) = FALSE AND status IN ({','.join('?' * len(COUNTED))})",
                            [agent, day, *COUNTED]).fetchone()[0])
@@ -131,11 +131,13 @@ def check(con, agent: str, est_inr: float, n_in: int, n_out: int, now: datetime,
         raise BudgetRefused(f"{agent} does not run with the brain set to '{mode}'")
     tomorrow = datetime(now.year, now.month, now.day) + timedelta(days=1, minutes=5)
     next_month = (datetime(now.year, now.month, 1) + timedelta(days=32)).replace(day=1, minute=5)
-    if not (his_order or window) and turn <= 1 and calls_today(con, agent, now) >= n:
+    # S78 (2026-11-02: he reset the budget and the team's day limit still counted the morning's Rs 197): the day is counted from midnight or from his reset, whichever is later
+    day_start = max(datetime(now.year, now.month, now.day), an.month_start(now, cfg))
+    if not (his_order or window) and turn <= 1 and calls_today(con, agent, now, day_start) >= n:
         raise _refuse(f"{agent}: {n} calls today already (its limit under '{mode}')", tomorrow)
     share, day_cap = layer_limits(cfg, lim.layer)
     peers = agents_in(lim.layer)
-    day = _spent_system(con, peers, datetime(now.year, now.month, now.day))      # his questions are not counted against the system's day
+    day = _spent_system(con, peers, day_start)                                   # his questions are not counted against the system's day
     # the day's rupees stop a pass from BEGINNING; a pass already begun (turn 2 on) is stopped only by the cap, never half-way by a day limit
     if not (his_order or window) and turn <= 1 and day + est_inr > day_cap:
         raise _refuse(f"the {lim.layer} have spent ~Rs {day:,.1f} today; this call up to ~Rs {est_inr:,.1f} "
