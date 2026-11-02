@@ -1422,7 +1422,7 @@ async function load(force = false) {
   try {
     if (!S.data.command || screen === 'portfolio' && S.sub === 'overview') { const c = await api('/api/command'); if (!showing()) return; S.data.command = c; }
     if (!S.sys || Date.now() - (S.sysAt || 0) > (screen === 'system' && !(typeof RD !== 'undefined' && RD.handles(screen, S.sub)) ? 4000 : 60000)) { try { S.sys = await api('/api/system'); S.sysAt = Date.now(); } catch (e) { /* the chip is simply left out */ } }
-    S.settings = { ...S.settings, ...S.data.command.settings }; applyTheme();   // privacy and theme on every screen
+    S.settings = { ...S.settings, ...S.data.command.settings, abilities: S.settings.abilities, backup_dir: S.settings.backup_dir }; applyTheme();   // (the cached command snapshot never overwrites what he just switched)   // privacy and theme on every screen
     renderStatus(S.data.command); renderTabs();
     const sub = S.sub;
     if (typeof RD !== 'undefined' && RD.handles(screen, sub)) {          // S78: the redesigned screens (redesign.js)

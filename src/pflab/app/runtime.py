@@ -38,6 +38,9 @@ SETTLE_MAX = timedelta(hours=2)     # a wake whose prices are not current by the
 BATCH_POLL_MIN = 30                 # a submitted Opus batch is collected this often while the window is open
 
 
+_SETTINGS_LOCK = threading.RLock()
+
+
 class Runtime:
     def __init__(self, pm_dir: Path, data_root: Path, repo: Path, con=None, secrets=None,
                  clock: Callable[[], datetime] = datetime.now):
@@ -86,9 +89,11 @@ class Runtime:
         return self.con.cursor()
 
     def set_settings(self, changes: dict) -> dict:
-        self.settings = st.save(self.pm_dir, changes, self.settings)
+        with _SETTINGS_LOCK:                                   # S78: two changes arriving together (the page posts its theme as he flips a switch) each started from the same old copy and the later one erased the earlier
+            self.settings = st.save(self.pm_dir, changes, self.settings)
+            out = self.settings
         self.bump("settings")
-        return self.settings
+        return out
 
     # --- threads --------------------------------------------------------------------------------------------------------
     def _keep_local_calls(self) -> None:

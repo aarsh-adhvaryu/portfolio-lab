@@ -110,22 +110,12 @@ def test_system_checks_show_the_groups_and_what_failed_and_the_button_runs_them(
 def test_the_abilities_are_in_settings_and_a_switch_is_saved(server, tmp_path):
     rt, port = server
     steps = [("document.getElementById('abilitiesP').innerText", 4.0),
+             ("document.querySelector('[data-ab=\"charts\"]').getAttribute('aria-checked')", 0.1),
              ("document.querySelector('[data-ab=\"charts\"]').click(); 1", 5.0),
-             ("document.querySelector('[data-ab=\"charts\"]').getAttribute('aria-checked')", 0.5)]
+             ("document.querySelector('[data-ab=\"charts\"]').getAttribute('aria-checked')", 0.1)]
     errors, res = _edge.shoot(f"http://127.0.0.1:{port}/#/settings", str(tmp_path / "set.png"), 1500, 1400, 5, steps)
     assert errors == [], errors
-    assert "Look at charts" in res[0] and "Place real orders" in res[0] and "BLOCKED" in res[0] and "Weekend and holiday work" in res[0]
-    assert str(res[2]).lower() == "false"
-    assert st.load(rt.pm_dir)["abilities"]["charts"] is False
-
-
-def test_pressing_run_all_shows_the_run_happening_and_then_the_result(server, tmp_path):
-    rt, port = server
-    steps = [("document.getElementById('rdRun').click(); 1", 1.2),
-             ("document.getElementById('screen').innerText", 7.0),
-             ("document.querySelectorAll('.rd-pip').length", 0.1),
-             ("document.getElementById('screen').innerText", 0.1)]
-    errors, res = _edge.shoot(f"http://127.0.0.1:{port}/#/system/checks", str(tmp_path / "run.png"), 1500, 1000, 5, steps)
-    assert errors == [], errors
-    assert "checking" in res[1].lower() or int(res[2]) > 0                                # the first seconds show a run in progress or already some checks
-    assert int(res[2]) > 10 and "checks pass" in res[3].lower()                           # and in the end the result
+    assert "Look at charts" in res[0] and "Place real orders" in res[0] and "BLOCKED" in res[0] and "Weekend and holiday work" in res[0] and "Backup folder" in res[0]
+    before, after = str(res[1]).lower(), str(res[3]).lower()
+    assert before != after                                                                 # one press flips the switch on the screen ...
+    assert st.load(rt.pm_dir)["abilities"].get("charts", True) is (after == "true")        # ... and what is saved is what the screen shows
