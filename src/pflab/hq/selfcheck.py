@@ -66,11 +66,13 @@ def _held_symbol(con) -> Optional[str]:
 def probe_args(con, name: str) -> Optional[dict]:
     """Harmless known input for a read tool; None when it needs something this install does not have yet (then only its shape is checked)."""
     sym = _held_symbol(con)
-    needs_symbol = {"stock_facts": {"symbol": sym}, "price_history": {"symbol": sym}, "chart_view": {"symbol": sym, "timeframe": "daily", "bars": 40}, "growth": {"symbol": sym},
-                    "readings": {"symbol": sym}, "who_is_buying": {"symbol": sym}}
+    needs_symbol = {"stock_facts": {"symbol": sym}, "price_history": {"symbol": sym}, "chart_view": {"symbol": sym, "timeframe": "daily", "bars": 40},
+                    "readings": {"symbol": sym}, "who_is_buying": {"symbol": sym}, "graph_timeline": {"symbol": sym}, "notes": {"symbol": sym}, "comovement": {"symbol": sym}}
     if name in needs_symbol:
         return needs_symbol[name] if sym else None
-    return {}
+    known = {"measure": {"measure": "drawdown", "series": "NIFTY 500"}, "quant": {"idea": "a drop after a results announcement"}, "growth": {"months": 12}, "scenario": {"name": "oil_up_30"},
+             "ipo_plan": {"name": "Selfcheck Ltd", "shares": 100, "issue_price": 100.0, "budget": 50000.0}}            # harmless known inputs for the tools that need more than a symbol
+    return known.get(name, {})
 
 
 def run_all(rt, now: datetime, quick: bool = False) -> dict:
