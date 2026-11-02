@@ -118,6 +118,10 @@ async function renderAssistant(h, inv, cmd, sys) {
     $('sendBtn').onclick = () => sendAssistant();
     $('attachBtn').onclick = () => $('chatFile').click();
     $('chatFile').onchange = () => attachToAssistant([...$('chatFile').files]);
+    const sec = screen.querySelector('.asst > section');             // S77: drop a file anywhere on the conversation; it is read here and the model sees what was read
+    sec.ondragover = (e) => { e.preventDefault(); sec.classList.add('dropping'); };
+    sec.ondragleave = () => sec.classList.remove('dropping');
+    sec.ondrop = (e) => { e.preventDefault(); sec.classList.remove('dropping'); const fs = [...(e.dataTransfer ? e.dataTransfer.files : [])]; if (fs.length) attachToAssistant(fs); };
     inp.focus();
   }
   const th = $('thread'), near = th.scrollHeight - th.scrollTop - th.clientHeight < 80;

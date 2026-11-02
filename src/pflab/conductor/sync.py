@@ -161,6 +161,9 @@ def _max_date_parquet_glob(folder: Path) -> Optional[date]:
 def ledger_findings(ctx: jobs.Ctx) -> List[Finding]:
     """The ledger is rebuilt from the investor's statements (`tools/build_pm_ledger.py`); only he has them."""
     con, now = ctx.con, ctx.now
+    from pflab.ledger import system
+    if system.active(ctx.pm_dir):                            # S77: the ledger is the system's own account: nothing to ask him for
+        return [Finding("ledger", "ok", "the system's own account (no statements are read)")]
     try:
         n, built = con.execute("SELECT count(*), max(ingested_at) FROM events").fetchone()
     except Exception:

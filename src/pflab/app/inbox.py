@@ -131,6 +131,15 @@ def receive(rt, name: str, data: bytes, hint: str = "", account: Optional[str] =
             kind = info["kind"]
         if kind == "bank" and not account:
             account = sniff.match_account(info, _accounts(rt))
+    from pflab.ledger import system
+    if system.active() and (kind in LEDGER_KINDS or kind == "fd_certificate"):        # S77: statements are no longer read: the account is the system's own
+        if chat_id and con.execute("SELECT 1 FROM chats WHERE chat_id=?", [chat_id]).fetchone():
+            from pflab.app import chat
+            chat._add(con, chat_id, "me", "ask", f"Attached {safe} ({KIND_LABEL.get(kind, kind)})", "done", rt.clock())
+            chat._add(con, chat_id, "ai", "ask", "That is a statement of yours. The system's account is its own now (fake money, its own ledger), so it does not read statements and "
+                      "nothing was kept. Anything else (a research note, a screenshot, a company file) it reads here.", "done", rt.clock())
+            rt.bump("chat")
+        return {"id": None, "kind": kind, "duplicate": False, "ignored": "the account is the system's own: statements are not read"}
     waiting = kind in LEDGER_KINDS and not (rt.pm_dir / "sources.toml").exists()    # S65: a first setup: keep it, Setup proposes the accounts
     if kind == "bank" and not account and not waiting:
         if hint:                                            # he named the kind: the screen asks him for the account
@@ -610,6 +619,9 @@ def last_build(rt) -> dict:
 
 def rebuild_due(rt) -> bool:
     """The record was built from statements before, and the reading code has changed since."""
+    from pflab.ledger import system
+    if system.active(rt.pm_dir):
+        return False
     con = rt.cursor()
     built = con.execute("SELECT 1 FROM inbox_items WHERE status='in the ledger' LIMIT 1").fetchone()
     return bool(built) and last_build(rt).get("fingerprint") != builder_fingerprint(rt)
@@ -644,6 +656,9 @@ def build_now(rt, force: bool = False) -> dict:
 def apply_all(rt, force: bool = False) -> dict:
     """S65: every ledger document whose dry run passed or that was kept, added in ONE rebuild: written only when every check passes (his press)."""
     from pflab.ingest import sources as srcs
+    from pflab.ledger import system
+    if system.active(rt.pm_dir):                          # S77: the ledger is the system's own account; it is never rebuilt from statements
+        return {"applied": 0, "skipped": "the ledger is the system's own account"}
     con = rt.cursor()
     items = [_item(rt, r[0]) for r in con.execute("SELECT item_id FROM inbox_items WHERE status IN ('ready', 'kept', 'checks failed') "
                                                   "ORDER BY item_id").fetchall()]

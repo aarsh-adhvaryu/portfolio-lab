@@ -517,6 +517,22 @@ def wake_budget_waits(con, now: datetime) -> int:
     return len(rows)
 
 
+def close_covered(con, now: datetime) -> Dict[int, str]:
+    """S77: a mission folded into another (its case closed as covered, or its blocker says it is a duplicate) is finished, not stuck. On 2026-11-02 five
+    missions folded into case #26 on 31 Oct still showed 'stuck'."""
+    out = {}
+    for cid, blocker in con.execute(
+            "SELECT m.case_id, coalesce(m.blocker, '') FROM hq_missions m JOIN hq_cases c ON c.case_id = m.case_id WHERE m.state = 'blocked' AND "
+            "(m.blocker LIKE 'duplicate of case%' OR m.next_trigger LIKE 'none: covered%' OR EXISTS (SELECT 1 FROM hq_case_log l WHERE l.case_id = m.case_id "
+            "AND l.event = 'covered'))").fetchall():
+        _set(con, cid, now, state="done", next_trigger="covered by another investigation", blocker=None)
+        con.execute("UPDATE hq_cases SET status='done', closed_at=coalesce(closed_at, ?), updated_at=? WHERE case_id=? AND status <> 'done'", [now, now, cid])
+        from pflab.hq import cases
+        cases.log(con, cid, now, "covered", f"closed: {blocker[:200] or 'covered by another investigation'}")
+        out[cid] = "done"
+    return out
+
+
 def tick(rt) -> dict:
     """Move every active mission on by one step, from what the store says. Code only; safe to call as often as the HQ round does and after any
     restart. Returns {case_id: new state}."""
@@ -524,6 +540,7 @@ def tick(rt) -> dict:
     con, now = rt.cursor(), rt.clock()
     moved = {}
     wake_budget_waits(con, now)
+    moved.update(close_covered(con, now))
     sandbox_ok = None
     for (cid,) in con.execute(f"SELECT case_id FROM hq_missions WHERE state IN ({','.join(repr(s) for s in ACTIVE)}) ORDER BY mission_id").fetchall():
         m = mission_of(con, cid)

@@ -122,6 +122,16 @@ def seat_model(con, role: str, body: dict, cid: int) -> str:
     return model
 
 
+def _skills_for(con, cid: int, role: str) -> str:
+    """S77: the paper team reads its skills (hq/skills.py); other missions read none."""
+    try:
+        from pflab.hq import skills
+        from pflab.paper import manager as paper
+        return skills.block(role) if paper.is_paper(con, cid) else ""
+    except Exception:
+        return ""
+
+
 def _params(role: str, messages: list, last: bool) -> dict:
     from pflab.hq import tools as tl
     agent, model, effort = SPECS[role]
@@ -168,7 +178,7 @@ def _tool_defs(role: str) -> list:
 
 
 def converse(rt, con, ctx, messages: list, *, system: str, tools: list, model: str, agent: str, effort: str, max_out: int, client, gate, cfg: dict, mode: str,
-             his: bool, private_first: str, question: str, check=None, max_turns: int = MAX_TURNS, on_step=None) -> Conv:
+             his: bool, private_first: str, question: str, check=None, max_turns: int = MAX_TURNS, on_step=None, extra_system: str = "") -> Conv:
     """The governed tool loop for any role (workers and the assistant): each turn is priced, checked and logged by `llm.call`; each tool call goes
     through `tools.run` (the role's allowed tools, redaction, egress). It ends with the model's final text, a wait named by a tool (`ctx.wait_for`), a
     refusal or provider failure (returned in `stop_exc`, never swallowed), or the turn limit. `check(note)` may return a reminder to send back when the
@@ -176,6 +186,8 @@ def converse(rt, con, ctx, messages: list, *, system: str, tools: list, model: s
     from pflab.hq import brain, llm, tools as tl
     out = Conv()
     sys_blocks = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
+    if extra_system:                                         # S77: skills, after the role's own instructions, cached as a block of their own
+        sys_blocks.append({"type": "text", "text": extra_system, "cache_control": {"type": "ephemeral"}})
     for turn in range(1, max_turns + 1):
         out.turns = turn
         p = {"model": model, "max_tokens": max_out, "system": sys_blocks, "thinking": {"type": "adaptive"}, "output_config": {"effort": effort},
@@ -346,7 +358,7 @@ def run_task(rt, task: dict, client=None, gate=None, cfg=None) -> Reply:
     try:
         conv = converse(rt, con, ctx, messages, system=SYSTEMS[role], tools=_tool_defs(role), model=model, agent=agent, effort=_effort, max_out=gv.LIMITS[agent].max_out,
                         client=client, gate=gate, cfg=cfg or an.config(), mode=mode, his=his, private_first=stable, question=f"{role} task #{task['id']}",
-                        check=unmet_note)
+                        check=unmet_note, extra_system=_skills_for(con, cid, role))
     finally:
         an.CURRENT_TASK.reset(tok)
     cost, note, nudges, stop_exc, turns, first_call = conv.cost, conv.note, conv.nudges, conv.stop_exc, conv.turns, conv.first_call

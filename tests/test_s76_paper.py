@@ -305,3 +305,11 @@ def test_an_earlier_refused_wait_is_adopted_and_scored_once(con, rt):
     _review(con, cid, "revise")
     assert manager.sweep_stays(con, datetime(2026, 11, 3, 9, 0)) == 1 and manager.sweep_stays(con, datetime(2026, 11, 3, 9, 1)) == 0
     assert con.execute("SELECT status FROM paper_decisions").fetchone()[0] == "executed" and con.execute("SELECT count(*) FROM paper_claims").fetchone()[0] == 4
+
+
+def test_a_mission_folded_into_another_is_closed_not_stuck(con, rt):
+    out = missions.create(con, datetime(2026, 10, 31, 18, 0), "A material document about AAA was read", pm_dir=rt.pm_dir, origin="system")
+    cid = out["case_id"]
+    con.execute("UPDATE hq_missions SET state='blocked', blocker='duplicate of case #26: folded, nothing was lost', next_trigger='none: covered by another investigation' WHERE case_id=?", [cid])
+    assert missions.close_covered(con, datetime(2026, 11, 2, 9, 0)) == {cid: "done"}
+    assert missions.mission_of(con, cid)["state"] == "done" and missions.close_covered(con, datetime(2026, 11, 2, 9, 1)) == {}

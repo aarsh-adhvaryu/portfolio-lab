@@ -14,7 +14,7 @@ const TITLES = { assistant: 'Assistant', world: 'The world', portfolio: 'Portfol
 const GEAR = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>';
 const POWER = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>';
 const BUCKET_COLORS = ['#60A5FA', '#A78BFA', '#F5B942', '#4ADE9F', '#94A3B8', '#F472B6', '#38BDF8', '#FB923C'];
-const BUCKET_NAMES = { equity: 'Stocks', equity_fund: 'Equity funds', debt: 'FDs and debt', gold: 'Gold', reit_invit: 'REITs / InvITs',
+const BUCKET_NAMES = { equity: 'Stocks', equity_fund: 'Equity funds', debt: 'Debt', gold: 'Gold', reit_invit: 'REITs / InvITs',
   cash: 'Cash', unclassified: 'Unclassified', review: 'To review' };
 const STATUS_NAMES = { 'in-band': ['in band', 'up'], 'soft-breach': ['outside soft band', 'warn'], 'hard-breach': ['outside hard band', 'down'] };
 const bname = (b) => BUCKET_NAMES[b] || b;
@@ -1058,7 +1058,7 @@ document.addEventListener('paste', (e) => {
 /* ---------- Simulations (54e) ---------- */
 const MIX_COLORS = { current: BUCKET_COLORS[0], target: BUCKET_COLORS[1], 'what-if': BUCKET_COLORS[2] };
 const MIX_NAMES = { current: 'Your mix today', target: 'Your target mix', 'what-if': 'What-if mix' };
-const ASSET_NAMES = { mine: 'Your stocks (today\'s names and weights)', stocks: 'Equal-weight Nifty 500', n500: 'Nifty 500 index fund', mom50: 'Momentum 50 fund', gold: 'Gold', debt: 'FDs and debt', cash: 'Cash' };
+const ASSET_NAMES = { mine: 'Your stocks (today\'s names and weights)', stocks: 'Equal-weight Nifty 500', n500: 'Nifty 500 index fund', mom50: 'Momentum 50 fund', gold: 'Gold', debt: 'Debt (none held)', cash: 'Cash' };
 function xMoney(mult, inv) { return S.settings.privacy || !inv ? `${num(mult, 2)}×` : `${rs(mult * inv)} (${num(mult, 2)}×)`; }
 function fanChart(f, color, inv) {
   const W = 760, H = 290, L = 46, Rt = 12, T = 12, B = 30, M = f.months;
@@ -1095,7 +1095,7 @@ function scatter(fr, mixes) {
 function renderSims(d) {
   const r = d.result, privacy = !!S.settings.privacy;
   S.simMix = S.simMix || 'current';
-  const wi = S.whatif || { mine: 30, stocks: 10, n500: 20, mom50: 0, gold: 15, debt: 25 };
+  const wi = S.whatif || { mine: 30, stocks: 10, n500: 20, mom50: 0, gold: 15, debt: 0, cash: 25 };
   const tot = Object.values(wi).reduce((a, b) => a + b, 0) || 1;
   const runBox = `<div class="panel" style="display:flex;flex-direction:column;gap:10px">
     <span class="lbl">Run</span>
@@ -1246,7 +1246,7 @@ async function loadScenarios() {
 function bindSims(d, f, r) {
   const ps = $('simPaths'); ps.onchange = () => { S.simPaths = Number(ps.value); };
   const yr = $('simYears'); yr.onchange = () => { S.simYears = Number(yr.value); };
-  S.whatif = S.whatif || { mine: 30, stocks: 10, n500: 20, mom50: 0, gold: 15, debt: 25 };
+  S.whatif = S.whatif || { mine: 30, stocks: 10, n500: 20, mom50: 0, gold: 15, debt: 0, cash: 25 };
   Object.keys(S.whatif).forEach((a) => { const el = $('wi_' + a); el.onchange = () => { S.whatif[a] = Number(el.value); renderSims(d); }; });
   $('simRun').onclick = async () => {
     const custom = {}; Object.entries(S.whatif).forEach(([a, v]) => { custom[a] = v / 100; });

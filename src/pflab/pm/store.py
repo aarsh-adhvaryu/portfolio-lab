@@ -810,6 +810,22 @@ MIGRATIONS = [
         input_id INTEGER PRIMARY KEY, logged_at TIMESTAMP NOT NULL, text VARCHAR NOT NULL, status VARCHAR NOT NULL, case_id INTEGER, answer VARCHAR
     );
     """),
+    # 2026-11-02: S77. What the paper portfolio's loops DID (never idle: every loop leaves an act, even "looked, nothing needed"), and what its own record has taught it.
+    (57, "paper_acts_lessons_s77", """
+    CREATE TABLE paper_acts (
+        act_id INTEGER PRIMARY KEY, logged_at TIMESTAMP NOT NULL, loop VARCHAR NOT NULL, what VARCHAR NOT NULL, useful BOOLEAN NOT NULL, detail_json VARCHAR
+    );
+    CREATE TABLE paper_lessons (
+        lesson_id INTEGER PRIMARY KEY, logged_at TIMESTAMP NOT NULL, kind VARCHAR NOT NULL, text VARCHAR NOT NULL, n INTEGER NOT NULL, key VARCHAR NOT NULL UNIQUE,
+        evidence_json VARCHAR
+    );
+    """),
+    # 2026-11-02: S77. The assistant's context against drift: the older part of a chat folded into a digest, and his decisions pinned verbatim.
+    (58, "chat_summary_s77", """
+    CREATE TABLE chat_summary (
+        chat_id INTEGER PRIMARY KEY, summary VARCHAR NOT NULL, pins_json VARCHAR NOT NULL, upto_msg_id INTEGER NOT NULL, updated_at TIMESTAMP NOT NULL
+    );
+    """),
 ]
 
 

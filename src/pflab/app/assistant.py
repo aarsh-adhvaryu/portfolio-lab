@@ -110,6 +110,24 @@ def notify(con, now: datetime, text: str, key: str, route: Optional[List[str]] =
     return True
 
 
+def account_line(con, now: datetime) -> str:
+    """S77: the one standing line about the account the system runs (it is NOT his: fake money, its own ledger), re-read from the record every turn so the chat never has to carry it."""
+    try:
+        from pflab.ledger import system
+        if not system.active():
+            return ""
+        from pflab.paper import cadence, manager
+        day = con.execute("SELECT max(day) FROM paper_days").fetchone()[0]
+        if day is None:
+            return "THE ACCOUNT: the system's own account (fake money, its own ledger); it has not been marked yet."
+        v = manager.book_view(con, day)
+        b = cadence.breaker(con)
+        return (f"THE ACCOUNT (the system's own, fake money; 'the portfolio' means this): value Rs {v['value']:,.0f} as of {day}, broker cash Rs {v['cash']:,.0f}, bank Rs {v.get('bank', 0):,.0f}, "
+                f"{len(v['holdings'])} holdings; drawdown {b['drawdown']:.1%}" + ("; circuit breaker ON" if b["on"] else "") + "; he can top up the bank by at most Rs 50,000 a month.")
+    except Exception:
+        return ""
+
+
 def _recent(con, cid: int, before: int, n: int = 8, gate=None) -> str:
     """The last turns as context. What he typed earlier stays in the thread as he typed it, but an identifier in it (a PAN, an account number, his name) is
     replaced before it is sent again: one careless message must not block every later one."""
@@ -149,10 +167,14 @@ def answer(rt, con, cid: int, aid: int, q: str, context: str = "", client=None, 
     client = client or service.client(rt)
     gate = gate or service.gate(rt)
     snap = missions.snapshot_id(con, rt.pm_dir)
-    hist = _recent(con, cid, aid, gate=gate)
+    from pflab.app import context as _context
+    hist = _context.build(con, cid, aid, now, gate=gate)                  # S77: pins, a digest of the older chat, the last 8 in full, the files he attached
     from pflab.hq import rules as _rules
     hr = _rules.active_text(con)
-    first = (f"{hr}\n\n" if hr else "") + (f"THE CONVERSATION SO FAR:\n{hist}\n\n" if hist else "") \
+    acct = account_line(con, now)
+    if acct:
+        hr = (hr + "\n\n" if hr else "") + acct
+    first = (f"{hr}\n\n" if hr else "") + (f"{hist}\n\n" if hist else "") \
         + (f"HE IS LOOKING AT: {context}\n\n" if context else "") + f"RECORD SNAPSHOT: {snap} (today {now:%Y-%m-%d %H:%M})\n\nHIS MESSAGE:\n{q}"
     pid = brain._record(con, now, "assistant", [], MODEL, "assistant", "running")
     ctx = tl.Ctx(rt, pid, MODEL, False, {}, gate, now, client=client, mode=mode, source=first, case_ids=[], task_id=None, role="assistant",

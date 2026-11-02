@@ -110,3 +110,4 @@ tr.click{cursor:pointer}tr.click:hover td{background:var(--panel2)}tr.sel td{bac
 @keyframes hqpulse{50%{opacity:.5}}
 .room:hover polygon:first-child{filter:brightness(1.06)}
 @media (prefers-reduced-motion:reduce){.bob,.flow,.spin,.pulse{animation:none}}
+/* S77: a file dragged over the conversation */ .asst > section.dropping { outline: 2px dashed var(--accent, #4c8dff); outline-offset: -6px; }

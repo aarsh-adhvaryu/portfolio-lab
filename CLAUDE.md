@@ -7,7 +7,9 @@ frame), `docs/BUILT.md` (what exists, jobs, tools, sources, tables, switches), `
 `README.md` (first run). Two installations: the **APP** (an install of a release tag in its own folder, runs his money) and the
 **WORKSHOP** (this checkout: the beta, where Claude Code develops; no `release.toml`). The workshop sends nothing outward and makes
 no paid call unless told (`pflab --live`, `pflab --paid`; `src/pflab/guard.py`). The workshop holds nothing personal (no statements,
-no copy of his store): it runs the beta on what the collectors bring; his record lives only in the app.
+no copy of his store): it runs the beta on what the collectors bring. Since 2026-11-02 (A36) the app holds no personal record of his either: its ledger is the SYSTEM'S OWN account
+(`ledger/system.py`: his Zerodha holdings as the starting positions, a fake bank and broker with fake money, only the system's own events after; his later real trades, statements, FDs,
+tax packs and notes are removed and never read again). Kite is its data feed only. While `pm/system_account.toml` exists, never rebuild the ledger from statements.
 
 ## Non-negotiables
 1. **Point-in-time.** A feature at date M uses only rows dated <= M. Announcements use the dissemination timestamp.

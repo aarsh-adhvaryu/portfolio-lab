@@ -206,6 +206,21 @@ proposals; what he asks it is one input it may overrule; it starts on the mornin
 - [x] In his app (2026-11-02 01:00-01:30, v2026.11.02.2, restarted gracefully, no running work lost): the cap Rs 1,500 and the month counted from zero (Rs 77 on the paper review so far), `[paper] monthly_rupees = 500` and `mission_rupees = 100`, the workers' day limit Rs 200, the acceptance window ended, the flat Rs 1,000 per investigation removed (the classes Rs 20 / 80 / 200 apply). Sandbox proven for this release at 01:25. The budget file was backed up first (`api_budget.before_s76_*.toml`).
 - [ ] Next: read the paper portfolio's first week (does it act, does the review refuse too much, what do the refused decisions score), the learner's first twelve verdicts (the app's learner tests three a night from 22:00), and the Kite / filings / news lateness the System screen shows.
 
+## S77 (2026-11-02, branch `pm/s77-system`): the system's own account; Kite as its eyes; never idle; skills; the assistant's context
+**His decisions (2026-11-02):** "get rid of my portfolio; use the Kite login for the system's use; the system has an account on Kite with fake money; all commands and simulations in the AI's control
+of its own portfolio; rebuild the ledger and restart with that configuration; all things get logged and learned; the system must never sit idle (a decision not to act is fine); use skill.md files;
+the assistant needs its context kept against drift; rework the Inbox into the assistant; the UI needs a redesign, with him, using Claude design (engine first)." Answers: the start is his Zerodha
+holdings (SGBs inherited, no purchase price) plus a fake Rs 5,00,000 bank, top-ups up to Rs 50,000 a month by him or the system; Kite all data, never orders; his later real trades ignored; his
+record REMOVED, not archived (FDs, banks, folios outside Zerodha, tax packs, notes, statement files, old copies); the US sleeve stays as a capability.
+- **A36 One ledger, the system's own** (`ledger/system.py`, `paper/funds.py`; fallback: the S76 release, the safety copy made by the switch). See BUILT.md.
+- **A37 Never idle** (`paper/cadence.py`, jobs `live` and `paper_daily`): every loop leaves an act; the daily look runs every day, weekends and holidays too; postmortem lessons by code feed every paper
+  mission; a silent loop is an alert; a circuit breaker (12% below its own high: no new buying). The learner (22:00 every day) is the weekend's autoresearch; a lesson that recurs and can be tested
+  becomes a learner claim (not built: the lessons are read by the team now, and the claims need pre-registration).
+- **Skills** (`src/pflab/skills/*/SKILL.md`, `hq/skills.py`): six method skills after tradermonty/claude-trading-skills (MIT), a cached second system block for the paper team only.
+- **Assistant context** (`app/context.py`, migration 58): pins, a digest, the last 8 in full, attached files' text; files are dropped in the chat; statements are declined.
+- [x] Stuck cards closed (`missions.close_covered`); Docker probe retries once and says what it saw (06:40 and 09:21 failures were Docker waking from sleep).
+- [ ] The switch itself in his app (`tools/switch_to_system_account.py`, dry run first), the real-model rehearsal of the new loops, the release, and then the UI redesign with him (Claude design mock-ups first).
+
 ## What remains (dated; update at each stop)
 0. **DONE 2026-10-28: the app runs his money.** `D:\PortfolioLabApp` (release `v2026.10.28.x` from GitHub; clean-room install and a real update and rollback tested), market data and news seeded (3.9 GB), his preferences carried, the RECORD rebuilt by the system itself from his files (13 of 13 checks, 1,383 events, 14 FDs), the desktop shortcuts and the scheduled tick point at it, the user-level PFLAB_DATA_DIR removed. Live checks: two Telegram summaries delivered; one brain pass (Opus, Sonnet rival) Rs 13.07; October's spend Rs 1,420 of 2,500 (the workshop's carried). Found and fixed on the way: a hidden source file, untested library versions (now `requirements.lock`), a long-path limit, the tick needing his user.
    **Read-only Gmail (v2026.10.28.5-.6):** built and tested on a fake Gmail (`ingest/gmail.py`, job `mail`); Connect fetches at once; a cold start reads a

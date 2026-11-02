@@ -29,8 +29,17 @@ def _id(con, table: str, col: str) -> int:
     return next_id(con, table, col)
 
 
+def _own() -> bool:
+    """S77: the profile is the system's own account: positions and cash are the ledger's (`lots`, `cash_ledger`), fills are ledger events."""
+    from pflab.ledger import system
+    return system.active()
+
+
 def started(con) -> Optional[date]:
-    r = con.execute("SELECT min(day) FROM paper_cash WHERE kind='seed'").fetchone()
+    if _own():
+        r = con.execute("SELECT min(day) FROM paper_days").fetchone()
+    else:
+        r = con.execute("SELECT min(day) FROM paper_cash WHERE kind='seed'").fetchone()
     return r[0] if r and r[0] else None
 
 
@@ -102,6 +111,9 @@ def seed(con, asof: date, now: datetime) -> dict:
     """Copy his record on `asof` into the paper book (once). Returns what was copied and what was left out."""
     if started(con):
         return {"started": str(started(con)), "new": False}
+    if _own():                                              # in the system's own account the ledger IS the book: the first marked day is the start
+        mark(con, asof)
+        return {"started": str(asof), "new": True, "own_ledger": True}
     from pflab.ledger import events as ev
     from pflab.ledger.book import Ledger
     led = Ledger.replay(ev.load(con), upto=asof)
@@ -136,12 +148,23 @@ def seed(con, asof: date, now: datetime) -> dict:
 # --- the state ----------------------------------------------------------------------------------------------------------------------
 
 def cash(con, upto: Optional[date] = None) -> float:
+    if _own():
+        from pflab.ledger import system
+        q = "SELECT coalesce(sum(amount), 0) FROM cash_ledger WHERE account_id = ?" + (" AND date <= ?" if upto else "")
+        return float(con.execute(q, [system.SYSBROKER] + ([upto] if upto else [])).fetchone()[0])
     q = "SELECT coalesce(sum(amount), 0) FROM paper_cash" + (" WHERE day <= ?" if upto else "")
     return float(con.execute(q, [upto] if upto else []).fetchone()[0])
 
 
+def _lots_sql(cols: str, where: str = "") -> str:
+    """The lot table of the active backend: the ledger's `lots` of the system broker, or the paper book's own."""
+    if _own():
+        return f"SELECT {cols} FROM lots WHERE account_id = 'SYSBROKER' AND qty > 1e-9" + where
+    return f"SELECT {cols} FROM paper_lots WHERE qty > 1e-9" + where
+
+
 def positions(con) -> Dict[str, float]:
-    return {i: float(q) for i, q in con.execute("SELECT isin, sum(qty) FROM paper_lots WHERE qty > 1e-9 GROUP BY isin").fetchall()}
+    return {i: float(q) for i, q in con.execute(_lots_sql("isin, sum(qty)", " GROUP BY isin")).fetchall()}
 
 
 def holdings(con, day: date) -> dict:
@@ -150,17 +173,21 @@ def holdings(con, day: date) -> dict:
     for isin, qty in sorted(positions(con).items()):
         px = close_on(con, isin, day)
         meta = inst(con, isin)
-        cost = float(con.execute("SELECT sum(qty * cost_per_unit) FROM paper_lots WHERE isin=? AND qty > 1e-9", [isin]).fetchone()[0] or 0.0)
+        cost = float(con.execute(_lots_sql("sum(qty * cost_per_unit)", " AND isin=?"), [isin]).fetchone()[0] or 0.0)
         val = qty * px[1] if px else None
         invested += val or 0.0
         rows.append({"isin": isin, "symbol": meta["symbol"] or isin, "name": meta["name"], "sector": meta["sector"], "asset_class": meta["asset_class"],
                      "qty": qty, "price": px[1] if px else None, "price_date": str(px[0]) if px else None, "value": val, "cost": cost})
     c = cash(con, day)
-    total = invested + c
+    bank = 0.0
+    if _own():                                              # the account is the fake bank plus the fake broker
+        from pflab.ledger import system
+        bank = float(con.execute("SELECT coalesce(sum(amount), 0) FROM cash_ledger WHERE account_id = ? AND date <= ?", [system.SYSBANK, day]).fetchone()[0])
+    total = invested + c + bank
     for r in rows:
         r["weight"] = (r["value"] or 0.0) / total if total > 0 else 0.0
     rows.sort(key=lambda r: -(r["value"] or 0.0))
-    return {"rows": rows, "value": total, "cash": c, "invested": invested}
+    return {"rows": rows, "value": total, "cash": c, "bank": bank, "invested": invested}
 
 
 def mark(con, day: date, flows: float = 0.0) -> dict:
@@ -235,22 +262,55 @@ def place(con, now: datetime, decision_id: Optional[int], isin: str, side: str, 
     return oid
 
 
-def fill(con, upto: date, now: datetime) -> List[dict]:
-    """Fill every open order whose session has closed by `upto`. Buys are cut to the cash and the rails at the fill price; sells never exceed the holding."""
+SLIPPAGE = 0.0005                      # a live fill is 0.05% worse than the quote on each side (stated)
+
+
+def live_prices(con, now: datetime, isins, max_age_min: int = 10) -> Dict[str, float]:
+    """The latest Kite quote of each name when it is at most `max_age_min` minutes old, in market hours only (else {}: orders wait for the close)."""
+    from pflab.pm import prices as pp
+    if not pp.market_open(now) or not isins:
+        return {}
+    out = {}
+    for isin in isins:
+        r = con.execute("SELECT ltp FROM live_quotes WHERE isin=? AND ts >= ? AND ts <= ? ORDER BY ts DESC LIMIT 1",
+                        [isin, now - timedelta(minutes=max_age_min), now]).fetchone()
+        if r and r[0]:
+            out[isin] = float(r[0])
+    return out
+
+
+def fill_live(con, now: datetime) -> List[dict]:
+    """Orders placed in market hours today fill NOW at the live quote (+/- the slippage) instead of waiting for the close."""
+    rows = con.execute("SELECT DISTINCT isin FROM paper_orders WHERE status='open' AND CAST(placed_at AS DATE) = ?", [now.date()]).fetchall()
+    live = live_prices(con, now, [r[0] for r in rows])
+    return fill(con, now.date(), now, live=live) if live else []
+
+
+def fill(con, upto: date, now: datetime, live: Optional[Dict[str, float]] = None) -> List[dict]:
+    """Fill every open order whose session has closed by `upto`, or (with `live`) fill today's orders now at the live quote. Buys are cut to the cash and the rails at the fill price; sells never exceed the holding."""
     from pflab.paper import rails
     done = []
     for oid, placed, did, isin, side, qty, amount in con.execute(
             "SELECT order_id, placed_at, decision_id, isin, side, qty, amount FROM paper_orders WHERE status='open' ORDER BY placed_at, order_id").fetchall():
-        d = fill_day(con, placed, isin, upto)
+        live_px = None
+        if live is not None:
+            if isin not in live or placed.date() != now.date():
+                continue
+            d, live_px = now.date(), live[isin] * (1 + SLIPPAGE if side == "buy" else 1 - SLIPPAGE)
+        else:
+            d = fill_day(con, placed, isin, upto)
         if d is None:
             if (upto - placed.date()).days > 10:
                 con.execute("UPDATE paper_orders SET status='lapsed', note=coalesce(note,'') || ' | no close in 10 days' WHERE order_id=?", [oid])
             continue
-        px = close_on(con, isin, d)[1]
+        px = live_px if live_px is not None else close_on(con, isin, d)[1]
         meta = inst(con, isin)
         if side == "buy":
             want = qty * px if qty else float(amount or 0.0)
             room = rails.buy_room(con, isin, d)
+            if _own():                                              # the fake bank funds the broker when a buy needs cash (and the system may top the bank up, inside its month cap)
+                from pflab.paper import funds
+                funds.ensure(con, min(want, room) * 1.002, d, now)
             avail = cash(con, d)
             spend = max(0.0, min(want, room, avail / 1.002))
             q = math.floor(spend / px) if meta["asset_class"] in BUYABLE else 0
@@ -259,9 +319,7 @@ def fill(con, upto: date, now: datetime) -> List[dict]:
                             [d, f" | nothing bought: room Rs {room:,.0f} under the rails, cash Rs {avail:,.0f}", oid])
                 continue
             fee = _charges(meta["asset_class"], "buy", q * px)
-            con.execute("INSERT INTO paper_lots VALUES (?,?,?,?,?,?,?,?)", [_id(con, "paper_lots", "lot_id"), isin, meta["symbol"], d, float(q), (q * px + fee) / q,
-                                                                            meta["tax_class"], f"order:{oid}"])
-            _cash(con, d, -(q * px + fee), "buy", f"order:{oid}", now)
+            _apply_buy(con, d, oid, isin, meta, q, px, fee, now)
             tid = _trade(con, d, oid, did, isin, meta["symbol"], "buy", q, px, fee, None, None, {"cut": round(want - q * px, 2) if want - q * px > px else 0})
         else:
             held = positions(con).get(isin, 0.0)
@@ -271,12 +329,10 @@ def fill(con, upto: date, now: datetime) -> List[dict]:
                 continue
             fee = _charges(meta["asset_class"], "sell", q * px)
             gains, left = {}, q
-            for lid, acq, lq, cpu, tc in con.execute("SELECT lot_id, acq_date, qty, cost_per_unit, tax_class FROM paper_lots WHERE isin=? AND qty > 1e-9 ORDER BY acq_date, lot_id",
-                                                     [isin]).fetchall():
+            for lid, acq, lq, cpu, tc in con.execute(_lots_sql("lot_id, acq_date, qty, cost_per_unit, tax_class", " AND isin=? ORDER BY acq_date, lot_id"), [isin]).fetchall():
                 take = min(lq, left)
                 b = _bucket(tc, meta["asset_class"], acq, d)
                 gains[b] = gains.get(b, 0.0) + take * (px - cpu) - fee * take / q
-                con.execute("UPDATE paper_lots SET qty = qty - ? WHERE lot_id=?", [take, lid])
                 left -= take
                 if left <= 1e-9:
                     break
@@ -286,14 +342,43 @@ def fill(con, upto: date, now: datetime) -> List[dict]:
             for k, v in gains.items():
                 after[k] = after.get(k, 0.0) + v
             tax = round(tax_of(after) - tax_of(before), 2)
-            _cash(con, d, q * px - fee, "sell", f"order:{oid}", now)
-            if tax:
-                _cash(con, d, -tax, "tax", f"order:{oid}", now)
+            _apply_sell(con, d, oid, isin, meta, q, px, fee, tax, now)
             tid = _trade(con, d, oid, did, isin, meta["symbol"], "sell", q, px, fee, round(sum(gains.values()), 2), tax,
                          {"gains": {k: round(v, 2) for k, v in gains.items()}, "tax_label": "estimate: FIFO lots, cess and surcharge not added"})
         con.execute("UPDATE paper_orders SET status='filled', fill_day=? WHERE order_id=?", [d, oid])
         done.append({"order_id": oid, "trade_id": tid, "day": str(d)})
     return done
+
+
+def _apply_buy(con, d: date, oid: int, isin: str, meta: dict, q: int, px: float, fee: float, now: datetime) -> None:
+    if _own():
+        from pflab.ledger import events as ev, system
+        system.append(con, [ev.Event(kind="buy", account_id=system.SYSBROKER, date=d, isin=isin, qty=float(q), price=float(px), fees={"charges": round(fee, 2)},
+                                     ref=f"sys:order:{oid}", tax_class=meta["tax_class"])], now)
+        return
+    con.execute("INSERT INTO paper_lots VALUES (?,?,?,?,?,?,?,?)", [_id(con, "paper_lots", "lot_id"), isin, meta["symbol"], d, float(q), (q * px + fee) / q,
+                                                                    meta["tax_class"], f"order:{oid}"])
+    _cash(con, d, -(q * px + fee), "buy", f"order:{oid}", now)
+
+
+def _apply_sell(con, d: date, oid: int, isin: str, meta: dict, q: float, px: float, fee: float, tax: float, now: datetime) -> None:
+    if _own():
+        from pflab.ledger import events as ev, system
+        evs = [ev.Event(kind="sell", account_id=system.SYSBROKER, date=d, isin=isin, qty=float(q), price=float(px), fees={"charges": round(fee, 2)}, ref=f"sys:order:{oid}")]
+        if tax:
+            evs.append(ev.Event(kind="charge", account_id=system.SYSBROKER, date=d, amount=float(tax), ref=f"tax estimate for sys:order:{oid}"))
+        system.append(con, evs, now)
+        return
+    left = q
+    for lid, lq in con.execute("SELECT lot_id, qty FROM paper_lots WHERE isin=? AND qty > 1e-9 ORDER BY acq_date, lot_id", [isin]).fetchall():
+        take = min(lq, left)
+        con.execute("UPDATE paper_lots SET qty = qty - ? WHERE lot_id=?", [take, lid])
+        left -= take
+        if left <= 1e-9:
+            break
+    _cash(con, d, q * px - fee, "sell", f"order:{oid}", now)
+    if tax:
+        _cash(con, d, -tax, "tax", f"order:{oid}", now)
 
 
 def _cash(con, day: date, amount: float, kind: str, ref: str, now: datetime) -> None:
@@ -310,14 +395,18 @@ def _trade(con, day, oid, did, isin, sym, side, qty, px, fee, realised, tax, det
 # --- the nightly bookkeeping --------------------------------------------------------------------------------------------------------
 
 def catch_up(con, upto: date, now: datetime) -> dict:
-    """Every session since the last marked day: the orders that filled and the day's value. The account is separate: none of his real money moves into it."""
+    """Every session since the last marked day: the orders that filled and the day's value. In the paper-only mode none of his real money moves in; in the system's own
+    account the only outside money is a top-up of the fake bank (taken out of the return, like any deposit)."""
     last = con.execute("SELECT max(day) FROM paper_days").fetchone()[0]
     if last is None:
         return {"skipped": "not started"}
     days, filled = [], []
     for d in sessions_after(con, last, upto):
         filled += fill(con, d, now)
-        mark(con, d, 0.0)
+        flow = 0.0
+        if _own():
+            flow = float(con.execute("SELECT coalesce(sum(amount), 0) FROM events WHERE kind='deposit' AND account_id='SYSBANK' AND trade_date = ? AND ref LIKE 'topup:%'", [d]).fetchone()[0])
+        mark(con, d, flow)
         days.append(str(d))
     return {"days": days, "filled": filled}
 

@@ -20,10 +20,10 @@ from typing import Dict, List, Optional
 
 SENSES = [("markets", "Market data", ["collect", "prices", "nav", "global", "backfill"], "prices, NAVs, world markets"),
           ("filings", "Filings and news", ["filings", "kg"], "company filings, news, the graph's intake"),
-          ("broker", "Kite", ["tradecheck", "idle_cash"], "holdings, funds, trades"),
-          ("record", "Your record", ["ledger", "deposits"], "your statements and deposits, built into one record by itself"),
+          ("broker", "Kite", ["live", "tradecheck", "idle_cash"], "live prices for what the system holds; his own trades are ignored"),
+          ("record", "The account", ["ledger", "deposits"], "the system's own account (statements and deposits stand aside)"),
           ("us", "US sleeve", ["us_fx"], "USDINR rates")]
-ROUTINES = [("thinking", "Thinking rounds", ["hq", "conductor", "research", "analyst", "forecast", "comove", "scans", "twin", "paper", "companion", "review", "learner"],
+ROUTINES = [("thinking", "Thinking rounds", ["hq", "conductor", "research", "analyst", "forecast", "comove", "scans", "twin", "paper", "paper_daily", "companion", "review", "learner"],
              "the brain, research, forecasts, the learner"),
             ("plans", "Plans and alerts", ["plans", "guards", "watches", "watches_close"], "ready plans, guards, price watches"),
             ("reports", "Reports", ["summary_morning", "summary_evening", "outbox"], "the morning and evening summaries")]

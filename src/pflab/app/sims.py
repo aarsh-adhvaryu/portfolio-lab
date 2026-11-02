@@ -110,9 +110,13 @@ def current_mix(con, asof: date) -> Dict[str, float]:
     """Today's holdings as the simulator's assets: stocks as "mine", funds as the Nifty 500, cash with debt."""
     from pflab.pm import today
     b = today.build(con, asof)["buckets"]
+    from pflab.ledger import system
+    if system.active():                                   # S77: the system's account holds no FDs and no debt: its cash is cash (the simulator's cash-like series carries it)
+        b = {**b, "cash": b.get("cash", 0) + b.get("debt", 0), "debt": 0}
     inv = sum(v for k, v in b.items() if k in MAPPED) or 1.0     # (2026-10-31) a bucket the simulator has no series for (`review`) is left out and
     return {"mine": b.get("equity", 0) / inv, "stocks": 0.0, "n500": b.get("equity_fund", 0) / inv, "mom50": 0.0,     # named, never a crash
-            "gold": b.get("gold", 0) / inv, "debt": (b.get("debt", 0) + b.get("cash", 0)) / inv, "cash": 0.0}
+            "gold": b.get("gold", 0) / inv, "debt": (b.get("debt", 0) + (0 if system.active() else b.get("cash", 0))) / inv,
+            "cash": (b.get("cash", 0) / inv) if system.active() else 0.0}
 
 
 MAPPED = ("equity", "equity_fund", "gold", "debt", "cash")
@@ -130,6 +134,9 @@ def invested(con, asof: date) -> float:
 
 
 def target_mix(con) -> Optional[Dict[str, float]]:
+    from pflab.ledger import system
+    if system.active():                                   # S77: no targets of his: the system's own limits are rails, not a target mix
+        return None
     from pflab.plan import targets as tg
     from pflab.risk import montecarlo as mc
     try:

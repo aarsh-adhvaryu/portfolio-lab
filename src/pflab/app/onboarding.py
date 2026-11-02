@@ -47,6 +47,10 @@ BRING = [
 def bring_list(con) -> List[dict]:
     """What the system still needs from him, with what it already holds. State: have | missing. A line he does not need (no US stocks, no
     contract notes) is simply left missing: it never blocks anything, and he can say so in the chat."""
+    from pflab.ledger import system
+    if system.active():                                      # S77: the account is the system's own: no statements, deposits or forms; only the Kite login feeds it
+        return [{"id": "kite", "what": "Log in to Kite each trading morning", "why": "read-only: live prices for what the system holds; it can never place an order",
+                 "where": "the Log in to Kite button", "state": "missing", "detail": "once per trading day"}]
     have = {}
     try:
         have = {k: n for k, n in con.execute("SELECT kind, count(*) FROM inbox_items WHERE status <> 'removed' GROUP BY 1").fetchall()}

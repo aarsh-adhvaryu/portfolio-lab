@@ -241,6 +241,9 @@ def _confirmed_covers_all(con) -> bool:
 
 def status(con, now: datetime) -> dict:
     """{label, reasons}: nothing read yet | partial | complete. `complete` needs every condition; each missing one is a reason."""
+    from pflab.ledger import system
+    if system.active():                                      # S77: the account is the system's own: there is nothing of his to cover or confirm
+        return {"label": "complete", "reasons": [], "accounts": 2, "open_gaps": 0, "left_out": [], "note": "the system's own account: no statements, nothing to confirm"}
     mx = matrix(con, now)
     gp = gaps(con)
     reasons: List[str] = []

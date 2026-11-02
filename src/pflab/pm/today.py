@@ -116,6 +116,10 @@ def build(con, asof: date) -> Dict[str, object]:
     info = {"source": "ledger", "account": acc, "documents_to": documents_to(con), "snapshot_at": None, "diffs": [],
             "kite_cash": None, "ledger_cash": None, "moved": 0.0, "bank": None, "missing": []}
     n["today"] = info
+    from pflab.ledger import system
+    if system.active():                                   # S77: the ledger IS the account; his real Kite holdings and cash never overlay it
+        info["source"] = "system account"
+        return n
     snap = latest(con, acc, asof) if acc else None
     if snap is None or snap.empty:
         return n

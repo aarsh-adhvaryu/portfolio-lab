@@ -156,7 +156,45 @@ def _kite(ctx: Ctx):
     return km.client(ctx.secrets) if ctx.secrets is not None and ctx.secrets.has("kite", "api_key") else None
 
 
+def _live(ctx: Ctx) -> dict:
+    """S77: Kite as the system's eyes when the dashboard is closed: one quote round for every name it holds, may buy or watches (`live_quotes`), so the paper portfolio fills
+    at a live price and sees an intraday move. No login today: nothing, said."""
+    from pflab.ingest import kite as k
+    from pflab.pm import prices
+    now = ctx.now
+    if not prices.market_open(now):
+        return {"skipped": "market closed"}
+    kc = _kite(ctx)
+    if kc is None:
+        return {"skipped": "no Kite login today"}
+    from pflab.pm import today as nw
+    from pflab.plan import guards as gd
+    pos = nw.build(ctx.con, now.date())["positions"]
+    held = set(pos["isin"]) if len(pos) else set()
+    wanted = {r[0] for r in ctx.con.execute("SELECT DISTINCT isin FROM paper_orders WHERE status='open'").fetchall()}
+    try:
+        listed = {s["isin"] for s in gd.stock_list()}
+    except Exception:
+        listed = set()
+    isins = sorted(held | wanted | listed)
+    sym = {r[0]: r[1] for r in ctx.con.execute("SELECT isin, symbol FROM instruments WHERE symbol IS NOT NULL").fetchall()}
+    n = prices.LivePoller(ctx.con, isins, k.make_quote_fn(kc, sym)).poll(now)
+    return {"quotes": n, "names": len(isins)}
+
+
+register(Job("live", Interval(15, start_hour=9, end_hour=16), _live, "Kite quotes for what the system holds, may buy or watches, every 15 minutes in market hours (the dashboard does it every minute when open)",
+             cooldown_minutes=5, enabled_fn=lambda ctx: (_kite(ctx) is not None, "no Kite login today")))
+
+
+def _own_account(ctx: Ctx) -> bool:
+    """S77: the profile is the system's own account: statements, deposits and the comparison with his real Kite account stand aside."""
+    from pflab.ledger import system
+    return system.active(ctx.pm_dir)
+
+
 def _tradecheck_enabled(ctx: Ctx) -> Tuple[bool, str]:
+    if _own_account(ctx):
+        return False, "the account is the system's own: his Kite trades are ignored"
     return (_kite(ctx) is not None, "no Kite login today (run tools/kite_login.py)")
 
 
@@ -254,7 +292,11 @@ def _plans(ctx: Ctx) -> dict:
     return {"plans": len(plans), "keys": [p["key"] for p in plans]}
 
 
-register(Job("plans", Daily(21, 30), _plans, "ready plans for the next money (FD tranches, the monthly amount)"))
+def _not_own(ctx: Ctx) -> Tuple[bool, str]:
+    return (not _own_account(ctx), "the system's own account has no money of his to plan (no FDs, no monthly amount)")
+
+
+register(Job("plans", Daily(21, 30), _plans, "ready plans for the next money (FD tranches, the monthly amount)", enabled_fn=_not_own))
 register(Job("forecast", Daily(21, 0), _forecast, "forecasts: price ranges, turnover for tickets, results before the result; scored when due"))
 register(Job("kg", Daily(23, 0), _kg, "knowledge graph: portfolio, filings, results, guards, GKG news, article text"))
 register(Job("analyst", Daily(1, 0, weekdays_only=False), _analyst_batch,
@@ -382,7 +424,7 @@ def _idle_cash(ctx: Ctx) -> dict:
 register(Job("watches", Interval(15, 9, 16, weekdays_only=True), _watches, "price watches against the latest price (market hours)",
              cooldown_minutes=10))
 register(Job("watches_close", Daily(16, 0), _watches, "price watches once after the close", cooldown_minutes=30))
-register(Job("idle_cash", Daily(20, 30), _idle_cash, "Kite cash unused for a week -> a line in the evening summary"))
+register(Job("idle_cash", Daily(20, 30), _idle_cash, "Kite cash unused for a week -> a line in the evening summary", enabled_fn=_not_own))
 def _us_fx(ctx: Ctx) -> dict:
     """S64 Phase 6: the dollar's price in rupees (FRED) into the store, for US lots and the sleeve's value."""
     from pflab.ledger import foreign as lf
@@ -393,6 +435,8 @@ register(Job("us_fx", Daily(7, 25, weekdays_only=False), _us_fx, "US sleeve: USD
 
 
 def _ledger_wanted(ctx: Ctx) -> Tuple[bool, str]:
+    if _own_account(ctx):
+        return False, "the ledger is the system's own account: statements are not read"
     from pflab.app import inbox as ib
     kinds = "','".join(ib.LEDGER_KINDS)
     n = ctx.con.execute(f"SELECT count(*) FROM inbox_items WHERE (kind IN ('{kinds}') AND status IN ('ready', 'kept', 'checks failed', 'awaiting setup')) "
@@ -427,6 +471,8 @@ register(Job("ledger", Interval(15, weekdays_only=False), _ledger, "your record:
 
 
 def _deposits_wanted(ctx: Ctx) -> Tuple[bool, str]:
+    if _own_account(ctx):
+        return False, "the system's own account holds no fixed deposits"
     import json as _json
     from pflab.app import inbox as ib
     from pflab.hq import desk
@@ -559,6 +605,15 @@ def _paper(ctx: Ctx) -> dict:
     return manager.bookkeeping(desk.from_ctx(ctx))
 
 
+def _paper_daily(ctx: Ctx) -> dict:
+    """S77: the paper portfolio's never-idle loop: the postmortem of what matured, the daily look (every day, weekends and holidays too) and an alert for a silent loop. Code, free."""
+    from pflab.hq import desk
+    from pflab.paper import cadence
+    return cadence.run(desk.from_ctx(ctx))
+
+
+register(Job("paper_daily", Daily(21, 35, weekdays_only=False), _paper_daily, "the paper portfolio's daily look and postmortem every day, weekends too: it never sits idle (code, free)",
+             cooldown_minutes=30))
 register(Job("paper", Daily(21, 5, weekdays_only=False), _paper, "the paper portfolio the system runs by itself: fills at the close, the day's value, decisions scored (code, free)",
              cooldown_minutes=30))
 
@@ -584,7 +639,7 @@ def _companion(ctx: Ctx) -> dict:
 
 
 register(Job("companion", Daily(21, 10, weekdays_only=False), _companion,
-             "limits: theme baskets and limits, the dip reserve, the opportunity pot (proposals wait for his yes)", cooldown_minutes=120))
+             "limits: theme baskets and limits, the dip reserve, the opportunity pot (proposals wait for his yes)", cooldown_minutes=120, enabled_fn=_not_own))
 def _scans(ctx: Ctx) -> dict:
     """S64: the saved scans (closed set of conditions) over his holdings, his list or the Nifty 500; hits on his names go into
     the evening summary as held lines. Information only: a scan is not evidence until the learner has tested it."""

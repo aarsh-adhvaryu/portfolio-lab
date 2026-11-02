@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Callable, List, Optional
 
 IMAGE = "pflab-sandbox:2"
+RETRY_AFTER_S = 20                 # S77: the second look at a probe that printed nothing (Docker waking from sleep)
 RUNNER = Path(__file__).with_name("workshop_runner.py")
 CACHE_S = 600                      # `available()` is remembered this long
 PROBE_S = 5
@@ -187,20 +188,28 @@ def probe(runner: Callable = subprocess.run, image: str = IMAGE, work: Optional[
         return {"ok": False, "checks": {"runner_matches_release": False},
                 "why": STALE_IMAGE.format(image=image) if have else "the runner inside the sandbox image could not be read: " + STALE_IMAGE.format(image=image)}
     d = Path(work) if work else Path(tempfile.mkdtemp(prefix="pflab_probe_"))
-    name = f"pflab-probe-{uuid.uuid4().hex[:10]}"
+    checks, said = {}, ""
     try:
-        p = runner(_flags(name, d, None) + [image, "python", "-I", "-c", PROBE_CODE], capture_output=True, timeout=timeout_s)
-        text = (p.stdout.decode("utf-8", "replace") if isinstance(p.stdout, bytes) else str(p.stdout or "")).strip().splitlines()
-        checks = json.loads(text[-1]) if p.returncode == 0 and text else {}
-    except subprocess.TimeoutExpired:
-        checks = {}
+        for attempt_no in range(2):                     # S77: a Docker Desktop still waking after sleep made the 06:40 and 09:21 probes print nothing; one retry
+            name = f"pflab-probe-{uuid.uuid4().hex[:10]}"
+            try:
+                p = runner(_flags(name, d, None) + [image, "python", "-I", "-c", PROBE_CODE], capture_output=True, timeout=timeout_s)
+                text = (p.stdout.decode("utf-8", "replace") if isinstance(p.stdout, bytes) else str(p.stdout or "")).strip().splitlines()
+                checks = json.loads(text[-1]) if p.returncode == 0 and text else {}
+                err = (p.stderr.decode("utf-8", "replace") if isinstance(p.stderr, bytes) else str(p.stderr or "")).strip()
+                said = f"exit {p.returncode}" + (f": {err[-200:]}" if err else "")
+            except subprocess.TimeoutExpired:
+                checks, said = {}, f"no answer in {timeout_s} s"
+            if checks or attempt_no:
+                break
+            time.sleep(RETRY_AFTER_S)
     except Exception as e:
         return {"ok": False, "checks": {}, "why": f"probe could not run: {type(e).__name__}: {str(e)[:160]}"}
     finally:
         if work is None:
             shutil.rmtree(d, ignore_errors=True)
     if not checks:
-        return {"ok": False, "checks": {}, "why": "the probe printed no result: containment is not proven"}
+        return {"ok": False, "checks": {}, "why": f"the probe printed no result twice ({said}): containment is not proven"}
     # a run past its limit must be killed: a loop of 30 s with a 2 s limit, then the container must be gone
     checks["time_limit_kills"] = _time_limit_check(runner, image, d if work else None)
     bad = [k for k, v in checks.items() if v is not True]
