@@ -104,7 +104,7 @@ function railHtml(h, inv, cmd, sys) {
 async function renderAssistant(h, inv, cmd, sys) {
   const screen = $('screen');
   if (!$('thread')) {
-    screen.innerHTML = `<div class="asst"><section class="card" style="padding:12px 14px"><div class="thread" id="thread"></div>
+    screen.innerHTML = `<div class="asst"><section class="card" style="padding:12px 14px"><div class="row" id="chatBar" style="gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px"></div><div class="thread" id="thread"></div>
       <div class="composer"><input type="file" id="chatFile" multiple style="display:none"><button class="btn" id="attachBtn" aria-label="Attach a file" title="Attach files or paste a screenshot (Ctrl+V): read on this PC, shown in Inbox and files">⎘</button>
         <label for="chatIn" style="position:absolute;left:-9999px">Your message</label>
         <textarea id="chatIn" rows="1" placeholder="Ask, discuss, or give it work… (Enter sends, Shift+Enter for a new line)"></textarea><button class="btn primary" id="sendBtn">Send</button></div>
@@ -123,6 +123,14 @@ async function renderAssistant(h, inv, cmd, sys) {
     sec.ondragleave = () => sec.classList.remove('dropping');
     sec.ondrop = (e) => { e.preventDefault(); sec.classList.remove('dropping'); const fs = [...(e.dataTransfer ? e.dataTransfer.files : [])]; if (fs.length) attachToAssistant(fs); };
     inp.focus();
+  }
+  const bar = $('chatBar');                                       // S78: New chat, and the earlier ones
+  const barHtml = `<button class="btn" id="newChat" title="Start a clean conversation; the old one is kept under Earlier">+ New chat</button>`
+    + ((h.earlier || []).length ? `<span class="tiny muted">Earlier</span>` + h.earlier.map((e) => `<button class="btn" data-earlier="${e.id}" title="${esc(e.updated)}">${esc(e.title)}</button>`).join('') : '');
+  if (bar.dataset.html !== barHtml) {
+    bar.innerHTML = barHtml; bar.dataset.html = barHtml;
+    $('newChat').onclick = async () => { try { await post('/api/assistant/new', {}); } catch (e) { alert(e.message); } S.threadHtml = ''; S.threadSeen = false; load(true); };
+    bar.querySelectorAll('[data-earlier]').forEach((b) => { b.onclick = async () => { try { await post('/api/assistant/open/' + b.dataset.earlier, {}); } catch (e) { alert(e.message); } S.threadHtml = ''; S.threadSeen = false; load(true); }; });
   }
   const th = $('thread'), near = th.scrollHeight - th.scrollTop - th.clientHeight < 80;
   const html = threadHtml(h.messages);

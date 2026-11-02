@@ -52,6 +52,7 @@ class Ctx:
     wait_for: Optional[str] = None                       # S68: a condition the task now waits on ("sandbox", "task:<id>"); the loop ends and the task parks
     limit_hit: Optional[tuple] = None                    # S68: (tool, cap) when today's cap for a tool refused a worker's call: the task waits for tomorrow, it does not fail
     allowed: Optional[frozenset] = None                  # S68: a worker may call only its role's tools (None: the brain's)
+    images: List[dict] = field(default_factory=list)     # S78: pictures a tool made for the model (chart_view); `workers.converse` sends them back inside the tool result
     _book: Any = None
 
     @property
@@ -1207,6 +1208,58 @@ def paper_ask(ctx: Ctx, a: dict) -> dict:
     return manager.add_input(ctx.con, ctx.now, a.get("text", ""))
 
 
+def chart_view(ctx: Ctx, a: dict) -> dict:
+    """S78: look at a candlestick chart. The picture is attached to this tool's result (the model sees it); the facts about the same candles come back as numbers to quote.
+    Daily and weekly come from the exchange's files; 15 minute and 1 hour from Kite when there is a login today (read only)."""
+    import base64
+    from pflab.quant import candles, chart
+    sym = str(a.get("symbol") or "").strip().upper()
+    isin = _isin(ctx, sym)
+    tf = a.get("timeframe") or "daily"
+    bars = int(a.get("bars") or 90)
+    kite = None
+    if tf in ("60min", "15min"):
+        try:
+            from pflab.ingest import kite as km
+            kite = km.client(ctx.rt.secrets, now=ctx.now) if getattr(ctx.rt, "secrets", None) is not None else None
+        except Exception:
+            kite = None
+    df, source = candles.get(ctx.rt.data_root, isin, sym, tf, ctx.now, bars, kite=kite)
+    if df.empty:
+        return {"seen": False, "problem": source if "Kite" in source else f"no {tf} candles on record for {sym}", "source": source}
+    f = chart.facts(df, tf)
+    png = chart.render(df, f"{sym}", tf)
+    ctx.images.append({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": base64.b64encode(png).decode("ascii")}})
+    return {"seen": True, "symbol": sym, "source": source, "picture": "attached to this result: candlesticks, volume, SMA20 (amber) and SMA50 (blue), the range's high and low dashed",
+            "facts": f, "how_to_use": "say what you SEE (trend, support, gaps, volume) and quote the numbers from `facts`; a claim the facts do not support is not evidence"}
+
+
+def watchlist_tool(ctx: Ctx, a: dict) -> dict:
+    """S78: the system's watchlist: ideas it waits on, each with the point its own calculation set, its price now and its status."""
+    from pflab.paper import watch
+    return {"watchlist": watch.listing(ctx.con, ctx.now), "how": "each item is checked every round; TRIGGERED means the price reached its point and the team should look again; nothing is bought by itself"}
+
+
+def watch_add(ctx: Ctx, a: dict) -> dict:
+    """S78: put an idea on the watchlist. The team names the calculation its numbers come from (checked by code); he may give his own numbers in the chat."""
+    from pflab.paper import manager, watch
+    if ctx.shadow:
+        return _SHADOW_CASE
+    cid = int(a["case_id"]) if a.get("case_id") else None
+    his = ctx.role == "assistant"
+    return watch.add(ctx.con, ctx.now, symbol=a.get("symbol"), kind=a.get("kind", "zone"), reason=_checked(ctx, a.get("reason", "")) if not his else str(a.get("reason", "")),
+                     by="the investor" if his else (ctx.role or "the team"), zone_low=a.get("zone_low"), zone_high=a.get("zone_high"), fall_pct=a.get("fall_pct"),
+                     calc_id=int(a["calc_id"]) if a.get("calc_id") else None, case_id=cid, his_numbers=his)
+
+
+def watch_remove(ctx: Ctx, a: dict) -> dict:
+    """S78: take an idea off the watchlist (by id or symbol), with the reason."""
+    from pflab.paper import watch
+    if ctx.shadow:
+        return _SHADOW_CASE
+    return watch.remove(ctx.con, ctx.now, a.get("watch"), a.get("why", ""))
+
+
 def proposals_tool(ctx: Ctx, a: dict) -> dict:
     from pflab.hq import proposals
     from pflab.paper import manager as _pm
@@ -1783,6 +1836,21 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
           "machine_json": _s("sector_exclusion: {\"terms\": [\"tech\", \"software\"]}; max_position: {\"max_weight_pct\": 8}; monthly_envelope: {\"amount_rupees\": 50000, \"until\": \"2027-01-31\", "
                              "\"carry_over\": true}; dip_tranche: {\"extra_rupees\": 25000, \"below_high_pct\": 10}; method and note: {}", 400), "name": _s("a short name", 40)},
          ("kind", "text"), add_rule),
+    Tool("chart_view", "read", "LOOK at a candlestick chart of a stock or ETF: the picture (candles, volume, 20 and 50 bar averages, the range's high and low) is attached to the result for you to see, "
+         "and the facts about the same candles (trend, position against the averages, gaps, candle shapes, volume against its average) come back as numbers. Say what you see and quote the facts. "
+         "Daily and weekly always; 15 minute and 1 hour only when Kite is logged in today.",
+         {"symbol": _s("the symbol", 20), "timeframe": _s("candle size", enum=["daily", "weekly", "60min", "15min"]), "bars": _i("how many candles", 20, 250)}, ("symbol",), chart_view),
+    Tool("watchlist", "read", "The system's watchlist: ideas it likes but waits on, each with the point its own calculation set (a price zone, a fall from the year's high, or a market fall), its "
+         "price now, its gap and its status (waiting, near, triggered).", {}, (), watchlist_tool),
+    Tool("watch_add", "action", "Put an idea on the watchlist to wait for the right time. kind zone: zone_high (and zone_low) in rupees; fall_from_high: fall_pct from the year's high; market_fall: "
+         "fall_pct of the Nifty 500 from its high (to spend cash in tranches). The numbers must come from a stored calculation: name it with calc_id (code checks the number is in its result). "
+         "When the price reaches the point the team looks again; nothing is bought by itself.",
+         {"symbol": _s("the symbol (none for market_fall)", 20), "kind": _s("which point", enum=["zone", "fall_from_high", "market_fall"]), "reason": _s("why it is worth waiting for", 500),
+          "zone_low": _n("the bottom of the zone, rupees", 0.01, 10 ** 7), "zone_high": _n("the top of the zone, rupees: the point that triggers it", 0.01, 10 ** 7),
+          "fall_pct": _n("percent fall that triggers it", 2, 60), "calc_id": _i("the calculation the numbers come from", 1, 10 ** 9), "case_id": _i("the investigation", 1, 10 ** 9)},
+         ("kind", "reason"), watch_add),
+    Tool("watch_remove", "action", "Take an idea off the watchlist when its reason is gone (by id or symbol), saying why.",
+         {"watch": _s("the watch id or the symbol", 20), "why": _s("why it comes off", 300)}, ("watch",), watch_remove),
     Tool("paper_book", "read", "The paper portfolio the system runs by itself (a copy of his portfolio without FDs): holdings with weights and gains, cash, the rails, "
          "holdings over a rail, open orders, recent decisions, its record (decisions scored later) and the gate to his real money.", {}, (), paper_book_tool),
     Tool("paper_decide", "action", "A decision for the PAPER portfolio (paper missions only): BUY, ADD, REDUCE, SELL, HOLD or WAIT with the evidence, the alternatives and, for HOLD and WAIT, "
@@ -1811,7 +1879,7 @@ MAX_OPTIONAL = 24                                  # optional parameters across 
 
 WORKER_ONLY = ("reproduce_calc", "submit_review", "request_artifact", "plan_mission", "submit_answer", "start_investigation", "open_workspace", "work_status",
                "remember_fact", "amend_investigation", "decide_plan", "make_proposal", "proposals", "decide_proposal",
-               "add_rule", "undo_rule", "decide_rule", "answer_question", "paper_decide", "paper_ask")      # S68: the workers' tools; the brain's list is unchanged
+               "add_rule", "undo_rule", "decide_rule", "answer_question", "paper_decide", "paper_ask", "watch_add", "watch_remove")      # S68: the workers' tools; the brain's list is unchanged
 
 
 def definitions(names=None) -> List[dict]:
@@ -1850,7 +1918,8 @@ def _log(ctx: Ctx, turn: int, tool: str, kind: str, args: Any, status: str, resu
                 [n, ctx.pass_id, ctx.now, turn, tool, kind, json.dumps(args, default=str)[:4000], status, result[:RESULT_CHARS + 200], ms])
 
 
-TASK_CAPS = {"case_calculate": 4, "web_search": 4, "fetch_cited": 4, "register_experiment": 1, "policy_scenarios": 4, "ipo_policy_study": 2}
+TOOL_ABILITY = {"chart_view": "charts", "web_search": "web", "fetch_cited": "web", "case_calculate": "calculations", "register_experiment": "calculations"}
+TASK_CAPS = {"case_calculate": 4, "web_search": 4, "fetch_cited": 4, "register_experiment": 1, "policy_scenarios": 4, "ipo_policy_study": 2, "chart_view": 6}
 
 
 def task_cap_reached(ctx: "Ctx", tool: str) -> Optional[str]:
@@ -1887,6 +1956,25 @@ def run(ctx: Ctx, name: str, args: Any, turn: int = 1) -> Tuple[str, bool]:
     if bad:
         _log(ctx, turn, name, tool.kind, args, "refused", bad, 0)
         return f"input refused: {bad}", True
+    ab = TOOL_ABILITY.get(name)
+    if ab:                                                     # S78: an ability he switched off in Settings is not available to any agent
+        try:
+            from pflab.app import settings as _st
+            on = _st.ability(ab, current=getattr(ctx.rt, "settings", None))
+        except Exception:
+            on = True
+        if not on:
+            _log(ctx, turn, name, tool.kind, args, "refused", f"switched off in Settings: {ab}", 0)
+            return f"{name} is switched off in Settings (ability: {ab}); work without it and say what you could not check", True
+    if tool.kind == "read":                                    # S78: a read tool whose self-check failed twice in a row is not used until it passes again
+        try:
+            from pflab.hq import selfcheck
+            why = selfcheck.quarantined(ctx.con, name)
+        except Exception:
+            why = None
+        if why:
+            _log(ctx, turn, name, tool.kind, args, "refused", why, 0)
+            return why, True
     over = task_cap_reached(ctx, name)
     if over:                                                   # S68: a worker's task has a bounded number of the dear calls (it was Rs 450 for one mission)
         _log(ctx, turn, name, tool.kind, args, "refused", over, 0)

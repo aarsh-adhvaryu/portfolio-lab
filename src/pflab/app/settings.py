@@ -21,7 +21,11 @@ DEFAULTS: Dict[str, Any] = {
     "drop_watch": True,           # S59: files placed in the drop folder reach the inbox by themselves
     "models": {},                 # S61: the slider, job -> model; a job not set takes its measured default (hq/models.py)
     "features": {},               # S65: his switch per beta feature (configs/features.toml); none set = the channel's default
+    "abilities": {},              # S78: what the AI may see and use (ABILITIES); a missing key means ON. Enforced where the thing is used, not just shown
 }
+# S78: the abilities he can switch off. Each is checked by code where it is used: `tools.run` (charts, web, calculations), the live quote paths (kite_live), the chat front (local_first).
+ABILITIES = {"charts": "Look at candlestick charts (the picture and the figures beside it)", "web": "Search the web and read pages", "calculations": "Run its own calculations in the closed box",
+             "kite_live": "Use Kite's live prices and candles (read only; orders are blocked in code)", "local_first": "Let the local model take small jobs and the front of the chat first"}
 CHOICES = {"theme": ("dark", "light", "system"), "preset": ("off", "light", "full", "marathon"),
            "brain": ("off", "economy", "normal")}
 
@@ -36,6 +40,15 @@ PRESETS = {
     "full": "every job: also the knowledge graph, research, forecasts, the analyst batch; a 10,000-path simulation nightly",
     "marathon": "every job and a 100,000-path simulation of every mix nightly",
 }
+
+
+def ability(name: str, pm_dir: Optional[Path] = None, current: Optional[Dict[str, Any]] = None) -> bool:
+    """Is this ability on? On unless he switched it off. Reads the settings file when none is given (the quote paths and the tools have no runtime at hand)."""
+    try:
+        s = current if current is not None else load(pm_dir or __import__("pflab.pm.store", fromlist=["x"]).pm_dir())
+        return bool((s.get("abilities") or {}).get(name, True))
+    except Exception:
+        return True
 
 
 def jobs_for(preset: str, registry) -> list:
@@ -86,6 +99,8 @@ def _save(pm_dir: Path, changes: Dict[str, Any], current: Optional[Dict[str, Any
             from pflab import features
             known = features.load()
             cur["features"] = {**cur.get("features", {}), **{f: b for f, b in v.items() if f in known and isinstance(b, bool)}}
+        elif k == "abilities" and isinstance(v, dict):          # S78: only the listed abilities, only true or false
+            cur["abilities"] = {**cur.get("abilities", {}), **{a: b for a, b in v.items() if a in ABILITIES and isinstance(b, bool)}}
         elif k in DEFAULTS and type(v) is type(DEFAULTS[k]) and v in CHOICES.get(k, (v,)):
             cur[k] = v
     p = path(pm_dir)

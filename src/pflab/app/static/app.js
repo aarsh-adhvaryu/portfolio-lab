@@ -3,13 +3,14 @@
 'use strict';
 
 /* the screens (S68 redesign): Assistant, World, Portfolio, Research, Inbox, System, and Settings under the rail; ui.js draws the new ones */
-const NAV = [['assistant', 'Assistant', '◉'], ['world', 'World', '◌'], ['portfolio', 'Portfolio', '▤'], ['research', 'Research', '⌕'], ['inbox', 'Inbox and files', '⇩'], ['system', 'System', '⚙']];
+const NAV = [['today', 'Today', '◉'], ['account', 'Account', '▤'], ['watchlist', 'Watchlist', '◌'], ['research', 'Research', '⌕'], ['assistant', 'Assistant', '✎'], ['system', 'System', '⚙']];
+const OLD_SCREENS = ['world', 'portfolio', 'inbox'];            // S78: reachable by address only; the redesign's bar does not list them
 const SUBS = {
   portfolio: [['overview', 'Overview'], ['holdings', 'Holdings and lots'], ['paper', 'Paper portfolio'], ['watch', 'Watch list']],
-  research: [['work', 'Investigations'], ['recs', 'Recommendations'], ['memory', 'Memory'], ['rules', 'Rules and money'], ['plans', 'Plans and ideas'], ['sims', 'Simulations'], ['graph', 'Knowledge graph']],
-  system: [['now', 'Now'], ['limits', 'Limits and spend'], ['schedule', 'Schedule']],
+  research: [['overview', 'Overview'], ['work', 'Investigations'], ['recs', 'Recommendations'], ['memory', 'Memory'], ['rules', 'Rules and money'], ['plans', 'Plans and ideas'], ['sims', 'Simulations'], ['graph', 'Knowledge graph']],
+  system: [['checks', 'Does it work'], ['now', 'Now'], ['limits', 'Limits and spend'], ['schedule', 'Schedule']],
 };
-const TITLES = { assistant: 'Assistant', world: 'The world', portfolio: 'Portfolio', research: 'Research', inbox: 'Inbox and files', system: 'System', settings: 'Settings', setup: 'Setup' };
+const TITLES = { today: 'Today', account: 'Account', watchlist: 'Watchlist', assistant: 'Assistant', world: 'The world', portfolio: 'Portfolio', research: 'Research', inbox: 'Inbox and files', system: 'System', settings: 'Settings', setup: 'Setup' };
 
 const GEAR = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>';
 const POWER = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>';
@@ -82,7 +83,7 @@ const post = (path, body) => api(path, { method: 'POST', headers: { 'Content-Typ
 function renderTabs() {
   const need = (S.sys && S.sys.needs && S.sys.needs.total) || 0;
   $('tabs').innerHTML = NAV.map(([id, label, ic]) => `<a href="#/${id}" class="${S.screen === id ? 'on' : ''}"><span class="ic" aria-hidden="true">${ic}</span>${esc(label)}${id === 'assistant' && need ? `<span class="badge">${need}</span>` : ''}</a>`).join('')
-    + `<a href="#/settings" class="${S.screen === 'settings' || S.screen === 'setup' ? 'on' : ''}"><span class="ic" aria-hidden="true">${GEAR}</span>Settings</a>`;
+    + `<a href="#/settings" class="rd-gear ${S.screen === 'settings' || S.screen === 'setup' ? 'on' : ''}" title="Settings" aria-label="Settings"><span aria-hidden="true">${GEAR}</span></a>`;
   $('ptitle').textContent = TITLES[S.screen] || 'Portfolio Lab';
   $('subnav').innerHTML = subnavHtml(S.screen, S.sub);
 }
@@ -458,6 +459,7 @@ function renderSettings(s) {
       ${toggleRow('drop_watch', 'Take files from the drop folder', 'files placed in D:\\portfolio_lab\\drop go to the inbox by themselves', s.drop_watch)}
       <div class="setting"><div style="flex:1;display:flex;flex-direction:column;gap:2px"><label for="simsHour">Nightly simulation after</label><span class="small muted">Full: 10,000 paths; Marathon: 100,000</span></div><select id="simsHour" class="inp" style="flex:0 0 auto">${[18, 19, 20, 21, 22, 23].map((h) => `<option value="${h}" ${s.sims_hour === h ? 'selected' : ''}>${h}:00</option>`).join('')}</select></div>
     </section>
+    <section class="panel" style="flex:1 1 420px" id="abilitiesP"><span class="lbl">What the AI may see and use</span></section>
     <section class="panel" style="flex:1 1 420px"><span class="lbl">Setup</span><span class="small muted">your accounts, the start date and the files the ledger still needs</span>
       <a class="btn primary" href="#/setup" style="align-self:flex-start">Open Setup</a></section>
     <section class="panel" style="flex:1 1 420px" id="releaseP"><span class="lbl">This release</span><span class="small muted">loading…</span></section>
@@ -475,6 +477,7 @@ function renderSettings(s) {
   document.querySelectorAll('[data-spreset]').forEach((b) => { b.onclick = async () => { S.settings = await post('/api/settings', { preset: b.dataset.spreset }); redraw(); }; });
   document.querySelectorAll('[data-sbrain]').forEach((b) => { b.onclick = async () => { S.settings = await post('/api/settings', { brain: b.dataset.sbrain }); redraw(); }; });
   $('simsHour').onchange = async () => { S.settings = await post('/api/settings', { sims_hour: Number($('simsHour').value) }); redraw(); };
+  if (typeof RD !== 'undefined') RD.abilities(s, redraw);
   renderRelease();
   renderFeatures(redraw);
   renderSecrets();
@@ -1417,6 +1420,11 @@ async function load(force = false) {
     S.settings = { ...S.settings, ...S.data.command.settings }; applyTheme();   // privacy and theme on every screen
     renderStatus(S.data.command); renderTabs();
     const sub = S.sub;
+    if (typeof RD !== 'undefined' && RD.handles(screen, sub)) {          // S78: the redesigned screens (redesign.js)
+      await RD.load(screen, sub, fresh);
+      const sh0 = $('subnav'); if (sh0) sh0.innerHTML = subnavHtml(S.screen, S.sub);
+      paintDock(); return;
+    }
     if (screen === 'assistant') {
       const [h, inv, pol] = await Promise.all([api('/api/assistant'), api('/api/investigations').catch(() => ({ investigations: [] })), api('/api/policy').catch(() => null)]);
       if (!showing()) return; h.policy = pol; S.drawn = gen; renderAssistant(h, inv.investigations, S.data.command, S.sys); paintDock(); return;
@@ -1446,19 +1454,19 @@ async function load(force = false) {
   }
 }
 function route() {
-  const [id, sub] = (location.hash.replace('#/', '') || 'assistant').split('/');
+  const [id, sub] = (location.hash.replace('#/', '') || 'today').split('/');
   const was = S.screen + '/' + S.sub;
   const legacy = { command: ['system', 'now'], ai: ['assistant', ''], schedule: ['system', 'schedule'], sims: ['research', 'sims'], graph: ['research', 'graph'], watch: ['portfolio', 'watch'] };
   let screen = id, subv = sub || '';
   if (legacy[id]) [screen, subv] = legacy[id];
-  const valid = NAV.some(([t]) => t === screen) || screen === 'settings' || screen === 'setup';
-  S.screen = valid ? screen : 'assistant';
+  const valid = NAV.some(([t]) => t === screen) || OLD_SCREENS.includes(screen) || screen === 'settings' || screen === 'setup';
+  S.screen = valid ? screen : 'today';
   const subs = SUBS[S.screen];
   S.sub = subs ? (subs.some(([k]) => k === subv) ? subv : subs[0][0]) : '';
   if (S.screen + '/' + S.sub !== was) { $('screen').innerHTML = '<div class="soon"><span class="muted">Loading…</span></div>'; S.threadHtml = null; S.threadSeen = false; }
   renderTabs(); load(true);
 }
-const TOPICS = { assistant: ['chat', 'hq', 'notifications', 'inbox', 'settings'], world: ['hq', 'inbox', 'activity', 'health', 'command', 'settings'], portfolio: ['live', 'portfolio', 'watch', 'settings'],
+const TOPICS = { today: ['live', 'portfolio', 'hq', 'settings'], account: ['live', 'portfolio', 'settings'], watchlist: ['live', 'watch', 'hq', 'settings'], assistant: ['chat', 'hq', 'notifications', 'inbox', 'settings'], world: ['hq', 'inbox', 'activity', 'health', 'command', 'settings'], portfolio: ['live', 'portfolio', 'watch', 'settings'],
   research: ['research', 'hq', 'watch', 'sims', 'settings'], inbox: ['inbox', 'settings'], system: ['activity', 'health', 'hq', 'notes', 'settings'], settings: ['settings', 'kite'], setup: ['inbox', 'settings'] };
 function listen() {
   const es = new EventSource('/api/events');

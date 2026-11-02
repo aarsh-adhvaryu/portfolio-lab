@@ -378,7 +378,7 @@ class Runtime:
         """In market hours with a Kite login: quotes for every held and list stock, and the main indices."""
         from pflab.pm import prices
         now = self.clock()
-        if not prices.market_open(now):
+        if not prices.market_open(now) or not st.ability("kite_live", current=self.settings):
             return 0
         kc = self.kite()
         if kc is None:

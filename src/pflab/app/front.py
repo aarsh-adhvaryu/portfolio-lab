@@ -303,7 +303,8 @@ def enabled() -> bool:
     """`[policy] local_front = "off"` in api_budget.toml sends every message to the cloud agent, as before S71."""
     try:
         from pflab.agents import analyst as an
-        return str(((an.config().get("policy") or {}).get("local_front")) or "on").lower() != "off"
+        from pflab.app import settings as st
+        return str(((an.config().get("policy") or {}).get("local_front")) or "on").lower() != "off" and st.ability("local_first")      # S78: also his switch in Settings
     except Exception:
         return True
 

@@ -2,7 +2,8 @@
 fake bank funds the fake broker, nothing of his other accounts survives, later events are only the system's own, and the old rebuild paths stand aside."""
 from __future__ import annotations
 
-from datetime import date, datetime
+import json
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -557,3 +558,40 @@ def test_kite_is_healthy_when_the_system_reads_live_quotes_and_does_not_need_his
     rt = Desk(con, tmp_path, tmp_path / "data", tmp_path / "repo", None, {}, clock=lambda: NOW)
     kite = next(c for c in appsys.connectors(rt, NOW) if c["id"] == "kite")
     assert kite["state"] == appsys.OK and "live quotes" in kite["line"]
+
+
+# --- fills only inside an exchange session -----------------------------------------------------------------------------------------------------
+
+def test_nothing_fills_before_the_open_after_the_close_at_night_or_on_a_holiday(con, tmp_path, monkeypatch):
+    from pflab.conductor import calendar
+    from pflab.paper import book
+    days = _own_account(con, tmp_path, monkeypatch)
+    book.seed(con, days[4], NOW)
+    hols = sorted(calendar.load().holidays)
+    book.place(con, datetime(2026, 11, 2, 16, 5), None, AAA, "buy", amount=20_000.0)                  # after the close
+    for ts in (datetime(2026, 11, 2, 16, 10), datetime(2026, 11, 2, 21, 30), datetime(2026, 11, 3, 8, 50), datetime(2026, 11, 7, 11, 0)):        # evening, night, pre-open, a Saturday
+        con.execute("INSERT INTO live_quotes VALUES (?, ?, ?, 'kite') ON CONFLICT DO NOTHING", [AAA, ts - timedelta(minutes=1), 100.0])
+        assert book.session_open(ts) is False and book.fill_live(con, ts) == [] and book.live_prices(con, ts, [AAA]) == {}
+    assert con.execute("SELECT status FROM paper_orders").fetchone()[0] == "open"
+    if hols:
+        h = next(d for d in hols if d.weekday() < 5)                                                    # a weekday that is a sourced exchange holiday
+        assert book.session_open(datetime(h.year, h.month, h.day, 11, 0)) is False
+    ts = datetime(2026, 11, 3, 9, 20)                                                                      # the next session's first fresh quote
+    con.execute("INSERT INTO live_quotes VALUES (?, ?, ?, 'kite')", [AAA, datetime(2026, 11, 3, 9, 19), 101.0])
+    got = book.fill_live(con, ts)
+    t = con.execute("SELECT day, price, detail_json FROM paper_trades").fetchone()
+    assert len(got) == 1 and t[0] == date(2026, 11, 3) and t[1] == pytest.approx(101.0 * 1.0005)
+    assert json.loads(t[2])["basis"] == "live quote inside the session" and json.loads(t[2])["executed_at"].startswith("2026-11-03T09:20")
+
+
+def test_when_no_live_quote_was_there_the_session_close_is_used_and_said(con, tmp_path, monkeypatch):
+    from pflab.paper import book
+    days = _own_account(con, tmp_path, monkeypatch)
+    book.seed(con, days[4], NOW)
+    book.place(con, datetime(2026, 11, 2, 11, 0), None, AAA, "buy", amount=20_000.0)                  # placed in the session, the app was shut
+    book.fill(con, date(2026, 11, 2), datetime(2026, 11, 2, 21, 0))
+    t = con.execute("SELECT day, price, detail_json FROM paper_trades").fetchone()
+    assert t[0] == date(2026, 11, 2) and t[1] == 100.0 and "closing price" in json.loads(t[2])["basis"]
+    book.place(con, datetime(2026, 11, 2, 21, 5), None, BBB, "buy", amount=10_000.0)                  # placed in the evening: NOT filled at that evening's close
+    book.fill(con, date(2026, 11, 2), datetime(2026, 11, 2, 21, 10))
+    assert con.execute("SELECT status FROM paper_orders ORDER BY order_id DESC LIMIT 1").fetchone()[0] == "open"

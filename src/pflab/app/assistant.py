@@ -63,25 +63,72 @@ SYSTEM = (
 
 READ = ("picture", "portfolio", "stocks_overview", "stock_facts", "readings", "graph_timeline", "notes", "memory_recall", "journal", "research_flags",
         "price_history", "market_context", "who_is_buying", "growth", "findings", "comovement", "themes", "system_status", "cases", "experiments",
-        "hypotheses", "tax_plan", "forecasts", "ipo_plan", "ready_plans", "simulation", "scenario", "measure", "quant", "recall", "rules", "envelope", "scorecard", "waiting", "paper_book")
+        "hypotheses", "tax_plan", "forecasts", "ipo_plan", "ready_plans", "simulation", "scenario", "measure", "quant", "recall", "rules", "envelope", "scorecard", "waiting", "paper_book", "chart_view", "watchlist")
 ACT = ("open_workspace", "policy_scenarios", "exposure_shock", "ipo_policy_study", "case_calculate", "register_experiment", "frame_objective", "case_evidence", "start_investigation",
        "work_status", "remember_fact", "web_search", "fetch_cited", "amend_investigation", "decide_plan", "make_proposal", "proposals", "decide_proposal",
-       "add_rule", "undo_rule", "decide_rule", "answer_question", "paper_ask")
+       "add_rule", "undo_rule", "decide_rule", "answer_question", "paper_ask", "watch_add", "watch_remove")
 TOOLS = READ + ACT
 
 
+EARLIER = "Earlier: "
+
+
 def thread(con, now: datetime) -> int:
-    """The assistant's chat: made the first time, the same one afterwards."""
+    """The assistant's active chat: the newest chat titled 'Assistant' (made the first time). A New chat archives the current one under 'Earlier: ...'."""
     from pflab.app import chat
-    r = con.execute("SELECT chat_id FROM chats WHERE title=? ORDER BY chat_id LIMIT 1", [TITLE]).fetchone()
+    r = con.execute("SELECT chat_id FROM chats WHERE title=? ORDER BY chat_id DESC LIMIT 1", [TITLE]).fetchone()
     return int(r[0]) if r else chat.create(con, now, TITLE)
+
+
+def _label(con, cid: int) -> str:
+    r = con.execute("SELECT text FROM chat_messages WHERE chat_id=? AND role='me' ORDER BY msg_id LIMIT 1", [cid]).fetchone()
+    words = " ".join((r[0] if r else "a chat").split())[:48].rstrip(" .,;:")
+    return EARLIER + (words or "a chat")
+
+
+def _archive(con, cid: int) -> None:
+    con.execute("UPDATE chats SET title=? WHERE chat_id=?", [_label(con, cid), cid])
+
+
+def new_chat(con, now: datetime) -> dict:
+    """S78: start a clean conversation. The current one is kept under 'Earlier: <what he first asked>' (the tidy-up summarises it into memory after 30 quiet days). What he pinned
+    comes with him; the account line and house rules are re-read from the record every turn. A chat he has not written in is not archived (no empty chats pile up)."""
+    cur = thread(con, now)
+    if not con.execute("SELECT 1 FROM chat_messages WHERE chat_id=? AND role='me' LIMIT 1", [cur]).fetchone():
+        return {"chat_id": cur, "new": False}
+    pins = con.execute("SELECT pins_json FROM chat_summary WHERE chat_id=?", [cur]).fetchone()
+    _archive(con, cur)
+    from pflab.app import chat
+    cid = chat.create(con, now, TITLE)
+    if pins and pins[0] and pins[0] != "[]":
+        con.execute("INSERT INTO chat_summary VALUES (?,?,?,?,?)", [cid, "", pins[0], 0, now])
+    return {"chat_id": cid, "new": True}
+
+
+def open_chat(con, chat_id: int, now: datetime) -> dict:
+    """Go back to an earlier chat: it becomes the active one and the current one is archived."""
+    r = con.execute("SELECT title FROM chats WHERE chat_id=?", [chat_id]).fetchone()
+    if not r or not str(r[0]).startswith(EARLIER):
+        raise ValueError("that is not an earlier chat")
+    cur = thread(con, now)
+    if cur != chat_id and con.execute("SELECT 1 FROM chat_messages WHERE chat_id=? AND role='me' LIMIT 1", [cur]).fetchone():
+        _archive(con, cur)
+    elif cur != chat_id:
+        con.execute("DELETE FROM chats WHERE chat_id=?", [cur])                 # an empty chat is not kept
+    con.execute("UPDATE chats SET title=? WHERE chat_id=?", [TITLE, chat_id])
+    return {"chat_id": chat_id}
+
+
+def earlier(con, limit: int = 8) -> list:
+    return [{"id": i, "title": t[len(EARLIER):], "updated": str(u)[:16]} for i, t, u in con.execute(
+        "SELECT chat_id, title, updated_at FROM chats WHERE title LIKE ? ORDER BY updated_at DESC, chat_id DESC LIMIT ?", [EARLIER + "%", limit]).fetchall()]
 
 
 def history(con, now: datetime, limit: int = 60) -> dict:
     from pflab.app import chat
     cid = thread(con, now)
     msgs = chat.messages(con, cid)[-limit:]
-    return {"chat_id": cid, "messages": msgs}
+    return {"chat_id": cid, "messages": msgs, "earlier": earlier(con)}
 
 
 def post(rt, text: str, context: str = "") -> dict:

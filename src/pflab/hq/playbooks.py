@@ -108,7 +108,7 @@ def paper_steps(goal: str) -> Tuple[List[dict], str]:
         {"key": "decide", "role": "quant", "promise": {"proposal": 1}, "depends_on": ["changes", "ideas", "measure"],
          "goal": "Decide for the paper portfolio with paper_decide: for each holding that needs a decision and each candidate worth acting on, BUY, ADD, REDUCE, SELL, HOLD or WAIT, "
                  "with the evidence, the alternatives and, for HOLD and WAIT, the condition for looking again. Long term (3+ years), after tax and charges; a supported "
-                 "HOLD or WAIT is as good as a trade. If the investor asked something, say plainly whether this follows him or goes against him, and why (his_view)."},
+                 "HOLD or WAIT is as good as a trade. For an idea worth waiting for, put it on the watchlist with watch_add: a zone, or a fall from the year's high, TAKEN FROM A CALCULATION you name (calc_id), so the system looks again when the price gets there; look at a chart (chart_view) before you decide. If the investor asked something, say plainly whether this follows him or goes against him, and why (his_view)."},
     ]
     return steps, "The paper playbook: changes and ideas researched beside the book's measures, then decisions sized by code; the review decides what is executed."
 

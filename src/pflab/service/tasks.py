@@ -162,6 +162,9 @@ def _live(ctx: Ctx) -> dict:
     from pflab.ingest import kite as k
     from pflab.pm import prices
     now = ctx.now
+    from pflab.app import settings as _st
+    if not _st.ability("kite_live", current=getattr(ctx, "settings", None)):
+        return {"skipped": "Kite live data is switched off in Settings"}
     if not prices.market_open(now):
         return {"skipped": "market closed"}
     kc = _kite(ctx)
@@ -290,6 +293,16 @@ def _plans(ctx: Ctx) -> dict:
     zones = {r["isin"]: r["zone"] for r in json.loads(w.read_text(encoding="utf-8")).get("rows", [])} if w.exists() else {}
     plans = ready.refresh(ctx.con, ctx.now.date(), ctx.data_root, ctx.now, zones, fall_fn=ready.sleeve_fall(ctx.data_root))
     return {"plans": len(plans), "keys": [p["key"] for p in plans]}
+
+
+def _selfcheck(ctx: Ctx) -> dict:
+    """S78: does everything work? Every agent, tool and model tested by the system itself (hq/selfcheck.py); free of API money; a failed read tool is quarantined, a failure is an alert."""
+    from pflab.hq import selfcheck
+    return selfcheck.job(ctx)
+
+
+register(Job("selfcheck", Daily(2, 10, weekdays_only=False), _selfcheck, "tests every agent, tool and model by itself each night and after an update; a failed tool is not used until it passes again (free)",
+             cooldown_minutes=60))
 
 
 def _not_own(ctx: Ctx) -> Tuple[bool, str]:

@@ -265,10 +265,18 @@ def place(con, now: datetime, decision_id: Optional[int], isin: str, side: str, 
 SLIPPAGE = 0.0005                      # a live fill is 0.05% worse than the quote on each side (stated)
 
 
+def session_open(now: datetime) -> bool:
+    """True only inside an exchange session: a trading day (the sourced holiday calendar) between 09:15 and 15:30. Every live fill and every live watch asks this."""
+    from pflab.conductor import calendar
+    return calendar.load().mode(now) == "market"
+
+
 def live_prices(con, now: datetime, isins, max_age_min: int = 10) -> Dict[str, float]:
     """The latest Kite quote of each name when it is at most `max_age_min` minutes old, in market hours only (else {}: orders wait for the close)."""
-    from pflab.pm import prices as pp
-    if not pp.market_open(now) or not isins:
+    if not session_open(now) or not isins:
+        return {}
+    from pflab.app import settings as _st
+    if not _st.ability("kite_live"):                       # S78: switched off in Settings: no fill and no watch uses a live quote
         return {}
     out = {}
     for isin in isins:
@@ -280,8 +288,11 @@ def live_prices(con, now: datetime, isins, max_age_min: int = 10) -> Dict[str, f
 
 
 def fill_live(con, now: datetime) -> List[dict]:
-    """Orders placed in market hours today fill NOW at the live quote (+/- the slippage) instead of waiting for the close."""
-    rows = con.execute("SELECT DISTINCT isin FROM paper_orders WHERE status='open' AND CAST(placed_at AS DATE) = ?", [now.date()]).fetchall()
+    """Open orders fill NOW at the live quote (+/- the slippage), but only inside a session (09:15-15:30 on a trading day). An order placed at night, before the open or on a
+    holiday waits for the next session's first fresh quote: nothing is ever filled before the open or after the close."""
+    if not session_open(now):
+        return []
+    rows = con.execute("SELECT DISTINCT isin FROM paper_orders WHERE status='open' AND placed_at <= ?", [now]).fetchall()
     live = live_prices(con, now, [r[0] for r in rows])
     return fill(con, now.date(), now, live=live) if live else []
 
@@ -294,7 +305,7 @@ def fill(con, upto: date, now: datetime, live: Optional[Dict[str, float]] = None
             "SELECT order_id, placed_at, decision_id, isin, side, qty, amount FROM paper_orders WHERE status='open' ORDER BY placed_at, order_id").fetchall():
         live_px = None
         if live is not None:
-            if isin not in live or placed.date() != now.date():
+            if isin not in live or placed > now:
                 continue
             d, live_px = now.date(), live[isin] * (1 + SLIPPAGE if side == "buy" else 1 - SLIPPAGE)
         else:
@@ -320,7 +331,7 @@ def fill(con, upto: date, now: datetime, live: Optional[Dict[str, float]] = None
                 continue
             fee = _charges(meta["asset_class"], "buy", q * px)
             _apply_buy(con, d, oid, isin, meta, q, px, fee, now)
-            tid = _trade(con, d, oid, did, isin, meta["symbol"], "buy", q, px, fee, None, None, {"cut": round(want - q * px, 2) if want - q * px > px else 0})
+            tid = _trade(con, d, oid, did, isin, meta["symbol"], "buy", q, px, fee, None, None, {"cut": round(want - q * px, 2) if want - q * px > px else 0, **_basis(live_px, now)})
         else:
             held = positions(con).get(isin, 0.0)
             q = min(held, float(qty) if qty else (math.floor(float(amount) / px) if amount else held))
@@ -344,10 +355,16 @@ def fill(con, upto: date, now: datetime, live: Optional[Dict[str, float]] = None
             tax = round(tax_of(after) - tax_of(before), 2)
             _apply_sell(con, d, oid, isin, meta, q, px, fee, tax, now)
             tid = _trade(con, d, oid, did, isin, meta["symbol"], "sell", q, px, fee, round(sum(gains.values()), 2), tax,
-                         {"gains": {k: round(v, 2) for k, v in gains.items()}, "tax_label": "estimate: FIFO lots, cess and surcharge not added"})
+                         {"gains": {k: round(v, 2) for k, v in gains.items()}, "tax_label": "estimate: FIFO lots, cess and surcharge not added", **_basis(live_px, now)})
         con.execute("UPDATE paper_orders SET status='filled', fill_day=? WHERE order_id=?", [d, oid])
         done.append({"order_id": oid, "trade_id": tid, "day": str(d)})
     return done
+
+
+def _basis(live_px, now: datetime) -> dict:
+    """How the fill was priced, kept on every trade: a live Kite quote inside a session, or the session's closing price when no live quote was there (the app was closed)."""
+    return ({"basis": "live quote inside the session", "executed_at": now.isoformat(timespec="seconds")} if live_px is not None
+            else {"basis": "the session's closing price (no live quote was available)"})
 
 
 def _apply_buy(con, d: date, oid: int, isin: str, meta: dict, q: int, px: float, fee: float, now: datetime) -> None:

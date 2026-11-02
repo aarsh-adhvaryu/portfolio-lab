@@ -49,13 +49,24 @@ def json_of(text: str) -> dict:
         return json.loads(m.group(0)) if m else {}
 
 
+def _strip_images(x):
+    """A copy with every image's base64 data replaced by its size (S78: a chart the model looked at is not text to scan, and its bytes do not belong in the request log)."""
+    if isinstance(x, dict):
+        if x.get("type") == "image" and isinstance(x.get("source"), dict) and "data" in x["source"]:
+            return {"type": "image", "source": {"type": "base64", "media_type": x["source"].get("media_type"), "omitted_chars": len(x["source"]["data"])}}
+        return {k: _strip_images(v) for k, v in x.items()}
+    if isinstance(x, list):
+        return [_strip_images(v) for v in x]
+    return x
+
+
 def body_check(params: Dict[str, Any], gate: egress.Gate) -> None:
     """S62: the whole request as it will be sent (system prompt, earlier turns, the model's own words) carries neither
     his name nor a long account id. The security agent's first look back found both: a system prompt that named him,
     and the brain repeating his name from its own tool names. Short ids are left to the text check above (a filing's
     numbers would match them)."""
     from pflab.hq import security
-    body = json.dumps(params, default=str, ensure_ascii=False)
+    body = json.dumps(_strip_images(params), default=str, ensure_ascii=False)
     long_ids = egress.Gate(ids={i for i in gate.ids if len(i) >= 8}, names=gate.names)
     found = security.hits(body, long_ids, pan=False)
     if found:
@@ -93,7 +104,7 @@ def call(con, agent: str, params: Dict[str, Any], client, *, now: datetime, mode
     n_in = int(client.messages.count_tokens(**_count_kwargs(params)).input_tokens) + int(extra_in)
     est = gv.cost_inr(model, n_in, int(params["max_tokens"]), cfg["usd_inr"])
     from pflab.pm.store import next_id
-    body = json.dumps(params, sort_keys=True, default=str)
+    body = json.dumps(_strip_images(params), sort_keys=True, default=str)
     policy = "acceptance" if an.acceptance(cfg, now) else "normal"
     with an.ADMIT:                                           # S69: parallel workers: the check and the reserving row (counted at its estimate) are one step
         try:

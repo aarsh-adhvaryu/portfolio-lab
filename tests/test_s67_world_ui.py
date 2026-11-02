@@ -96,7 +96,7 @@ def test_an_order_given_from_an_agents_panel_reaches_the_board_and_the_old_tab_i
     row = rt.cursor().execute("SELECT to_agent, text, from_agent FROM hq_tasks").fetchall()
     assert row == [("calc", "Drawdown of the Nifty 50 since 2020", "investor")], row
     assert "Drawdown of the Nifty 50" in res[2]
-    assert "Agent HQ" not in res[3] and "Assistant" in res[3] and "World" in res[3] and "Command centre" not in res[3] and "AI centre" not in res[3]
+    assert "Agent HQ" not in res[3] and "Assistant" in res[3] and "Today" in res[3] and "Command centre" not in res[3] and "AI centre" not in res[3]     # (S78: the World screen is reached by address only)
 
 
 def test_a_reply_being_typed_is_not_redrawn_away_and_the_screen_catches_up_after(server, tmp_path):

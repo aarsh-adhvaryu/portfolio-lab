@@ -826,6 +826,18 @@ MIGRATIONS = [
         chat_id INTEGER PRIMARY KEY, summary VARCHAR NOT NULL, pins_json VARCHAR NOT NULL, upto_msg_id INTEGER NOT NULL, updated_at TIMESTAMP NOT NULL
     );
     """),
+    # 2026-11-02: S78. The system's own watchlist (ideas it likes and waits on, each with the point its own calculation set) and the nightly self-checks of every agent, tool and model.
+    (59, "watchlist_selfchecks_s78", """
+    CREATE TABLE paper_watch (
+        watch_id INTEGER PRIMARY KEY, isin VARCHAR NOT NULL, symbol VARCHAR, added_at TIMESTAMP NOT NULL, added_by VARCHAR NOT NULL, kind VARCHAR NOT NULL,
+        zone_low DOUBLE, zone_high DOUBLE, fall_pct DOUBLE, reason VARCHAR NOT NULL, calc_ref VARCHAR, case_id INTEGER, status VARCHAR NOT NULL,
+        last_price DOUBLE, last_checked TIMESTAMP, triggered_at TIMESTAMP, snooze_until TIMESTAMP, note VARCHAR, updated_at TIMESTAMP NOT NULL
+    );
+    CREATE TABLE selfchecks (
+        check_id INTEGER PRIMARY KEY, run_id INTEGER NOT NULL, logged_at TIMESTAMP NOT NULL, grp VARCHAR NOT NULL, name VARCHAR NOT NULL, status VARCHAR NOT NULL,
+        note VARCHAR, ms INTEGER
+    );
+    """),
 ]
 
 

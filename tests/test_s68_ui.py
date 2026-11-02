@@ -62,16 +62,22 @@ def _mission(rt):
     return out
 
 
-def test_the_rail_has_the_new_screens_and_the_assistant_is_home(server, tmp_path):
+def test_the_bar_has_the_redesigned_screens_a_gear_for_settings_and_the_assistant_is_one_click_away(server, tmp_path):
+    """S78 (the redesign): Today, Account, Watchlist, Research, Assistant, System in a top bar; Settings is the gear."""
     rt, port = server
-    steps = [("[...document.querySelectorAll('#tabs a')].map(a => a.textContent.replace(a.querySelector('.ic').textContent, '').replace(/[0-9]+$/, '').trim()).join('|')", 0.3),
-             ("document.getElementById('ptitle').textContent", 0.1),
-             ("!!document.getElementById('thread') && !!document.getElementById('chatIn') && !!document.getElementById('arail')", 0.1)]
+    steps = [("[...document.querySelectorAll('#tabs a:not(.rd-gear)')].map(a => a.textContent.replace(/[0-9]+$/, '').replace(/^[^A-Za-z]+/, '').trim()).join('|')", 0.3),
+             ("!!document.querySelector('#tabs a.rd-gear[href=\"#/settings\"]')", 0.1),
+             ("document.querySelector('#tabs a.on').textContent.trim().replace(/^[^A-Za-z]+/, '')", 0.1)]
     errors, res = _edge.shoot(f"http://127.0.0.1:{port}/", str(tmp_path / "home.png"), 1500, 1000, 5, steps)
     assert errors == [], errors
-    assert res[0] == "Assistant|World|Portfolio|Research|Inbox and files|System|Settings"
-    assert "Command centre" not in res[0] and "AI centre" not in res[0] and "Schedule" not in res[0]
-    assert res[1] == "Assistant" and res[2] is True or res[2] == "true"
+    assert res[0] == "Today|Account|Watchlist|Research|Assistant|System"
+    assert "Command centre" not in res[0] and "AI centre" not in res[0] and "Schedule" not in res[0] and "World" not in res[0]
+    assert res[1] is True or res[1] == "true"
+    assert res[2] == "Today"
+    steps2 = [("!!document.getElementById('thread') && !!document.getElementById('chatIn') && !!document.getElementById('arail')", 0.3)]
+    errors, res2 = _edge.shoot(f"http://127.0.0.1:{port}/#/assistant", str(tmp_path / "asst.png"), 1500, 1000, 5, steps2)
+    assert errors == [], errors
+    assert res2[0] is True or res2[0] == "true"
 
 
 def test_what_the_system_told_him_and_what_he_sent_are_in_one_thread_that_survives_a_reload(server, tmp_path):

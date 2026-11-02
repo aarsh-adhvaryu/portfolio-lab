@@ -40,12 +40,11 @@ def acted_since(con, loop: str, since: datetime) -> bool:
 def silent_loops(con, now: datetime) -> List[str]:
     """Loops that should have acted by now and have not. The live watch counts only inside market hours; no loop is expected before the portfolio has started."""
     from pflab.paper import book
-    from pflab.pm import prices as pp
     if not book.started(con):
         return []
     out = []
     for loop, limit in LOOP_MAX_SILENCE.items():
-        if loop == "live_watch" and not pp.market_open(now):
+        if loop == "live_watch" and not book.session_open(now):
             continue
         r = con.execute("SELECT max(logged_at) FROM paper_acts WHERE loop=?", [loop]).fetchone()[0]
         started = datetime.combine(book.started(con), datetime.min.time())

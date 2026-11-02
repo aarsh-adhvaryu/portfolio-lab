@@ -384,6 +384,25 @@ def create_app(rt) -> FastAPI:
         except ValueError as e:
             raise HTTPException(400, str(e))
 
+    @app.post("/api/assistant/new")
+    def assistant_new():
+        """S78: a clean conversation; the old one is kept under 'Earlier'."""
+        from pflab.app import assistant
+        out = assistant.new_chat(rt.cursor(), rt.clock())
+        rt.bump("chat")
+        return out
+
+    @app.post("/api/assistant/open/{chat_id}")
+    def assistant_open(chat_id: int):
+        """S78: back to an earlier conversation."""
+        from pflab.app import assistant
+        try:
+            out = assistant.open_chat(rt.cursor(), chat_id, rt.clock())
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        rt.bump("chat")
+        return out
+
     @app.post("/api/investigations/{cid}/retry")
     def investigation_retry(cid: int):
         """A blocked investigation: try its failed steps again (their checkpoints and what they already made are kept)."""
@@ -484,6 +503,39 @@ def create_app(rt) -> FastAPI:
         from pflab.paper import manager
         return json.loads(json.dumps(manager.status(rt.cursor(), rt.data_root), default=str))
 
+    @app.get("/api/selfcheck")
+    def selfcheck_view():
+        """S78: the newest self-check run, grouped: every agent, tool and model, and what failed."""
+        from pflab.hq import selfcheck
+        return json.loads(json.dumps(selfcheck.latest(rt.cursor()), default=str))
+
+    @app.post("/api/selfcheck/run")
+    def selfcheck_run():
+        """S78: run all checks now (the local model's answer test is left to the nightly run); returns when they are done."""
+        from pflab.hq import selfcheck
+        out = selfcheck.run_all(rt, rt.clock(), quick=True)
+        rt.bump("system")
+        return {k: out[k] for k in ("run_id", "ok", "warn", "bad", "total")}
+
+    @app.get("/api/watchlist")
+    def watchlist_view():
+        """S78: the system's watchlist: ideas it waits on, with the point its calculation set, the price now and the status."""
+        from pflab.paper import watch
+        return json.loads(json.dumps({"items": watch.listing(rt.cursor(), rt.clock())}, default=str))
+
+    @app.post("/api/paper/topup")
+    def paper_topup(amount: float = Body(..., embed=True)):
+        """He adds money to the system's fake bank, within the month's maximum (Rs 50,000). Logged as his."""
+        from pflab.ledger import system
+        from pflab.paper import funds
+        if not system.active():
+            raise HTTPException(400, "the account is not the system's own yet")
+        out = funds.topup(rt.cursor(), amount, "the investor", rt.clock().date(), rt.clock())
+        if not out.get("added"):
+            raise HTTPException(400, out.get("why", "nothing was added"))
+        rt.bump("paper", "hq")
+        return out
+
     @app.post("/api/paper/ask")
     def paper_ask(text: str = Body(..., embed=True)):
         """He asks the paper portfolio to look into something: one input the paper team weighs (and may overrule, with reasons)."""
@@ -543,6 +595,19 @@ def create_app(rt) -> FastAPI:
         out["calcs"] = [{"id": i, "case_id": c, "question": q, "status": st, "at": str(at)[:16], "trusted": str(w or "").startswith("trusted:")}
                         for i, c, q, st, at, w in con.execute("SELECT calc_id, case_id, question, status, created_at, workshop_id FROM hq_calcs ORDER BY calc_id DESC LIMIT 20").fetchall()]
         return json.loads(json.dumps(out, default=str))
+
+    @app.get("/api/learner/ideas")
+    def learner_ideas(limit: int = 6):
+        """S78: the learner's newest claims (ideas tested on old years) with their verdicts, and how many tests the bar already counts."""
+        from pflab.learner import claims, counter
+        con = rt.cursor()
+        try:
+            rows = claims.table(con, limit)
+            n = counter.n_tests(con)
+        except Exception:
+            rows, n = [], 0
+        return json.loads(json.dumps({"ideas": [{k: r[k] for k in ("id", "claim", "status", "decision")} for r in rows],
+                                      "counter": f"{n} tests counted so far: each one raises the bar for the next."}, default=str))
 
     @app.post("/api/hq/tasks/{tid}/release")
     def hq_release(tid: int):

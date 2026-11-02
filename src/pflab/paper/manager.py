@@ -77,12 +77,13 @@ def _index(root) -> Optional[pd.Series]:
 def book_view(con, day: date) -> dict:
     from pflab.paper import book, rails
     h = book.holdings(con, day)
+    unknown = {r[0] for r in con.execute("SELECT DISTINCT isin FROM events WHERE kind='buy' AND ref LIKE '%:cost_unknown'").fetchall()}   # inherited holdings: no purchase price
     dec = [{"id": r[0], "at": str(r[1])[:16], "action": r[2], "symbol": r[3], "status": r[4], "reason": (r[5] or "")[:200], "case_id": r[6], "amount": r[7], "fraction": r[8]}
            for r in con.execute("SELECT decision_id, made_at, action, symbol, status, reason, case_id, amount, fraction FROM paper_decisions ORDER BY decision_id DESC LIMIT 12").fetchall()]
     return {"started": str(book.started(con)) if book.started(con) else None, "as_of": str(day), "value": round(h["value"], 2), "cash": round(h["cash"], 2), "bank": round(h.get("bank", 0.0), 2),
             "holdings": [{"symbol": r["symbol"], "isin": r["isin"], "sector": r["sector"], "kind": r["asset_class"], "qty": round(r["qty"], 4), "price": r["price"],
                           "price_date": r["price_date"], "value": round(r["value"] or 0.0, 2), "weight": round(r["weight"], 4),
-                          "gain": round((r["value"] or 0.0) - r["cost"], 2)} for r in h["rows"]],
+                          "gain": round((r["value"] or 0.0) - r["cost"], 2), "cost": round(r["cost"], 2), "cost_known": r["isin"] not in unknown} for r in h["rows"]],
             "rails": rails.describe(), "over_rails": rails.flags(con, day), "returns": book.returns(con), "recent_decisions": dec,
             "open_orders": [{"id": r[0], "symbol": r[1], "side": r[2], "qty": r[3], "amount": r[4]} for r in con.execute(
                 "SELECT order_id, symbol, side, qty, amount FROM paper_orders WHERE status='open' ORDER BY order_id").fetchall()],
@@ -106,6 +107,12 @@ def dossier_text(con, cid: int, now: datetime, role: Optional[str] = None) -> st
     les = cadence.lessons_text(con)
     if les:
         lines.append(les)
+    from pflab.paper import watch as _watch
+    wl = _watch.listing(con, now)
+    if wl:
+        lines.append("ITS WATCHLIST (ideas it waits on; the point is from its own calculation; a TRIGGERED one is why you are looking): " + " | ".join(
+            f"{w['symbol']} {w['status'].upper()}: " + (f"zone Rs {w['zone_low'] or 0:,.0f}-{w['zone_high']:,.0f}" if w["kind"] == "zone" else f"{w['fall_pct']:g}% below its high" if w["kind"] == "fall_from_high" else f"market {w['fall_pct']:g}% below its high")
+            + (f", price Rs {w['price']:,.2f}" if w.get("price") else "") + f" ({w['reason'][:90]})" for w in wl[:10]))
     br = cadence.breaker(con)
     if br["on"]:
         lines.append(f"CIRCUIT BREAKER IS ON: the account is {-br['drawdown']:.1%} below its high; BUY and ADD are refused by code until it recovers. Look for what went wrong first.")
@@ -243,6 +250,11 @@ def execute(con, now: datetime, cid: int, root=None) -> dict:
                 adopted += 1
             note = "" if verdict == "approve" else " | adopted without the review's approval: it moves no money; the review's objections are in the case"
             con.execute("UPDATE paper_decisions SET status='executed', decided_at=?, note=coalesce(note,'') || ? WHERE decision_id=?", [now, note, did])
+            try:
+                from pflab.paper import watch as _w
+                _w.handled(con, now, isin, action, did)               # S78: the look the watchlist asked for happened: a buy closes the item, a wait or hold re-arms it
+            except Exception:
+                pass                                                  # the watchlist never stops a decision from being recorded
             if gate_open:
                 _to_real(con, now, cid, did)
         else:
@@ -416,6 +428,8 @@ def reasons_to_look(con, now: datetime) -> List[str]:
     h = book.holdings(con, day)
     if h["cash"] < 0:
         out.append("cash is below zero after a withdrawal")
+    from pflab.paper import watch
+    out += watch.reasons(con)
     since = last.date()
     for r in h["rows"]:
         if r["price"] is None or r["weight"] < 0.02:
@@ -450,8 +464,10 @@ def bookkeeping(rt) -> dict:
             return {"waiting": "no exchange close on record yet"}
         out["seed"] = book.seed(con, last, now)
     out["book"] = book.catch_up(con, now.date(), now)
-    out["live_fills"] = len(book.fill_live(con, now))                 # S77: today's orders fill at the live Kite quote in market hours
+    out["live_fills"] = len(book.fill_live(con, now))                 # S77: open orders fill at the live Kite quote, inside a session only (S78)
     index = _index(rt.data_root)
+    from pflab.paper import watch
+    out["watch"] = watch.check(con, now, rt.data_root, index)         # S78: the watchlist: prices against the points the team's own calculations set
     out["adopted_late"] = sweep_stays(con, now)
     out["scored"] = score_due(con, now, index)
     for (cid,) in con.execute("SELECT DISTINCT d.case_id FROM paper_decisions d JOIN hq_missions m ON m.case_id = d.case_id WHERE d.status='proposed' "
@@ -470,9 +486,8 @@ def tick(rt) -> dict:
     if out.get("off") or out.get("waiting"):
         return out
     st = settings()
-    from pflab.paper import cadence
-    from pflab.pm import prices as pp
-    if pp.market_open(now) and not cadence.acted_since(con, "live_watch", now - timedelta(minutes=14)):
+    from pflab.paper import book, cadence
+    if book.session_open(now) and not cadence.acted_since(con, "live_watch", now - timedelta(minutes=14)):
         w = reasons_to_look(con, now)
         cadence.act(con, now, "live_watch", "watched the holdings against the live quote" + (f"; {len(w)} reason(s): " + "; ".join(w)[:160] if w else "; nothing moved enough"), True)
     if open_case(con) is not None:
@@ -516,7 +531,29 @@ def status(con, root=None) -> dict:
                    for r in con.execute("SELECT day, symbol, side, qty, price, charges, tax, decision_id FROM paper_trades ORDER BY trade_id DESC LIMIT 20").fetchall()]
     from pflab.paper import cadence
     v["acts"], v["lessons"], v["breaker"] = cadence.last_acts(con), cadence.lessons(con), cadence.breaker(con)
+    from pflab.paper import watch as _wt
+    v["watchlist"] = _wt.listing(con, datetime.now())
     v["working_on"] = open_case(con)
     v["money"] = {"this_month": round(spend_month(con, datetime.now()), 2), "monthly": settings()["monthly_rupees"]}
     v["days"] = [{"day": str(r[0]), "value": round(r[1], 2)} for r in con.execute("SELECT day, value FROM paper_days ORDER BY day").fetchall()]
+    idx = _index(root) if root is not None else None                       # S78: the Nifty 500 over the same days, rebased to the account's first value (for the chart on Today)
+    if idx is not None and len(idx) and v["days"]:
+        base = None
+        v["nifty"] = []
+        for d in v["days"]:
+            s_ = idx[idx.index <= pd.Timestamp(d["day"])]
+            if not len(s_):
+                continue
+            base = base or float(s_.iloc[-1])
+            v["nifty"].append({"day": d["day"], "value": round(v["days"][0]["value"] * float(s_.iloc[-1]) / base, 2)})
+    from pflab.paper import funds
+    try:
+        v["topup"] = {"room": funds.room_this_month(con, day), "max": float(__import__("pflab.ledger.system", fromlist=["x"]).settings().get("topup_month_max", 50000.0))}
+        v["moves"] = [{"kind": "TOP-UP" if r[0].startswith("topup:") else "MOVE", "what": ("Added to the bank" if r[0].startswith("topup:") else "Bank to broker"), "by": r[0][6:] if r[0].startswith("topup:") else "",
+                       "amount": r[1], "day": str(r[2])} for r in con.execute(
+            "SELECT ref, amount, trade_date FROM events WHERE account_id='SYSBANK' AND (ref LIKE 'topup:%' OR kind='cash_transfer') ORDER BY event_id DESC LIMIT 8").fetchall() if r[0]]
+    except Exception:
+        v["topup"], v["moves"] = None, []
+    r_ = book.returns(con)
+    v["sessions"] = r_["sessions"] if r_ else 0
     return v
