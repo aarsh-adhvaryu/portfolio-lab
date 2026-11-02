@@ -188,7 +188,16 @@ def connectors(rt, now: datetime) -> List[dict]:
     valid = rtm.token_valid(now)
     snap = con.execute("SELECT max(taken_at) FROM kite_snapshots").fetchone()[0]
     tc = _attempts(con, "tradecheck")
-    if not valid:
+    from pflab.ledger import system as own
+    if own.active():                                         # S77: Kite is the system's eyes only: what it reads is live quotes (his statements are not used)
+        q = con.execute("SELECT max(ts) FROM live_quotes WHERE source = 'kite'").fetchone()[0]
+        if not valid:
+            k = (WARN, "not logged in today: the system uses the exchange's daily closes" + (f"; last live quote {str(q)[:16]}" if q else ""), "kite")
+        elif q is None or now - q > timedelta(hours=24):
+            k = (OK, "logged in; live quotes are read in market hours" + (f" (last {str(q)[:16]})" if q else ""), None)
+        else:
+            k = (OK, f"logged in today: live quotes read {str(q)[:16]}", None)
+    elif not valid:
         k = (WARN, "not logged in today: figures are from your statements" + (f"; last read {str(snap)[:16]}" if snap else ""), "kite")
     elif snap is None or now - snap > timedelta(hours=24):
         k = (WARN, "logged in, but no read has worked in the last day" + (f" (last {str(snap)[:16]})" if snap else "")

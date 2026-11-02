@@ -545,3 +545,15 @@ def test_a_wrongly_dated_opening_can_be_corrected_in_place(con, tmp_path, monkey
     assert book.cash(con, date(2026, 10, 30)) == pytest.approx(0.0)
     assert system.redate_opening(con, date(2026, 10, 30)) == 2
     assert book.cash(con, date(2026, 10, 30)) == pytest.approx(500_000.0) and system.redate_opening(con, date(2026, 10, 30)) == 0
+
+
+def test_kite_is_healthy_when_the_system_reads_live_quotes_and_does_not_need_his_trades(con, tmp_path, monkeypatch):
+    from pflab.app import runtime as rtm, system as appsys
+    from pflab.hq.desk import Desk
+    monkeypatch.setenv("PFLAB_PM_DIR", str(tmp_path))
+    system.switch(con, tmp_path, ASOF, NOW)
+    monkeypatch.setattr(rtm, "token_valid", lambda now: True)
+    (tmp_path / "app").mkdir(exist_ok=True)
+    rt = Desk(con, tmp_path, tmp_path / "data", tmp_path / "repo", None, {}, clock=lambda: NOW)
+    kite = next(c for c in appsys.connectors(rt, NOW) if c["id"] == "kite")
+    assert kite["state"] == appsys.OK and "live quotes" in kite["line"]
