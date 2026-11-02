@@ -133,7 +133,14 @@ def switch(con, pm_dir: Path, asof: date, now: datetime, start_cash: float = STA
     new_events, summary = history_events(con, asof)
     if not new_events:
         raise RuntimeError("no Zerodha lots on record to start from")
-    opening = opening_cash_events(asof, start_cash)
+    cash_day = asof                                      # the account continues the paper book: its opening cash is dated the paper book's first day, so every marked day holds it
+    try:
+        first = con.execute("SELECT min(day) FROM paper_days").fetchone()[0]
+        if first and first < asof:
+            cash_day = first
+    except Exception:
+        pass
+    opening = opening_cash_events(cash_day, start_cash)
     log = ev.EventLog()
     import dataclasses
     for i, e in enumerate(new_events + opening, start=1):
@@ -275,3 +282,11 @@ def run_switch(con, pm_dir: Path, app_root: Optional[Path], repo: Optional[Path]
     shutil.rmtree(safety.parent, ignore_errors=True)
     report["safety_copy_removed"] = True
     return report
+
+
+def redate_opening(con, day: date, now: Optional[datetime] = None) -> int:
+    """Move the two opening cash events (the fake bank's first deposit and its transfer to the broker) to `day` and re-derive. Returns events changed."""
+    n = con.execute("SELECT count(*) FROM events WHERE ref LIKE 'start:%' AND trade_date <> ?", [day]).fetchone()[0]
+    con.execute("UPDATE events SET trade_date = ? WHERE ref LIKE 'start:%'", [day])
+    derive(con, now)
+    return int(n)

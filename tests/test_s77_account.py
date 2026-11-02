@@ -526,3 +526,22 @@ def test_the_assistant_gets_one_standing_line_about_the_account_only_after_the_s
     book.seed(con, days[4], NOW)
     line = assistant.account_line(con, NOW)
     assert "THE ACCOUNT" in line and "fake money" in line and "Rs 50,000 a month" in line and "drawdown 0.0%" in line
+
+
+def test_the_opening_cash_is_dated_the_paper_books_first_day_so_every_marked_day_holds_it(con, tmp_path, monkeypatch):
+    from pflab.paper import book
+    monkeypatch.setenv("PFLAB_PM_DIR", str(tmp_path))
+    con.execute("INSERT INTO paper_days VALUES (?, 1450000, 500000, 950000, 0, '{}')", [date(2026, 10, 30)])
+    system.switch(con, tmp_path, date(2026, 11, 2), NOW)
+    assert book.cash(con, date(2026, 10, 30)) == pytest.approx(500_000.0)
+    h = book.holdings(con, date(2026, 10, 30))
+    assert h["value"] == pytest.approx(h["invested"] + 500_000.0)
+
+
+def test_a_wrongly_dated_opening_can_be_corrected_in_place(con, tmp_path, monkeypatch):
+    from pflab.paper import book
+    monkeypatch.setenv("PFLAB_PM_DIR", str(tmp_path))
+    system.switch(con, tmp_path, date(2026, 11, 2), NOW)                                  # no paper days: dated today
+    assert book.cash(con, date(2026, 10, 30)) == pytest.approx(0.0)
+    assert system.redate_opening(con, date(2026, 10, 30)) == 2
+    assert book.cash(con, date(2026, 10, 30)) == pytest.approx(500_000.0) and system.redate_opening(con, date(2026, 10, 30)) == 0
