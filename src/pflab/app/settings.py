@@ -21,7 +21,8 @@ DEFAULTS: Dict[str, Any] = {
     "drop_watch": True,           # S59: files placed in the drop folder reach the inbox by themselves
     "models": {},                 # S61: the slider, job -> model; a job not set takes its measured default (hq/models.py)
     "features": {},               # S65: his switch per beta feature (configs/features.toml); none set = the channel's default
-    "abilities": {},              # S78: what the AI may see and use (ABILITIES); a missing key means ON. Enforced where the thing is used, not just shown
+    "backup_dir": "",             # S78: where the nightly backup of the ledger goes ("" = none); must be outside the PM folder
+    "abilities": {},            # S78: what the AI may see and use (ABILITIES); a missing key means ON. Enforced where the thing is used, not just shown
 }
 # S78: the abilities he can switch off. Each is checked by code where it is used: `tools.run` (charts, web, calculations), the live quote paths (kite_live), the chat front (local_first).
 ABILITIES = {"charts": "Look at candlestick charts (the picture and the figures beside it)", "web": "Search the web and read pages", "calculations": "Run its own calculations in the closed box",

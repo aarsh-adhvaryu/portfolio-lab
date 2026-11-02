@@ -36,7 +36,7 @@ def test_today_is_one_page_with_the_account_the_gate_the_decisions_and_the_ask_b
     errors, res = _edge.shoot(f"http://127.0.0.1:{port}/#/today", str(tmp_path / "today.png"), 1500, 1000, 5, steps)
     assert errors == [], errors
     t = res[0].lower()                                                                    # (labels are upper-cased by the style)
-    assert "the account" in t and "proving itself" in t and "of 40 sessions" in t and "keep cash for now" in t and "its api money this month" in t
+    assert "the account" in t and "proving itself" in t and "of 40 sessions" in t and "keep cash for now" in t and "api money this month" in t
     assert res[1] is True or res[1] == "true"                                              # no page scrolling
     assert int(res[2]) >= 5 and (res[3] is True or res[3] == "true")
 
@@ -89,7 +89,7 @@ def test_research_overview_says_why_research_exists_and_lists_the_investigations
     errors, res = _edge.shoot(f"http://127.0.0.1:{port}/#/research", str(tmp_path / "res.png"), 1500, 1000, 5, steps)
     assert errors == [], errors
     t = res[0].lower()
-    assert "why research exists" in t and "evidence against its own idea" in t and "how one look runs" in t and "compare phased buying" in t
+    assert "why it researches" in t and "argues against itself" in t and "one look, start to finish" in t and "compare phased buying" in t
 
 
 def test_system_checks_show_the_groups_and_what_failed_and_the_button_runs_them(server, tmp_path):
@@ -117,3 +117,15 @@ def test_the_abilities_are_in_settings_and_a_switch_is_saved(server, tmp_path):
     assert "Look at charts" in res[0] and "Place real orders" in res[0] and "BLOCKED" in res[0] and "Weekend and holiday work" in res[0]
     assert str(res[2]).lower() == "false"
     assert st.load(rt.pm_dir)["abilities"]["charts"] is False
+
+
+def test_pressing_run_all_shows_the_run_happening_and_then_the_result(server, tmp_path):
+    rt, port = server
+    steps = [("document.getElementById('rdRun').click(); 1", 1.2),
+             ("document.getElementById('screen').innerText", 7.0),
+             ("document.querySelectorAll('.rd-pip').length", 0.1),
+             ("document.getElementById('screen').innerText", 0.1)]
+    errors, res = _edge.shoot(f"http://127.0.0.1:{port}/#/system/checks", str(tmp_path / "run.png"), 1500, 1000, 5, steps)
+    assert errors == [], errors
+    assert "checking" in res[1].lower() or int(res[2]) > 0                                # the first seconds show a run in progress or already some checks
+    assert int(res[2]) > 10 and "checks pass" in res[3].lower()                           # and in the end the result

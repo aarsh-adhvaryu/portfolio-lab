@@ -1,22 +1,27 @@
 /* S78: the redesigned shell and screens (the design the investor approved on 2026-11-02): a top bar instead of a side rail, one page per screen, charts first, few words. */
 body.rd .shell{display:block}
-body.rd .rail{position:static;height:auto;flex-direction:row;align-items:center;gap:18px;padding:10px 28px;border-right:0;border-bottom:1px solid var(--line);flex-wrap:wrap}
-body.rd .rail .brand{flex:none}
+body.rd .rail{position:static;height:auto;flex-direction:row;align-items:center;gap:14px;padding:8px 24px;border-right:0;border-bottom:1px solid var(--line);flex-wrap:nowrap}
+body.rd .rail .brand{flex:none;margin:0;padding:0}
+body.rd .rail .brandtxt .small{display:none}
 body.rd .rail .railfoot{display:none}
-body.rd .rail nav.tabs{display:flex;flex-direction:row;gap:4px;flex:1;align-items:center;flex-wrap:wrap}
-body.rd .rail nav.tabs a{padding:7px 14px;border-radius:999px;color:var(--muted);font-size:14px;font-weight:500;text-decoration:none;display:flex;gap:6px;align-items:center}
+body.rd .rail nav.tabs{display:flex;flex-direction:row;gap:2px;flex:0 1 auto;align-items:center;flex-wrap:nowrap}
+body.rd .rail nav.tabs a{padding:7px 13px;border-radius:999px;color:var(--muted);font-size:14px;font-weight:500;text-decoration:none;display:flex;gap:6px;align-items:center;white-space:nowrap}
 body.rd .rail nav.tabs a .ic{display:none}
 body.rd .rail nav.tabs a:hover{background:var(--panel)}
 body.rd .rail nav.tabs a.on{background:var(--btn);color:var(--text);font-weight:600;box-shadow:none}
-body.rd .rail nav.tabs a.rd-gear{margin-left:auto;width:38px;height:38px;padding:0;justify-content:center;border:1px solid var(--line);background:var(--panel)}
-body.rd .rail nav.tabs a.rd-gear.on{background:var(--btn);color:var(--text)}
-body.rd .main{padding:10px 28px 18px;max-width:none}
-body.rd .main > header.top{padding:0;min-height:0}
-body.rd .main > header.top h1{display:none}
-body.rd .main > header.top .wrapr{justify-content:flex-end}
+body.rd .rail #status{margin-left:auto;display:flex;flex-direction:row;gap:6px;align-items:center;flex-wrap:nowrap}
+body.rd .rail #status .chip{padding:4px 10px;font-size:12px;white-space:nowrap}
+body.rd .rail #status .btn{height:34px;min-width:34px;padding:0 9px;display:inline-flex;align-items:center;justify-content:center}
+body.rd .rail #status a.rd-gear.on{background:var(--btn);color:var(--text)}
+body.rd .main{padding:10px 24px 14px;max-width:none}
+body.rd .main > header.top{display:none}
+body.rd #subnav .subnav{margin-top:0}
+body.rd .thread{height:calc(100vh - 215px)}
+.rd-pip{width:22px;height:22px;border-radius:7px;display:inline-block;animation:rdpop .35s ease-out}
+@keyframes rdpop{from{transform:scale(.2);opacity:0}to{transform:scale(1);opacity:1}}
 body.rd #dock{display:none}                         /* the Assistant is one click away in the bar, and Today has its own ask bar */
-.rd-fit{height:calc(100vh - 150px);min-height:640px}
-.rd-grid3{display:grid;grid-template-columns:1.45fr 1fr 1fr;grid-template-rows:1fr 1fr;gap:14px;flex:1;min-height:0}
+.rd-fit{height:calc(100vh - 92px);min-height:560px}
+.rd-grid3{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr) minmax(0,1fr);grid-template-rows:minmax(0,1fr) minmax(0,1fr);gap:14px;flex:1;min-height:0}
 .rd-card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px 18px;display:flex;flex-direction:column;gap:10px;min-height:0;min-width:0}
 .rd-card h2{margin:0;font-size:16px;font-weight:600}
 .rd-card h2 a{color:var(--text)}
@@ -45,5 +50,5 @@ body.rd #dock{display:none}                         /* the Assistant is one clic
 .rd-table{display:grid;gap:10px;align-items:center;font-size:13px;font-variant-numeric:tabular-nums}
 .rd-th{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:0 12px}
 .rd-tr{background:var(--panel2);border-radius:10px;padding:9px 12px}
-.rd-checks{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr;gap:14px;flex:1;min-height:0}
+.rd-checks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:14px;flex:1;min-height:0}
 @media (max-width:1100px){.rd-grid3,.rd-checks{grid-template-columns:1fr;grid-template-rows:none}.rd-fit{height:auto}.rd-two{grid-template-columns:1fr !important}}

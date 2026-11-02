@@ -535,6 +535,12 @@ def status(con, root=None) -> dict:
     v["watchlist"] = _wt.listing(con, datetime.now())
     v["working_on"] = open_case(con)
     v["money"] = {"this_month": round(spend_month(con, datetime.now()), 2), "monthly": settings()["monthly_rupees"]}
+    try:                                                                   # the whole system's API money against his monthly cap (the paper team's share is the part above)
+        from pflab.agents import analyst as _an
+        v["money"]["total"] = round(float(_an.month_spend_inr(con, datetime.now())), 2)
+        v["money"]["cap"] = float(_an.config().get("cap") or 0)
+    except Exception:
+        pass
     v["days"] = [{"day": str(r[0]), "value": round(r[1], 2)} for r in con.execute("SELECT day, value FROM paper_days ORDER BY day").fetchall()]
     idx = _index(root) if root is not None else None                       # S78: the Nifty 500 over the same days, rebased to the account's first value (for the chart on Today)
     if idx is not None and len(idx) and v["days"]:

@@ -27,7 +27,7 @@ const REVIEW_WORD = { unreviewed: 'not yet reviewed', approved: 'review approved
 
 function subnavHtml(screen, sub) {
   const items = SUBS[screen];
-  if (!items) return '';
+  if (!items || (typeof RD !== 'undefined' && RD.handles(screen, sub))) return '';          // (S78: the redesigned pages carry their own links to the advanced ones)
   return `<div class="subnav" role="tablist">${items.map(([id, label]) => `<a href="#/${screen}/${id}" class="${sub === id ? 'on' : ''}">${esc(label)}</a>`).join('')}</div>`;
 }
 
@@ -93,8 +93,8 @@ function railHtml(h, inv, cmd, sys) {
       ${qs.slice(0, 4).map((q) => `<div style="background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:6px">
         <span style="font-size:13px;line-height:1.45">${esc(q.text.length > 260 ? q.text.slice(0, 258) + '…' : q.text)}</span><span class="tiny muted">${esc(q.agent)} · ${esc(q.at)}</span>
         <div class="row"><input class="inp" id="qa${q.id}" placeholder="Your answer"><button class="btn" data-answer="${q.id}">Answer</button></div></div>`).join('')}
-      ${qs.length > 4 ? `<span class="tiny muted">and ${qs.length - 4} more in Inbox and files</span>` : ''}
-      ${others.slice(0, 3).map((i) => `<div class="item"><span class="dot" style="background:var(--warn)"></span><div style="font-size:13px">${esc(i.title)}<div class="tiny muted"><a href="${i.go === 'settings' ? '#/settings' : '#/inbox'}">open</a></div></div></div>`).join('')}
+      ${qs.length > 4 ? `<span class="tiny muted">and ${qs.length - 4} more: ask me about them in the chat</span>` : ''}
+      ${others.slice(0, 3).map((i) => `<div class="item"><span class="dot" style="background:var(--warn)"></span><div style="font-size:13px">${esc(i.title)}<div class="tiny muted"><a href="${i.go === 'settings' ? '#/settings' : '#/assistant'}">open</a></div></div></div>`).join('')}
       ${!qs.length && !others.length ? '<span class="small muted">Nothing is waiting on you.</span>' : ''}</div>
     ${todayCard(cmd)}
     ${h.policy ? `<div class="card"><span class="lbl">Spending</span><span class="small">${h.policy.policy === 'acceptance' ? `Acceptance window: Rs ${num(h.policy.window.spent, 0)} of Rs ${num(h.policy.window.cap, 0)} until ${esc(h.policy.window.until.slice(0, 10))}` : `This month Rs ${num(h.policy.month_spent, 0)} of Rs ${num(h.policy.cap, 0)}`}</span>

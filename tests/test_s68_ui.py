@@ -66,7 +66,7 @@ def test_the_bar_has_the_redesigned_screens_a_gear_for_settings_and_the_assistan
     """S78 (the redesign): Today, Account, Watchlist, Research, Assistant, System in a top bar; Settings is the gear."""
     rt, port = server
     steps = [("[...document.querySelectorAll('#tabs a:not(.rd-gear)')].map(a => a.textContent.replace(/[0-9]+$/, '').replace(/^[^A-Za-z]+/, '').trim()).join('|')", 0.3),
-             ("!!document.querySelector('#tabs a.rd-gear[href=\"#/settings\"]')", 0.1),
+             ("!!document.querySelector('#status a.rd-gear[href=\"#/settings\"]')", 0.1),
              ("document.querySelector('#tabs a.on').textContent.trim().replace(/^[^A-Za-z]+/, '')", 0.1)]
     errors, res = _edge.shoot(f"http://127.0.0.1:{port}/", str(tmp_path / "home.png"), 1500, 1000, 5, steps)
     assert errors == [], errors

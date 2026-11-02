@@ -30,6 +30,14 @@ def target_dir(config_path: Optional[Path] = None) -> Optional[Path]:
     env = os.environ.get("PFLAB_BACKUP_DIR", "").strip()
     if env:
         return Path(env)
+    try:                                                    # S78: the folder he sets in Settings (it survives updates; the config file in the release does not)
+        from pflab.app import settings as st
+        from pflab.pm import store
+        v = str(st.load(store.pm_dir()).get("backup_dir", "") or "").strip()
+        if v:
+            return Path(v)
+    except Exception:
+        pass
     cfg = config_path or Path(__file__).resolve().parents[3] / "configs" / "service.toml"
     t = (_toml.load(cfg).get("backup") or {}).get("target", "") if cfg.exists() else ""
     return Path(t) if t else None

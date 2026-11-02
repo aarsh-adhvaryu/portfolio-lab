@@ -10,6 +10,7 @@ agent never works from a tool that is known to be broken. Nothing is ever quaran
 from __future__ import annotations
 
 import json
+import threading
 import time
 from datetime import date, datetime, timedelta
 from typing import Callable, Dict, List, Optional, Tuple
@@ -354,19 +355,48 @@ def _loops(rt, con, r: Run, now: datetime) -> None:
 
 # --- the job and the summary -------------------------------------------------------------------------------------------------------------------
 
+_STATE = {"running": False, "run_id": None, "started": None}
+_LOCK = threading.Lock()
+
+
+def start(rt, now: datetime, quick: bool = True) -> dict:
+    """Begin a run in the background and return at once (the button): the rows are written as each check finishes, so the screen can show the run happening."""
+    with _LOCK:
+        if _STATE["running"]:
+            return {"started": False, "running": True}
+        con = rt.cursor()
+        _STATE.update(running=True, started=now, run_id=int(con.execute("SELECT coalesce(max(run_id), 0) FROM selfchecks").fetchone()[0]) + 1)
+
+    def work():
+        try:
+            run_all(rt, now, quick)
+        except Exception:
+            pass
+        finally:
+            _STATE["running"] = False
+    threading.Thread(target=work, daemon=True, name="selfcheck").start()
+    return {"started": True, "running": True, "run_id": _STATE["run_id"]}
+
+
 def latest(con) -> dict:
-    """The newest run, grouped, for the screen."""
-    rid = con.execute("SELECT max(run_id) FROM selfchecks").fetchone()[0]
+    """The newest run, grouped, for the screen. While a run is going it is the run being written: `running`, how many checks are done and how many the last full run had."""
+    running = bool(_STATE["running"])
+    rid = _STATE["run_id"] if running else con.execute("SELECT max(run_id) FROM selfchecks").fetchone()[0]
+    expected = 0
+    if running:
+        expected = int(con.execute("SELECT count(*) FROM selfchecks WHERE run_id = (SELECT max(run_id) FROM selfchecks WHERE run_id < ?)", [rid]).fetchone()[0])
     if rid is None:
-        return {"run": None, "groups": [], "counts": {OK: 0, WARN: 0, BAD: 0}}
+        return {"run": None, "groups": [], "counts": {OK: 0, WARN: 0, BAD: 0}, "running": running, "expected": expected, "total": 0}
     rows = con.execute("SELECT grp, name, status, note, logged_at FROM selfchecks WHERE run_id=? ORDER BY check_id", [rid]).fetchall()
+    if not rows and running:
+        return {"run": None, "groups": [], "counts": {OK: 0, WARN: 0, BAD: 0}, "running": True, "expected": expected, "total": 0}
     groups = []
     for g in GROUPS:
         items = [{"name": n, "status": s, "note": nt} for gg, n, s, nt, _ in rows if gg == g]
         if items:
             groups.append({"title": g, "ok": sum(1 for i in items if i["status"] == OK), "total": len(items), "bad": sum(1 for i in items if i["status"] == BAD), "items": items})
     counts = {s: sum(1 for x in rows if x[2] == s) for s in (OK, WARN, BAD)}
-    return {"run": {"id": int(rid), "at": str(rows[0][4])[:16]}, "groups": groups, "counts": counts, "total": len(rows)}
+    return {"run": {"id": int(rid), "at": str(rows[0][4])[:16]}, "groups": groups, "counts": counts, "total": len(rows), "running": running, "expected": expected}
 
 
 def job(ctx) -> dict:

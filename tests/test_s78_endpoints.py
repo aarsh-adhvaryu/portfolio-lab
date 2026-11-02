@@ -38,7 +38,14 @@ def test_a_top_up_is_refused_outside_the_systems_own_account(server):
 
 def test_the_self_check_button_runs_and_the_screen_reads_the_result(server):
     rt, port = server
+    import time
     out = _post(port, "/api/selfcheck/run", {})
-    assert out["total"] > 0 and out["ok"] + out["warn"] + out["bad"] == out["total"]
-    sc = _get(port, "/api/selfcheck")
-    assert sc["run"]["id"] == out["run_id"] and sc["total"] == out["total"] and sc["groups"]
+    assert out["started"] is True and out["running"] is True                          # it returns at once; the rows appear as the checks finish
+    assert _post(port, "/api/selfcheck/run", {})["started"] is False                  # a second press while it runs starts nothing
+    for _ in range(120):
+        sc = _get(port, "/api/selfcheck")
+        if not sc["running"]:
+            break
+        time.sleep(0.5)
+    assert sc["running"] is False and sc["run"]["id"] == out["run_id"] and sc["total"] > 0 and sc["groups"]
+    assert sc["counts"]["ok"] + sc["counts"]["warn"] + sc["counts"]["bad"] == sc["total"]

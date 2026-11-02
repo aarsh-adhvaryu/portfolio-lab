@@ -92,6 +92,9 @@ def monthly(con, asof: date, meta: Optional[dict] = None) -> tuple:
 
 
 def triggers(con, asof: date, meta: Optional[dict] = None, now: Optional[datetime] = None) -> List[Trigger]:
+    from pflab.ledger import system as _sys
+    if _sys.active():                                                      # S78: the system's own account has no FDs and no monthly amount of his to plan around
+        return []
     from pflab.agents import questions as qs
     from pflab.pm import fd as fdm
     from pflab.plan import deploy

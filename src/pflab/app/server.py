@@ -511,11 +511,11 @@ def create_app(rt) -> FastAPI:
 
     @app.post("/api/selfcheck/run")
     def selfcheck_run():
-        """S78: run all checks now (the local model's answer test is left to the nightly run); returns when they are done."""
+        """S78: start all checks now (the local model's answer test is left to the nightly run). It returns at once; GET /api/selfcheck shows the rows as they are written."""
         from pflab.hq import selfcheck
-        out = selfcheck.run_all(rt, rt.clock(), quick=True)
+        out = selfcheck.start(rt, rt.clock(), quick=True)
         rt.bump("system")
-        return {k: out[k] for k in ("run_id", "ok", "warn", "bad", "total")}
+        return out
 
     @app.get("/api/watchlist")
     def watchlist_view():

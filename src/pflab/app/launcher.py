@@ -181,6 +181,8 @@ def _up(url: str) -> bool:
 
 
 def main() -> int:
+    from pflab import winquiet
+    winquiet.apply()                                       # S78: no console window flashes from the probes and helpers
     from pflab.pm import store
     pm = store.pm_dir()
     (pm / "app").mkdir(parents=True, exist_ok=True)

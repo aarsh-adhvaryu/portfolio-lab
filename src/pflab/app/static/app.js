@@ -4,7 +4,7 @@
 
 /* the screens (S68 redesign): Assistant, World, Portfolio, Research, Inbox, System, and Settings under the rail; ui.js draws the new ones */
 const NAV = [['today', 'Today', '◉'], ['account', 'Account', '▤'], ['watchlist', 'Watchlist', '◌'], ['research', 'Research', '⌕'], ['assistant', 'Assistant', '✎'], ['system', 'System', '⚙']];
-const OLD_SCREENS = ['world', 'portfolio', 'inbox'];            // S78: reachable by address only; the redesign's bar does not list them
+const OLD_SCREENS = ['world', 'portfolio'];            // S78: reachable by address only; the redesign's bar does not list them
 const SUBS = {
   portfolio: [['overview', 'Overview'], ['holdings', 'Holdings and lots'], ['paper', 'Paper portfolio'], ['watch', 'Watch list']],
   research: [['overview', 'Overview'], ['work', 'Investigations'], ['recs', 'Recommendations'], ['memory', 'Memory'], ['rules', 'Rules and money'], ['plans', 'Plans and ideas'], ['sims', 'Simulations'], ['graph', 'Knowledge graph']],
@@ -83,24 +83,29 @@ const post = (path, body) => api(path, { method: 'POST', headers: { 'Content-Typ
 function renderTabs() {
   const need = (S.sys && S.sys.needs && S.sys.needs.total) || 0;
   $('tabs').innerHTML = NAV.map(([id, label, ic]) => `<a href="#/${id}" class="${S.screen === id ? 'on' : ''}"><span class="ic" aria-hidden="true">${ic}</span>${esc(label)}${id === 'assistant' && need ? `<span class="badge">${need}</span>` : ''}</a>`).join('')
-    + `<a href="#/settings" class="rd-gear ${S.screen === 'settings' || S.screen === 'setup' ? 'on' : ''}" title="Settings" aria-label="Settings"><span aria-hidden="true">${GEAR}</span></a>`;
+;
+  const g = $('gear'); if (g) g.classList.toggle('on', S.screen === 'settings' || S.screen === 'setup');
   $('ptitle').textContent = TITLES[S.screen] || 'Portfolio Lab';
   $('subnav').innerHTML = subnavHtml(S.screen, S.sub);
 }
 function renderStatus(d) {
   const k = d && d.kite, m = d && d.market;
-  const mode = d ? { market: ['open', 'up'], pre_open: ['not open yet', 'warn'], after_close: ['closed for the day', 'muted'], closed: ['closed today', 'muted'] }[d.mode] || [d.mode, 'muted'] : ['…', 'muted'];
-  const kiteBtn = !k ? '' : k.logged_in ? `<span class="chip"><span class="conn" style="background:var(--up)"></span> Kite: logged in</span>`
+  const mode = d ? { market: ['open', 'up'], pre_open: ['not open yet', 'warn'], after_close: ['closed', 'muted'], closed: ['closed today', 'muted'] }[d.mode] || [d.mode, 'muted'] : ['…', 'muted'];
+  const kiteBtn = !k ? '' : k.logged_in ? `<span class="chip"><span class="conn" style="background:var(--up)"></span> Kite</span>`
     : k.state === 'waiting' ? `<span class="chip warn">Kite: finish the login in the new window…</span>`
     : `<button class="btn warnb" id="kiteLogin">Log in to Kite</button>`;
-  $('status').innerHTML = `
+  const html = `
     <span class="chip">NSE <b class="${mode[1]}">${esc(mode[0])}</b></span>
-    ${m && m.state ? `<span class="chip">Market state <b class="${m.state === 'calm' ? 'up' : 'warn'}">${esc(m.state)}</b></span>` : ''}
+    ${m && m.state && m.state !== 'calm' ? `<span class="chip">Market <b class="warn">${esc(m.state)}</b></span>` : ''}
     ${kiteBtn}
     ${d && d.update_ready ? '<button class="btn warnb" id="updateBtn" title="New code is on disk; it also restarts by itself after 30 minutes untouched with nothing running">Update ready: restart</button>' : ''}
     ${(() => { const s = (d && d.system) || S.sys; if (!s) return ''; const r = s.work.running;
       return `<a href="#/system/now" class="chip" style="display:flex;gap:6px;align-items:center" title="${esc(s.verdict)}">${sdot(s.state)}${r.length ? 'working: ' + esc(r.map((x) => x.job.replace(/_/g, ' ')).join(', ')) : esc(s.state === 'ok' ? 'in sync' : s.state === 'down' ? 'needs attention' : 'working, see System')}</a>`; })()}
-    <button class="btn" id="power" aria-label="Stop the system" title="Stop the system">${POWER}</button>`;
+    <button class="btn" id="power" aria-label="Stop the system" title="Stop the system">${POWER}</button>
+    <a href="#/settings" class="btn rd-gear" id="gear" title="Settings" aria-label="Settings">${GEAR}</a>`;
+  if ($('status').dataset.sig === html) { renderTabs(); return; }                          // nothing changed: leave the bar alone (no flicker)
+  $('status').innerHTML = html; $('status').dataset.sig = html;
+  renderTabs();
   const kb = $('kiteLogin'); if (kb) kb.onclick = kiteLogin;
   const ub = $('updateBtn'); if (ub) ub.onclick = async () => {
     await post('/api/restart'); S.stopped = true;
@@ -1416,7 +1421,7 @@ async function load(force = false) {
   const fresh = () => showing() && gen > (S.drawn || 0) && ((S.drawn = gen), true);
   try {
     if (!S.data.command || screen === 'portfolio' && S.sub === 'overview') { const c = await api('/api/command'); if (!showing()) return; S.data.command = c; }
-    if (!S.sys || Date.now() - (S.sysAt || 0) > (screen === 'system' ? 4000 : 60000)) { try { S.sys = await api('/api/system'); S.sysAt = Date.now(); } catch (e) { /* the chip is simply left out */ } }
+    if (!S.sys || Date.now() - (S.sysAt || 0) > (screen === 'system' && !(typeof RD !== 'undefined' && RD.handles(screen, S.sub)) ? 4000 : 60000)) { try { S.sys = await api('/api/system'); S.sysAt = Date.now(); } catch (e) { /* the chip is simply left out */ } }
     S.settings = { ...S.settings, ...S.data.command.settings }; applyTheme();   // privacy and theme on every screen
     renderStatus(S.data.command); renderTabs();
     const sub = S.sub;
@@ -1456,7 +1461,7 @@ async function load(force = false) {
 function route() {
   const [id, sub] = (location.hash.replace('#/', '') || 'today').split('/');
   const was = S.screen + '/' + S.sub;
-  const legacy = { command: ['system', 'now'], ai: ['assistant', ''], schedule: ['system', 'schedule'], sims: ['research', 'sims'], graph: ['research', 'graph'], watch: ['portfolio', 'watch'] };
+  const legacy = { command: ['system', 'now'], ai: ['assistant', ''], schedule: ['system', 'schedule'], sims: ['research', 'sims'], graph: ['research', 'graph'], watch: ['portfolio', 'watch'], inbox: ['assistant', ''] };
   let screen = id, subv = sub || '';
   if (legacy[id]) [screen, subv] = legacy[id];
   const valid = NAV.some(([t]) => t === screen) || OLD_SCREENS.includes(screen) || screen === 'settings' || screen === 'setup';

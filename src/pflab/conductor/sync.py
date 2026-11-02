@@ -196,7 +196,7 @@ def service_findings(ctx: jobs.Ctx, cal: Calendar) -> List[Finding]:
         if it.name in ("prices", "navs", "gold rates", "job:conductor", "job:backup"):
             continue                          # replaced by the calendar-aware checks; the backup is the ask below
         if it.name == "job:tradecheck" and it.detail.startswith("disabled:") and cal.is_trading_day(ctx.now.date()) \
-                and ctx.now.time() >= KITE_ASK_FROM:      # S58b: the portfolio today needs the day's login
+                and ctx.now.time() >= KITE_ASK_FROM and not __import__("pflab.ledger.system", fromlist=["x"]).active():      # S58b; S78: in the system's own account Kite is only a data feed (the bar's button covers it)
             out.append(Finding("kite login", "ask", "no Kite login today", f"conductor:kite-login:{ctx.now.date()}",
                                "Log in to Kite for today (the button at the top of the dashboard, or "
                                r".venv\Scripts\python tools\kite_login.py): holdings, cash and today's trades are read "
