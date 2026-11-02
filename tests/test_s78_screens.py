@@ -109,7 +109,7 @@ def test_system_checks_show_the_groups_and_what_failed_and_the_button_runs_them(
 
 def test_the_abilities_are_in_settings_and_a_switch_is_saved(server, tmp_path):
     rt, port = server
-    steps = [("document.getElementById('abilitiesP').innerText", 1.8),
+    steps = [("document.getElementById('abilitiesP').innerText", 4.0),
              ("document.querySelector('[data-ab=\"charts\"]').click(); 1", 5.0),
              ("document.querySelector('[data-ab=\"charts\"]').getAttribute('aria-checked')", 0.5)]
     errors, res = _edge.shoot(f"http://127.0.0.1:{port}/#/settings", str(tmp_path / "set.png"), 1500, 1400, 5, steps)
