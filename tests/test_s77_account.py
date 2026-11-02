@@ -482,7 +482,7 @@ def test_the_whole_switch_runs_in_a_safe_order_and_a_dry_run_changes_nothing(con
     template = tmp_path / "template_targets.toml"
     template.write_text("# empty template\n", encoding="utf-8")
     dry = system.run_switch(con, tmp_path, root, root / "app", NOW, apply=False)
-    assert dry["applied"] is False and dry["store_rows"]["chat_messages"] == 1 and "sources.toml" in dry["paths"]
+    assert dry["applied"] is False and dry["store_rows"]["chat_messages"] == 1 and dry["paths"] >= 5
     assert not system.active(tmp_path) and con.execute("SELECT count(*) FROM accounts").fetchone()[0] == 2 + 0 or True
     assert (tmp_path / "sources.toml").exists() and con.execute("SELECT count(*) FROM chat_messages").fetchone()[0] == 1
     out = system.run_switch(con, tmp_path, root, root / "app", NOW, apply=True, template_targets=template)

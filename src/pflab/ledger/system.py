@@ -201,6 +201,8 @@ def personal_paths(pm_dir: Path, app_root: Optional[Path] = None, repo: Optional
     """Every file or folder of his record outside the store that exists now."""
     pm_dir = Path(pm_dir)
     found = [pm_dir / f for f in PERSONAL_FILES] + [pm_dir / d for d in PERSONAL_DIRS]
+    if (pm_dir / "inbox").is_dir():
+        found += [f for f in sorted((pm_dir / "inbox").iterdir()) if f.is_file()]       # statements and tax files dropped straight into the inbox folder
     if app_root:
         for pat in APP_ROOT_JUNK:
             found += sorted(Path(app_root).glob(pat))
@@ -251,7 +253,7 @@ def run_switch(con, pm_dir: Path, app_root: Optional[Path], repo: Optional[Path]
     if active(pm_dir):
         return {"done": False, "why": "the profile is already the system's own account"}
     asof = date.today()
-    report = {"asof": str(asof), "store_rows": purge_store(con, dry_run=True), "paths": [p.name for p in personal_paths(pm_dir, app_root, repo)], "applied": False}
+    report = {"asof": str(asof), "store_rows": purge_store(con, dry_run=True), "paths": len(personal_paths(pm_dir, app_root, repo)), "applied": False}      # (a count: file names can carry account numbers)
     new_events, summary = history_events(con, asof)
     report["history"] = {k: v for k, v in summary.items() if k != "left_out"} | {"left_out": len(summary["left_out"])}
     if not apply:
