@@ -107,6 +107,18 @@ def _backup(ctx: Ctx) -> dict:
     return bk.backup(ctx.con, ctx.pm_dir / "ledger.duckdb", bk.target_dir(), ctx.now, bk.keep_count())
 
 
+def _instruments(ctx: Ctx) -> dict:
+    """S78: the instrument master holds the whole listed universe (it held only his 9 holdings, so no file or document about any other company could be linked), then the files he
+    dropped that were read without a company link are read again."""
+    from pflab.agents import inbox as ag
+    from pflab.pm import instruments as ins
+    out = {"master": ins.refresh_master(ctx.con, ctx.data_root)}
+    if ins.master_size(ctx.con) >= ins.MIN_UNIVERSE:
+        out["files"] = ag.reingest_unlinked(ctx.con, [ctx.pm_dir / "inbox", ctx.pm_dir / "inbox" / "market"], ctx.data_root / "inbox", ctx.now)
+    return out
+
+
+register(Job("instruments", Daily(5, 45), _instruments, "the instrument master (the listed universe) and the files read without a company"))
 register(Job("collect", Daily(19, 30), _collect, "NSE bhavcopy, corporate actions, dividends", cooldown_minutes=60))
 register(Job("prices", Daily(20, 15), _prices, "load collected bhavcopy into the PM store"))
 register(Job("nav", Daily(22, 45), _nav, "AMFI NAVs and IBJA gold rates"))

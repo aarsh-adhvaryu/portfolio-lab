@@ -802,11 +802,19 @@ def _graph(rt, it: dict) -> None:
     reads = agent.ingest_file(rt.cursor(), Path(it["path"]), rt.data_root / "inbox", rt.clock(), registry.chosen("general"),
                               market=it["kind"] == "market")
     facts = sum(r.facts for r in reads)
-    res = {**it["result"], "sheets": len(reads), "facts": facts, "kinds": sorted({r.kind for r in reads}),
-           "companies": len({i for r in reads for i in r.isins})}
+    pages, chars = sum(r.pages for r in reads), sum(r.chars for r in reads)
+    isins = sorted({i for r in reads for i in r.isins})
+    res = {**it["result"], "sheets": len(reads), "facts": facts, "kinds": sorted({r.kind for r in reads}), "companies": len(isins), "pages": pages, "chars": chars}
     _update(rt, it["id"], status="in the graph", result_json=json.dumps(res), steps_json=json.dumps(_steps(it["kind"], 3)))
-    _to_chat(rt, it, f"{it['name']}: {len(reads)} sheet(s) read into the knowledge graph, {facts} figure(s), "
-             f"{res['companies']} company link(s).", ["read on this PC", "knowledge graph"])
+    names = [r[0] or r[1] for r in rt.cursor().execute("SELECT symbol, name FROM instruments WHERE isin IN (SELECT unnest(?))", [isins]).fetchall()] if isins else []
+    about = f" about {', '.join(names[:3])}" if names else " (no company recognised)"
+    if pages and chars < 200:
+        msg = f"{it['name']}: {pages} page(s) but almost no text came out ({chars} characters): it looks like images. I cannot read it; send it as Excel or paste the figures."
+    elif pages:
+        msg = f"{it['name']}: read {pages} page(s), {chars:,} characters{about}. I can read any page of it back (read_file)."
+    else:
+        msg = f"{it['name']}: {len(reads)} sheet(s), {facts} figure(s){about}." + (" Figures with no company are not kept against anyone." if facts and not names else "")
+    _to_chat(rt, it, msg, ["read on this PC", "knowledge graph"])
 
 
 # --- listing and cleanup ------------------------------------------------------------------------------------------------

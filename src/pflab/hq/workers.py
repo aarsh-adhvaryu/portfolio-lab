@@ -79,7 +79,7 @@ SYSTEMS = {
 
 READ_TOOLS = ("picture", "portfolio", "stocks_overview", "stock_facts", "readings", "graph_timeline", "notes", "memory_recall", "journal", "research_flags",
               "price_history", "market_context", "who_is_buying", "growth", "findings", "comovement", "themes", "system_status", "cases", "experiments",
-              "hypotheses", "tax_plan", "forecasts", "ipo_plan", "ready_plans", "recall", "rules", "envelope", "paper_book", "chart_view", "watchlist")
+              "hypotheses", "tax_plan", "forecasts", "ipo_plan", "ready_plans", "recall", "rules", "envelope", "paper_book", "chart_view", "watchlist", "files", "read_file", "file_figures", "read_document")
 TOOLS = {
     "coordinator": READ_TOOLS + ("plan_mission", "submit_answer", "frame_objective", "case_evidence", "propose_software_change", "proposals", "paper_decide", "watch_add", "watch_remove"),
     "research": READ_TOOLS + ("web_search", "fetch_cited", "case_evidence", "request_report", "request_artifact", "frame_objective", "proposals"),
@@ -335,7 +335,7 @@ def run_task(rt, task: dict, client=None, gate=None, cfg=None) -> Reply:
     agent, _default, _effort = SPECS[role]
     model = seat_model(con, role, body, cid)
     mode = rt.settings.get("brain", "economy")
-    his = (cases.get(con, cid) or {}).get("origin") == "investor"
+    his = (cases.get(con, cid) or {}).get("origin") == "investor" or bool(con.execute("SELECT 1 FROM hq_case_log WHERE case_id = ? AND event = 'run now' LIMIT 1", [cid]).fetchone())
     client = client or service.client(rt)
     gate = gate or service.gate(rt)
     ck = json.loads(con.execute("SELECT coalesce(checkpoint_json, '{}') FROM hq_tasks WHERE task_id=?", [task["id"]]).fetchone()[0])

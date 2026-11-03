@@ -68,10 +68,13 @@ def probe_args(con, name: str) -> Optional[dict]:
     """Harmless known input for a read tool; None when it needs something this install does not have yet (then only its shape is checked)."""
     sym = _held_symbol(con)
     needs_symbol = {"stock_facts": {"symbol": sym}, "price_history": {"symbol": sym}, "chart_view": {"symbol": sym, "timeframe": "daily", "bars": 40},
-                    "readings": {"symbol": sym}, "who_is_buying": {"symbol": sym}, "graph_timeline": {"symbol": sym}, "notes": {"symbol": sym}, "comovement": {"symbol": sym}}
+                    "readings": {"symbol": sym}, "who_is_buying": {"symbol": sym}, "graph_timeline": {"symbol": sym}, "notes": {"symbol": sym}, "comovement": {"symbol": sym}, "file_figures": {"symbol": sym}}
     if name in needs_symbol:
         return needs_symbol[name] if sym else None
-    known = {"measure": {"measure": "drawdown", "series": "NIFTY 500"}, "quant": {"idea": "a drop after a results announcement"}, "growth": {"months": 12}, "scenario": {"name": "oil_up_30"},
+    if name == "read_document":
+        r = con.execute("SELECT doc_id FROM kg_docs WHERE text_path IS NOT NULL AND text_path <> '' LIMIT 1").fetchone()
+        return {"doc_id": r[0], "part": 1} if r else None
+    known = {"measure": {"measure": "drawdown", "series": "NIFTY 500"}, "quant": {"idea": "a drop after a results announcement"}, "growth": {"months": 12}, "scenario": {"name": "oil_up_30"}, "read_file": {"name": "zz-no-such-file"},
              "ipo_plan": {"name": "Selfcheck Ltd", "shares": 100, "issue_price": 100.0, "budget": 50000.0}}            # harmless known inputs for the tools that need more than a symbol
     return known.get(name, {})
 

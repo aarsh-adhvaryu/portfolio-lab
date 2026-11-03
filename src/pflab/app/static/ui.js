@@ -111,7 +111,8 @@ async function renderAssistant(h, inv, cmd, sys) {
   const screen = $('screen');
   if (!$('thread')) {
     screen.innerHTML = `<div class="asst"><section class="card" style="padding:12px 14px"><div class="row" id="chatBar" style="gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px"></div><div class="thread" id="thread"></div>
-      <div class="composer"><input type="file" id="chatFile" multiple style="display:none"><button class="btn" id="attachBtn" aria-label="Attach a file" title="Attach files or paste a screenshot (Ctrl+V): read on this PC, shown in Inbox and files">⎘</button>
+      <div class="row wrapr" id="stageTray" style="gap:6px;margin:6px 0 0"></div>
+      <div class="composer"><input type="file" id="chatFile" multiple style="display:none"><button class="btn" id="attachBtn" aria-label="Attach files" title="Attach one or more files (PDF, Excel, CSV, a screenshot), then write and press Send">⎘</button>
         <label for="chatIn" style="position:absolute;left:-9999px">Your message</label>
         <textarea id="chatIn" rows="1" placeholder="Ask, discuss, or give it work… (Enter sends, Shift+Enter for a new line)"></textarea><button class="btn primary" id="sendBtn">Send</button></div>
       <span class="tiny muted">Local first. It never places an order or changes a target or limit. Anything that leaves this PC passes the privacy check; numbers it writes must come from a tool.</span></section>
@@ -123,7 +124,8 @@ async function renderAssistant(h, inv, cmd, sys) {
     inp.onpaste = (e) => { const fs = pastedFiles(e); if (fs.length) { e.preventDefault(); attachToAssistant(fs); } };
     $('sendBtn').onclick = () => sendAssistant();
     $('attachBtn').onclick = () => $('chatFile').click();
-    $('chatFile').onchange = () => attachToAssistant([...$('chatFile').files]);
+    $('chatFile').onchange = () => { attachToAssistant([...$('chatFile').files]); $('chatFile').value = ''; };
+    paintStage();
     const sec = screen.querySelector('.asst > section');             // S77: drop a file anywhere on the conversation; it is read here and the model sees what was read
     sec.ondragover = (e) => { e.preventDefault(); sec.classList.add('dropping'); };
     sec.ondragleave = () => sec.classList.remove('dropping');
@@ -150,7 +152,7 @@ async function renderAssistant(h, inv, cmd, sys) {
     Object.entries(keep).forEach(([id, v]) => { const i = $(id); if (i) i.value = v; });
     document.querySelectorAll('[data-mission]').forEach((c) => { c.onclick = () => showMission(Number(c.dataset.mission)); });
     wireMissionButtons($('arail'));
-    document.querySelectorAll('[data-attach]').forEach((b) => { const q = b.dataset.attach; b.onclick = () => $('qf' + q).click(); $('qf' + q).onchange = async () => { const fs = [...$('qf' + q).files]; if (!fs.length) return; await attachToAssistant(fs); await post(`/api/questions/${q}/answer`, { text: 'Attached: ' + fs.map((f) => f.name).join(', ') }); load(true); }; });
+    document.querySelectorAll('[data-attach]').forEach((b) => { const q = b.dataset.attach; b.onclick = () => $('qf' + q).click(); $('qf' + q).onchange = async () => { const fs = [...$('qf' + q).files]; if (!fs.length) return; await uploadToChat(fs); await post(`/api/questions/${q}/answer`, { text: 'Attached: ' + fs.map((f) => f.name).join(', ') }); load(true); }; });
     document.querySelectorAll('[data-answer]').forEach((b) => { b.onclick = async () => { const v = $('qa' + b.dataset.answer).value.trim(); if (!v) return; await post(`/api/questions/${b.dataset.answer}/answer`, { text: v }); load(true); }; });
   }
   th.querySelectorAll('[data-sugg]').forEach((b) => { b.onclick = () => sendAssistant(b.dataset.sugg); });
@@ -159,15 +161,48 @@ async function renderAssistant(h, inv, cmd, sys) {
 }
 async function sendAssistant(text, context) {
   const inp = $('chatIn') || $('dockIn');
-  const q = (text ?? (inp ? inp.value : '')).trim();
-  if (!q) return;
+  let q = (text ?? (inp ? inp.value : '')).trim();
+  const staged = text === undefined && $('chatIn') ? (S.staged || []) : [];
+  if (!q && !staged.length) return;
+  const btn = $('sendBtn');
+  if (staged.length) {
+    if (btn) { btn.disabled = true; btn.textContent = `Reading ${staged.length} file${staged.length > 1 ? 's' : ''}…`; }
+    const h = S.asst || await api('/api/assistant'), ids = [], names = [];
+    for (const f of staged) {
+      try { const r = await upload(f, { chat: h.chat_id }); if (r.id) ids.push(r.id); names.push(f.name); } catch (e) { alert(`${f.name}: ${e.message}`); }
+    }
+    await settled(ids);
+    if (btn) { btn.disabled = false; btn.textContent = 'Send'; }
+    S.staged = []; paintStage();
+    if (names.length) q = (q ? q + '\n\n' : 'Please read what I attached and tell me what it says.\n\n') + 'Attached: ' + names.join(', ');
+  }
   if (text === undefined && inp) { inp.value = ''; S.draft = ''; inp.style.height = 'auto'; }
   try { await post('/api/assistant', { text: q, context: context || '' }); } catch (e) { alert(e.message); }
   load(true); dockRefresh();
 }
-async function attachToAssistant(files) {
+/* S78: files are staged in a tray and go WITH the message (any number of them): choose, write, press Send. */
+function attachToAssistant(files) {
+  S.staged = (S.staged || []).concat(files.filter((f) => !(S.staged || []).some((x) => x.name === f.name && x.size === f.size)));
+  paintStage();
+}
+function paintStage() {
+  const t = $('stageTray'); if (!t) return;
+  const fs = S.staged || [];
+  t.innerHTML = fs.map((f, i) => `<span class="chip" style="gap:6px">⎘ ${esc(f.name)} <span class="tiny muted">${f.size > 1048576 ? (f.size / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(f.size / 1024)) + ' KB'}</span> <button class="btn" data-unstage="${i}" aria-label="Remove ${esc(f.name)}" style="padding:0 6px;min-height:0">×</button></span>`).join('');
+  t.querySelectorAll('[data-unstage]').forEach((b) => { b.onclick = () => { S.staged.splice(Number(b.dataset.unstage), 1); paintStage(); }; });
+}
+async function uploadToChat(files) {                                   // at once (an answer to one of its questions), not staged
   const h = S.asst || await api('/api/assistant');
   await uploadAll(files, { chat: h.chat_id });
+}
+async function settled(ids, ms = 90000) {                              // the files are read before the message goes, so the assistant finds what they say
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    const d = await api('/api/inbox').catch(() => ({ items: [] }));
+    const mine = (d.items || []).filter((i) => ids.includes(i.id));
+    if (mine.length && mine.every((i) => (i.steps || []).every((s) => s.state !== 'todo') || ['in the graph', 'blocked', 'failed'].includes(i.status))) return;
+    await new Promise((r) => setTimeout(r, 1500));
+  }
 }
 async function showMission(cid) {
   const [d, pr] = await Promise.all([api('/api/cases/' + cid), api('/api/proposals?case_id=' + cid).catch(() => ({ proposals: [] }))]);
@@ -183,6 +218,7 @@ async function showMission(cid) {
       ${m.blocker ? `<div class="note"><span><b>Why it waits:</b> ${esc(m.blocker)}</span></div>` : ''}
       <div class="small"><b>Next trigger:</b> ${esc(m.next_trigger || '—')}</div>
       ${m.awaiting_approval ? `<div class="row" style="gap:8px"><button class="btn primary" data-approve="${cid}">Approve the plan (nothing is ordered; it starts the research and calculations)</button><button class="btn" data-decline="${cid}">Decline</button></div>` : ''}
+      ${tasks.some((t) => t.wait_kind === 'budget') ? `<div class="row" style="gap:8px"><button class="btn primary" id="mRunNow">Run it now</button><span class="tiny muted">Skips today's day limit for this investigation only; the monthly cap and its own budget still hold.</span></div>` : ''}
       ${(m.blocker || '').includes('used Rs') ? `<div class="row" style="gap:8px"><button class="btn warnb" id="mMore">Allow Rs 150 more for this investigation</button><span class="tiny muted">The parked work resumes; nothing is thrown away.</span></div>` : ''}
       <div class="small"><b>Instructions and plan</b><ul>${vers.map((v) => `<li>v${v.version} <span class="chip">${esc(v.status)}</span> <span class="tiny muted">${esc(v.source)} · ${esc(v.at)}${v.decided_by ? ' · ' + esc(v.decided_by) : ''}</span><br>${esc(v.instruction)}${v.steps.length ? `<br><span class="tiny muted">steps: ${v.steps.map((x) => esc(x.key) + ' (' + esc(x.role) + ')').join(', ')}</span>` : ''}</li>`).join('') || '<li>none</li>'}</ul></div>
       <div class="small"><b>Tasks</b> <span class="tiny muted">(who owns what, what it waits for, which instruction version it ran under)</span>
@@ -204,6 +240,8 @@ async function showMission(cid) {
   box.querySelector('#mClose').onclick = () => { box.close(); box.remove(); };
   const rb = box.querySelector('#mRetry');
   if (rb) rb.onclick = async () => { try { await post(`/api/investigations/${cid}/retry`); } catch (e) { alert(e.message); } box.close(); box.remove(); load(true); };
+  const rn = box.querySelector('#mRunNow');
+  if (rn) rn.onclick = async () => { try { await post(`/api/investigations/${cid}/run_now`); } catch (e) { alert(e.message); } box.close(); box.remove(); load(true); };
   const more = box.querySelector('#mMore');
   if (more) more.onclick = async () => { try { await post(`/api/investigations/${cid}/allow`, { rupees: 150 }); } catch (e) { alert(e.message); } box.close(); box.remove(); load(true); };
   const am = box.querySelector('#mAmendGo');

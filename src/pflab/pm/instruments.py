@@ -282,6 +282,38 @@ def build_and_load(con, root: Optional[Path] = None, amfi_text: Optional[str] = 
             "review": int((master.tax_class == REVIEW).sum())}
 
 
+MIN_UNIVERSE = 500                      # fewer listed equities than this in the master and it is rebuilt (the app's master held only his 9 holdings, so no company outside them could be recognised)
+
+
+def master_size(con) -> int:
+    return int(con.execute("SELECT count(*) FROM instruments WHERE isin LIKE 'INE%' AND asset_class = 'equity'").fetchone()[0])
+
+
+def refresh_master(con, root: Optional[Path] = None, force: bool = False) -> dict:
+    """S78: rebuild the instrument master from the research panel (and AMFI when it can be fetched or was fetched before), keeping what is held and not in it (SGBs, a new listing).
+    Without this, `find_companies` and the knowledge graph know only the companies he owns, so a file about any other stock links to nothing."""
+    import time as _t
+    if not force and master_size(con) >= MIN_UNIVERSE:
+        return {"skipped": "the master already holds the universe", "listed_equities": master_size(con)}
+    root = root or data_dir()
+    try:
+        amfi_text, amfi_sha = fetch_amfi(root)
+    except Exception:
+        cached = sorted((Path(root) / "amfi").glob("NAVAll_*.txt")) if (Path(root) / "amfi").exists() else []
+        amfi_text, amfi_sha = (cached[-1].read_text(encoding="utf-8", errors="replace"), "cached") if cached else ("", "none")
+    amfi = parse_navall(amfi_text) if amfi_text else pd.DataFrame(columns=["scheme_code", "isin_1", "isin_2", "name", "plan", "option", "amc", "category", "nav", "nav_date"])
+    master = build_master(panel_instruments(root), amfi, _latest_names(root), _latest_sectors(root))
+    kept = con.execute("SELECT " + ", ".join(MASTER_COLUMNS) + " FROM instruments WHERE market IS NULL OR market IN ('NSE', 'BSE')").df()
+    load_into_store(con, master, amfi, amfi_sha or "")
+    new = {r[0] for r in con.execute("SELECT isin FROM instruments").fetchall()}
+    back = 0
+    for rec in kept.where(pd.notna(kept), None).to_dict("records"):
+        if rec["isin"] not in new:
+            con.execute(f"INSERT INTO instruments ({', '.join(MASTER_COLUMNS)}) VALUES ({', '.join('?' * len(MASTER_COLUMNS))})", [rec[c] for c in MASTER_COLUMNS])
+            back += 1
+    return {"instruments": len(master), "kept_from_before": back, "amfi_schemes": len(amfi), "listed_equities": master_size(con)}
+
+
 def register_missing(con, rows: List[dict], source: str, now: Optional[datetime] = None) -> List[dict]:
     """Add held instruments the master does not know yet (SGBs, a new listing such as an IPO allotment).
     Each row: isin, and any of name, symbol, series, listed. Classified by `classify` from the exchange

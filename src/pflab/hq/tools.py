@@ -17,6 +17,7 @@ turns of a pass send only these checked results, so the API road does not check 
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import math
 import time
 from dataclasses import dataclass, field
@@ -345,7 +346,7 @@ def graph_timeline(ctx: Ctx, a: dict) -> dict:
                     kinds=("filing", "result", "article", "reading", "analyst_note", "dataset", "deal", "holding"), limit=20)
     from pflab.hq import recency
     items = [{"date": str(r.published_at)[:10], "kind": r.kind, "title": (r.title or "")[:160],
-              "url": getattr(r, "url", None)} for r in df.itertuples()]
+              "url": getattr(r, "url", None), "doc_id": getattr(r, "doc_id", None)} for r in df.itertuples()]
     return {"items": recency.stamp(items, None, ctx.asof, date_key="date"),
             "source": "knowledge graph (kg/graph.py); stale = older than the policy (news 3 days, filings 30, results 100)"}
 
@@ -355,6 +356,143 @@ def notes(ctx: Ctx, a: dict) -> dict:
     rows = mem.recall(ctx.con, subject=a["symbol"].strip().upper(), kinds=["note"], asof=ctx.asof, limit=2)
     return {"notes": [m.line()[:2000] for m in rows] or ["no analyst note on record"],
             "source": "memory (the analyst's newest cited note per company)"}
+
+
+DOC_PART = 6000
+
+
+def read_document(ctx: Ctx, a: dict) -> dict:
+    """A document in the knowledge graph (a filing, a result, an article) read IN FULL, a part at a time: parts of 6,000 characters (part=N), or the places a word appears (find=word).
+    The document comes from graph_timeline (its doc_id) or by company and words of its title."""
+    con = ctx.con
+    if a.get("doc_id"):
+        r = con.execute("SELECT doc_id, kind, title, url, text_path, published_at FROM kg_docs WHERE doc_id = ?", [a["doc_id"].strip()]).fetchone()
+    else:
+        if not a.get("symbol"):
+            return {"note": "give a doc_id (from graph_timeline) or a symbol with words of the title", "documents": []}
+        isin = _isin(ctx, a["symbol"])
+        words = [w for w in (a.get("title_words") or "").lower().split() if w]
+        q = ("SELECT d.doc_id, d.kind, d.title, d.url, d.text_path, d.published_at FROM kg_docs d JOIN kg_edges e ON e.src = d.doc_id AND e.rel = 'about' AND e.dst = ? "
+             + "".join(" AND lower(d.title) LIKE ?" for _ in words) + " ORDER BY d.published_at DESC LIMIT 1")
+        r = con.execute(q, [f"company:{isin}"] + [f"%{w}%" for w in words]).fetchone()
+    if r is None:
+        return {"note": "no such document in the knowledge graph", "documents": []}
+    doc_id, kind, title, url, tpath, pub = r
+    text = None
+    if tpath and Path(tpath).exists():
+        text = Path(tpath).read_text(encoding="utf-8", errors="replace")
+    elif kind in ("filing", "result") and url:
+        try:
+            from pflab.hq import fetch as _f
+            text = _f.local_text(con, url, ctx.rt.data_root / "kg" / "text")
+        except Exception:
+            text = None
+    head = {"doc_id": doc_id, "kind": kind, "title": (title or "")[:200], "published": str(pub)[:10], "url": url}
+    if not text:
+        return {**head, "note": "no text of this document is kept (a scanned image, or not fetched yet); readings has the reader's summary of it"}
+    parts = max(1, -(-len(text) // DOC_PART))
+    find = (a.get("find") or "").strip().lower()
+    if find:
+        low, snips, i = text.lower(), [], 0
+        i = low.find(find)
+        while i >= 0 and len(snips) < 10:
+            snips.append({"part": i // DOC_PART + 1, "text": text[max(0, i - 300): i + 500]})
+            i = low.find(find, i + 800)
+        return {**head, "parts": parts, "found": snips or [f"'{a['find']}' does not appear in this document"], "source": "the document's own text, kept on this PC"}
+    n = min(max(int(a.get("part") or 1), 1), parts)
+    return {**head, "parts": parts, "part": n, "text": text[(n - 1) * DOC_PART: n * DOC_PART], "source": "the document's own text, kept on this PC; ask for part=N to continue"}
+
+
+def _file_rows(con, name: str):
+    """The newest received file whose name contains `name`: (file, sha) or None."""
+    r = con.execute("SELECT file, file_sha FROM datasets WHERE lower(file) LIKE ? ORDER BY ingested_at DESC, dataset_id DESC LIMIT 1", [f"%{name.strip().lower()}%"]).fetchone()
+    return r
+
+
+def files_tool(ctx: Ctx, a: dict) -> dict:
+    """What he has dropped and what was read from each: pages and characters of a PDF, sheets, rows and figures of a spreadsheet, the companies it was linked to."""
+    con = ctx.con
+    out = []
+    q = (a.get("about") or "").strip().lower()
+    for f, sha, kinds, n_sheets, rows, at in con.execute(
+            "SELECT file, file_sha, string_agg(DISTINCT kind, ', '), count(*), sum(n_rows), max(ingested_at) FROM datasets GROUP BY file, file_sha ORDER BY max(ingested_at) DESC LIMIT 60").fetchall():
+        if q and q not in f.lower():
+            continue
+        pages = con.execute("SELECT count(*), coalesce(sum(length(text)), 0) FROM file_pages WHERE file_sha = ?", [sha]).fetchone()
+        figs = con.execute("SELECT count(*) FROM dataset_facts WHERE dataset_id IN (SELECT dataset_id FROM datasets WHERE file_sha = ?)", [sha]).fetchone()[0]
+        isins = set()
+        for (j,) in con.execute("SELECT isins_json FROM datasets WHERE file_sha = ?", [sha]).fetchall():
+            try:
+                isins |= set(json.loads(j or "[]"))
+            except ValueError:
+                pass
+        syms = [r[0] or r[1] for r in con.execute("SELECT symbol, name FROM instruments WHERE isin IN (SELECT unnest(?))", [sorted(isins)]).fetchall()] if isins else []
+        out.append({"file": f, "kind": kinds, "sheets": int(n_sheets), "table_rows": int(rows or 0), "figures": int(figs), "pdf_pages": int(pages[0]), "pdf_characters": int(pages[1]),
+                    "companies": syms[:6], "read_at": str(at)[:16]})
+    return {"files": out[:30] or ["no file has been read yet"], "source": "the files he dropped, read on this PC (read_file shows what is in one; file_figures the figures by company)"}
+
+
+def read_file(ctx: Ctx, a: dict) -> dict:
+    """What a dropped file says: a PDF page by page (page=N, or find=word for the places it appears), a spreadsheet's rows (find=a row label)."""
+    con = ctx.con
+    hit = _file_rows(con, a["name"])
+    if hit is None:
+        names = [r[0] for r in con.execute("SELECT DISTINCT file FROM datasets ORDER BY 1 LIMIT 30").fetchall()]
+        return {"files": names or ["no file has been read yet"], "note": f"no received file has '{a['name']}' in its name; these are the files"}
+    f, sha = hit
+    pages = con.execute("SELECT page, text FROM file_pages WHERE file_sha = ? ORDER BY page", [sha]).fetchall()
+    find = (a.get("find") or "").strip().lower()
+    if pages:
+        if a.get("page"):
+            p = [t for n, t in pages if n == int(a["page"])]
+            return {"file": f, "pages_in_file": len(pages), "page": int(a["page"]), "text": (p[0] if p else "no text on that page")[:7000], "source": f"the file {f}, read on this PC"}
+        if find:
+            snips = []
+            for n, t in pages:
+                low = t.lower()
+                i = low.find(find)
+                while i >= 0 and len(snips) < 10:
+                    snips.append({"page": n, "text": t[max(0, i - 250): i + 450]})
+                    i = low.find(find, i + 700)
+            return {"file": f, "pages_in_file": len(pages), "found": snips or [f"'{a['find']}' does not appear in the file's text"], "source": f"the file {f}"}
+        return {"file": f, "pages_in_file": len(pages), "outline": [{"page": n, "starts": " ".join(t.split())[:140]} for n, t in pages], "page_1": pages[0][1][:4500],
+                "source": f"the file {f}; ask for page=N or find=word for more"}
+    out = []
+    for sheet, path, ncols, nrows in con.execute("SELECT sheet, table_path, n_cols, n_rows FROM datasets WHERE file_sha = ? ORDER BY dataset_id", [sha]).fetchall():
+        if not path:
+            out.append({"sheet": sheet, "note": "no table was found in this sheet"})
+            continue
+        try:
+            import pandas as pd
+            df = pd.read_parquet(path)
+        except Exception as e:
+            out.append({"sheet": sheet, "note": f"could not open its table: {type(e).__name__}"})
+            continue
+        if find:
+            df = df[df.iloc[:, 0].astype(str).str.lower().str.contains(find, regex=False)]
+        blk = max(int(a.get("page") or 1), 1)
+        out.append({"sheet": sheet, "rows": int(nrows), "block": blk, "blocks": max(1, -(-len(df) // 40)), "columns": [str(c) for c in df.columns][:14],
+                    "table": df.iloc[(blk - 1) * 40: blk * 40, :14].astype(str).values.tolist()})
+    return {"file": f, "sheets": out[:6], "source": f"the file {f}, read on this PC"}
+
+
+def file_figures(ctx: Ctx, a: dict) -> dict:
+    """Figures read from dropped spreadsheets (Tijori and Screener exports) for a company: metric, period, value."""
+    con = ctx.con
+    sym = a["symbol"].strip().upper()
+    r = con.execute("SELECT isin, symbol FROM instruments WHERE upper(symbol) = ? OR upper(name) LIKE ? LIMIT 1", [sym, f"%{sym.lower()}%".upper()]).fetchone()
+    if r is None:
+        return {"error_note": f"{a['symbol']} is not in the instrument master", "figures": []}
+    q, args = "SELECT metric, period, value, source FROM dataset_facts WHERE isin = ?", [r[0]]
+    if a.get("metric"):
+        q += " AND lower(metric) LIKE ?"
+        args.append(f"%{a['metric'].lower()}%")
+    if a.get("period"):
+        q += " AND lower(period) LIKE ?"
+        args.append(f"%{a['period'].lower()}%")
+    rows = con.execute(q + " ORDER BY metric, period LIMIT 120", args).fetchall()
+    return {"symbol": r[1], "figures": [{"metric": m, "period": p, "value": v} for m, p, v, _ in rows] or ["no figure for this company in the dropped files"],
+            "source": "dropped spreadsheets, read on this PC"}
 
 
 def memory_recall(ctx: Ctx, a: dict) -> dict:
@@ -1865,6 +2003,17 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
     Tool("paper_ask", "action", "He asks the paper portfolio to look into something (for example 'is there an AI bubble, should it invest in AI names and how much'). It is one input: "
          "the paper team decides, and may go against him with reasons. Use only when his message asks for the paper portfolio.",
          {"text": _s("what he asked, in his words", 1000)}, ("text",), paper_ask),
+    Tool("files", "read", "The files he has dropped and what was read from each: a PDF's pages and characters, a spreadsheet's sheets, rows and figures, and the companies each was "
+         "linked to. Start here when he mentions a file, a sheet or a PDF he gave you.", {"about": _s("part of a file name", 60)}, (), files_tool),
+    Tool("read_file", "read", "What a dropped file SAYS: a PDF page by page (page=N, or find=a word to see where it appears), a spreadsheet's rows (find=a row label such as 'Net Sales'). "
+         "Quote its numbers from this result; say if it holds nothing readable.", {"name": _s("part of the file's name", 80), "page": _i("a PDF page", 1, 500), "find": _s("a word or row label to look for", 60)},
+         ("name",), read_file),
+    Tool("file_figures", "read", "Figures read from his dropped spreadsheets for one company (a Tijori or Screener export): metric, period, value. Narrow with metric and period words.",
+         {"symbol": SYMBOL, "metric": _s("part of a metric name, e.g. net sales", 60), "period": _s("part of a period, e.g. Mar 2026", 20)}, ("symbol",), file_figures),
+    Tool("read_document", "read", "A knowledge-graph document (a filing, a result, an article) read IN FULL a part at a time (part=N of 6,000 characters) or by word (find=): use it when the reader's "
+         "summary is not enough. Take the doc_id from graph_timeline, or give the symbol and words of the title.",
+         {"doc_id": _s("the document's id from graph_timeline", 80), "symbol": SYMBOL, "title_words": _s("words of the title", 80), "part": _i("which part", 1, 400), "find": _s("a word to look for", 60)},
+         (), read_document),
     Tool("undo_rule", "action", "He asks to undo a house rule (by its id or name); the version it replaced comes back. Only when his message says so.",
          {"rule": _s("the rule's id or name", 60)}, ("rule",), undo_rule),
     Tool("decide_rule", "action", "His yes or no to a house rule about money that waits for it. Use it only when his message in this turn says so; the system checks his words.",

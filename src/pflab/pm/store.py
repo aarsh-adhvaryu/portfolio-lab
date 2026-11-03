@@ -838,6 +838,12 @@ MIGRATIONS = [
         note VARCHAR, ms INTEGER
     );
     """),
+    # 2026-11-03: S78. What a dropped PDF says, page by page and whole (the graph kept only its first 4,000 characters and no agent could read it back).
+    (60, "file_pages_s78", """
+    CREATE TABLE file_pages (
+        file_sha VARCHAR NOT NULL, file VARCHAR NOT NULL, page INTEGER NOT NULL, text VARCHAR NOT NULL, read_at TIMESTAMP NOT NULL, PRIMARY KEY (file_sha, page)
+    );
+    """),
 ]
 
 

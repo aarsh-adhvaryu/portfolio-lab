@@ -53,6 +53,7 @@ class Sheet:
     name: str
     frame: pd.DataFrame                    # raw cells, no header
     text: str = ""                         # PDFs and text files
+    pages: List[str] = field(default_factory=list)     # a PDF's text page by page
 
 
 @dataclass
@@ -63,6 +64,8 @@ class Read:
     isins: List[str] = field(default_factory=list)
     facts: int = 0
     kind: str = "other"
+    pages: int = 0
+    chars: int = 0
 
 
 # ---- reading -------------------------------------------------------------------------------------------------
@@ -76,7 +79,8 @@ def sheets(path: Path) -> List[Sheet]:
         return [Sheet(path.stem, pd.read_csv(path, header=None, dtype=str, keep_default_na=False).replace("", None))]
     if ext == ".pdf":
         from pypdf import PdfReader
-        return [Sheet(path.stem, pd.DataFrame(), "\n".join((p.extract_text() or "") for p in PdfReader(str(path)).pages))]
+        pages = [(p.extract_text() or "") for p in PdfReader(str(path)).pages]
+        return [Sheet(path.stem, pd.DataFrame(), "\n".join(pages), pages)]
     if ext in (".txt", ".md"):
         return [Sheet(path.stem, pd.DataFrame(), path.read_text(encoding="utf-8", errors="replace"))]
     return []
@@ -221,9 +225,11 @@ def ingest_file(con, path: Path, out_dir: Path, now: Optional[datetime] = None, 
         if con.execute("SELECT 1 FROM datasets WHERE file_sha=? AND sheet=?", [sha, sh.name]).fetchone():
             continue
         t = table(sh.frame) if len(sh.frame) else None
-        head_text = f"{path.stem} {sh.name} " + (" ".join(str(c) for c in t.columns) if t is not None else "") \
+        head_text = f"{stem_words(path)} {sh.name} " + (" ".join(str(c) for c in t.columns) if t is not None else "") \
             + " " + " ".join(str(v) for v in sh.frame.head(8).to_numpy().ravel() if isinstance(v, str))
         companies = find_companies(head_text + " " + sh.text[:5000], sym, isins, names)
+        if not companies:
+            companies = company_from_name(con, stem_words(path), names)       # 'muthoot_stand_6575.xlsx': the one company whose name starts so (the held one, if several do)
         shape, facts = "sheet", []
         if t is not None:
             periods = [c for c in t.columns[1:] if PERIOD.match(str(c).strip())]
@@ -261,7 +267,7 @@ def ingest_file(con, path: Path, out_dir: Path, now: Optional[datetime] = None, 
             t.astype(str).to_parquet(tpath)
         title = f"{path.name} / {sh.name}: {kind}" + (f" ({len(facts)} figures)" if facts else "")
         doc = g.doc(con, "dataset", f"{sha}|{sh.name}", now, title, source=source,
-                    attrs={"kind": kind, "shape": shape, "columns": [str(c) for c in t.columns][:60] if t is not None else [],
+                    attrs={"kind": kind, "shape": shape, "pages": len(sh.pages), "chars": len(sh.text or ""), "columns": [str(c) for c in t.columns][:60] if t is not None else [],
                            "rows": int(len(t)) if t is not None else 0, "table": str(tpath) if tpath else None,
                            "text": sh.text[:4000] if sh.text else None,
                            "shareable": shareable(path, market, t, sh.text)})
@@ -274,8 +280,77 @@ def ingest_file(con, path: Path, out_dir: Path, now: Optional[datetime] = None, 
                      str(tpath) if tpath else None, doc, now])
         for isin, metric, period, v in facts:
             con.execute("INSERT INTO dataset_facts VALUES (?,?,?,?,?,?)", [did, isin, metric[:200], period, v, source])
-        reads.append(Read(path.name, sh.name, shape, companies, len(facts), kind))
+        if sh.pages:                                              # the whole text, page by page: an agent can read any page back (read_file)
+            con.execute("DELETE FROM file_pages WHERE file_sha = ?", [sha])
+            for n, txt in enumerate(sh.pages, 1):
+                if txt.strip():
+                    con.execute("INSERT INTO file_pages VALUES (?,?,?,?,?)", [sha, path.name, n, txt, now])
+        reads.append(Read(path.name, sh.name, shape, companies, len(facts), kind, len(sh.pages), len(sh.text or "")))
     return reads
+
+
+def company_from_name(con, stem: str, names) -> List[str]:
+    s = re.sub(r"[^a-z0-9 ]", " ", stem.lower()).strip()
+    if len(s) < 5:
+        return []
+    cands = list(dict.fromkeys(i for n, i in names if n.startswith(s)))
+    if len(cands) > 1:
+        held = {r[0] for r in con.execute("SELECT DISTINCT isin FROM lots WHERE qty > 1e-9").fetchall()}
+        cands = [i for i in cands if i in held]
+    return cands if len(cands) == 1 else []
+
+
+def stem_words(path: Path) -> str:
+    """The company a file is named after: 'Ather_Energy_stand_58348' -> 'Ather Energy' (a Tijori export's own name; 'stand' and 'cons' are standalone and consolidated, the number its id)."""
+    w = re.sub(r"[_\-]+", " ", path.stem)
+    w = re.sub(r"\b(stand|standalone|cons|consolidated|report|xlsx|pdf)\b", " ", w, flags=re.I)
+    w = re.sub(r"\b\d+\b|\(\d+\)|\s_\d+_", " ", w)
+    return " ".join(w.split())
+
+
+def forget_file(con, sha: str) -> int:
+    """Remove what was read from a file (its datasets, figures, pages and graph document) so that it can be read again with better knowledge of the companies."""
+    n = 0
+    for did, doc in con.execute("SELECT dataset_id, doc_id FROM datasets WHERE file_sha = ?", [sha]).fetchall():
+        con.execute("DELETE FROM dataset_facts WHERE dataset_id = ?", [did])
+        for t, c in (("kg_edges", "src"), ("kg_docs", "doc_id"), ("kg_nodes", "node_id")):
+            try:
+                con.execute(f"DELETE FROM {t} WHERE {c} = ?", [doc])
+            except Exception:
+                pass
+        con.execute("DELETE FROM datasets WHERE dataset_id = ?", [did])
+        n += 1
+    con.execute("DELETE FROM file_pages WHERE file_sha = ?", [sha])
+    return n
+
+
+def reingest_unlinked(con, folders, out_dir: Path, now: Optional[datetime] = None) -> dict:
+    """Read the files in `folders` that were never read, or were read when no company could be recognised (no company link: figures with no owner, a report about no one)."""
+    now = now or datetime.now()
+    done, again, new = [], 0, 0
+    for folder in folders:
+        folder = Path(folder)
+        if not folder.is_dir():
+            continue
+        for f in sorted(folder.iterdir()):
+            if not f.is_file() or f.suffix.lower() not in (".pdf", ".xlsx", ".xlsm", ".xls", ".csv", ".txt", ".md"):
+                continue
+            sha = hashlib.sha256(f.read_bytes()).hexdigest()[:16]
+            rows = con.execute("SELECT isins_json FROM datasets WHERE file_sha = ?", [sha]).fetchall()
+            if rows and not any(r[0] in ("[]", "", None) for r in rows):
+                continue
+            if rows:
+                forget_file(con, sha)
+                again += 1
+            else:
+                new += 1
+            try:
+                reads = ingest_file(con, f, out_dir, now, None, market=folder.name == "market")
+                done.append({"file": f.name, "sheets": len(reads), "figures": sum(r.facts for r in reads), "companies": len({i for r in reads for i in r.isins}),
+                             "pages": sum(r.pages for r in reads), "chars": sum(r.chars for r in reads)})
+            except Exception as e:                                      # one unreadable file does not stop the others
+                done.append({"file": f.name, "error": f"{type(e).__name__}: {str(e)[:120]}"})
+    return {"read_again": again, "read_new": new, "files": done}
 
 
 def run(con, inbox: Path, data_root: Path, model: Optional[str] = None, now: Optional[datetime] = None) -> List[Read]:

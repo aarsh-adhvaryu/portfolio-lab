@@ -464,6 +464,16 @@ def create_app(rt) -> FastAPI:
         rt.wake_hq()
         return out
 
+    @app.post("/api/investigations/{cid}/run_now")
+    def investigation_run_now(cid: int):
+        """His word to run it now: the day limits are lifted for this investigation (the cap still holds)."""
+        from pflab.hq import missions, pool
+        out = missions.run_now(rt.cursor(), rt.clock(), cid)
+        pool.wake()
+        rt.bump("hq")
+        rt.wake_hq()
+        return out
+
     @app.post("/api/investigations/{cid}/allow")
     def investigation_allow(cid: int, rupees: float = Body(..., embed=True)):
         """More money for one investigation whose own budget is spent: its parked work resumes. A global limit still holds."""

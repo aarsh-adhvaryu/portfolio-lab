@@ -389,6 +389,19 @@ def cap_of(con=None, cid: Optional[int] = None) -> float:
     return cap
 
 
+def run_now(con, now: datetime, cid: int, by: str = "the investor") -> dict:
+    """S78 (2026-11-03: a task waited for 'the budget allows it again 00:05' and he had no way to say go): his word to run this investigation NOW. The DAY limits (passes and rupees a day)
+    are lifted for it, as for a question he asks; the monthly cap, the layer's monthly share, the investigation's own budget and the per-call limits still hold. Parked work starts at once."""
+    from pflab.hq import cases
+    cases.log(con, cid, now, "run now", f"run now by {by}: the day limits are lifted for this investigation (the cap still holds)")
+    n = 0
+    for t in _tasks(con, cid):
+        if t["status"] in ("retry", "waiting") and (t.get("wait_kind") == "budget" or t.get("waiting_on") == "budget"):
+            con.execute("UPDATE hq_tasks SET status='retry', next_review_at=?, progress='running now: his word' WHERE task_id=?", [now, t["id"]])
+            n += 1
+    return {"started": True, "woken": n}
+
+
 def allow_more(con, now: datetime, cid: int, rupees: float, by: str = "the investor") -> dict:
     """His word to spend more on this investigation: the parked work resumes. The amount is added to its cap (logged); a global limit still holds."""
     from pflab.hq import board, cases

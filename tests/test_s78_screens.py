@@ -119,3 +119,23 @@ def test_the_abilities_are_in_settings_and_a_switch_is_saved(server, tmp_path):
     before, after = str(res[1]).lower(), str(res[3]).lower()
     assert before != after                                                                 # one press flips the switch on the screen ...
     assert st.load(rt.pm_dir)["abilities"].get("charts", True) is (after == "true")        # ... and what is saved is what the screen shows
+
+
+def test_files_are_chosen_shown_in_a_tray_and_sent_with_the_message(server, tmp_path):
+    rt, port = server
+    steps = [("1", 3.0),                                                                    # (the composer is drawn)
+             ("attachToAssistant([new File(['a,b,1,2'], 'one.csv', {type: 'text/csv'}), new File(['Net sales 100 crore'], 'two.txt', {type: 'text/plain'})]); 1", 1.5),
+             ("document.getElementById('stageTray').innerText", 0.1),
+             ("document.querySelector('[data-unstage=\"0\"]').click(); 1", 0.4),
+             ("document.getElementById('stageTray').innerText", 0.1),
+             ("var i = document.getElementById('chatIn'); i.value = 'what does it say?'; document.getElementById('sendBtn').click(); 1", 14.0),
+             ("document.getElementById('thread').innerText", 0.1),
+             ("document.getElementById('stageTray').innerText.length", 0.1)]
+    errors, res = _edge.shoot(f"http://127.0.0.1:{port}/#/assistant", str(tmp_path / "stage.png"), 1500, 1000, 5, steps)
+    assert errors == [], errors
+    assert "one.csv" in res[2] and "two.txt" in res[2]                                      # both are shown, nothing is sent yet
+    assert "one.csv" not in res[4] and "two.txt" in res[4]                                  # one was taken off again
+    assert "Attached: two.txt" in res[6] and "what does it say?" in res[6]                  # sent together with the words
+    assert int(res[7]) == 0                                                                 # the tray is empty after Send
+    names = [r[0] for r in rt.cursor().execute("SELECT name FROM inbox_items WHERE status <> 'removed'").fetchall()]
+    assert names == ["two.txt"]                                                             # only the file left in the tray was received
