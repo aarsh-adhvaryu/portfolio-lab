@@ -87,12 +87,12 @@ def test_the_company_comes_from_the_files_own_name_and_a_sheet_gives_figures_by_
 def test_stem_words_and_the_one_held_company_when_several_names_start_alike(con):
     assert ag.stem_words(Path("Ather_Energy_stand_58348.xlsx")) == "Ather Energy"
     assert ag.stem_words(Path("Ather Energy _1_.pdf")) == "Ather Energy"
-    for isin, sym, name in (("INE000M01011", "MUTHOOTFIN", "Muthoot Finance Limited"), ("INE000M02011", "MUTHOOTCAP", "Muthoot Capital Services Limited")):
+    for isin, sym, name in (("INE000K01011", "KAPPAFIN", "Kappa Finance Limited"), ("INE000K02011", "KAPPACAP", "Kappa Capital Services Limited")):
         con.execute("INSERT INTO instruments (isin, key_kind, asset_class, tax_class, listed, symbol, name, source, built_at) VALUES (?, 'isin', 'equity', 'EQUITY', TRUE, ?, ?, 's', now())", [isin, sym, name])
     sym_, isins, names = ag.name_index(con)
-    assert ag.company_from_name(con, "muthoot", names) == []                                # two companies start so and he holds neither: no guess
-    con.execute("INSERT INTO lots (lot_id, account_id, isin, acq_date, qty, cost_per_unit, tax_class) VALUES (1, 'A', 'INE000M01011', '2026-01-01', 5, 100, 'EQUITY')")
-    assert ag.company_from_name(con, "muthoot", names) == ["INE000M01011"]                  # he holds one of them: that one
+    assert ag.company_from_name(con, "kappa", names) == []                                # two companies start so and he holds neither: no guess
+    con.execute("INSERT INTO lots (lot_id, account_id, isin, acq_date, qty, cost_per_unit, tax_class) VALUES (1, 'A', 'INE000K01011', '2026-01-01', 5, 100, 'EQUITY')")
+    assert ag.company_from_name(con, "kappa", names) == ["INE000K01011"]                  # he holds one of them: that one
 
 
 def test_files_read_before_the_master_existed_are_read_again_and_linked(con, tmp_path):
