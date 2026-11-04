@@ -1,7 +1,7 @@
 # BUILT: what exists (as of S69; the single reference for the system as built)
 
 Rules and working style are in `CLAUDE.md`; intent and frame in `docs/PLAN.md`; every test and verdict in `docs/STUDIES.md`;
-the first run in `README.md`. The job, tool and source lists below were generated from the code at the release.
+the first run in `docs/RUNNING.md`. The job, tool and source lists below were generated from the code at the release.
 
 ## Two installations
 | | APP (runs his money) | WORKSHOP (beta, development) |

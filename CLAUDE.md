@@ -4,7 +4,7 @@
 lots, corporate actions, filings, prices and NAVs, collectors, and a team of agents with one tool-calling brain that runs by
 itself. **Claude Code is for development only: the system runs, learns and asks by itself.** Read `docs/PLAN.md` (intent and
 frame), `docs/BUILT.md` (what exists, jobs, tools, sources, tables, switches), `docs/STUDIES.md` (every test and verdict), and
-`README.md` (first run). Two installations: the **APP** (an install of a release tag in its own folder, runs his money) and the
+`docs/RUNNING.md` (install, first run, updates, acceptance; `README.md` is the project's front page). Two installations: the **APP** (an install of a release tag in its own folder, runs his money) and the
 **WORKSHOP** (this checkout: the beta, where Claude Code develops; no `release.toml`). The workshop sends nothing outward and makes
 no paid call unless told (`pflab --live`, `pflab --paid`; `src/pflab/guard.py`). The workshop holds nothing personal (no statements,
 no copy of his store): it runs the beta on what the collectors bring. Since 2026-11-02 (A36) the app holds no personal record of his either: its ledger is the SYSTEM'S OWN account

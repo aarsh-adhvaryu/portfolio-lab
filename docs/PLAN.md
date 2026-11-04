@@ -1,7 +1,7 @@
 # PLAN: intent, frame, decisions, and what remains
 
 (Condensed 2026-10-28, S65. The old build plan, the session log and the handoffs are in git history; what exists is in `docs/BUILT.md`, the tests and
-verdicts in `docs/STUDIES.md`, how to install and run in `README.md`.)
+verdicts in `docs/STUDIES.md`, how to install and run in `docs/RUNNING.md`.)
 
 ## Intent: the investor's companion
 He is an employee, not a trader, quant or hedge fund; he has a portfolio and invests by feel. In his words (2026-10-25): *"They say AI can't trade... but AI
@@ -83,7 +83,7 @@ work to the brain); readiness, known gaps, a resumable bhavcopy backfill job; a 
 `pflab verify` and `tools\verify_candidate.ps1`; a headless worker; the heartbeat; the UI for investigations, held work, changes since the last visit, readiness and processing.
 Measured here (pytest -s, `test_the_screen_stays_responsive_while_a_slow_dependency_and_a_slow_job_run`): with Ollama and Docker probes of 3 s each and a backfill running, the
 status call answered in 0.9 s the first time and within 0.1 s after; his laptop's real throughput is a local check.
-**Local acceptance (his):** the one command is in `README.md` ("Local acceptance of a candidate release"). It must print no FAIL; the "needs you" items it lists are Kite login,
+**Local acceptance (his):** the one command is in `docs/RUNNING.md` ("Local acceptance of a candidate release"). It must print no FAIL; the "needs you" items it lists are Kite login,
 `pflab mail connect` (OAuth), Docker running with the image `pflab-sandbox:2` built, and the two real-world steps (a real sleep and wake with `-WakeCheck`, and the app running
 after Claude Code is closed). A bounded live model run through the gate is `-LiveModel`.
 **After acceptance, to ship:** (1) the workshop: `git switch main; git merge --no-ff claude/wonderful-bardeen-z07h1e`, run the suite (7 environmental failures above are the cloud's, his PC should show none),

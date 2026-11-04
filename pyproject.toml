@@ -5,7 +5,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pflab"
 version = "0.0.1"
-description = "Tax-aware monthly-SIP portfolio research harness for NSE equities"
+description = "Autonomous, local-first research companion for an NSE equity portfolio: tax-aware ledger, LLM agents under cost and privacy guards, pre-registered studies"
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "pandas>=2.0",
