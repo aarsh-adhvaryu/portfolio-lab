@@ -110,6 +110,11 @@ def paper_steps(goal: str) -> Tuple[List[dict], str]:
                  "with the evidence, the alternatives and, for HOLD and WAIT, the condition for looking again. Long term (3+ years), after tax and charges; a supported "
                  "HOLD or WAIT is as good as a trade. For an idea worth waiting for, put it on the watchlist with watch_add: a zone, or a fall from the year's high, TAKEN FROM A CALCULATION you name (calc_id), so the system looks again when the price gets there; look at a chart (chart_view) before you decide. If the investor asked something, say plainly whether this follows him or goes against him, and why (his_view)."},
     ]
+    try:                                                   # S79 (A45): the system's own allocation target is decided, reviewed and re-examined in the same review
+        from pflab.paper import allocation
+        steps[-1]["goal"] += " " + allocation.playbook_text()
+    except Exception:
+        pass
     return steps, "The paper playbook: changes and ideas researched beside the book's measures, then decisions sized by code; the review decides what is executed."
 
 

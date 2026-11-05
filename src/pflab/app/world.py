@@ -23,7 +23,7 @@ SENSES = [("markets", "Market data", ["collect", "prices", "nav", "global", "bac
           ("broker", "Kite", ["live", "tradecheck", "idle_cash"], "live prices for what the system holds; his own trades are ignored"),
           ("record", "The account", ["ledger", "deposits"], "the system's own account (statements and deposits stand aside)"),
           ("us", "US sleeve", ["us_fx"], "USDINR rates")]
-ROUTINES = [("thinking", "Thinking rounds", ["hq", "conductor", "research", "analyst", "forecast", "comove", "scans", "twin", "paper", "paper_daily", "selfcheck", "companion", "review", "learner", "catch_up", "bear_resolve", "implied_calibration"],
+ROUTINES = [("thinking", "Thinking rounds", ["hq", "conductor", "research", "analyst", "forecast", "comove", "scans", "twin", "paper", "paper_daily", "selfcheck", "companion", "review", "learner", "catch_up", "bear_resolve", "implied_calibration", "forecast_loop"],
              "the brain, research, forecasts, the learner"),
             ("plans", "Plans and alerts", ["plans", "guards", "watches", "watches_close"], "ready plans, guards, price watches"),
             ("reports", "Reports", ["summary_morning", "summary_evening", "outbox", "voice"], "the morning and evening summaries")]
