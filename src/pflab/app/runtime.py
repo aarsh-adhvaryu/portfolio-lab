@@ -132,7 +132,7 @@ class Runtime:
         if last_run is not None and self.clock() - last_run > timedelta(hours=6):
             self.catching_up, self._woke_at = f"started after {int((self.clock() - last_run).total_seconds() // 3600)} h off", self.clock()
         for name, fn in (("heart", self._heart_loop), ("scheduler", self._scheduler_loop), ("live", self._live_loop), ("mc", self._mc_loop),
-                         ("research", self._research_loop), ("hq", self._hq_loop), ("phone", self._phone_loop)):
+                         ("research", self._research_loop), ("hq", self._hq_loop), ("phone", self._phone_loop), ("agenda", self._agenda_loop)):
             t = threading.Thread(target=self._guard(fn), name=name, daemon=True)
             t.start()
             self.threads.append(t)
@@ -376,6 +376,21 @@ class Runtime:
             self.hq_last_round = (self.clock(), sorted((out or {}).get("failed") or {}))   # the World reads the HQ's rounds from here
             self._hq_wake.wait(30)
             self._hq_wake.clear()
+
+    def _agenda_loop(self) -> None:
+        """S79 item 5 (A42): never idle. Whenever nothing urgent is open the system works its own agenda, by the clock's mode (not by a job time); a hard stop and a pause stop it."""
+        from pflab.agenda import runner
+        while not self.stop.is_set():
+            wait = 60.0
+            if not self.paused() and not os.environ.get("PFLAB_NO_AGENDA"):
+                try:
+                    out = runner.tick(self)
+                    wait = 5.0 if out.get("state") in ("done", "failed") else 45.0
+                    if out.get("state") in ("done", "failed"):
+                        self.bump("activity")
+                except Exception:
+                    log.exception("agenda tick failed")
+            self.stop.wait(wait)
 
     def wake_hq(self) -> None:
         self._hq_wake.set()

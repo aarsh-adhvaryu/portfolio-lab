@@ -68,7 +68,8 @@ def probe_args(con, name: str) -> Optional[dict]:
     """Harmless known input for a read tool; None when it needs something this install does not have yet (then only its shape is checked)."""
     sym = _held_symbol(con)
     needs_symbol = {"stock_facts": {"symbol": sym}, "price_history": {"symbol": sym}, "chart_view": {"symbol": sym, "timeframe": "daily", "bars": 40},
-                    "readings": {"symbol": sym}, "who_is_buying": {"symbol": sym}, "graph_timeline": {"symbol": sym}, "notes": {"symbol": sym}, "comovement": {"symbol": sym}, "file_figures": {"symbol": sym}}
+                    "readings": {"symbol": sym}, "who_is_buying": {"symbol": sym}, "graph_timeline": {"symbol": sym}, "notes": {"symbol": sym}, "comovement": {"symbol": sym}, "file_figures": {"symbol": sym},
+                    "trajectory": {"symbol": sym}, "decompose_move": {"symbol": sym}, "align_events": {"symbol": sym}}
     if name in needs_symbol:
         return needs_symbol[name] if sym else None
     if name == "read_document":

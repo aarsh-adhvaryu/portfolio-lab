@@ -107,6 +107,7 @@ function wShell(d) {
         <div class="askrow"><select id="wto" aria-label="Who to ask"><option value="">The AI (chat)</option>${(d.agents || []).filter((a) => a.order_to && a.order_to !== 'investigation').map((a) => `<option value="${esc(a.order_to)}">${esc(a.label)}</option>`).join('')}<option value="investigation">Start an investigation</option></select>
           <input id="wask" placeholder="Tell the AI what you want, or ask what it is doing…" aria-label="Ask the AI"><button class="btn primary" id="wsend">Send</button></div><div class="age" id="wmsg"></div></section>
       <div id="winsp"></div>
+      <section class="glass" id="wagenda-sec"><div class="panelh"><b>What it is doing now</b><span class="age" id="wagenda-age"></span></div><div class="checks" id="wagenda" style="max-height:none"></div></section>
       <section class="glass"><div class="panelh"><b>Is everything running? Is it done?</b><span class="age" id="wchk"></span></div><div class="tabsm" id="wtabs"></div><div class="checks" id="wchecks"></div></section>
       <section class="glass"><div class="panelh"><b>Live activity</b><span class="age">newest first</span></div><div class="feed" id="wfeed"></div></section>
     </aside></div>`;
@@ -146,6 +147,30 @@ function wBelow(d) {
     <section class="glass"><div class="panelh"><b>Experiments</b><span class="age">a rejection is a result</span></div><div class="checks" style="max-height:none">${exs || '<div class="d" style="padding:8px;color:var(--w-dim)">None registered yet.</div>'}</div></section>
     <section class="glass"><div class="panelh"><b>Waiting on you</b><span class="age">${needs.length ? needs.length + ' shown' : 'nothing'}</span></div><div class="checks" style="max-height:none">${nd || '<div class="d" style="padding:8px;color:var(--w-dim)">Nothing is waiting on you.</div>'}</div></section>`;
 }
+/* S79: the agenda panel. "What it is doing now": the running item and why, the next ones, the last acts with what each changed, what it skipped and why. */
+function wAgenda(d) {
+  const a = d.agenda || { available: false }, nm = (k) => String(k || '').replace(/_/g, ' ');
+  const row = (st, ic, t, dd, w) => `<div class="crow st-${st}"><span class="si">${ic}</span><div><div class="t">${esc(t)}</div><div class="d">${esc(dd)}</div></div><span class="w">${esc(w || '')}</span></div>`;
+  const grp = (t) => `<div class="cgrp">${esc(t)}</div>`;
+  let h = '';
+  if (!a.available) h = `<div class="d" style="padding:8px;color:var(--w-dim)">The agenda is not set up yet.</div>`;
+  else {
+    const r = a.running, q = a.queue || [];
+    h += r ? row('working', '●', `${nm(r.kind)}: ${r.subject}`, `${r.reason || ''} · expected value ${Number(r.expected_value).toFixed(1)}, about ${Math.round(r.cost_seconds || 0)} s`, 'now')
+      : a.urgent ? row('waiting', '◔', 'Urgent work first', 'An investigation or an order of yours is open, so the agenda waits.', '')
+      : q.length ? row('ok', '·', 'Between items', `Next: ${nm(q[0].kind)}: ${q[0].subject}`, a.mode ? a.mode.replace('_', ' ') : '')
+      : row('idle', '·', 'Nothing to do', `Nothing eligible in ${(a.mode || '').replace('_', ' ')} mode; it looks again by itself.`, '');
+    if (q.length) h += grp('Next in line') + q.slice(0, 4).map((i) => row('ok', '·', `${nm(i.kind)}: ${i.subject}`, `${i.reason || ''} · value ${Number(i.expected_value).toFixed(1)}, score ${Number(i.score).toFixed(2)}`, '')).join('');
+    if ((a.recent_done || []).length) h += grp('Recent acts') + a.recent_done.slice(0, 5).map((i) => row(i.useful ? 'ok' : 'idle', i.useful ? '✓' : '·', `${nm(i.kind)}: ${i.subject}`,
+      i.useful ? i.effect : `${i.outcome || 'done'} (changed nothing)`, (i.finished_at || '').slice(11, 16))).join('');
+    if ((a.recent_skipped || []).length) h += grp('Skipped, and why') + a.recent_skipped.slice(0, 4).map((i) => row('waiting', '–', `${nm(i.kind)}: ${i.subject}`, i.skip_reason || '', '')).join('');
+    if ((a.held || []).length) h += grp('Held for later') + a.held.slice(0, 3).map((i) => row('waiting', '◔', `${nm(i.kind)}: ${i.subject}`, i.held || '', '')).join('');
+    const ky = (a.kind_yields || []).filter((k) => k.n_done);
+    if (ky.length) h += grp('How often each kind helped') + `<div class="d" style="padding:4px 8px">${ky.map((k) => esc(nm(k.kind)) + ' ' + k.n_useful + '/' + k.n_done).join(' · ')}</div>`;
+  }
+  wset('wagenda', h);
+  const age = $('wagenda-age'); if (age) age.textContent = a.available ? `${a.useful_today || 0} useful today` : '';
+}
 function wFeed(d) {
   $('wfeed').innerHTML = d.feed.map((f) => `<div class="fi st-${f.tone === 'down' ? 'down' : f.tone === 'working' ? 'working' : f.tone === 'waiting' ? 'waiting' : 'ok'}"><span class="tm">${esc(f.at.slice(11, 19))}</span>
     <span class="tx"><span class="wh">${esc(f.who)}</span> · ${esc(f.text)}</span></div>`).join('') || '<div class="d" style="padding:10px;color:var(--w-dim)">Nothing has happened yet. When the first routine runs it appears here.</div>';
@@ -168,7 +193,7 @@ function patchWorld(d) {
   const p = d.pulse; $('worb').className = 'orb ' + (p.tone === 'ok' ? '' : p.tone); $('wverdict').textContent = p.verdict;
   $('wsys').textContent = (p.catching_up ? p.catching_up + ' · ' : '') + (p.system_verdict || '');
   const pb = $('wpause'); pb.textContent = p.paused ? 'Resume the system' : 'Pause the system'; pb.className = 'btn' + (p.paused ? ' primary' : '');
-  wCounts(d); wChecks(d); wFeed(d); wBelow(d);
+  wCounts(d); wChecks(d); wFeed(d); wBelow(d); wAgenda(d);
   wset('winsp', wInspector(d), (el) => {
     const cl = el.querySelector('#wclose'); if (cl) cl.onclick = () => { W.sel = null; W.html.winsp = null; patchWorld(d); };
     hqWire(el, () => fetchHq(true));

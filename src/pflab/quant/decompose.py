@@ -113,10 +113,11 @@ def decompose(root: Path, isin: str, day: date, market: str = "IN") -> dict:
                     sector_part = b_s * sec_res
                     out.update(sector_index_pct=round(float(r_sec.loc[d0]) * 100.0, 2), beta_sector=round(b_s, 2), sector_beyond_market_pct=round(sec_res * 100.0, 2))
         if "beta_sector" not in out:
-            out["sector_note"] = "the sector index or its beta was not available for the day: the sector is inside the own part"
+            last = str(r_sec.index[-1].date()) if r_sec is not None and len(r_sec) else "no file"
+            out["sector_note"] = f"{skey} has no value for {day} or too little history (its file ends {last}): the sector is inside the own part"
     else:
         out["sector_note"] = "this industry has no index of its own in the files: the sector is inside the own part"
-    out["sector_pct"] = round(sector_part * 100.0, 2)
+    out["sector_pct"] = round(sector_part * 100.0, 2) if "beta_sector" in out else None
     out["own_pct"] = round((total - market_part - sector_part) * 100.0, 2)
     out["method"] = ("daily-return OLS slopes over the sessions before the day (risk/shock_betas.rolling_betas); own = total - market part - sector part; "
                      "the day itself is never in the fit")

@@ -18,15 +18,15 @@ import json
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
-SENSES = [("markets", "Market data", ["collect", "prices", "nav", "global", "backfill", "instruments"], "prices, NAVs, world markets"),
+SENSES = [("markets", "Market data", ["collect", "prices", "nav", "global", "backfill", "instruments", "bars_1m"], "prices, NAVs, world markets"),
           ("filings", "Filings and news", ["filings", "kg"], "company filings, news, the graph's intake"),
           ("broker", "Kite", ["live", "tradecheck", "idle_cash"], "live prices for what the system holds; his own trades are ignored"),
           ("record", "The account", ["ledger", "deposits"], "the system's own account (statements and deposits stand aside)"),
           ("us", "US sleeve", ["us_fx"], "USDINR rates")]
-ROUTINES = [("thinking", "Thinking rounds", ["hq", "conductor", "research", "analyst", "forecast", "comove", "scans", "twin", "paper", "paper_daily", "selfcheck", "companion", "review", "learner"],
+ROUTINES = [("thinking", "Thinking rounds", ["hq", "conductor", "research", "analyst", "forecast", "comove", "scans", "twin", "paper", "paper_daily", "selfcheck", "companion", "review", "learner", "catch_up", "bear_resolve", "implied_calibration"],
              "the brain, research, forecasts, the learner"),
             ("plans", "Plans and alerts", ["plans", "guards", "watches", "watches_close"], "ready plans, guards, price watches"),
-            ("reports", "Reports", ["summary_morning", "summary_evening", "outbox"], "the morning and evening summaries")]
+            ("reports", "Reports", ["summary_morning", "summary_evening", "outbox", "voice"], "the morning and evening summaries")]
 SAFETY = [("safety", "Safety routines", ["backup", "sandbox", "security"], "backups, the sandbox proof, the privacy check")]
 GROUP_OF = {j: g for g, _l, js, _d in SENSES + ROUTINES + SAFETY for j in js}
 
@@ -279,6 +279,8 @@ def build(rt, now: Optional[datetime] = None) -> dict:
     _sec(out, errors, "guard_nodes", lambda: guards_view(rt, now, pic), [])
     _sec(out, errors, "feed", lambda: feed(rt, now), [])
     _sec(out, errors, "looking_into", lambda: looking_into(rt, now), {"investigations": [], "experiments": []})
+    from pflab.agenda import runner as agenda_runner                                         # S79: what it is doing when nothing is urgent
+    _sec(out, errors, "agenda", lambda: agenda_runner.snapshot(rt.cursor(), now), {"available": False})
     from pflab.app import onboarding
     _sec(out, errors, "bring", lambda: onboarding.bring_list(rt.cursor()), [])               # what he can bring, with what is already held
 
@@ -318,6 +320,17 @@ def build(rt, now: Optional[datetime] = None) -> dict:
     else:
         verdict, tone = "Everything is running and everything due is done.", "ok"
     out["pulse"] = {"verdict": verdict, "tone": tone, "paused": paused, "system_verdict": pic.get("verdict"), "catching_up": pic.get("catching_up")}
+    try:                                                    # S79: the clock's mode per market and the catch-up, so "analysis in progress" is visible within minutes of opening
+        from pflab import markets
+        from pflab.service import away, catchup, presence
+        con0 = rt.cursor()
+        ms = markets.modes(now)
+        segs = con0.execute("SELECT opened_at, off_from, off_to FROM app_presence_s79 ORDER BY seg_id DESC LIMIT 1").fetchone()
+        out["pulse"]["modes"] = {"modes": ms, "working_by": list(markets.primary(now))}
+        out["pulse"]["catch_up"] = {**catchup.status(con0), "opened_at": str(segs[0])[:16] if segs else None,
+                                    "off": presence.describe(segs[1], segs[2]) if segs and segs[1] else None, "digest": away.latest(con0)}
+    except Exception as e:
+        errors["modes"] = f"{type(e).__name__}: {str(e)[:120]}"
     out["needs"] = (pic.get("needs") or {}).get("items", [])[:6]
     out["errors"] = errors
     return json.loads(json.dumps(out, default=str))
