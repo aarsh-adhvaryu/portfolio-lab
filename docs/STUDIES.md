@@ -82,3 +82,14 @@ and read; code decides. Protocol file and code hashes are fixed at registration:
 ## New protocols go here, committed before the run
 Add a row above with the claim, the protocol file in `docs/protocols/`, the rule in code, and after the run the verdict and t's (development / validation),
 and whether a live feature follows. Register through `pflab learner register-*` so the counter counts it.
+
+<!-- s79-llm-results:begin -->
+## S79 item 13: local model sampling and a larger MoE (protocol: docs/protocols/s79_local_model_protocol.md)
+
+Diagnosis (counts only): the app's `llm_runs` (a copy of its ledger, 31 calls, 2026-11-02 to 11-03) shows no failed call and no labelled loop; two `workshop_writer` replies used the whole 2,500-token cap (truncation risk). The table keeps no text, so from S79 on `client.chat` writes the `diag` label (ok, truncated, empty, loop, format) into `note` and keeps Ollama's `done_reason`.
+
+| arm | model | routing | answers_final | answers_first | extraction_f1 | materiality | answers_median_s | answers_p90_s | routing_call_median_s | tokens_per_s | text_fail_rate | json_fail_rate | gpu_peak_mib |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| A old default | qwen3:8b-q8_0 | incomplete: ['answers_20261017', 'answers_20261018', 'extraction', 'routing'] |
+
+<!-- s79-llm-results:end -->

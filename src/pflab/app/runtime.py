@@ -212,6 +212,12 @@ class Runtime:
             presence.beat(self.cursor(), now)
         except Exception:
             pass
+        try:                                                 # S79 item 4: the clock's mode sets the local model's GPU duty cycle
+            from pflab import markets
+            from pflab.llm import duty
+            duty.set_mode(markets.primary(now)[1])
+        except Exception:
+            pass
         self._write_beat(now, wake, settle)
         return self.catching_up
 

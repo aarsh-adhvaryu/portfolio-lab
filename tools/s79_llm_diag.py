@@ -4,6 +4,7 @@
     python tools/s79_llm_diag.py run --arm A|B|C [--model M] [--kinds text,json]
     python tools/s79_llm_diag.py decide-sampling
     python tools/s79_llm_diag.py decide-moe [--write-pick]
+    python tools/s79_llm_diag.py report                                    # (re)writes the S79 item 13 results section of docs/STUDIES.md from the result files
     python tools/s79_llm_diag.py record                                    # the two comparisons into the learner's counter (the store in PFLAB_PM_DIR)
 
 Protocol: docs/protocols/s79_local_model_protocol.md (registered before any run). Results: <data>/llm_eval/results_s79/<arm>__<model>/.
@@ -148,6 +149,54 @@ def record() -> int:
     return 0
 
 
+MARK0, MARK1 = "<!-- s79-llm-results:begin -->", "<!-- s79-llm-results:end -->"
+
+
+def _fmt(s: dict, keys) -> str:
+    return " | ".join("-" if s.get(k) is None else (f"{s[k]:.3f}" if isinstance(s[k], float) else str(s[k])) for k in keys)
+
+
+def report() -> int:
+    """The results section of docs/STUDIES.md, rebuilt from whatever result files exist (idempotent, between two markers)."""
+    from pflab.llm import s79_eval as se
+    a, b = se.load_arm(results_dir("A", BASE)), se.load_arm(results_dir("B", BASE))
+    keys = ["routing", "answers_final", "answers_first", "extraction_f1", "materiality", "answers_median_s", "answers_p90_s", "routing_call_median_s",
+            "tokens_per_s", "text_fail_rate", "json_fail_rate", "gpu_peak_mib"]
+    lines = [MARK0, "## S79 item 13: local model sampling and a larger MoE (protocol: docs/protocols/s79_local_model_protocol.md)", "",
+             "Diagnosis (counts only): the app's `llm_runs` (a copy of its ledger, 31 calls, 2026-11-02 to 11-03) shows no failed call and no labelled loop; "
+             "two `workshop_writer` replies used the whole 2,500-token cap (truncation risk). The table keeps no text, so from S79 on `client.chat` writes the "
+             "`diag` label (ok, truncated, empty, loop, format) into `note` and keeps Ollama's `done_reason`.", "",
+             "| arm | model | " + " | ".join(keys) + " |", "|---|---|" + "---|" * len(keys)]
+    rows = {}
+    for arm, model, res in (("A old default", BASE, a), ("B Qwen sampling", BASE, b), ("C 8b adopted kinds", BASE, se.load_arm(results_dir("C", BASE))),
+                            ("C MoE", MOE, se.load_arm(results_dir("C", MOE)))):
+        if res and all(t in res for t in se.TASKS):
+            rows[arm] = se.summarise(res)
+            lines.append(f"| {arm} | {model} | " + _fmt(rows[arm], keys) + " |")
+        elif res:
+            lines.append(f"| {arm} | {model} | incomplete: {sorted(res)} |")
+    ds = results_dir("decision", "sampling") / "decision_sampling.json"
+    if ds.exists():
+        d = json.loads(ds.read_text(encoding="utf-8"))
+        lines += ["", f"**Sampling decision:** adopted kinds {d['adopt_kinds'] or 'none'}; text checks {d['text']}; json checks {d['json']}."]
+    dm = results_dir("decision", "moe") / "decision_moe.json"
+    if dm.exists():
+        d = json.loads(dm.read_text(encoding="utf-8"))
+        lines += ["", f"**MoE decision:** {'chosen' if d['chosen'] else 'not chosen'}; checks {d['checks']}; sign-test p (MoE better) "
+                  f"{ {k: round(v, 4) for k, v in d['p_better'].items()} }, (MoE worse) { {k: round(v, 4) for k, v in d['p_worse'].items()} }."]
+    lines += ["", MARK1]
+    block = "\n".join(lines) + "\n"
+    f = Path(__file__).resolve().parents[1] / "docs" / "STUDIES.md"
+    t = f.read_text(encoding="utf-8")
+    if MARK0 in t:
+        t = t[:t.index(MARK0)] + block + t[t.index(MARK1) + len(MARK1) + 1:]
+    else:
+        t = t.rstrip("\n") + "\n\n" + block
+    f.write_text(t, encoding="utf-8")
+    print("docs/STUDIES.md updated;", len(rows), "complete arms")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -162,6 +211,7 @@ def main() -> int:
     m = sub.add_parser("decide-moe")
     m.add_argument("--write-pick", action="store_true")
     sub.add_parser("record")
+    sub.add_parser("report")
     a = ap.parse_args()
     if a.cmd == "diagnose":
         return diagnose(a.db)
@@ -171,6 +221,8 @@ def main() -> int:
         return decide_sampling()
     if a.cmd == "decide-moe":
         return decide_moe(a.write_pick)
+    if a.cmd == "report":
+        return report()
     return record()
 
 
