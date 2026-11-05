@@ -129,3 +129,15 @@ size_gb = 8.9
 protocol = "docs/STUDIES.md"
 evaluated_at = 2026-10-17T17:15:39
 decision = "chosen general+routing (round 3: answers 100% with the production guard; kept as adopted)"
+
+# S79 item 13 (A41, 2026-11-05): a larger local MoE, registered BEFORE the download and any evaluation.
+# Adopted only if it beats qwen3:8b-q8_0 on the existing eval sets (docs/STUDIES.md); otherwise "not chosen".
+[[pick]]
+role = "eval-s79-moe"
+model = "qwen3:30b-a3b"
+registered_at = 2026-11-05T09:00:00
+size_gb = 19.0
+base = "Ollama qwen3:30b-a3b (Q4_K_M, 30B total / 3B active MoE; CPU offload beside the 12 GB GPU)"
+protocol = "docs/protocols/s79_forecast_protocol.md section local model; docs/STUDIES.md"
+evaluated_at = ""
+decision = ""

@@ -39,7 +39,7 @@ universe includes every name that traded); taxes and costs are in the objective;
 ## Design decisions, one line each
 - 2026-10-06: Portfolio Manager scope (Indian shares, IPOs, funds, gold, bonds, cash); tax rule tables sourced and dated; both regimes shown, he chooses; Kite Connect read-only;
   maintained libraries over hand-written code; capital-gains rule coverage starts at transfer date 2024-07-23 (earlier raises).
-- A2: Telegram send-only through `requests` (no bot framework); the two-way bot only while the dashboard is closed.
+- A2: Telegram through `requests` (no bot framework). (A42, 2026-11-05: the old rule "two-way bot only while the dashboard is closed" is removed; the bot runs inside the app process.)
 - A7 (S37-S49): a team of agents (researcher, analyst, advisor, trader planner, trade check, event, thesis, memory, questions); the API analyst is the only doorbell.
 - A9: the small-numbers rule (under 20 observations: the count, no conclusion).
 - A11 (S57): Graphify not adopted; the system's own graph is cleaned instead.
@@ -222,6 +222,22 @@ record REMOVED, not archived (FDs, banks, folios outside Zerodha, tax packs, not
 - [x] The switch itself in his app (done 2026-11-02, rehearsed on a copy first), the new loops, the redesign with him (design approved 2026-11-02, built as `static/redesign.*`: top bar, Today on one page, Account, Watchlist, Research overview, System checks, Settings abilities).
 - **A38 Charts and the watchlist; A39 session-only fills and the nightly self-test** (BUILT.md, S78): the agents see candlestick charts in the backend, the system waits on names with zones from its own calculations (a touched price alone never buys), buys and sells fill only inside an exchange session, every agent, tool and model is tested nightly, and the AI abilities he may switch off are enforced where used.
 - [ ] Not yet seen live: a real-model `chart_view` look end to end, Kite candles and intraday bars, the first nightly self-check, a fill at a live quote in a real session; the recurring-lesson-to-learner-claim path is not built.
+
+## S79 (2026-11-05, branch `pm/s79-autonomy`): a system that works whenever it is opened
+**His decision (2026-11-05), recorded permanently:** whenever he opens the app, today or after days off, it gets the backlog done and starts working and analysing at once; the laptop being off is normal.
+Acceptance: within 15 minutes of opening, the catch-up is running and the World screen shows analysis in progress; the first outputs (a "while you were away" digest, the explanation of the biggest moves, forecasts) follow as soon as their data has arrived.
+- **A40 Bans lifted.** Any library or model (torch, transformers, lightgbm, statistical or learned forecasters, backtest helpers) is allowed when it enters through a pre-registered comparison that beats the simpler alternative on unseen data (rule 10); pinned in `requirements.lock`. Heavy ML lives in the optional extra `[ml]` and `tools/model_lab/`.
+- **A41 Local models.** qwen3:8b-q8_0 and nomic-embed-text stay (never deleted); further local models (a larger MoE, a tuned GGUF from `model_lab`) by a measured decision. Steering/LoRA only in `model_lab`. First registered pick: `qwen3:30b-a3b` (`configs/llm_models.toml`, role `eval-s79-moe`).
+- **A42 No waiting on schedules.** The system runs whenever the app is open; on open it catches up first, then works by the clock's MODE and its own agenda, never by job times; off is normal (silence and staleness count app-open time only). The bot runs inside the app process.
+- **A43 Not built (decided).** No MCP server, no social-media sentiment agent, no Hermes/OpenClaw/TradingAgents framework, no agent-SDK migration.
+- **A44 Feature freeze for 60 days (bug fixes only)** from the day the app's own 7-day open-time check passes (to be recorded then).
+- **A45 The system's own portfolio starts from his Kite portfolio and nothing else.** Re-seed of the system account and the paper book: exactly the Kite holdings (shares, ETFs, SGBs, anything else Kite lists), no FDs, banks, folios elsewhere or statements. Cash default: the existing fake Rs 5,00,000 and top-ups up to Rs 50,000 a month (A36). After the seed it is on its own: stocks and ETFs of any kind (gold, index, international ETFs listed in India, US instruments when the leg opens); it decides its own allocation (asset classes and sectors, with reasons, reviewed by the independent reviewer, re-examined at every weekly review) and trades toward it. That target is the system's book only; his `targets.toml` is not changed. Rails in code: company 10%, sector 25%, ETF 35%, circuit breaker, no F&O, no borrowing, no short sales, no order reaches a broker. The old paper record (since 2026-11-02) is archived as labelled history; the 40-session gate, the scorecard and the forecasts count from the new seed.
+**Checklist (ticked as done):**
+- [x] 1 rule changes A40-A43, A45   - [ ] 2 re-seed from Kite + own allocation target   - [ ] 3 run on open, catch-up, off is normal
+- [ ] 4 modes + Market parameter   - [ ] 5 agenda, useful acts, live view   - [ ] 6 voice   - [ ] 7 explanation tools + bars_1m
+- [ ] 8 protocol, forecasters, scoring, weights, fall risk   - [ ] 9 replay   - [ ] 10 transmission + lead-lag
+- [ ] 11 implied + cascade + simulate   - [ ] 12 debate   - [ ] 13 local model diagnosis + measurement   - [ ] 14 model_lab skeleton
+- [ ] P2-A test all, findings listed   - [ ] P2-B fix all   - [ ] P2-C clean run   - [ ] P2 release + clean live run + 7-day self-check + A44 recorded
 
 ## What remains (dated; update at each stop)
 0. **DONE 2026-10-28: the app runs his money.** `D:\PortfolioLabApp` (release `v2026.10.28.x` from GitHub; clean-room install and a real update and rollback tested), market data and news seeded (3.9 GB), his preferences carried, the RECORD rebuilt by the system itself from his files (13 of 13 checks, 1,383 events, 14 FDs), the desktop shortcuts and the scheduled tick point at it, the user-level PFLAB_DATA_DIR removed. Live checks: two Telegram summaries delivered; one brain pass (Opus, Sonnet rival) Rs 13.07; October's spend Rs 1,420 of 2,500 (the workshop's carried). Found and fixed on the way: a hidden source file, untested library versions (now `requirements.lock`), a long-path limit, the tick needing his user.

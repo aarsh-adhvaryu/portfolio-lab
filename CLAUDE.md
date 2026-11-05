@@ -21,7 +21,10 @@ tax packs and notes are removed and never read again). Kite is its data feed onl
    langchain-ollama 1.1.0 / langchain-core 1.6.6, msoffcrypto-tool 5.4.2, xlrd 2.0.1, trafilatura 2.0.0, statsmodels 0.14.6,
    anthropic 1.15.0 (only in `agents/analyst.py`, behind the egress gate and his cap), fastapi 0.159.1, uvicorn 0.54.0.
    Email is removed (his decision 2026-10-30: he drops every file by hand; no Gmail code or library). No
-   backtesting frameworks, no lightgbm, no torch or forecasting models (TimesFM was tested, failed, removed).
+   Since 2026-11-05 (A40) no library or model is banned: torch, transformers, lightgbm, statistical or learned forecasters and backtest helpers are
+   allowed **when they enter through a pre-registered comparison that beats the simpler alternative on unseen data (rule 10)**, and are pinned in
+   `requirements.lock`. Heavy ML (torch/CUDA) lives in the optional extra `pip install -e ".[ml]"` and the separate workspace `tools/model_lab/`, so the app
+   installs and runs without it (TimesFM was tested, failed, removed).
 5. **Data lives under `PFLAB_DATA_DIR`, the store under `PFLAB_PM_DIR`** (gitignored). An installed app's `release.toml` sets both
    and wins over the environment. Secrets: `%USERPROFILE%\.pflab\secrets.toml` (never print or echo them; `pflab setup secrets`).
 6. **Engine tests pass unchanged:** `test_engine_*`, `test_lookahead`, `test_negative_control`, `test_measurement_fixes`,
@@ -33,7 +36,8 @@ tax packs and notes are removed and never read again). Kite is its data feed onl
    the system's own: there it decides alone (direction and reasons by the team, sizes, rails, fills and tax by code, the reviewer judges); nothing reaches a broker.
 9. **Models.** Local: qwen3:8b-q8_0 and nomic-embed-text (never delete). API: Claude Opus 5.5 through the doorbell in
    `agents/analyst.py`; his portfolio may go (holdings, amounts, weights, goals), his identity and banking details never. Any model
-   change is a measured decision.
+   change is a measured decision. (A41, 2026-11-05) Further local models (a larger MoE, a tuned GGUF from `tools/model_lab/`) are added by a measured
+   decision, the two above never deleted; steering and LoRA live only in `model_lab`; the app sees a GGUF through Ollama.
 10. **Every new claim is a pre-registered study** (protocol committed before the run, rule in code) and **counts in the learner's
     counter** (the bar rises with N). What passes is wired into the agents; what fails has no live feature. A feature or covariate
     enters a model only if a registered comparison beats the simpler model on unseen data (that comparison counts as a test).
@@ -48,7 +52,13 @@ tax packs and notes are removed and never read again). Kite is its data feed onl
   **Run the real path yourself on a short sample first**; he wants no reruns from untested fixes.
 - **Technical choices are yours** (models, methods, fixes): decide, record a dated amendment with a safe fallback, do not hand him
   options. His money, preferences and limits stay his.
-- **Act then and there:** new data starts its jobs; no manual restarts; schedules only where data timing forces them.
+- **No waiting on schedules (A42, 2026-11-05):** the system runs whenever the app is open. On open it catches up first (every missed session's data and scoring,
+  point-in-time, by code), then works by the clock's MODE (`pre_open`, `session`, `post_close`, `deep`, per market) and its own agenda, never by job times; an
+  analysis job is due whenever its input is newer than its last run (only data arrival, such as NSE files after the close, waits). The laptop being off is normal,
+  never an error: silence and staleness count app-open time only, a gap is recorded as "off from X to Y". The bot runs inside the app process. No manual restarts.
+- **Not built (A43, decided):** no MCP server, no social-media sentiment agent, no Hermes/OpenClaw/TradingAgents framework, no agent-SDK migration.
+- **The system's own book (A45, 2026-11-05):** it starts from his Kite holdings and nothing else, then decides its own allocation (asset classes and sectors, with
+  reasons, reviewed, re-examined at every weekly review) inside the code rails; that target is the system's, his `targets.toml` stays his.
 - **Local first; paid only where it beats local,** inside his Rs 2,500 monthly cap, priced first; the workshop's paid calls count
   against `dev_monthly_cap_rupees` (default 0).
 - **Personal inputs go after calibration** (statements, PDFs, exports); statement passwords only in the secrets file `[passwords]`.
