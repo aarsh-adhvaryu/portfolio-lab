@@ -274,6 +274,14 @@ def _dossier(con, cid: int, task: dict, now: datetime, role: Optional[str] = Non
     if m["plan"]:
         lines.append("PLAN: " + " | ".join(f"{s['key']} [{s['role']}] {s['goal'][:140]}" for s in m["plan"]))
     lines.append(cases.brief(con, [cid], now, evidence_lines=12 if slim else 30))
+    if role == "review":                                           # S79 item 12: only the bull/bear disagreements reach the reviewer
+        try:
+            from pflab.agents import debate
+            d = debate.disagreements_for_reviewer(con, cid)
+            if d:
+                lines.append(d)
+        except Exception:
+            pass
     arts = missions.artifacts(con, cid)
     if arts:
         lines.append("ARTIFACTS SO FAR (kind ref detail, by task): " + "; ".join(f"{a['kind']} {a['ref']} {a['detail'] or ''} (task #{a['task_id']})" for a in arts[-40:]))

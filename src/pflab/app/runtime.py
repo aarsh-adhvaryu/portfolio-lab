@@ -123,6 +123,11 @@ class Runtime:
                 log.info("opened: %s", presence.describe(seg["off_from"], seg["off_to"]))
         except Exception:
             log.exception("presence record failed")
+        try:                                                 # S79 (rule 10): this session's pre-registered studies count in the learner's counter
+            from pflab.learner import s79
+            s79.register_all(self.cursor(), self.clock())
+        except Exception:
+            log.exception("registering S79 studies failed")
         last_run = self.cursor().execute("SELECT max(started_at) FROM job_runs").fetchone()[0]
         if last_run is not None and self.clock() - last_run > timedelta(hours=6):
             self.catching_up, self._woke_at = f"started after {int((self.clock() - last_run).total_seconds() // 3600)} h off", self.clock()

@@ -350,3 +350,33 @@ Plotly.newPlot('c',[cloud,...marks],{{xaxis:{{title:'volatility, % a year'}},yax
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(page, encoding="utf-8")
     return path
+
+
+# --- S79 item 11: session-horizon paths with a first-day shock (additive) ----------------------------------------------------------
+
+def betas_to(Rd: pd.DataFrame, ref: str = "n500") -> np.ndarray:
+    """Each asset's daily beta to `ref` over the history (covariance / variance; 0 for a constant series such as debt and cash)."""
+    x = Rd[ref].to_numpy(float)
+    vx = float(np.var(x, ddof=1))
+    return np.array([float(np.cov(Rd[a].to_numpy(float), x, ddof=1)[0, 1]) / vx if vx > 0 and float(Rd[a].std()) > 0 else 0.0 for a in Rd.columns])
+
+
+def session_paths(Rd: pd.DataFrame, w: np.ndarray, sessions: int, n: int, seed: int, market_shock: float = 0.0,
+                  portfolio_shock: float = 0.0, block: int = 21) -> np.ndarray:
+    """(n, sessions) value of 1 rupee of the mix `w` (columns of `Rd`, rebalanced daily) by a circular block bootstrap of the daily
+    history in blocks of `block` sessions. `market_shock` (for example -0.10) is added on the first session as that move of the
+    reference index times each asset's beta; `portfolio_shock` is added to the portfolio's first-session return directly. Seeded."""
+    rng = np.random.default_rng(seed)
+    r = Rd.to_numpy(float)[block_index(len(Rd), sessions, n, rng, block)]              # (n, sessions, assets)
+    pr = r @ w
+    pr[:, 0] += market_shock * float(betas_to(Rd) @ w) + portfolio_shock
+    return np.cumprod(1 + np.maximum(pr, -0.95), axis=1)
+
+
+def horizon_summary(v: np.ndarray) -> dict:
+    """Quantiles of the change over the horizon, the chance of a fall beyond FALL_LIMIT from the start or any later high, and of ending lower."""
+    ch = v[:, -1] - 1
+    p = float(np.mean(max_dd(v) <= FALL_LIMIT))
+    n = len(v)
+    return {"change_quantiles": {f"p{q:02d}": float(np.percentile(ch, q)) for q in (5, 25, 50, 75, 95)}, "p_loss": float(np.mean(ch < 0)),
+            "p_fall_beyond_limit": p, "p_fall_beyond_limit_se": float(np.sqrt(p * (1 - p) / n)), "worst_fall_median": float(np.median(max_dd(v)))}
