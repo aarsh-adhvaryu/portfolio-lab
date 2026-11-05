@@ -1,0 +1,11 @@
+# weights, adapters, GGUFs, datasets and eval outputs never go into git (datasets are built from the system's own journal)
+outputs/
+datasets/
+*.gguf
+*.safetensors
+*.bin
+*.pt
+*.npy
+*.jsonl
+.venv-train/
+__pycache__/

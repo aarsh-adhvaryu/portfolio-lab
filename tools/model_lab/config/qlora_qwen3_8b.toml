@@ -1,0 +1,52 @@
+# QLoRA recipe for qwen3 8B on the RTX 5070 Ti Laptop (12 GB). Every number here is part of the registered run: change it only by a new,
+# dated registration (rule 10). Dry-run validates this file: python train_qlora.py --dry-run
+[model]
+base = "Qwen/Qwen3-8B"            # Hugging Face id of the bf16 weights (the Ollama tag qwen3:8b-q8_0 is a GGUF and cannot be trained)
+ollama_base = "qwen3:8b-q8_0"     # what the app runs today; the baseline every tuned model is compared with
+chat_template = "qwen3"
+think = false                     # the app calls the model with thinking off; train the same way
+
+[quant]                           # 4-bit NF4 base weights, bf16 compute: ~5.5 GB for the base
+load_in_4bit = true
+bnb_4bit_quant_type = "nf4"
+bnb_4bit_use_double_quant = true
+compute_dtype = "bfloat16"
+
+[lora]
+r = 16
+alpha = 32
+dropout = 0.05
+bias = "none"
+target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+task_type = "CAUSAL_LM"
+
+[train]
+seed = 20261105
+learning_rate = 2.0e-4
+lr_scheduler = "cosine"
+warmup_ratio = 0.03
+epochs = 2
+max_len = 2048                    # tokens per example; longer examples are dropped, never truncated mid-sentence
+per_device_batch = 1
+grad_accum = 16                   # effective batch 16
+gradient_checkpointing = true     # needed to fit 8B in 12 GB
+optim = "paged_adamw_8bit"
+weight_decay = 0.0
+max_grad_norm = 0.3
+bf16 = true
+logging_steps = 10
+save_steps = 200
+assistant_only_loss = true        # loss on the assistant turn only
+
+[data]
+train = "datasets/train.jsonl"    # relative to tools/model_lab; built by build_dataset.py from a ledger COPY
+valid = "datasets/valid.jsonl"
+min_examples = 50                 # fewer than this is not a training set (the S47 lesson: 10 test items proved nothing)
+
+[output]
+dir = "outputs/qlora_qwen3_8b"    # adapter; the merged model and the GGUF go beside it
+gguf_quant = "Q8_0"               # same quantisation as the baseline tag so the comparison is like for like
+
+[hardware]
+min_vram_gb = 11.0                # the card has 12 GB; stop early if less is free
+clock_caps = ["nvidia-smi -lgc 210,2100", "nvidia-smi -lmc 405,9001"]   # Administrator PowerShell, BEFORE a long run

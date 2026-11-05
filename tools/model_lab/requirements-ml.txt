@@ -1,0 +1,9 @@
+# The model lab's dependencies live in the repo's pyproject.toml under [project.optional-dependencies] ml  (A41, S79).
+# They are NOT in requirements.lock and NOT in the app's dependencies: the app never imports them.
+#
+# Install in a SEPARATE venv (never the app's, never the workshop's .venv):
+#   python -m venv .venv-train
+#   .venv-train\Scripts\pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu128   (CUDA 12.8 wheel: the RTX 5070 Ti is Blackwell)
+#   .venv-train\Scripts\pip install -e ".[ml]"
+# bitsandbytes 0.47.0 ships a Windows wheel with CUDA support; if 4-bit loading fails, run the lab under WSL2 (same pins).
+-e ../..[ml]
