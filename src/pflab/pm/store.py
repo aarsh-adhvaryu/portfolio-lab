@@ -846,6 +846,9 @@ MIGRATIONS = [
     """),
 ]
 
+from pflab.pm.mig_s79 import collect as _s79  # noqa: E402  (S79: migrations kept one module per item)
+MIGRATIONS = MIGRATIONS + _s79()
+
 
 def pm_dir() -> Path:
     r"""`PFLAB_PM_DIR`, else `D:\portfolio_lab\pm` (absolute on purpose: a

@@ -137,6 +137,13 @@ def check(con, agent: str, est_inr: float, n_in: int, n_out: int, now: datetime,
         raise _refuse(f"{agent}: {n} calls today already (its limit under '{mode}')", tomorrow)
     share, day_cap = layer_limits(cfg, lim.layer)
     peers = agents_in(lim.layer)
+    if not (his_order or window) and turn <= 1:               # S79 (A42): the clock's MODE sets the rupee pace per hour (a pass may begin while the last hour is under budget)
+        from pflab import markets
+        if markets.pace_spend():
+            mkt, md = markets.primary(now)
+            hour = _spent_system(con, peers, now - timedelta(hours=1))
+            if hour >= markets.rupee_per_hour(md) * max(1.0, day_cap / 80.0):
+                raise _refuse(f"the {lim.layer} have spent ~Rs {hour:,.1f} in the last hour; the {md} mode paces ~Rs {markets.rupee_per_hour(md):,.0f} an hour", now + timedelta(minutes=30))
     day = _spent_system(con, peers, day_start)                                   # his questions are not counted against the system's day
     # the day's rupees stop a pass from BEGINNING; a pass already begun (turn 2 on) is stopped only by the cap, never half-way by a day limit
     if not (his_order or window) and turn <= 1 and day + est_inr > day_cap:

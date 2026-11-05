@@ -49,7 +49,8 @@ def silent_loops(con, now: datetime) -> List[str]:
         r = con.execute("SELECT max(logged_at) FROM paper_acts WHERE loop=?", [loop]).fetchone()[0]
         started = datetime.combine(book.started(con), datetime.min.time())
         ref = r or started
-        if now - ref > limit and now - started > limit:
+        from pflab.service import presence                  # S79 (A42): the laptop being off is normal: silence counts the time the app was OPEN
+        if presence.open_time(con, ref, now) > limit and presence.open_time(con, started, now) > limit:
             out.append(f"{loop}: nothing since {str(ref)[:16]} (it should act at least every {limit})")
     return out
 

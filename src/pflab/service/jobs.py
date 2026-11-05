@@ -103,6 +103,21 @@ def reap_at_start(con, now: datetime) -> int:
 
 
 def is_due(ctx: Ctx, job: Job) -> Tuple[bool, str]:
+    """S79 (A42): a job is due at its slot (data arrival: NSE's files after the close) OR when its input is newer than its last run / it has not run in a
+    while (`service/ondemand.py`), so the system works the moment the app is open. A message tied to a time of day is not sent hours late."""
+    due, why = _slot_due(ctx, job)
+    from pflab.service import ondemand
+    if due:
+        slot = job.schedule.latest_slot(ctx.now)
+        stale = ondemand.stale_slot(ctx, job, slot) if slot else None
+        return (False, stale) if stale else (True, why)
+    if why.startswith("disabled"):
+        return False, why
+    r = ondemand.reason(ctx, job)
+    return (True, r) if r else (False, why)
+
+
+def _slot_due(ctx: Ctx, job: Job) -> Tuple[bool, str]:
     if job.enabled_fn is not None:
         ok, why = job.enabled_fn(ctx)
         if not ok:

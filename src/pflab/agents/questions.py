@@ -12,14 +12,19 @@ from typing import List, Optional, Tuple
 from pflab.agents import memory
 
 
-def ask(con, agent: str, subject_key: str, text: str, now: Optional[datetime] = None) -> Optional[int]:
-    """Queue a question; None if this subject was already asked (open or answered)."""
+def ask(con, agent: str, subject_key: str, text: str, now: Optional[datetime] = None, *, default: Optional[str] = None,
+        deadline: Optional[datetime] = None, urgent: bool = False, options: Optional[List[str]] = None) -> Optional[int]:
+    """Queue a question; None if this subject was already asked (open or answered). S79: with a `default` the question carries it and a deadline
+    (`agents/voice.py`): the system runs on the default until he answers, the question goes out on Telegram with reply buttons."""
     if con.execute("SELECT 1 FROM questions WHERE subject_key=?", [subject_key]).fetchone():
         return None
     from pflab.pm.store import next_id
     qid = next_id(con, "questions", "q_id")
     con.execute("INSERT INTO questions VALUES (?,?,?,?,?,?,?,?)",
                 [qid, now or datetime.now(), agent, subject_key, text, "open", None, None])
+    if default is not None:
+        from pflab.agents import voice
+        voice.attach(con, qid, text, default, deadline, urgent, options, now or datetime.now())
     return qid
 
 
@@ -32,10 +37,15 @@ def answer(con, q_id: int, text: str, now: Optional[datetime] = None) -> int:
     row = con.execute("SELECT status, agent, subject_key, text FROM questions WHERE q_id=?", [q_id]).fetchone()
     if row is None:
         raise LookupError(f"no question #{q_id}")
-    if row[0] != "open":
+    if row[0] not in ("open", "defaulted"):             # S79: a question that ran on its default can still be answered by him
         raise ValueError(f"question #{q_id} is already {row[0]}")
     now = now or datetime.now()
     con.execute("UPDATE questions SET status='answered', answer=?, answered_at=? WHERE q_id=?", [text, now, q_id])
+    try:
+        from pflab.agents import voice
+        voice.mark_answered(con, q_id, now)
+    except Exception:                                    # the voice's own table must never block his answer
+        pass
     return memory.remember(con, "answer", f"Q: {row[3]} A: {text}", subject=row[2], source=f"question #{q_id} ({row[1]})",
                            now=now)
 

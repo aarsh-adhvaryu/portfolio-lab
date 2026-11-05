@@ -122,6 +122,13 @@ def dossier_text(con, cid: int, now: datetime, role: Optional[str] = None) -> st
     lines.append("TOOLS AND THE PAPER BOOK: `paper_book` is the paper portfolio. The measuring tools (stocks_overview, exposure_shock, scenario, simulation, policy_scenarios, "
                  "portfolio, picture) read HIS real record, whose holdings are the same names but whose cash is not the paper cash: say so on any result you use, and when a figure "
                  "must be for the paper book, compute it with case_calculate from paper_book's holdings, weights and cash. A label must match what was computed.")
+    try:                                                   # S79 (A45): the system's own allocation target and the gap to it
+        from pflab.paper import allocation as _al
+        _t = _al.dossier_text(con, now.date())
+        if _t:
+            lines.append(_t)
+    except Exception:
+        pass
     if role in ("quant", "coordinator", None):
         lines.append("HOW TO DECIDE: read `paper_book`; for each holding or idea that deserves a decision call `paper_decide` with BUY, ADD, REDUCE, SELL, HOLD or WAIT, the "
                      "reasons and the alternatives (an amount in rupees or a target weight for a buy; a fraction for a reduce). Code sizes it against the cash and the rails and "
@@ -420,11 +427,23 @@ def reasons_to_look(con, now: datetime) -> List[str]:
     from pflab.paper import book, rails
     day = now.date()
     out = []
+    from pflab.paper import allocation as _al                # S79 (A45): no target yet, or its weekly re-examination is due
+    out += _al.reasons(con, now)
     last = con.execute("SELECT max(created_at) FROM hq_missions WHERE origin='paper'").fetchone()[0]
     if last is None:
         return ["the first review: the paper portfolio starts today as a copy of his portfolio"]
     if (now - last).days >= REVIEW_EVERY_DAYS:
         out.append("the weekly review")
+    try:                                                        # S79 (A42): opened after being off, with sessions closed since the last review: look at once
+        opened = con.execute("SELECT max(opened_at) FROM app_presence_s79").fetchone()[0]
+        if opened is not None and opened > last and now - opened < timedelta(hours=6):
+            from pflab import markets
+            m = markets.get("IN")
+            n = m.session_count(last.date(), m.session_closed_by(now)) if m.session_closed_by(now) > last.date() else 0
+            if n:
+                out.append(f"the app was opened with {n} session(s) closed since the last review")
+    except Exception:
+        pass
     h = book.holdings(con, day)
     if h["cash"] < 0:
         out.append("cash is below zero after a withdrawal")
@@ -469,6 +488,11 @@ def bookkeeping(rt) -> dict:
     from pflab.paper import watch
     out["watch"] = watch.check(con, now, rt.data_root, index)         # S78: the watchlist: prices against the points the team's own calculations set
     out["adopted_late"] = sweep_stays(con, now)
+    try:                                                                   # S79 (A45): a proposed allocation target takes its mission's review verdict
+        from pflab.paper import allocation as _al
+        out["allocation"] = len(_al.settle(con, now))
+    except Exception:
+        out["allocation"] = 0
     out["scored"] = score_due(con, now, index)
     for (cid,) in con.execute("SELECT DISTINCT d.case_id FROM paper_decisions d JOIN hq_missions m ON m.case_id = d.case_id WHERE d.status='proposed' "
                               "AND m.state IN ('done','blocked','declined')").fetchall():

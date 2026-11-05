@@ -116,6 +116,13 @@ class Runtime:
         except Exception:
             log.exception("scrub of stored text failed")
         self._keep_local_calls()
+        try:                                                 # S79 (A42): app-open time is recorded; the gap since the last beat is "off from X to Y", never an error
+            from pflab.service import presence
+            seg = presence.start(self.cursor(), self.clock(), os.getpid())
+            if seg["off_from"] is not None:
+                log.info("opened: %s", presence.describe(seg["off_from"], seg["off_to"]))
+        except Exception:
+            log.exception("presence record failed")
         last_run = self.cursor().execute("SELECT max(started_at) FROM job_runs").fetchone()[0]
         if last_run is not None and self.clock() - last_run > timedelta(hours=6):
             self.catching_up, self._woke_at = f"started after {int((self.clock() - last_run).total_seconds() // 3600)} h off", self.clock()
@@ -176,6 +183,11 @@ class Runtime:
             mins = int((now - last).total_seconds() // 60)
             self.catching_up, self._woke_at = f"woke after {mins} min away", now
             try:
+                from pflab.service import presence
+                presence.wake(self.cursor(), now, last_beat=last, pid=os.getpid())
+            except Exception:
+                log.exception("presence record failed")
+            try:
                 wake = {"at": now.isoformat(timespec="seconds"), "away_min": mins, "recovered": service.start(self)}
             except Exception:
                 log.exception("recovery after wake failed")
@@ -190,6 +202,11 @@ class Runtime:
                 self.catching_up = None
                 settle = {"blocked_at": now.isoformat(timespec="seconds"), "blocked_by": str(why)[:300]}
                 self.bump("health", "command")
+        try:
+            from pflab.service import presence
+            presence.beat(self.cursor(), now)
+        except Exception:
+            pass
         self._write_beat(now, wake, settle)
         return self.catching_up
 
