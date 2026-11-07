@@ -20,13 +20,13 @@ from typing import Dict, List, Optional
 
 SENSES = [("markets", "Market data", ["collect", "prices", "nav", "global", "backfill", "instruments", "bars_1m"], "prices, NAVs, world markets"),
           ("filings", "Filings and news", ["filings", "kg"], "company filings, news, the graph's intake"),
-          ("broker", "Kite", ["live", "tradecheck", "idle_cash"], "live prices for what the system holds; his own trades are ignored"),
+          ("broker", "Kite", ["live", "tradecheck", "idle_cash", "kite_token"], "live prices for what the system holds; his own trades are ignored"),
           ("record", "The account", ["ledger", "deposits"], "the system's own account (statements and deposits stand aside)"),
           ("us", "US sleeve", ["us_fx"], "USDINR rates")]
-ROUTINES = [("thinking", "Thinking rounds", ["hq", "conductor", "research", "analyst", "forecast", "comove", "scans", "twin", "paper", "paper_daily", "selfcheck", "companion", "review", "learner", "catch_up", "bear_resolve", "implied_calibration", "forecast_loop", "seats_mode", "benchmark_attr", "situation"],
+ROUTINES = [("thinking", "Thinking rounds", ["hq", "conductor", "research", "analyst", "forecast", "comove", "scans", "twin", "paper", "paper_daily", "selfcheck", "companion", "review", "learner", "catch_up", "sentiment", "macro_attribution", "wave_scan", "bear_resolve", "implied_calibration", "forecast_loop", "seats_mode", "benchmark_attr", "situation"],
              "the brain, research, forecasts, the learner"),
             ("plans", "Plans and alerts", ["plans", "guards", "watches", "watches_close"], "ready plans, guards, price watches"),
-            ("reports", "Reports", ["summary_morning", "summary_evening", "outbox", "voice"], "the morning and evening summaries")]
+            ("reports", "Reports", ["summary_morning", "summary_evening", "outbox", "voice", "outgoing"], "the morning and evening summaries")]
 SAFETY = [("safety", "Safety routines", ["backup", "sandbox", "security"], "backups, the sandbox proof, the privacy check")]
 GROUP_OF = {j: g for g, _l, js, _d in SENSES + ROUTINES + SAFETY for j in js}
 
