@@ -431,9 +431,9 @@ def test_the_job_records_bars_states_gaps_and_is_idempotent(con, tmp_path, root,
     assert r["days"] == ["2026-10-21", "2026-10-22", "2026-10-23"] and r["partial"] == 6 and r["no_token"] == 3 and r["errors"] == 3 and r["full"] == 0
     assert out["US"] == {"skipped": "no minute-bar source for this market yet"}
     n = con.execute("SELECT count(*) FROM bars_1m WHERE isin=? AND CAST(ts AS DATE)=?", [AAA, DAY]).fetchone()[0]
-    assert n == 370                                                                            # 375 minus the 5 the feed did not give: not filled
+    assert n == 350                                                                            # 375 minus the 25 the feed did not give: not filled
     run = con.execute("SELECT n_bars, expected, status, note FROM bars_1m_runs WHERE isin=? AND day=?", [AAA, DAY]).fetchone()
-    assert run[:3] == (370, 375, "partial") and "5 of 375 minutes missing" in run[3]
+    assert run[:3] == (350, 360, "partial") and "10 of 360 minutes missing" in run[3]       # equities deliver 360 bars since 2026-08-03 (found by agent K)
     assert con.execute("SELECT status FROM bars_1m_runs WHERE isin='INE444A01015' AND day=?", [DAY]).fetchone()[0] == "error"
     assert con.execute("SELECT status FROM bars_1m_runs WHERE isin='INE333A01014' AND day=?", [DAY]).fetchone()[0] == "no_token"
     assert con.execute("SELECT min(ts), max(ts) FROM bars_1m WHERE isin=? AND CAST(ts AS DATE)=?", [AAA, DAY]).fetchone() == (pd.Timestamp("2026-10-23 09:15").to_pydatetime(), pd.Timestamp("2026-10-23 15:29").to_pydatetime())
