@@ -61,3 +61,14 @@ Written from the code of `quant/waves.py` and `quant/macro_attr.py` (agent W), w
 - **Crude fall:** a one-day Brent fall at or below the 2nd percentile of earlier one-day moves (69 events 2004-2021 before the non-overlap rule).
 - **Macro attribution:** ridge regression (constant 0.02) over the 250 sessions before the day; unexplained = move minus the parts. Fixed constants, not tuned.
 - Event counts before the non-overlap rule, 2004-2021: waves 111 (59 up), rotations 4, crude falls 69.
+
+## Amendment 2 (2026-11-08 ~01:25, before the sentiment and value-area studies run): their definitions as implemented
+Written from the code of `sentiment/compute.py` (agent T) and `quant/volume_profile.py` (agent V), finished before any returns were looked at.
+- **Extreme sentiment:** the price-based combined score only (India VIX / US VIX, put-call ratio, breadth, FII/DII flows, open interest where they exist; news tone is forward-only and excluded). An event is a day
+  whose score is beyond the expanding 5th (fear) or 95th (greed) percentile of EARLIER days, with at least 120 earlier days. First-of-cluster events are the ones kept by the non-overlap rule. 2008-2021 gives
+  319 events for India (149 fear, 170 greed) before that rule.
+- **Value area / POC (daily approximation, labelled):** with no minute-bar history for 2004-2021, the profile is a rolling 20-session composite of daily bars (each day's traded value spread over its high-low range), bin
+  edges anchored so a past profile never changes. "Outside" = the close beyond the PRIOR day's frozen value area; "back in" = a later close inside that same area; "POC migration" = the sign of the change of the composite POC
+  versus the previous session. `back_in_1`, `back_in_5` are measured from the event close; the migration test uses the 5-session return starting at the next session's close. Where minute bars exist (the Kite backfill, 2015
+  onward for the names covered) they are NOT used in this run, to keep one definition; the minute-bar profile is a forward-only refinement.
+- The matched baseline for the value-area test is the same share for all days whose close lies the same distance (in percent) outside a frozen value area, as written above; for POC migration the baseline is 50% with a binomial test.
