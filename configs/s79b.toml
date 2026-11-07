@@ -1,0 +1,2 @@
+# S79b (overnight): one switch per item. on = false makes the item behave as not there (tools return {"off": true}, jobs skip).
+# Each agent adds only its own [table].

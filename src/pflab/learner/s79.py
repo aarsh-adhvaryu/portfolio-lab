@@ -16,6 +16,11 @@ STUDIES = (
 )
 
 
+WAVE_DOC = "docs/protocols/s79_wave_sentiment_protocol.md"
+WAVE_TESTS = tuple(f"{e}_{h}" for e in ("wave", "rotation", "crude_fall", "extreme_sentiment") for h in (5, 20)) + ("value_area_return_1", "value_area_return_5", "poc_migration_5")
+STUDIES = STUDIES + tuple((f"s79:wave_sentiment:{t}", f"wave_sentiment_s79:{t}", WAVE_DOC, f"pre-registered event study {t}") for t in WAVE_TESTS)
+
+
 def register_all(con, now: datetime) -> List[str]:
     done = []
     for key, template, doc, what in STUDIES:
