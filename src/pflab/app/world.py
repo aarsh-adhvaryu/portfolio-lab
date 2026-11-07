@@ -23,7 +23,7 @@ SENSES = [("markets", "Market data", ["collect", "prices", "nav", "global", "bac
           ("broker", "Kite", ["live", "tradecheck", "idle_cash"], "live prices for what the system holds; his own trades are ignored"),
           ("record", "The account", ["ledger", "deposits"], "the system's own account (statements and deposits stand aside)"),
           ("us", "US sleeve", ["us_fx"], "USDINR rates")]
-ROUTINES = [("thinking", "Thinking rounds", ["hq", "conductor", "research", "analyst", "forecast", "comove", "scans", "twin", "paper", "paper_daily", "selfcheck", "companion", "review", "learner", "catch_up", "bear_resolve", "implied_calibration", "forecast_loop"],
+ROUTINES = [("thinking", "Thinking rounds", ["hq", "conductor", "research", "analyst", "forecast", "comove", "scans", "twin", "paper", "paper_daily", "selfcheck", "companion", "review", "learner", "catch_up", "bear_resolve", "implied_calibration", "forecast_loop", "seats_mode"],
              "the brain, research, forecasts, the learner"),
             ("plans", "Plans and alerts", ["plans", "guards", "watches", "watches_close"], "ready plans, guards, price watches"),
             ("reports", "Reports", ["summary_morning", "summary_evening", "outbox", "voice"], "the morning and evening summaries")]
@@ -281,6 +281,10 @@ def build(rt, now: Optional[datetime] = None) -> dict:
     _sec(out, errors, "looking_into", lambda: looking_into(rt, now), {"investigations": [], "experiments": []})
     from pflab.agenda import runner as agenda_runner                                         # S79: what it is doing when nothing is urgent
     _sec(out, errors, "agenda", lambda: agenda_runner.snapshot(rt.cursor(), now), {"available": False})
+    from pflab.llm import cost as llm_cost                                                   # S79b item 17: cost per useful act, by seat (local seconds, cloud rupees)
+    _sec(out, errors, "seat_cost", lambda: llm_cost.world_panel(rt.cursor(), now), {"available": False})
+    from pflab.situation import report as sit_report                                         # S79b item 16: the situation report is shown first
+    _sec(out, errors, "situation", lambda: sit_report.world_view(rt.cursor()), {"available": False})
     from pflab.app import onboarding
     _sec(out, errors, "bring", lambda: onboarding.bring_list(rt.cursor()), [])               # what he can bring, with what is already held
 

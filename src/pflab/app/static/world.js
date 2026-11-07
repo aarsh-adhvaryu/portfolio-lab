@@ -95,6 +95,7 @@ function wInspector(d) {
 }
 function wShell(d) {
   return `<div class="world"><div class="left">
+    <section class="glass" id="wsit-sec"><div class="panelh"><b>The situation</b><span class="age" id="wsit-age"></span></div><div class="checks" id="wsit" style="max-height:none"></div></section>
     <div class="map" id="wmap"><div class="wtitle"><b>The world</b><span id="wupd">live</span></div>${buildWorld(d)}
       <div class="legend"><span><i style="background:var(--w-working)"></i>working now</span><span><i style="background:var(--w-ok)"></i>done</span><span><i style="background:var(--w-late)"></i>due</span>
       <span><i style="background:var(--w-wait)"></i>waiting</span><span><i style="background:var(--w-down)"></i>failed</span><span><i style="background:var(--w-idle)"></i>idle</span></div></div>
@@ -108,6 +109,7 @@ function wShell(d) {
           <input id="wask" placeholder="Tell the AI what you want, or ask what it is doing…" aria-label="Ask the AI"><button class="btn primary" id="wsend">Send</button></div><div class="age" id="wmsg"></div></section>
       <div id="winsp"></div>
       <section class="glass" id="wagenda-sec"><div class="panelh"><b>What it is doing now</b><span class="age" id="wagenda-age"></span></div><div class="checks" id="wagenda" style="max-height:none"></div></section>
+      <section class="glass" id="wcost-sec"><div class="panelh"><b>Cost per useful act, by seat</b><span class="age" id="wcost-age"></span></div><div class="checks" id="wcost" style="max-height:none"></div></section>
       <section class="glass"><div class="panelh"><b>Is everything running? Is it done?</b><span class="age" id="wchk"></span></div><div class="tabsm" id="wtabs"></div><div class="checks" id="wchecks"></div></section>
       <section class="glass"><div class="panelh"><b>Live activity</b><span class="age">newest first</span></div><div class="feed" id="wfeed"></div></section>
     </aside></div>`;
@@ -171,6 +173,52 @@ function wAgenda(d) {
   wset('wagenda', h);
   const age = $('wagenda-age'); if (age) age.textContent = a.available ? `${a.useful_today || 0} useful today` : '';
 }
+/* S79b item 17: the local seats and what a useful act costs on each (seconds of the card, tokens, cloud rupees). */
+function wSeatCost(d) {
+  const c = d.seat_cost || { available: false };
+  const row = (st, ic, t, dd, w) => `<div class="crow st-${st}"><span class="si">${ic}</span><div><div class="t">${esc(t)}</div><div class="d">${esc(dd)}</div></div><span class="w">${esc(w || '')}</span></div>`;
+  const f = (x, u) => (x === null || x === undefined) ? 'no useful act yet' : Number(x).toFixed(x < 10 ? 2 : 0) + u;
+  let h = '';
+  if (!c.available) h = `<div class="d" style="padding:8px;color:var(--w-dim)">${c.off ? 'The seats are switched off.' : 'Not measured yet.'}</div>`;
+  else {
+    h += Object.entries(c.picks || {}).map(([s, p]) => row(p.fallback ? 'waiting' : 'ok', p.fallback ? '◔' : '·', `${s === 'fast' ? 'Fast' : 'Thinker'} seat: ${p.model}`, p.fallback ? p.reason : 'as registered', '')).join('');
+    h += (c.rows || []).map((r) => row(r.seat === 'cloud' ? 'waiting' : 'ok', '·', r.label, `${r.calls} calls · ${f(r.per_act_seconds, ' s')} and ${f(r.per_act_tokens, ' tokens')} per useful act` + (r.seat === 'cloud' ? ` · Rs ${f(r.per_act_rupees, '')} per act` : ''), r.seat === 'cloud' ? 'Rs ' + Number(r.rupees || 0).toFixed(0) : '')).join('');
+    const e = (c.escalations || {}).by_rule || {}, k = Object.keys(e);
+    if (k.length) h += row('ok', '·', 'Local answers vs cloud', k.map((x) => x.replace(/_/g, ' ') + ' ' + e[x].n + (e[x].cloud ? ' (' + e[x].cloud + ' cloud)' : '')).join(' · '), '');
+    if (c.teacher && c.teacher.examples) h += row('ok', '·', 'Teacher examples kept', `${c.teacher.examples} cloud answers saved for later training of the local models, ${c.teacher.scored} scored`, '');
+  }
+  wset('wcost', h);
+  const age = $('wcost-age'); if (age) age.textContent = c.available ? `${c.days} days · ${c.useful_acts} useful acts` : '';
+}
+/* S79b item 16: the situation report comes FIRST (NOW, WHY, SO WHAT, NEXT, ACT, and the disagreements kept side by side); the agents' detail is the map and panels below it. */
+function wSituation(d) {
+  const s = d.situation || { available: false }, host = $('wsit-sec');
+  if (host) host.style.display = s.off ? 'none' : '';
+  const row = (st, ic, t, dd, w) => `<div class="crow st-${st}"><span class="si">${ic}</span><div><div class="t">${esc(t)}</div><div class="d">${esc(dd || '')}</div></div><span class="w">${esc(w || '')}</span></div>`;
+  const grp = (t) => `<div class="cgrp">${esc(t)}</div>`;
+  let h = '';
+  if (!s.available) h = `<div class="d" style="padding:8px;color:var(--w-dim)">No situation report yet. It is written by itself when the day's data is in.</div>`;
+  else (s.reports || []).forEach((r) => {
+    const pct = (p) => Object.entries(p || {}).map(([k, v]) => `${k} sessions: ${v}`).join(', ');
+    h += grp(`${r.market} · ${r.as_of} · ${String(r.mode || '').replace('_', ' ')} · ${r.coded_only ? 'written by code (no model text)' : 'written by ' + (r.author || 'the local model')}`);
+    if ((r.flags || []).length) h += row('working', '●', 'Flags', r.flags.join('; '), '');
+    h += grp('Now') + (r.now || []).map((x) => row('ok', '·', x.text, '', '')).join('');
+    if ((r.why || []).length) h += grp('Why (each cause is dated before its effect)') + r.why.map((x) => row('ok', '→', `${x.cause_text}`.slice(0, 110) + '  →  ' + `${x.effect_text}`.slice(0, 110), `${x.cause_date} then ${x.effect_date}. ${x.mechanism || ''}`, '')).join('');
+    if ((r.disagreements || []).length) h += grp('Disagreements (kept, both on the agenda)') + r.disagreements.map((x) => row('waiting', '⇄', x.subject,
+      x.sides.map((e) => `${e.side}${e.probability != null ? ' (' + e.probability + ')' : ''}: ${e.text}`).join('   |   '), '')).join('');
+    if ((r.so_what || []).length) h += grp('So what, for the book') + r.so_what.map((x) => row('ok', '·', x.text, '', '')).join('');
+    if ((r.next || []).length) h += grp('Next (probabilities come from the tools)') + r.next.map((x) => row('ok', '·', x.text, `${pct(x.probs)}${x.note ? ' · ' + x.note : ''}`, '')).join('');
+    const a = r.act || {}, acts = [];
+    if (a.paper_request) acts.push(['Asked the paper team', a.paper_request]);
+    (a.agenda || []).forEach((x) => acts.push(['Agenda', `${x.subject}: ${x.reason}`]));
+    if (a.question) acts.push(['Question for you', `${a.question.text} (default: ${a.question.default})`]);
+    (a.watch || []).forEach((x) => acts.push(['Watching', `${x.series} ${x.op} ${x.threshold}: ${x.text}`]));
+    if (acts.length) h += grp('Act') + acts.map(([t, dd]) => row('working', '▸', t, dd, '')).join('');
+    h += `<div class="d" style="padding:4px 8px;color:var(--w-dim)">${r.watch} watch trigger(s) active · ${r.calibration < 20 ? r.calibration + ' scored outcome(s): too few for a calibration figure' : r.calibration + ' scored outcomes'}</div>`;
+  });
+  wset('wsit', h);
+  const age = $('wsit-age'); if (age) age.textContent = s.available ? `${(s.reports || []).length} market(s)` : '';
+}
 function wFeed(d) {
   $('wfeed').innerHTML = d.feed.map((f) => `<div class="fi st-${f.tone === 'down' ? 'down' : f.tone === 'working' ? 'working' : f.tone === 'waiting' ? 'waiting' : 'ok'}"><span class="tm">${esc(f.at.slice(11, 19))}</span>
     <span class="tx"><span class="wh">${esc(f.who)}</span> · ${esc(f.text)}</span></div>`).join('') || '<div class="d" style="padding:10px;color:var(--w-dim)">Nothing has happened yet. When the first routine runs it appears here.</div>';
@@ -193,7 +241,7 @@ function patchWorld(d) {
   const p = d.pulse; $('worb').className = 'orb ' + (p.tone === 'ok' ? '' : p.tone); $('wverdict').textContent = p.verdict;
   $('wsys').textContent = (p.catching_up ? p.catching_up + ' · ' : '') + (p.system_verdict || '');
   const pb = $('wpause'); pb.textContent = p.paused ? 'Resume the system' : 'Pause the system'; pb.className = 'btn' + (p.paused ? ' primary' : '');
-  wCounts(d); wChecks(d); wFeed(d); wBelow(d); wAgenda(d);
+  wCounts(d); wChecks(d); wFeed(d); wBelow(d); wAgenda(d); wSituation(d); wSeatCost(d);
   wset('winsp', wInspector(d), (el) => {
     const cl = el.querySelector('#wclose'); if (cl) cl.onclick = () => { W.sel = null; W.html.winsp = null; patchWorld(d); };
     hqWire(el, () => fetchHq(true));

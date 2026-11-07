@@ -127,13 +127,28 @@ def chat(model: str, messages: List[dict], *, think: bool = False, temperature: 
          timeout: int = 600, num_ctx: Optional[int] = None, purpose: str = "", sampling=None) -> Reply:
     """One chat completion. `think=False` turns the reasoning trace off (fast, deterministic length);
     `fmt` is an optional JSON schema for constrained output. `num_ctx`: the context window to use; Ollama's
-    default (4,096 tokens here) silently drops the start of a longer prompt (S44: long document prompts)."""
+    default (4,096 tokens here) silently drops the start of a longer prompt (S44: long document prompts).
+    S79b item 17: a model written "seat:fast" or "seat:thinker" is a SEAT (llm/seats.py): its model and backend come from the registered pick, falling back to qwen3:8b-q8_0;
+    a seat on the llama server goes there (OpenAI-compatible, the schema as a json_schema constraint), the rest through Ollama as before."""
+    seat_opts: dict = {}
+    if isinstance(model, str) and model.startswith("seat:"):
+        from pflab.llm import seats
+        if seats.is_on() and seats.is_seat_name(model):
+            tgt = seats.chat_target(model)
+            if tgt["backend"] == "llama_server":
+                from pflab.llm import server
+                return server.chat(tgt["model"], messages, think=think, temperature=temperature, seed=seed, num_predict=num_predict, fmt=fmt, timeout=timeout,
+                                   purpose=purpose, options={**tgt["options"], **sampling_options(tgt["key"], sampling, think, fmt, temperature)})
+            model, seat_opts = tgt["model"], tgt["options"]
+        else:
+            model = seats.FALLBACK
     models = installed(transport)
     name = resolve(model, models)
     if name is None:
         raise OllamaError(f"{model} is not installed in Ollama (ollama pull {model}); installed: {sorted(models)}")
     payload = {"model": name, "stream": False, "think": think, "messages": messages,
                "options": {"temperature": temperature, "seed": seed, "num_predict": num_predict}}
+    payload["options"].update(seat_opts)
     payload["options"].update(sampling_options(name, sampling, think, fmt, temperature))
     if num_ctx:
         payload["options"]["num_ctx"] = int(num_ctx)

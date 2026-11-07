@@ -1,0 +1,62 @@
+# S79b item 17 (software): the two local model seats. `pflab.llm.seats` reads this file and the picks in `configs/llm_models.toml`.
+#
+#   FAST     resident in pre_open / session (answers in seconds, never blocked by a swap)
+#   THINKER  loaded in post_close / deep (a larger MoE, the slow careful reader); never resident together with FAST
+#
+# Which model sits in a seat is a MEASURED decision (agent L2 / the evals): a `[[pick]]` in llm_models.toml with role "seat-fast" or "seat-thinker" and a
+# `decision` that starts with "chosen" (the newest such pick wins). Until one exists the seat uses `default` below. The pick's `model` is a key of
+# `[model."<key>"]` below; a key with no entry there is read as an Ollama model of that name.
+#
+# A seat whose model is missing, unhealthy, or does not fit in free RAM falls back to `fallback_model` (qwen3:8b-q8_0, never deleted, always the safe
+# answer). The reason is returned with the seat so a screen can say it.
+
+[policy]
+fallback_model = "qwen3:8b-q8_0"
+fallback_backend = "ollama"
+ram_floor_gb = 6.0            # free RAM that must remain AFTER the seat's model is loaded (the app, DuckDB and Docker need room)
+gpu_free_floor_mib = 2000     # free GPU memory that must exist before a llama-server starts
+hysteresis_s = 900            # a seat is not swapped again within this many seconds of the last swap (no thrash at a mode edge)
+mode_dwell_s = 120            # the new mode must have held this long before a swap is considered (a clock edge flicker is ignored)
+unload_keep_alive = 0         # Ollama keep_alive sent to unload the other seat's model
+fast_keep_alive = "30m"       # Ollama keep_alive for the resident seat
+caps_ack = true   # 2026-11-08 00:25: the lead ran nvidia-smi -lgc 210,2100 and -lmc 405,9001 (locked clocks do not show in the max-clock query)              # true once the GPU clocks were capped (nvidia-smi -lgc 210,2100 -lmc 405,9001) and the lead confirmed it; env PFLAB_GPU_CAPS=ok does the same for one run
+caps_max_sm_mhz = 2100        # the SM clock cap read back from nvidia-smi (clocks.max.sm) counts as applied when at or below this
+caps_max_mem_mhz = 9001
+
+[mode_seat]
+pre_open = "fast"
+session = "fast"
+post_close = "thinker"
+deep = "thinker"
+
+[seat.fast]
+default = "qwen3:8b-q8_0"
+purpose = "answers and routing in market hours: the chat front, document routing, tagging, short structured reads"
+
+[seat.thinker]
+default = "qwen3:8b-q8_0"     # the MoE only enters through a registered pick
+purpose = "post-close and deep work: debates, filings, the synthesis, anything that can wait for a better answer"
+
+[llama_server]
+exe = "D:/llama.cpp/b12189/bin/llama-server.exe"
+host = "127.0.0.1"            # local only; the wrapper refuses any other host
+port = 8089
+ctx_size = 8192
+parallel = 1
+ngl = 99
+startup_timeout_s = 240
+threads = 0                   # 0: cores - 2
+
+# Model entries. backend "ollama": `ollama` is the Ollama tag. backend "llama_server": `gguf` is the file, `n_cpu_moe` the number of MoE layers kept on the CPU.
+# `ram_gb` is the system RAM the model needs once loaded (weights kept off the GPU plus context), measured or estimated and stated; it feeds the RAM floor.
+[model."qwen3:8b-q8_0"]
+backend = "ollama"
+ollama = "qwen3:8b-q8_0"
+ram_gb = 1.0
+options = { num_ctx = 8192 }
+
+[model."qwen3:30b-a3b"]
+backend = "ollama"
+ollama = "qwen3:30b-a3b"
+ram_gb = 14.0
+options = { num_ctx = 8192 }

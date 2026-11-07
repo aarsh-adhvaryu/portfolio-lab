@@ -28,9 +28,10 @@ def ask_json(system: str, prompt: str, schema: dict, validate: Optional[Callable
     """The model's answer as a dict that passed `schema` (the model is constrained to it) and `validate` (code: returns None, or what is wrong). A reply that is
     not JSON, not an object or rejected by `validate` is asked again once with the error named; after that, or if the model cannot be reached at all, the result
     carries the error and no value. `chat` is injectable (tests)."""
-    from pflab.llm import client, registry
+    from pflab.llm import client, constrained, registry
     chat = chat or client.chat
-    name = model or registry.chosen("general") or "qwen3:8b-q8_0"
+    from pflab.llm import seats
+    name = model or seats.alias_if_picked("fast") or registry.chosen("general") or "qwen3:8b-q8_0"      # S79b: a registered FAST-seat pick takes over; inert until one exists
     err: Optional[str] = None
     for attempt in range(1, retries + 2):
         user = prompt + (f"\nYour previous answer was invalid: {err}. Answer again with valid JSON only." if err else "")
@@ -46,7 +47,9 @@ def ask_json(system: str, prompt: str, schema: dict, validate: Optional[Callable
         if not isinstance(obj, dict):
             err = "the reply was not a JSON object"
             continue
-        err = validate(obj) if validate else None
+        err = constrained.check(obj, schema)             # S79b item 17: the constraint is verified in code, not trusted (a backend that ignored the schema is caught)
+        if not err and validate:
+            err = validate(obj)
         if not err:
             return Result(obj, None, attempt)
     return Result(None, err, retries + 1)
