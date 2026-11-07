@@ -96,7 +96,7 @@ def run(rt_or_con, market: str = "IN", as_of: Optional[date] = None, now: Option
     if pl in ("full", "short") and use_model:
         wl = sorted({c["subject"][len("level_"):] for c in claims if c["subject"].startswith("level_")})
         use = [c for c in claims if pl == "full" or c["kind"] in ("regime", "wave", "rotation", "move", "macro", "transmission", "sentiment", "event", "exposure", "book", "forecast", "fall_risk")]
-        dr = synth.draft(market, as_of, mode, use, cons, cands if pl == "full" else [], wl, short=(pl == "short"), chat=chat)
+        dr = synth.draft(market, as_of, mode, use, cons, cands if pl == "full" else [], wl, short=(pl == "short"), chat=chat, headline=R.headline(claims))
     sec, rejected, coded_only = R.assemble(claims, cons, cands, dr, sorted({c["subject"][len("level_"):] for c in claims if c["subject"].startswith("level_")}))
     model = synth.thinker_model() if dr and "error" not in dr else ""
     if dr and "error" in dr:

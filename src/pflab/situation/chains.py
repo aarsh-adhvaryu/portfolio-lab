@@ -40,16 +40,52 @@ def validate_link(cause: Optional[dict], effect: Optional[dict]) -> Tuple[bool, 
     cd, ed = _date(cause["as_of"]), _date(effect["as_of"])
     if cd is None or ed is None:
         return False, "a claim has no date"
-    if cd >= ed:
+    state_effect = effect["kind"] in STATE_KINDS or effect["subject"].startswith(STATE_SUBJECTS)
+    if cd > ed or (cd == ed and not state_effect):
         return False, (f"the cause ({cause['kind']} {cause['subject']}, dated {cd}) is not dated before its effect ({effect['kind']} {effect['subject']}, dated {ed}): "
                        f"{'a same-day pair is a co-movement, not a cause' if cd == ed else 'a later event cannot explain an earlier one'}")
-    if not cause.get("call_ids"):
+    if not cause.get("call_ids") and (cause.get("source") or "") not in DATA_SOURCES:
         return False, "the cause rests on no tool call"
     return True, ""
 
 
-def make_chain(links: List[dict], by_id: Dict[int, dict]) -> dict:
-    """links: [{cause, effect, mechanism}] with claim ids. Returns {links: [...checked], ok, types, reason}."""
+# Only these cause -> effect types may appear as an explanation (WHY). A link between claims of any other kind is not a causal link, whatever the model says (the first real report linked
+# "US VIX contribution" to "the unexplained part of the index move"). A state effect (the book's exposure, a standing relative position) has no event time, so a cause dated the same day is
+# allowed there; every event effect needs a cause dated strictly before it. The flows type uses the PREVIOUS session's foreign buying: the same session's flows are a NOW fact (a part of
+# the day's move), not a cause of it.
+STATE_KINDS = ("exposure", "book", "allocation")
+STATE_SUBJECTS = ("relative_",)
+DATA_SOURCES = ("week", "levels", "book")                 # claims read from the collected files by code, no tool call: valid evidence for a cause
+CRUDE = ("week_BRENT_FUT",)
+
+
+def _is(c: dict, kind: str, *subjects: str, prefix: bool = False) -> bool:
+    return c["kind"] == kind and (not subjects or (c["subject"].startswith(subjects) if prefix else c["subject"] in subjects))
+
+
+WHITELIST = (
+    ("us_close>nse_gap", lambda c, e: _is(c, "macro", "leg_", prefix=True) and _is(e, "transmission", "open_gap"),
+     "a leg of the one-factor gap regression (quant/transmission.py)"),
+    ("foreign_flows>index_move", lambda c, e: _is(c, "macro", "flow_prev") and _is(e, "macro", "macro_attribution"),
+     "the previous session's foreign buying as a candidate driver of the day's move; an association, not a proof"),
+    ("crude>oil_theme_exposure", lambda c, e: _is(c, "macro", *CRUDE) and e["kind"] == "exposure" and "primary_proxy crude" in e["text"],
+     "crude is this theme's primary proxy, so its move reaches the book through the holdings that carry the theme"),
+    ("asia>relative_performance", lambda c, e: _is(c, "macro", "week_ASIA") and _is(e, "move", "relative_vs_asia_week"),
+     "the Asian peers' week against India's week; an association, not a proof"),
+)
+ALLOWED = ", ".join(t for t, _, _ in WHITELIST)
+
+
+def whitelisted(cause: dict, effect: dict) -> Optional[str]:
+    """The whitelisted type name of a cause -> effect pair, or None."""
+    for name, test, _ in WHITELIST:
+        if test(cause, effect):
+            return name
+    return None
+
+
+def make_chain(links: List[dict], by_id: Dict[int, dict], strict_types: bool = False) -> dict:
+    """links: [{cause, effect, mechanism}] with claim ids. Returns {links: [...checked], ok, types, reason}. With strict_types the pair must also be a whitelisted type."""
     out, ok, reasons, types = [], True, [], []
     for lk in links:
         try:
@@ -57,9 +93,12 @@ def make_chain(links: List[dict], by_id: Dict[int, dict]) -> dict:
         except (KeyError, TypeError, ValueError):
             c = e = None
         good, why = validate_link(c, e)
+        wl = whitelisted(c, e) if (good and strict_types) else None
+        if good and strict_types and wl is None:
+            good, why = False, f"{c['kind']} {c['subject']} -> {e['kind']} {e['subject']} is not a causal link the system accepts (allowed types: {ALLOWED})"
         row = {"cause": lk.get("cause"), "effect": lk.get("effect"), "mechanism": str(lk.get("mechanism") or "")[:240], "ok": good, "reason": why}
         if good:
-            row.update(cause_date=str(_date(c["as_of"])), effect_date=str(_date(e["as_of"])), type=chain_type(c, e), cause_calls=list(c.get("call_ids") or []),
+            row.update(cause_date=str(_date(c["as_of"])), effect_date=str(_date(e["as_of"])), type=wl or chain_type(c, e), cause_calls=list(c.get("call_ids") or []),
                        effect_calls=list(e.get("call_ids") or []))
             types.append(row["type"])
         else:
@@ -78,6 +117,12 @@ def code_links(by_id: Dict[int, dict]) -> List[dict]:
     for g in gaps:
         for lg in sorted(legs, key=lambda c: -abs(c.get("value") or 0.0))[:3]:
             links.append({"cause": lg["claim_id"], "effect": g["claim_id"], "mechanism": f"{lg['subject'][4:]} is a leg of the one-factor gap regression (quant/transmission.py)"})
+    # the other whitelisted types, every pair that exists among the claims (the check in make_chain decides)
+    for e in by_id.values():
+        for c in by_id.values():
+            name = whitelisted(c, e) if c is not e else None
+            if name and name != "us_close>nse_gap":
+                links.append({"cause": c["claim_id"], "effect": e["claim_id"], "mechanism": next(m for n, _, m in WHITELIST if n == name)})
     return links
 
 

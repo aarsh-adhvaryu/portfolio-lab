@@ -45,7 +45,7 @@ SCHEMA = {
 SYSTEM = (
     "You are the synthesizer for a private investor who is not a trader. You read typed CLAIMS about one market, each with an id, and you write one structured report as JSON. "
     "Rules. (1) Use only claim ids that are listed. (2) Write plain words and never write a number or a date yourself; if a figure is needed, copy it exactly as printed in the claim and list that claim's id in 'claims'. "
-    "(3) now: what happened, 2 to 4 short items, each with the ids it rests on. (4) why: cause -> effect pairs of claim ids where the cause is an EARLIER event than the effect; "
+    "(3) now: the HEADLINE FACTS (the index move, its parts, breadth, flags, the book, the week) are already written by code; add at most 3 short commentary items that CONNECT them (what ties the week to the day), each with the ids it rests on, and do not repeat the headline. (4) why: cause -> effect pairs of claim ids where the cause is an EARLIER event than the effect and the pair is one of the allowed types (us_close>nse_gap, foreign_flows>index_move, crude>oil_theme_exposure, asia>relative_performance); any other pair is refused; "
     "give the mechanism in words; never link two things from the same day. (5) so_what: what it means for the paper book, using exposure and book claims. "
     "(6) next: for each scenario in the list of SCENARIOS you want to comment on, give its key in 'candidate' and one sentence in 'note'; you cannot change a probability. "
     "(7) act: paper_request (empty if none; one request to the paper team to look into something), agenda (things the system should look into itself: the subject must be the subject of a claim, "
@@ -81,9 +81,14 @@ def claims_block(claims: List[dict], limit: int = 42, text_chars: int = 190) -> 
     return "\n".join(f"[claim {c['claim_id']}] {c['kind']}/{c['subject']} (dated {c['as_of']}): {c['text'][:text_chars]}" for c in cs)
 
 
-def prompt(market: str, as_of: date, mode: str, claims: List[dict], contradictions: List[dict], cands: List[dict], watchable: List[str], short: bool) -> str:
-    parts = [f"Market {market}. Date {as_of}. Mode {mode}." + (" Short intraday read: keep it to the few items that changed." if short else ""),
-             "CLAIMS:\n" + claims_block(claims, 26 if short else 42)]
+def prompt(market: str, as_of: date, mode: str, claims: List[dict], contradictions: List[dict], cands: List[dict], watchable: List[str], short: bool,
+           headline: Optional[List[dict]] = None) -> str:
+    hid = {i for h in (headline or []) for i in h.get("claims", [])}
+    rest = [c for c in claims if c["claim_id"] not in hid and not c["subject"].startswith(("leg_", "sector_"))] + [c for c in claims if c["subject"].startswith("leg_")][:3]
+    parts = [f"Market {market}. Date {as_of}. Mode {mode}." + (" Short intraday read: keep it to the few items that changed." if short else "")]
+    if headline:
+        parts.append("HEADLINE FACTS (already written by code; do not repeat):\n" + "\n".join(f"- {h['text']} [claim {', '.join(str(i) for i in h['claims'])}]" for h in headline))
+    parts.append("OTHER CLAIMS:\n" + claims_block(rest, 26 if short else 46))
     if contradictions:
         parts.append("DISAGREEMENTS (keep both sides, do not resolve):\n" + "\n".join(
             f"- {c['subject']}: " + " VERSUS ".join(f"{s['side']} [claim {', '.join(str(i) for i in s['claim_ids'])}]" for s in c["explanations"]) for c in contradictions[:5]))
@@ -110,7 +115,10 @@ def evidence_results(by_id: Dict[int, dict], ids: List[int]) -> Dict[int, str]:
 def verify(text: str, ids: List[int], by_id: Dict[int, dict]) -> Tuple[str, List[dict], List[int]]:
     """(clean text, rejected, claim ids used). Sentences without a figure pass; a sentence with a figure needs the cited claims to hold that figure."""
     text = " ".join(str(text or "").split())
-    ids = [int(i) for i in ids or [] if int(i) in by_id]
+    inline = [int(x) for t in re.findall(r"\[claims?\s*([\d,\s]+)\]", text, flags=re.I) for x in re.findall(r"\d+", t)]       # the model often writes its citations in the sentence: they are ids, not figures
+    text = " ".join(re.sub(r"\s*\[claims?\s*[\d,\s]+\]", "", text, flags=re.I).split())
+    ids = [int(i) for i in list(ids or []) + inline if int(i) in by_id]
+    ids = list(dict.fromkeys(ids))
     if not text:
         return "", [], []
     res = evidence_results(by_id, ids)
@@ -142,11 +150,11 @@ def watch_ok(w: dict, by_id: Dict[int, dict], series_ok: List[str]) -> Tuple[boo
 
 
 def draft(market: str, as_of: date, mode: str, claims: List[dict], contradictions: List[dict], cands: List[dict], watchable: List[str], short: bool = False,
-          chat: Optional[Callable[[str, str, dict], str]] = None) -> dict:
+          chat: Optional[Callable[[str, str, dict], str]] = None, headline: Optional[List[dict]] = None) -> dict:
     """The model's raw draft as a dict, or {'error': why} when the model is not available or its output is not JSON of the schema's shape."""
     chat = chat or local_chat
     try:
-        raw = chat(SYSTEM, prompt(market, as_of, mode, claims, contradictions, cands, watchable, short), SCHEMA)
+        raw = chat(SYSTEM, prompt(market, as_of, mode, claims, contradictions, cands, watchable, short, headline), SCHEMA)
     except Exception as e:                                                      # the model being away is a normal day: the code-written report answers
         return {"error": f"{type(e).__name__}: {str(e)[:160]}"}
     try:

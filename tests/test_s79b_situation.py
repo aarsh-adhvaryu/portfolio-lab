@@ -171,7 +171,7 @@ def test_model_draft_is_checked_and_scenarios_keep_the_tools_probabilities(rt):
     draft = {"now": [{"text": "The forecast leans down by 77 percent.", "claims": [cs[0]["claim_id"]]}, {"text": "The forecast is mixed.", "claims": [cs[0]["claim_id"]]}],
              "why": [], "so_what": [], "next": [{"candidate": "index_lower", "note": "The chance is 0.9 of a fall.", "claims": [cs[0]["claim_id"]]}], "act": {}}
     sec, rejected, coded = report.assemble(claims, [], cands, draft, [])
-    assert [x["text"] for x in sec["now"]] == ["The forecast is mixed."] and any("77" in r["sentence"] for r in rejected)
+    assert [x["text"] for x in sec["now"] if not x.get("headline")] == ["The forecast is mixed."] and any("77" in r["sentence"] for r in rejected)
     assert sec["next"][0]["note"] == "" and sec["next"][0]["probs"]["5"] == 0.55      # the model cannot change or restate a probability
     assert coded is False
 
@@ -270,7 +270,7 @@ def test_full_run_with_a_fake_model_and_report_first_world(rt, monkeypatch, tmp_
 
     def chat(system, user, schema):
         seen["user"] = user
-        ids = {m.group(2): int(m.group(1)) for m in __import__("re").finditer(r"\[claim (\d+)\] \w+/(\w+)", user)}
+        ids = {"breadth": con.execute("SELECT claim_id FROM situation_claim WHERE subject='breadth'").fetchone()[0]}
         return json.dumps({"now": [{"text": "Fewer names rose than fell.", "claims": [ids["breadth"]]}, {"text": "A 99 percent collapse is coming.", "claims": [ids["breadth"]]}],
                            "why": [], "so_what": [{"text": "The paper book is not started.", "claims": []}], "next": [{"candidate": "fall5_20", "note": "Worth watching closely.", "claims": []}],
                            "act": {"paper_request": "Look at how much cash the book holds.", "agenda": [{"subject": "fall_risk_20", "reason": "the chance is rising"}, {"subject": "nonsense", "reason": "x"}],
@@ -278,7 +278,9 @@ def test_full_run_with_a_fake_model_and_report_first_world(rt, monkeypatch, tmp_
 
     out = build.run(rt, "IN", DAY, NOW, "post_close", chat=chat, cfg=CFG)
     assert out["plan"] == "full" and out["coded_only"] is False
-    assert out["sections"]["now"][0]["text"] == "Fewer names rose than fell." and len(out["sections"]["now"]) == 1       # the invented figure is dropped
+    comm = [x for x in out["sections"]["now"] if not x.get("headline")]
+    assert [x["text"] for x in comm] == ["Fewer names rose than fell."]                                               # the invented figure is dropped
+    assert out["sections"]["now"][0].get("headline") and out["sections"]["now"][0]["by"] == "code"                  # the headline facts come first, written by code
     assert any("99" in r["sentence"] for r in out["rejected"]) and any("agenda subject" in r["why"] for r in out["rejected"])
     assert out["sections"]["next"][0]["key"] == "fall5_20" and out["sections"]["next"][0]["probs"] == {"20": 0.21}
     assert "SITUATION IN" in out["text"] and "NOW" in out["text"] and "ACT" in out["text"]
@@ -292,7 +294,7 @@ def test_full_run_with_a_fake_model_and_report_first_world(rt, monkeypatch, tmp_
     assert con.execute("SELECT count(*) FROM situation_prediction").fetchone()[0] == 1
     assert con.execute("SELECT count(*) FROM paper_inputs").fetchone()[0] == 1                      # one request a day
     v = report.world_view(con, ["IN"])
-    assert v["available"] and v["reports"][0]["now"][0]["text"] == "Fewer names rose than fell."
+    assert v["available"] and "Fewer names rose than fell." in [x["text"] for x in v["reports"][0]["now"]]
     assert "Fewer names rose than fell." in "\n".join(report.note_lines(con, "IN"))
     # the World screen shows the situation before the map
     js = (Path(__file__).resolve().parents[1] / "src" / "pflab" / "app" / "static" / "world.js").read_text(encoding="utf-8")
@@ -332,3 +334,145 @@ def test_tool_reads_the_stored_report(rt, monkeypatch):
     build.run(rt, "IN", DAY, NOW, "post_close", use_model=False, cfg=CFG)
     res = t_situation.situation(ctx, {"claims": True})
     assert res["available"] and res["claims"] and res["calibration"]["n"] == 0 and "SITUATION" in res["text"]
+
+
+# --- the week story: headline facts, 5-session context, theme shifts, whitelisted chains, the transmission miss ----------------------------------------------------------------------
+
+MACRO = {"market": "IN", "session": "2026-11-06", "index": "Nifty 500 TRI", "total_pct": 1.01697, "unexplained_pct": 1.17419, "explained_pct": -0.15722, "dominant": "unexplained",
+         "parts": {"crude": {"label": "Brent crude", "pct": -0.029021, "beta": -0.007482, "factor_move": 3.88, "n": 224}, "currency": {"label": "USDINR", "pct": 0.051438, "beta": -0.86, "n": 224},
+                   "us10y": {"label": "US 10-year", "pct": 0.038341, "n": 224}, "nasdaq": {"label": "Nasdaq", "pct": -0.438631, "n": 224},
+                   "flows": {"label": "foreign net equity buying", "pct": 0.783962, "n": 224}, "asia": {"label": "Asian peers", "pct": -0.563309, "n": 224}}}
+TRANS = {"market": "IN", "asof": "2026-11-06", "target_session": "2026-11-06", "source_session": "2026-11-05", "expected_gap_pct": -1.556, "sd_pct": 0.649, "headline_driver": "US_SP500",
+         "target": "Nifty 50", "legs": [{"driver": "US_SP500", "label": "S&P 500", "source_move": -4.3557, "source_move_unit": "percent", "beta": 0.3567, "r2": 0.1828, "contribution_pct": -1.556},
+                                         {"driver": "US_VIX", "label": "US VIX", "source_move": 11.57, "source_move_unit": "points", "beta": -0.0021, "r2": 0.21, "contribution_pct": -2.3982}]}
+
+
+def _series(root: Path, folder: str, name: str, closes, end: date, col="close"):
+    days = [end - timedelta(days=i) for i in range(len(closes) - 1, -1, -1)]
+    (root / folder).mkdir(parents=True, exist_ok=True)
+    pd.DataFrame({"date": [pd.Timestamp(x) for x in days], col: closes}).to_parquet(root / folder / f"{name}.parquet")
+
+
+def test_headline_facts_come_first_and_are_written_by_code(rt, monkeypatch):
+    _fake_tool(monkeypatch, "macro_attribution", dict(MACRO))
+    _fake_tool(monkeypatch, "wave_detector", {"session": "2026-11-06", "decided": True, "wave": False, "stats": {"adv_share": 0.35, "dom_share": 0.3}, "rotation": {"decided": True, "flag": None}})
+    _fake_tool(monkeypatch, "breadth", {"day": "2026-11-06", "advancers": 900, "decliners": 1700, "advancing_pct": 34.5, "advance_decline_ratio": 0.53,
+                                        "above_sma50": {"pct": 30.1}, "above_sma20": {"pct": 41.2}, "new_high_50d": 20, "new_low_50d": 150})
+    _only(monkeypatch, ["macro_attribution", "wave_detector", "breadth"])
+
+    def chat(system, user, schema):
+        assert "HEADLINE FACTS" in user and "do not repeat" in user
+        return json.dumps({"now": [{"text": "The day looked stronger than the mood of the week.", "claims": []}], "why": [], "so_what": [], "next": [], "act": {}})
+
+    out = build.run(rt, "IN", DAY, NOW, "post_close", chat=chat, cfg=CFG)
+    now = out["sections"]["now"]
+    heads = [x["text"] for x in now if x.get("headline")]
+    assert now[0]["headline"] and all(x["by"] == "code" for x in now if x.get("headline"))
+    assert "Nifty 500 TRI day move total_pct 1.01697" in heads[0]
+    assert "foreign flows 0.783962" in heads[1] and "crude -0.029021" in heads[1] and "Asian peers -0.563309" in heads[1]
+    assert "unexplained_share_pct 115.5" in heads[2]                                                       # the unexplained share, worked by code
+    assert any(h.startswith("Breadth: advancing_pct 34.5") for h in heads)
+    assert any(h.startswith("Wave and rotation flags: none") for h in heads)
+    assert any("change on the day is not available" in h for h in heads)                                   # missing facts are said to be missing
+    assert [x["text"] for x in now if not x.get("headline")] == ["The day looked stronger than the mood of the week."]      # the model only connects, after the facts
+    assert not now[len(heads) - 1].get("commentary") and now[len(heads)].get("commentary")
+    assert not any(r.get("stage") == "code line" for r in out["rejected"])                                 # the code lines pass the same citation check
+    assert out["text"].index("Headline facts") < out["text"].index("Commentary")
+
+
+def test_week_claims_are_five_session_moves_by_code_and_point_in_time(rt, tmp_path):
+    root = tmp_path / "data"
+    _series(root, "global", "BRENT_FUT", [100.0, 99, 97, 95, 92, 82.0], DAY)                                # -18% in five sessions
+    _series(root, "global", "US_NASDAQ", [100.0, 99, 98, 97, 96, 95, 50.0], DAY)                          # the last row is dated the as-of day: US closes after the NSE, so it is not read
+    _series(root, "global", "KR_KOSPI", [100.0, 98, 97, 96, 95, 90.0], DAY)
+    _series(root, "global", "TW_TAIEX", [100.0, 98, 97, 96, 95, 92.0], DAY)
+    _series(root, "global", "JP_NIKKEI225", [100.0, 98, 97, 96, 95, 94.0], DAY)
+    _series(root, "indices", "NIFTY500_TRI", [100.0, 101, 102, 103, 104, 106.0], DAY)
+    (root / "flows").mkdir(exist_ok=True)
+    days = [DAY - timedelta(days=i) for i in range(5, -1, -1)]
+    pd.DataFrame({"date": days, "fii_net_cr": [1000.0, 2000, 3000, 4000, 5000, 6000], "dii_net_cr": [-100.0] * 6}).to_parquet(root / "flows" / "FII_DII_CASH.parquet")
+    runner = AD.Runner(rt, "IN", DAY, NOW, run_id=None)
+    runner.current = "week"
+    AD.a_week(runner)
+    cl = {c["subject"]: c for c in C.active(rt.cursor(), "IN", DAY)}
+    assert cl["week_BRENT_FUT"]["value"] == -18.0 and "-18.0 percent over 5 sessions" in cl["week_BRENT_FUT"]["text"]
+    assert cl["week_US_NASDAQ"]["value"] == -5.0 and str(cl["week_US_NASDAQ"]["as_of"]) == str(DAY - timedelta(days=1))       # the 50.0 row dated the as-of day is not used
+    assert cl["week_ASIA"]["value"] == round((-10.0 + -8.0 + -6.0) / 3, 2)
+    assert cl["week_NIFTY500_TRI"]["value"] == 6.0 and cl["relative_vs_asia_week"]["value"] == round(6.0 - cl["week_ASIA"]["value"], 2)
+    assert cl["week_FII"]["value"] == 20000.0 and cl["flow_prev"]["value"] == 5000.0 and str(cl["flow_prev"]["as_of"]) == str(DAY - timedelta(days=1))
+    assert cl["week_DII"]["value"] == -500.0
+    wk = cl["week"]["text"]
+    assert "Brent crude -18.0 percent" in wk and "Nasdaq -5.0 percent" in wk and "foreign net buying Rs 20000 crore" in wk
+    assert cl["week"]["source"] == "week"
+
+
+def _sent(ctx, a):
+    now = a.get("date") == "2026-11-06"
+    return {"day": a["date"], "asof": a["date"], "themes": {
+        "oil_middle_east": {"label": "Oil and the Middle East", "combined": 0.4 if now else -0.2}, "ai_tech_regulation": {"label": "AI and tech regulation", "combined": -0.5 if now else -0.1},
+        "other": {"label": "Other", "combined": 0.1 if now else 0.1}}}
+
+
+def test_theme_shifts_are_claims_and_so_what_links_them_to_the_book(rt, monkeypatch):
+    _fake_tool(monkeypatch, "sentiment", _sent)
+    _fake_tool(monkeypatch, "theme_exposure", {"asof": "2026-11-06", "source": "paper", "themes": {
+        "oil_middle_east": {"label": "Oil and the Middle East", "primary_proxy": "crude", "book_beta": -0.01692, "weight_carrying": 0.14951, "weight_sector_prior": 0.0, "n_carriers": 5},
+        "ai_tech_regulation": {"label": "AI and tech regulation", "primary_proxy": "nasdaq", "book_beta": 0.02724, "weight_carrying": 0.11172, "weight_sector_prior": 0.0, "n_carriers": 3}}})
+    _only(monkeypatch, ["sentiment_shift", "theme_exposure"])
+    out = build.run(rt, "IN", DAY, NOW, "post_close", use_model=False, cfg=CFG)
+    cl = {c["subject"]: c for c in C.active(rt.cursor(), "IN", DAY)}
+    assert cl["theme_shift_oil_middle_east"]["value"] == 0.6 and cl["theme_shift_ai_tech_regulation"]["value"] == -0.4 and "theme_shift_other" in cl
+    assert len(cl["theme_shift_oil_middle_east"]["call_ids"]) == 2                                          # both dates cite their own call
+    sw = [x["text"] for x in out["sections"]["so_what"] if x.get("theme")]
+    assert sw[0].startswith("Theme shift: Oil and the Middle East") and "weight_carrying 0.14951" in sw[0] and "primary_proxy crude" in sw[0]
+    assert any("AI and tech regulation" in t and "shift_5d -0.4" in t and "weight_carrying 0.11172" in t for t in sw)
+    assert any("no measured exposure" in t and "Other" in t for t in sw)                                     # a shifted theme the book does not carry says so
+    assert not any(r.get("stage") == "code line" for r in out["rejected"])
+
+
+def test_only_whitelisted_cause_effect_types_are_explanations(rt):
+    con = rt.cursor()
+    prev, d = DAY - timedelta(days=1), DAY
+    vix = _mk(con, "macro", "leg_US_VIX", "US VIX moved 11.57 points; contribution_pct -2.3982", -2.3982, "transmission", as_of=prev)
+    unexpl = _mk(con, "macro", "part_unexplained", "Unexplained part of the index move: unexplained_pct 1.17419", 1.17419, "macro_attribution", as_of=d)
+    move = _mk(con, "macro", "macro_attribution", "Nifty 500 TRI day move total_pct 1.01697", 1.01697, "macro_attribution", as_of=d)
+    gap = _mk(con, "transmission", "open_gap", "Expected opening gap expected_gap_pct -1.556", -1.556, "transmission", as_of=d)
+    flows_same = _mk(con, "macro", "part_flows", "foreign flows part pct 0.783962", 0.783962, "macro_attribution", as_of=d)
+    flow_prev = _mk(con, "macro", "flow_prev", "Foreign net equity buying on the previous session: fii_net_cr 16278", 16278.0, "week", as_of=prev, calls=())
+    crude = _mk(con, "macro", "week_BRENT_FUT", "Brent crude: -16.42 percent over 5 sessions", -16.42, "week", as_of=d, calls=())
+    expo = _mk(con, "exposure", "theme_oil_middle_east", "Oil: weight_carrying 0.14951 (primary_proxy crude, book_beta -0.01692)", 0.14951, "theme_exposure", as_of=d)
+    expo_other = _mk(con, "exposure", "theme_tariffs", "Tariffs: weight_carrying 0.11 (primary_proxy usdinr)", 0.11, "theme_exposure", as_of=d)
+    asia = _mk(con, "macro", "week_ASIA", "Asian peers mean: -7.49 percent over 5 sessions", -7.49, "week", as_of=d, calls=())
+    rel = _mk(con, "move", "relative_vs_asia_week", "India against the Asian peers over 5 sessions: relative_pct 14.65", 14.65, "week", as_of=d, calls=())
+    by_id = {c["claim_id"]: c for c in (vix, unexpl, move, gap, flows_same, flow_prev, crude, expo, expo_other, asia, rel)}
+
+    def L(a, b):
+        return {"cause": a["claim_id"], "effect": b["claim_id"], "mechanism": "m"}
+
+    ch = chains.make_chain([L(vix, unexpl), L(flows_same, move), L(flow_prev, move), L(crude, expo), L(crude, expo_other), L(asia, rel), L(vix, gap)], by_id, strict_types=True)
+    assert [lk["ok"] for lk in ch["links"]] == [False, False, True, True, False, True, True]
+    assert "not a causal link the system accepts" in ch["links"][0]["reason"]                              # the VIX leg is not a cause of the unexplained part
+    assert "co-movement" in ch["links"][1]["reason"]                                                       # same-session flows are a NOW fact, not a cause
+    assert "not a causal link" in ch["links"][4]["reason"]                                                 # crude does not explain a theme whose proxy is the rupee
+    assert [lk["type"] for lk in ch["links"] if lk["ok"]] == ["foreign_flows>index_move", "crude>oil_theme_exposure", "asia>relative_performance", "us_close>nse_gap"]
+    assert chains.make_chain([L(move, flows_same)], by_id, strict_types=True)["ok"] is False
+    # through the assembler: a model that proposes the bad link is refused and listed; the code's own whitelisted links still appear
+    draft = {"now": [], "so_what": [], "next": [], "act": {}, "why": [{"cause": vix["claim_id"], "effect": unexpl["claim_id"], "mechanism": "VIX raised the unexplained part"}]}
+    sec, rejected, _ = report.assemble(list(by_id.values()), [], [], draft, [])
+    assert any("not a causal link the system accepts" in r["why"] for r in rejected if r["section"] == "why")
+    assert {x["type"] for x in sec["why"]} >= {"foreign_flows>index_move", "crude>oil_theme_exposure", "asia>relative_performance"}
+
+
+def test_the_transmission_miss_is_a_contradiction_line_and_an_agenda_item(rt, monkeypatch):
+    _fake_tool(monkeypatch, "macro_attribution", dict(MACRO))
+    _fake_tool(monkeypatch, "transmission", dict(TRANS))
+    _only(monkeypatch, ["transmission", "macro_attribution", "transmission_miss"])
+    out = build.run(rt, "IN", DAY, NOW, "post_close", use_model=False, cfg=CFG)
+    lines = [x["text"] for x in out["sections"]["contradictions_found"]]
+    assert len(lines) == 1 and "expected_gap_pct -1.556" in lines[0] and "total_pct 1.01697" in lines[0] and "miss_points 2.573" in lines[0] and "flows part of the day was pct 0.783962" in lines[0]
+    assert lines[0].startswith("Contradiction:") and "different measures" in lines[0]
+    assert out["text"].index("Contradiction:") > out["text"].index("NEXT") and out["text"].index("Contradiction:") < out["text"].index("ACT")
+    assert any(c["group"] == "near" for c in out["contradictions"])                                          # the gap said down, the index went up: kept, not smoothed
+    kinds_ = {r[0] for r in rt.cursor().execute("SELECT kind FROM mind_agenda").fetchall()}
+    assert "resolve_contradiction" in kinds_
+    assert not any(r.get("stage") == "code line" for r in out["rejected"])

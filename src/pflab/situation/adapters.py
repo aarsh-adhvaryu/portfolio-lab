@@ -423,11 +423,15 @@ def a_macro(r: Runner) -> None:
     d = _d(res.get("session")) or r.as_of
     if d > r.as_of:
         return
-    r.add("macro", "macro_attribution", f"Index move total_pct {js(res['total_pct'])} split by code: dominant {res.get('dominant')}, explained_pct {js(res.get('explained_pct'))}, "
+    r.add("macro", "macro_attribution", f"{res.get('index') or 'Index'} day move total_pct {js(res['total_pct'])} split by code: dominant {res.get('dominant')}, explained_pct {js(res.get('explained_pct'))}, "
           f"unexplained_pct {js(res.get('unexplained_pct'))} (an association, not a proof of cause)", value=float(res["total_pct"]), call_ids=[cid], as_of=d, ttl_sessions=2)
+    if _num(res.get("unexplained_pct")) and _num(res.get("total_pct")) and res["total_pct"]:
+        share = round(float(res["unexplained_pct"]) / float(res["total_pct"]) * 100.0, 1)
+        r.add("macro", "part_unexplained", f"Unexplained part of the index move: unexplained_pct {js(res['unexplained_pct'])} (unexplained_share_pct {js(share)} of the move)",
+              value=float(res["unexplained_pct"]), call_ids=[cid], as_of=d, ttl_sessions=2)
     for name, p in (res.get("parts") or {}).items():
         if isinstance(p, dict) and _num(p.get("pct")):
-            r.add("macro", f"part_{name}", f"{p.get('label', name)}: part of the index move pct {js(p['pct'])} (beta {js(p.get('beta'))}, factor_move {js(p.get('factor_move'))}, n {js(p.get('n'))})",
+            r.add("macro", f"part_{name}",f"{p.get('label', name)}: part of the index move pct {js(p['pct'])} (beta {js(p.get('beta'))}, factor_move {js(p.get('factor_move'))}, n {js(p.get('n'))})",
                   value=float(p["pct"]), entities=[name], call_ids=[cid], as_of=d, ttl_sessions=2)
 
 
@@ -469,6 +473,30 @@ def a_sentiment(r: Runner) -> None:
               f"pos_score {js(v.get('pos_score'))}", value=float(v["combined"]), themes=[name], call_ids=[cid], as_of=d, ttl_sessions=2)
 
 
+def a_sentiment_shift(r: Runner) -> None:
+    """Each theme's combined sentiment now against five sessions earlier (two calls of the same tool, so both dates are cited); the biggest six shifts become claims."""
+    from pflab import markets
+    res, cid = r.call("sentiment", {"market": r.market, "date": str(r.as_of)})
+    if not res or not isinstance(res.get("themes"), dict):
+        return
+    d = _d(res.get("day") or res.get("asof")) or r.as_of
+    if d > r.as_of:
+        return
+    back = markets.get(r.market).session_after(r.as_of, -5)
+    prev, cid2 = r.call("sentiment", {"market": r.market, "date": str(back)})
+    if not prev or not isinstance(prev.get("themes"), dict):
+        return
+    shifts = []
+    for name, v in res["themes"].items():
+        p = (prev["themes"].get(name) or {})
+        if isinstance(v, dict) and _num(v.get("combined")) and _num(p.get("combined")):
+            shifts.append((name, v, float(v["combined"]), float(p["combined"])))
+    for name, v, now_, then in sorted(shifts, key=lambda x: -abs(x[2] - x[3]))[:6]:
+        chg = round(now_ - then, 3)
+        r.add("sentiment", f"theme_shift_{name}", f"{v.get('label', name)}: combined sentiment {js(now_)} now against {js(then)} five sessions earlier, shift_5d {js(chg)}",
+              value=chg, themes=[name], call_ids=[cid, cid2], as_of=d, ttl_sessions=2)
+
+
 def a_theme_exposure(r: Runner) -> None:
     res, cid = r.call("theme_exposure", {"market": r.market, "date": str(r.as_of)})
     if not res or not isinstance(res.get("themes"), dict):
@@ -480,7 +508,7 @@ def a_theme_exposure(r: Runner) -> None:
     for name, v in sorted(res["themes"].items(), key=lambda kv: -(kv[1].get("weight_carrying") or 0.0) if isinstance(kv[1], dict) else 0)[:8]:
         if not isinstance(v, dict) or not _num(v.get("weight_carrying")):
             continue
-        r.add("exposure", f"theme_{name}", f"{v.get('label', name)}: book carries it with weight_carrying {js(v['weight_carrying'])} (book_beta {js(v.get('book_beta'))}, "
+        r.add("exposure", f"theme_{name}", f"{v.get('label', name)}: book carries it with weight_carrying {js(v['weight_carrying'])} (primary_proxy {v.get('primary_proxy')}, book_beta {js(v.get('book_beta'))}, "
               f"weight_sector_prior {js(v.get('weight_sector_prior'))}, n_carriers {js(v.get('n_carriers'))})", value=float(v["weight_carrying"]), themes=[name], call_ids=[cid],
               as_of=d, ttl_sessions=2)
 
@@ -518,6 +546,129 @@ def a_construct(r: Runner) -> None:
     tw = sorted(res["target_weights"], key=lambda t: -abs(t.get("change_pct") or 0.0))[:3]
     r.add("book", "construct", f"Sizing advice (not adopted unless stated; status {res.get('status')}): cash_target_pct {js(res.get('cash_target_pct'))}; largest changes "
           + "; ".join(f"{t['symbol']} change_pct {js(t.get('change_pct'))}" for t in tw), call_ids=[cid], ttl_sessions=2)
+
+
+# --- the week: 5-session context computed by code from the collected files, flows, the transmission miss ------------------------------------------------------------------------
+
+WEEK_SERIES = (("BRENT_FUT", "Brent crude", "other"), ("US_SP500", "S&P 500", "us"), ("US_NASDAQ", "Nasdaq", "us"), ("US_SOX", "Semiconductors (SOX)", "us"),
+               ("FX_USDINR", "USDINR (rupee per dollar)", "other"), ("NIFTY500_TRI", "Nifty 500 TRI", "other"))
+ASIA = (("KR_KOSPI", "Kospi"), ("TW_TAIEX", "Taiex"), ("JP_NIKKEI225", "Nikkei 225"), ("HK_HANGSENG", "Hang Seng"))
+DATA_SOURCES = ("week", "levels", "book")             # claims read straight from the collected files by code (no tool call): valid evidence for a chain cause
+
+
+def _move5(r: Runner, key: str, cutoff: date, n: int = 5) -> Optional[Tuple[date, float, float, float]]:
+    from pflab.situation import watch as W
+    h = W.history(key, cutoff, r.rt.data_root, n + 1)
+    if len(h) < n + 1:
+        return None
+    (_, c0), (d1, c1) = h[0], h[-1]
+    return d1, round((c1 / c0 - 1.0) * 100.0, 2), c0, c1
+
+
+def a_week(r: Runner) -> None:
+    """Five-session context for the key series: percent move over each series' last 5 sessions up to the as-of date (US series up to the session BEFORE it, because they close after
+    the NSE does), foreign and domestic net flows over 5 sessions, the US 10-year in basis points, the Asian peers' mean, India against Asia, and one `week` line that sums them up.
+    Read straight from the collected files by code; every figure printed once and quoted the same way in the week line."""
+    import pandas as pd
+    root, prior = Path(r.rt.data_root), r.as_of - timedelta(days=1)
+    parts, done = [], {}
+    for key, label, kind in WEEK_SERIES:
+        m = _move5(r, key, prior if kind == "us" else r.as_of)
+        if m is None:
+            continue
+        d, pct, c0, c1 = m
+        done[key] = pct
+        parts.append(f"{label} {js(pct)} percent")
+        r.add("macro", f"week_{key}", f"{label}: {js(pct)} percent over 5 sessions (close {js(round(c1, 4))} against {js(round(c0, 4))})", value=pct, entities=[key], as_of=d, ttl_sessions=3)
+    a5 = [m for m in (_move5(r, k, r.as_of) for k, _ in ASIA) if m]
+    if len(a5) >= 3:
+        mean = round(sum(m[1] for m in a5) / len(a5), 2)
+        done["ASIA"] = mean
+        parts.append(f"Asian peers mean {js(mean)} percent")
+        r.add("macro", "week_ASIA", f"Asian peers (Kospi, Taiex, Nikkei, Hang Seng) mean: {js(mean)} percent over 5 sessions ({len(a5)} of 4 available)", value=mean,
+              as_of=max(m[0] for m in a5), ttl_sessions=3)
+    if "ASIA" in done and "NIFTY500_TRI" in done:
+        rel = round(done["NIFTY500_TRI"] - done["ASIA"], 2)
+        r.add("move", "relative_vs_asia_week", f"India (Nifty 500 TRI {js(done['NIFTY500_TRI'])} percent) against the Asian peers ({js(done['ASIA'])} percent) over 5 sessions: relative_pct {js(rel)}",
+              value=rel, as_of=r.as_of, ttl_sessions=3)
+    try:
+        from pflab.quant import macro_attr as MA
+        fl = MA.flows_by_session(root, r.market)
+        fl = fl[[x for x in fl.index if x <= r.as_of]]
+    except Exception:
+        fl = None
+    if fl is not None and len(fl) >= 5:
+        last5 = fl.iloc[-5:]
+        tot = round(float(last5.sum()) * 1000.0)
+        parts.append(f"foreign net buying Rs {js(tot)} crore")
+        r.add("macro", "week_FII", f"Foreign net equity buying over the last 5 sessions: fii_net_5d_cr {js(tot)} (Rs crore)", value=float(tot), as_of=last5.index[-1], ttl_sessions=3)
+        prev = fl[[x for x in fl.index if x < r.as_of]]
+        if len(prev):
+            v = round(float(prev.iloc[-1]) * 1000.0)
+            r.add("macro", "flow_prev", f"Foreign net equity buying on the previous session: fii_net_cr {js(v)} (Rs crore)", value=float(v), as_of=prev.index[-1], ttl_sessions=2)
+    try:
+        f = pd.read_parquet(root / "flows" / "FII_DII_CASH.parquet")
+        f = f[pd.to_datetime(f["date"]).dt.date <= r.as_of].sort_values("date").tail(5)
+        if len(f) == 5 and f["dii_net_cr"].notna().all():
+            dii = round(float(f["dii_net_cr"].sum()))
+            parts.append(f"domestic institutions net Rs {js(dii)} crore")
+            r.add("macro", "week_DII", f"Domestic institutions net equity buying over the last 5 sessions: dii_net_5d_cr {js(dii)} (Rs crore)", value=float(dii),
+                  as_of=pd.Timestamp(f["date"].iloc[-1]).date(), ttl_sessions=3)
+    except Exception:
+        pass
+    try:
+        y = pd.read_parquet(root / "macro" / "US10Y.parquet")
+        y = y[pd.to_datetime(y["date"]).dt.date <= prior].sort_values("date").dropna(subset=["value"])
+        if len(y) >= 6:
+            bp = round((float(y["value"].iloc[-1]) - float(y["value"].iloc[-6])) * 100.0)
+            parts.append(f"US 10-year yield {js(bp)} bp")
+            r.add("macro", "week_US10Y", f"US 10-year yield: {js(bp)} basis points over 5 sessions (to {js(float(y['value'].iloc[-1]))} percent)", value=float(bp),
+                  as_of=pd.Timestamp(y["date"].iloc[-1]).date(), ttl_sessions=3)
+    except Exception:
+        pass
+    if parts:
+        r.add("macro", "week", "Week, last 5 sessions: " + "; ".join(parts), as_of=r.as_of, ttl_sessions=3)
+
+
+def a_book_day(r: Runner) -> None:
+    """The book's change on the day: the paper book's marked days when it has them (time-weighted, money in and out taken out), else the held names' own day moves
+    (positions priced on both days). Not a tool call: read from the store by code, dated like the claim."""
+    try:
+        rows = r.con.execute("SELECT day, value, flows FROM paper_days WHERE day<=? ORDER BY day DESC LIMIT 2", [r.as_of]).fetchall()
+    except Exception:
+        rows = []
+    if len(rows) == 2 and rows[1][1] and rows[1][1] > 0:
+        (d1, v1, f1), (d0, v0, _) = rows[0], rows[1]
+        pct = round(((v1 - (f1 or 0.0)) / v0 - 1.0) * 100.0, 3)
+        r.add("book", "book_day", f"The paper book moved book_day_pct {js(pct)} on the day (marked days {d0} and {d1}, money in and out taken out)", value=pct, as_of=d1, ttl_sessions=2)
+        return
+    if not r.live:
+        return
+    try:
+        from pflab.app import views
+        h = views.holdings(r.con, r.as_of)
+        rows = [x for x in h["rows"] if x.get("day_rs") is not None and x.get("value")]
+        day = sum(x["day_rs"] for x in rows)
+        base = sum(x["value"] for x in rows) - day
+        if rows and base > 0:
+            pct = round(day / base * 100.0, 3)
+            r.add("book", "book_day", f"The held shares moved book_day_pct {js(pct)} on the day ({js(len(rows))} names priced on both days; the paper book has no marked day yet)", value=pct,
+                  as_of=r.as_of, ttl_sessions=2)
+    except Exception as e:
+        r.log.append({"tool": "book_day", "status": "error", "why": f"{type(e).__name__}: {str(e)[:100]}"})
+
+
+def a_miss(r: Runner) -> None:
+    """The transmission model's miss: the opening gap it expected against how the index actually moved (different measures, so labelled), with the flows part for the day."""
+    cl = {c["subject"]: c for c in C.active(r.con, r.market, r.as_of) if c["subject"] in ("open_gap", "macro_attribution", "part_flows")}
+    g, t = cl.get("open_gap"), cl.get("macro_attribution")
+    if not g or not t or g.get("value") is None or t.get("value") is None:
+        return
+    diff = round(float(t["value"]) - float(g["value"]), 3)
+    f = cl.get("part_flows")
+    r.add("observation", "transmission_miss", f"The transmission model expected expected_gap_pct {js(g['value'])} but the index moved total_pct {js(t['value'])} on the day, a miss of "
+          f"miss_points {js(diff)} (an open gap and a day's move are different measures)" + (f"; the foreign flows part of the day was pct {js(f['value'])}" if f and f.get("value") is not None else ""),
+          value=diff, call_ids=sorted(set((g.get("call_ids") or []) + (t.get("call_ids") or []))), as_of=r.as_of, ttl_sessions=2)
 
 
 # --- tools being built alongside (read tolerantly, by documented key names) -------------------------------------------------------------
@@ -573,7 +724,7 @@ ADAPTERS: Dict[str, Callable[[Runner], None]] = {
     "breadth": a_breadth, "forecast_now": a_forecast, "fall_risk": a_fall_risk, "implied_dist": a_implied, "cascade": a_cascade, "transmission": a_transmission,
     "system_allocation": a_allocation, "paper_book": a_book, "agenda": a_agenda, "bear_scorecard": a_scorecard, "catch_up": a_catch_up, "decompose_move": a_moves,
     "questions": a_questions, "macro_attribution": a_macro, "wave_detector": a_wave, "levels": a_levels, "sentiment": a_sentiment, "theme_exposure": a_theme_exposure, "event_calendar": a_event_calendar,
-    "volume_profile": a_volume, "construct": a_construct,
+    "volume_profile": a_volume, "construct": a_construct, "sentiment_shift": a_sentiment_shift, "week": a_week, "book_day": a_book_day, "transmission_miss": a_miss,
 }
 for _t, _k in GENERIC.items():
     ADAPTERS[_t] = (lambda t, k: (lambda r: a_generic(r, t, k)))(_t, _k)

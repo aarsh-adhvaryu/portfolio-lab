@@ -57,7 +57,7 @@ def next_candidates(claims: List[dict]) -> List[dict]:
 
 # --- disagreements ----------------------------------------------------------------------------------------------------------------------
 
-GROUP = {"regime": "near", "open_gap": "near", "p_down_h1": "near", "p_down_h5": "mid", "p_down_h20": "long", "fall_risk_20": "long"}
+GROUP = {"regime": "near", "open_gap": "near", "macro_attribution": "near", "market_sentiment": "near", "p_down_h1": "near", "p_down_h5": "mid", "p_down_h20": "long", "fall_risk_20": "long"}
 
 
 def lean(c: dict) -> Optional[int]:
@@ -65,8 +65,10 @@ def lean(c: dict) -> Optional[int]:
     v, s, k = c.get("value"), c["subject"], c["kind"]
     if v is None:
         return None
-    if s == "regime" or k in ("wave", "sentiment"):
-        return (v > 0) - (v < 0)
+    if s == "regime" or k == "wave" or s == "market_sentiment":
+        return (v > 0) - (v < 0) if s != "market_sentiment" or abs(v) >= 0.25 else 0
+    if s == "macro_attribution":                      # how the index actually moved on the day: it can contradict what the gap model or the regime said
+        return 1 if v >= 0.3 else -1 if v <= -0.3 else 0
     if s.startswith("p_down_h"):
         return -1 if v >= 0.55 else 1 if v <= 0.45 else 0
     if s == "fall_risk_20" or s.startswith("implied_fall_"):
@@ -82,7 +84,7 @@ def group_of(c: dict) -> Optional[str]:
         return g
     if c["subject"].startswith("implied_fall_"):
         return "long"
-    return "near" if c["kind"] in ("wave", "sentiment") else None
+    return "near" if c["kind"] == "wave" else None
 
 
 def detect_contradictions(claims: List[dict]) -> List[dict]:
@@ -143,6 +145,69 @@ def _so_what_code(claims: List[dict]) -> List[dict]:
     return out
 
 
+PART_ORDER = (("part_crude", "crude"), ("part_currency", "rupee"), ("part_us10y", "US 10-year"), ("part_nasdaq", "Nasdaq"), ("part_flows", "foreign flows"), ("part_asia", "Asian peers"))
+
+
+def headline(claims: List[dict]) -> List[dict]:
+    """The facts every report opens with, written by code from the claims (never by the model): the index's day move, its parts (crude, rupee, US 10-year, Nasdaq, foreign flows, Asia,
+    and the unexplained share), breadth, the wave and rotation flags (or none), the book's change on the day, and the week in one line. A missing fact is said to be missing."""
+    by_sub: Dict[str, dict] = {}
+    for c in claims:
+        by_sub.setdefault(c["subject"], c)
+    out: List[dict] = []
+
+    def put(text: str, ids: List[int]) -> None:
+        out.append({"text": text, "claims": [i for i in ids if i], "by": "code", "headline": True})
+
+    c = by_sub.get("macro_attribution")
+    put(c["text"] if c else "The index's move on the day is not available (the macro attribution has no row for it)", [c["claim_id"]] if c else [])
+    parts = [(lab, by_sub[s]) for s, lab in PART_ORDER if s in by_sub and by_sub[s].get("value") is not None]
+    if parts:
+        put("Parts of that move, in percent of the index (an association, not a proof): " + ", ".join(f"{lab} {json.dumps(p['value'])}" for lab, p in parts), [p["claim_id"] for _, p in parts])
+    u = by_sub.get("part_unexplained")
+    if u:
+        put(u["text"], [u["claim_id"]])
+    b = by_sub.get("breadth")
+    put(b["text"] if b else "Breadth is not available", [b["claim_id"]] if b else [])
+    flags = [x for x in (by_sub.get("wave"), by_sub.get("rotation")) if x and (x.get("value") or 0) != 0]
+    if flags:
+        for x in flags:
+            put(x["text"], [x["claim_id"]])
+    else:
+        w = by_sub.get("wave")
+        put("Wave and rotation flags: none" + (f" ({w['text']})" if w else ""), [w["claim_id"]] if w else [])
+    d = by_sub.get("book_day")
+    put(d["text"] if d else "The book's change on the day is not available (no marked day, no priced holding)", [d["claim_id"]] if d else [])
+    wk = by_sub.get("week")
+    if wk:
+        put(wk["text"], [wk["claim_id"]])
+    return out
+
+
+def theme_lines(claims: List[dict], limit: int = 4) -> List[dict]:
+    """SO WHAT, by code: each theme whose sentiment shifted most over 5 sessions, next to how much of the book carries that theme (the theme_exposure claim of the same theme)."""
+    exp = {t: c for c in claims if c["kind"] == "exposure" and c["subject"].startswith("theme_") for t in (c.get("themes") or [])}
+    out = []
+    for s in sorted([c for c in claims if c["subject"].startswith("theme_shift_") and c.get("value") is not None], key=lambda c: -abs(c["value"]))[:limit]:
+        e = exp.get((s.get("themes") or [None])[0])
+        out.append({"text": f"Theme shift: {s['text']}. " + (f"The book: {e['text']}." if e else "The book has no measured exposure to this theme."),
+                    "claims": [s["claim_id"]] + ([e["claim_id"]] if e else []), "by": "code", "theme": True})
+    return out
+
+
+def miss_lines(claims: List[dict]) -> List[dict]:
+    """Contradictions between a model and what happened, as one code-written line each (today: the gap the transmission model expected against the index's move)."""
+    return [{"text": "Contradiction: " + c["text"], "claims": [c["claim_id"]], "by": "code"} for c in claims if c["subject"] == "transmission_miss"]
+
+
+def _checked(items: List[dict], by_id: Dict[int, dict], rejected: List[dict], section: str) -> List[dict]:
+    """Code-written lines pass the same citation check as the model's; a refusal is a bug in the claim text and is listed (the line is kept, the fact is true)."""
+    for it in items:
+        text, rej, _ = synth.verify(it["text"], it["claims"], by_id)
+        rejected.extend({**r, "section": section, "stage": "code line"} for r in rej)
+    return items
+
+
 def assemble(claims: List[dict], contradictions: List[dict], cands: List[dict], dr: Optional[dict], series_ok: List[str]) -> Tuple[dict, List[dict], bool]:
     """(sections, rejected, coded_only). `dr` is the model's draft (or None / {'error': ...})."""
     by_id = {c["claim_id"]: c for c in claims}
@@ -164,35 +229,53 @@ def assemble(claims: List[dict], contradictions: List[dict], cands: List[dict], 
         used_model = used_model or bool(out)
         return out
 
-    sec["now"] = prose(dr.get("now"), "now") if have_model else []
-    if not sec["now"]:
-        sec["now"] = _now_code(claims)
-    # WHY
-    links = []
+    head = _checked(headline(claims), by_id, rejected, "now")
+    sec["headline"] = head
+    comment = prose(dr.get("now"), "now")[:3] if have_model else []
+    for x in comment:
+        x["commentary"] = True
+    sec["now"] = head + comment
+    # WHY: only whitelisted cause -> effect types, each cause dated before its effect (state effects excepted, see chains.py); the model's links and the code's own, merged
+    model_pairs, links = {}, []
     if have_model:
         for lk in (dr.get("why") or [])[:6]:
             if isinstance(lk, dict):
+                try:
+                    model_pairs[(int(lk.get("cause")), int(lk.get("effect")))] = lk.get("mechanism", "")
+                except (TypeError, ValueError):
+                    pass
                 links.append({"cause": lk.get("cause"), "effect": lk.get("effect"), "mechanism": lk.get("mechanism", "")})
-    by = "model"
-    if not links:
-        links, by = CH.code_links(by_id), "code"
-    chain = CH.make_chain(links, by_id)
+    seen = {(str(x["cause"]), str(x["effect"])) for x in links}
+    links += [x for x in CH.code_links(by_id) if (str(x["cause"]), str(x["effect"])) not in seen]
+    chain = CH.make_chain(links, by_id, strict_types=True)
     why = []
     for lk in chain["links"]:
+        try:
+            pair = (int(lk["cause"]), int(lk["effect"]))
+        except (TypeError, ValueError):
+            pair = None
+        from_model = pair in model_pairs
         if not lk["ok"]:
-            rejected.append({"sentence": f"link {lk['cause']} -> {lk['effect']}", "why": lk["reason"], "section": "why"})
+            if from_model or pair is None:
+                rejected.append({"sentence": f"link {lk['cause']} -> {lk['effect']}", "why": lk["reason"], "section": "why"})
             continue
-        mech, rej, _ = synth.verify(lk["mechanism"], [lk["cause"], lk["effect"]], by_id) if by == "model" else (lk["mechanism"], [], [])
+        if len(why) >= 6:
+            continue
+        mech, rej, _ = synth.verify(model_pairs[pair], [lk["cause"], lk["effect"]], by_id) if from_model else (lk["mechanism"], [], [])
         rejected.extend({**r, "section": "why"} for r in rej)
-        c, e = by_id[int(lk["cause"])], by_id[int(lk["effect"])]
+        c, e = by_id[pair[0]], by_id[pair[1]]
+        if from_model and not mech:
+            mech = next((m for n, t, m in CH.WHITELIST if n == lk["type"]), "")
         why.append({"cause": c["claim_id"], "effect": e["claim_id"], "mechanism": mech or "mechanism not stated", "cause_date": lk["cause_date"], "effect_date": lk["effect_date"],
-                    "type": lk["type"], "cause_text": c["text"], "effect_text": e["text"], "by": by})
-        used_model = used_model or (by == "model" and bool(mech))
+                    "type": lk["type"], "cause_text": c["text"], "effect_text": e["text"], "by": "model" if from_model else "code"})
+        used_model = used_model or (from_model and bool(mech))
     sec["why"], sec["chain"] = why, chain
-    # SO WHAT
-    sec["so_what"] = prose(dr.get("so_what"), "so_what") if have_model else []
-    if not sec["so_what"]:
-        sec["so_what"] = _so_what_code(claims)
+    # SO WHAT: the theme shifts against the book's exposure, by code; then the model's reading (at most two)
+    th = _checked(theme_lines(claims), by_id, rejected, "so_what")
+    used_exp = {i for x in th for i in x["claims"]}
+    rest = [x for x in _so_what_code([c for c in claims if c["claim_id"] not in used_exp and c["subject"] != "book_day"])][:3]
+    model_sw = prose(dr.get("so_what"), "so_what")[:2] if have_model else []
+    sec["so_what"] = th + rest + model_sw
     # NEXT: the tools' scenarios; the model's comment is added when it survives the check
     notes = {}
     if have_model:
@@ -207,6 +290,7 @@ def assemble(claims: List[dict], contradictions: List[dict], cands: List[dict], 
                 if text:
                     notes[cand["key"]] = text
                     used_model = True
+    sec["contradictions_found"] = _checked(miss_lines(claims), by_id, rejected, "next")
     sec["next"] = [{"key": c["key"], "text": c["label"], "probs": {str(h): p for h, p in c["probs"].items()}, "claims": sorted(set(c["claim_ids"].values())), "call_ids": c["call_ids"],
                     "note": notes.get(c["key"], ""), "event": c["event"], "level": c["level"]} for c in cands[:6]]
     # ACT (the model's proposals, checked)
@@ -251,7 +335,13 @@ def render(market: str, as_of: date, mode: str, sec: dict, coded_only: bool, mod
     if flags:
         L.append("Flags: " + "; ".join(flags))
     L.append("NOW")
-    L += [f"- {x['text']}{tag(x['claims'])}" for x in sec["now"]] or ["- the claims say nothing yet"]
+    heads, comm = [x for x in sec["now"] if x.get("headline")], [x for x in sec["now"] if not x.get("headline")]
+    if heads:
+        L.append("Headline facts (written by code):")
+    L += [f"- {x['text']}{tag(x['claims'])}" for x in heads]
+    if comm and heads:
+        L.append("Commentary (" + (model or "model") + "):")
+    L += [f"- {x['text']}{tag(x['claims'])}" for x in comm] or ([] if heads else ["- the claims say nothing yet"])
     L.append("WHY")
     L += [f"- {short(x['cause_text'])} (dated {x['cause_date']}) led to: {short(x['effect_text'])} (dated {x['effect_date']}). {x['mechanism']}{tag([x['cause'], x['effect']])}" for x in sec["why"]] \
         or ["- no cause that is dated before its effect was found"]
@@ -262,6 +352,8 @@ def render(market: str, as_of: date, mode: str, sec: dict, coded_only: bool, mod
     L.append("SO WHAT")
     L += [f"- {x['text']}{tag(x['claims'])}" for x in sec["so_what"]] or ["- no book exposure claim yet"]
     L.append("NEXT (probabilities are the tools'; each is scored at its horizon)")
+    for x in sec.get("contradictions_found", []):
+        L.append(f"- {x['text']}{tag(x['claims'])}")
     for n in sec["next"]:
         L.append(f"- {n['text']}{tag(n['claims'])}" + (f" {n['note']}" if n.get("note") else ""))
     if not sec["next"]:
@@ -364,7 +456,7 @@ def world_view(con, markets_: Optional[List[str]] = None) -> dict:
             continue
         s = rep["sections"]
         out.append({"market": m, "as_of": rep["as_of"], "mode": rep["mode"], "author": rep["author"], "coded_only": rep["coded_only"], "created_at": rep["created_at"],
-                    "flags": rep["flags"], "now": s.get("now", [])[:4], "why": [{k: x[k] for k in ("cause_text", "effect_text", "mechanism", "cause_date", "effect_date")} for x in s.get("why", [])[:3]],
+                    "flags": rep["flags"], "now": s.get("now", [])[:9], "contradictions_found": s.get("contradictions_found", [])[:2], "why": [{k: x[k] for k in ("cause_text", "effect_text", "mechanism", "cause_date", "effect_date")} for x in s.get("why", [])[:3]],
                     "so_what": s.get("so_what", [])[:3], "next": [{k: x.get(k) for k in ("text", "note", "probs")} for x in s.get("next", [])[:4]],
                     "act": {k: v for k, v in (s.get("act") or {}).items() if k in ("paper_request", "agenda", "question", "watch")},
                     "disagreements": [{"subject": d["subject"], "sides": [{"side": e["side"], "probability": e["probability"], "text": e["text"][:140]} for e in d["explanations"]]}
