@@ -89,6 +89,8 @@ def jobs_view(rt, now: datetime) -> List[dict]:
                 pass
         if lr and lr[0] == "running":
             state = "working"
+        elif lr and lr[0] == "offline" and (r["last_success"] is None or lr[1] > r["last_success"]):
+            state, why = "waiting", "no connection just now: it tries again by itself"
         elif waiting_icon:
             state = "waiting"
         elif waiting_on:

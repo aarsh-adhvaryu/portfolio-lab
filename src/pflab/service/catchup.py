@@ -59,7 +59,7 @@ def run(con, root: Path, now: datetime) -> dict:
         res: dict = {}
         try:
             from pflab.fcast import run as fr
-            res = fr.catch_up(con, market, closed) or {}
+            res = fr.catch_up(con, market, closed, now=now) or {}
         except ImportError:
             res = {"note": "forecasting is not installed"}
         except Exception as e:                                   # a failed scoring is recorded and retried, never silent
@@ -67,7 +67,7 @@ def run(con, root: Path, now: datetime) -> dict:
             out[market] = {"failed": f"{type(e).__name__}: {e}"[:300]}
             continue
         con.execute("UPDATE catchup_s79 SET state='done', stage='done', finished_at=?, detail=? WHERE catch_id=?", [now, json.dumps(res, default=str)[:900], cid])
-        out[market] = {"done": str(closed), **({"scoring": res} if res else {})}
+        out[market] = {"done": str(closed), "new": True, **({"scoring": res} if res else {})}
     return out
 
 

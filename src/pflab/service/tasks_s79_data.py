@@ -33,7 +33,10 @@ def run(root, today: date, flows=None, vix=None, world=None, themes=None) -> dic
     from pflab.data import flows as fl, vix_in, gdelt_s79b as g
     for name, fn in (("flows", flows or (lambda: fl.collect(root))), ("india_vix", vix or (lambda: vix_in.refresh(root, today)))):
         try:
-            out[name] = fn()
+            r = fn()
+            out[name] = r
+            if isinstance(r, dict) and r.get("error"):                 # the part ran but no source answered: that is a failed part, with the sources' own words (a lost connection reads as offline)
+                failed[name] = " ".join([str(r["error"])] + [str(v) for k, v in r.items() if k != "error"])[:300]
         except Exception as e:
             failed[name] = f"{type(e).__name__}: {e}"
     yesterday = today - timedelta(days=1)

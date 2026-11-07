@@ -166,6 +166,7 @@ function wAgenda(d) {
     if (q.length) h += grp('Next in line') + q.slice(0, 4).map((i) => row('ok', '·', `${nm(i.kind)}: ${i.subject}`, `${i.reason || ''} · value ${Number(i.expected_value).toFixed(1)}, score ${Number(i.score).toFixed(2)}`, '')).join('');
     if ((a.recent_done || []).length) h += grp('Recent acts') + a.recent_done.slice(0, 5).map((i) => row(i.useful ? 'ok' : 'idle', i.useful ? '✓' : '·', `${nm(i.kind)}: ${i.subject}`,
       i.useful ? i.effect : `${i.outcome || 'done'} (changed nothing)`, (i.finished_at || '').slice(11, 16))).join('');
+    if ((a.recent_failed || []).length) h += grp('Failed (it will not be retried today)') + a.recent_failed.slice(0, 3).map((i) => row('down', '!', `${nm(i.kind)}: ${i.subject}`, i.outcome || i.skip_reason || 'failed', '')).join('');
     if ((a.recent_skipped || []).length) h += grp('Skipped, and why') + a.recent_skipped.slice(0, 4).map((i) => row('waiting', '–', `${nm(i.kind)}: ${i.subject}`, i.skip_reason || '', '')).join('');
     if ((a.held || []).length) h += grp('Held for later') + a.held.slice(0, 3).map((i) => row('waiting', '◔', `${nm(i.kind)}: ${i.subject}`, i.held || '', '')).join('');
     const ky = (a.kind_yields || []).filter((k) => k.n_done);

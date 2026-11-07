@@ -27,7 +27,7 @@ def _last_run(con, job: str) -> Optional[datetime]:
 
 
 def _last_attempt(con, job: str) -> Optional[datetime]:
-    return con.execute("SELECT max(started_at) FROM job_runs WHERE job=? AND status IN ('failed','skipped','running') "
+    return con.execute("SELECT max(started_at) FROM job_runs WHERE job=? AND status IN ('failed','skipped','running','offline') "
                        "AND detail IS DISTINCT FROM 'abandoned: the process stopped before it finished'", [job]).fetchone()[0]
 
 

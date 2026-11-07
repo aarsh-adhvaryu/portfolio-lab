@@ -164,8 +164,9 @@ def snapshot(con, now: Optional[datetime] = None, market: Optional[str] = None) 
                 "running": _plain(run) if run else None,
                 "recent_done": [_plain(i) for i in items.recent(con, "done", 10) if not market or i["market"] == market],
                 "recent_skipped": [_plain(i) for i in items.recent(con, "skipped", 10) if not market or i["market"] == market],
+                "recent_failed": [_plain(i) for i in items.recent(con, "failed", 5) if not market or i["market"] == market],
                 "queue": [_plain(i) for i in queue[:8]], "held": [_plain(i) for i in held[:5]],
                 "kind_yields": items.kind_stats(con), "kinds": kinds.names(), "counts": items.counts(con), "useful_today": n_useful}
     except Exception as e:
-        return {"available": False, "error": f"{type(e).__name__}: {str(e)[:120]}", "running": None, "recent_done": [], "recent_skipped": [], "queue": [],
+        return {"available": False, "error": f"{type(e).__name__}: {str(e)[:120]}", "running": None, "recent_done": [], "recent_skipped": [], "recent_failed": [], "queue": [],
                 "held": [], "kind_yields": [], "counts": {}}

@@ -11,12 +11,18 @@ def _catch_up(ctx) -> dict:
     out = catchup.run(ctx.con, ctx.data_root, ctx.now)
     failed = {m: v["failed"] for m, v in out.items() if isinstance(v, dict) and "failed" in v}
     res: dict = {"markets": out}
-    if not any("waiting" in v for v in out.values() if isinstance(v, dict)) and not failed:
+    waiting = any("waiting" in v for v in out.values() if isinstance(v, dict))
+    if not waiting and not failed:
         did = away.maybe_send(ctx.con, ctx.now)
         if did:
             res["digest"] = did
     if failed:
         res["failed"] = failed
+    elif not any(isinstance(v, dict) and v.get("new") for v in out.values()) and "digest" not in res:
+        # nothing was caught up this time: a run that did nothing is 'skipped', so the jobs that follow `catch_up` are not started again every 5 minutes (found by the drills)
+        res["skipped"] = "waiting for the exchange's closes (data arrival)" if waiting else "nothing new to catch up"
+        if waiting:
+            res["waiting"], res["why"] = True, res["skipped"]
     return res
 
 

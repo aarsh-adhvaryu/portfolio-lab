@@ -20,3 +20,10 @@ def test_gdelt_is_bounded_per_run_and_resumes(tmp_path):
     seen = []
     td.run(tmp_path, date(2026, 11, 9), flows=lambda: {}, vix=lambda: {}, world=lambda a, b: seen.append((str(a), str(b))) or {}, themes=lambda a, b: {})
     assert seen == [("2026-09-23", "2026-09-25")]                              # three days a run: a long absence catches up over several runs
+
+
+def test_a_part_with_no_source_answering_is_a_failed_part_so_an_offline_laptop_reads_as_offline(tmp_path):
+    out = td.run(tmp_path, date(2026, 11, 9), flows=lambda: {"error": "no source answered", "groww": "ConnectionError('Max retries exceeded')", "nse": "ConnectionError('getaddrinfo failed')"},
+                 vix=lambda: (_ for _ in ()).throw(ConnectionError("getaddrinfo failed")), world=lambda a, b: {}, themes=lambda a, b: {})
+    from pflab.service import jobs
+    assert set(out["failed"]) == {"flows", "india_vix"} and all(jobs.offline(v) for v in out["failed"].values())

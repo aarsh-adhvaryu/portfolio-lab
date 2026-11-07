@@ -57,10 +57,41 @@ def test_a_bug_is_never_offline(ctx):
 
 def test_a_daily_job_still_fails_so_that_it_cools_down_and_tries_again(ctx):
     r = _run(ctx, Daily(19, 30), _raise(DNS))
-    assert r.status == "failed"
+    # S79b (A42, found by the drills): a lost connection is 'offline', not 'failed': it still cools down and tries again (the slot is not done), but raises no job-failure alert
+    assert r.status == "offline"
 
 
 def test_offline_by_class_and_by_words():
     assert jobs.offline(DNS) and jobs.offline(TimeoutError("x")) and jobs.offline(ConnectionResetError())
     assert jobs.offline("ConnectionError: HTTPSConnectionPool(host='x'): Max retries exceeded")
     assert not jobs.offline(ValueError("bad")) and not jobs.offline("KeyError: 'isin'")
+
+
+def test_s79b_a_daily_job_that_lost_its_connection_is_offline_not_failed(tmp_path):
+    """Found by the drills: collect/global/nav (Daily) were recorded failed when the laptop had no network: an alert per job and 'failed' on the World. Now 'offline': retried after the cooldown, no alert,
+    and not counted as done for its slot."""
+    import duckdb
+    from datetime import datetime
+    from pathlib import Path
+    from pflab.pm import store
+    from pflab.service import jobs
+    from pflab.service.schedule import Daily
+    con = duckdb.connect(":memory:")
+    store.migrate(con)
+    now = datetime(2026, 11, 9, 21, 0)
+    ctx = jobs.Ctx(con, now, tmp_path, tmp_path, tmp_path)
+
+    def down(c):
+        raise ConnectionError("getaddrinfo failed")
+
+    job = jobs.Job("downjob", Daily(20, 0), down)
+    r = jobs.run_job(ctx, job)
+    assert r.status == "offline" and r.detail.startswith("offline:")
+    assert jobs.is_due(ctx, job)[0] is False                                           # cooling down, not hot-looping
+    later = jobs.Ctx(con, datetime(2026, 11, 9, 21, 45), tmp_path, tmp_path, tmp_path)
+    assert jobs.is_due(later, job)[0] is True                                           # and not done for the slot: it tries again
+
+    job2 = jobs.Job("partsdown", Daily(20, 0), lambda c: {"failed": {"a": "ConnectionError: Max retries exceeded with url: /x", "b": "getaddrinfo failed"}})
+    assert jobs.run_job(jobs.Ctx(con, datetime(2026, 11, 9, 22, 0), tmp_path, tmp_path, tmp_path), job2).status == "offline"
+    job3 = jobs.Job("bug", Daily(20, 0), lambda c: {"failed": {"a": "KeyError: 'x'"}})
+    assert jobs.run_job(jobs.Ctx(con, datetime(2026, 11, 9, 22, 5), tmp_path, tmp_path, tmp_path), job3).status == "failed"        # a bug is still a failure
