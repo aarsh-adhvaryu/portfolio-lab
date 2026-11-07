@@ -136,6 +136,20 @@ def dossier_text(con, cid: int, now: datetime, role: Optional[str] = None) -> st
             lines.append(_t)
     except Exception:
         pass
+    try:                                                   # S79b (18A): construct's sizing advice, labelled adopted or not (sizing only; the direction stays the team's)
+        from pflab.construct import run as _cn
+        _c = _cn.dossier_text(con, now)
+        if _c:
+            lines.append(_c)
+    except Exception:
+        pass
+    try:                                                   # S79b (18B): the result against its own benchmark and last month's attribution (read-only; empty before the benchmark is recorded)
+        from pflab.paper import benchmark as _bm
+        _b = _bm.dossier_text(con, now.date())
+        if _b:
+            lines.append(_b)
+    except Exception:
+        pass
     if role in ("quant", "coordinator", None):
         lines.append("HOW TO DECIDE: read `paper_book`; for each holding or idea that deserves a decision call `paper_decide` with BUY, ADD, REDUCE, SELL, HOLD or WAIT, the "
                      "reasons and the alternatives (an amount in rupees or a target weight for a buy; a fraction for a reduce). Code sizes it against the cash and the rails and "
@@ -194,6 +208,14 @@ def decide(con, now: datetime, cid: int, a: dict, index: Optional[pd.Series] = N
             amount = max(0.0, float(a["target_weight_pct"]) / 100 * h["value"] - mine)
         if not amount or amount <= 0:
             return {"stored": False, "problem": "a BUY or ADD needs amount_rupees or target_weight_pct"}
+        try:                                               # S79b (18A): when construct is ADOPTED (switch on + the registered comparison passed) it sizes the team's direction; else the amount above stands
+            from pflab.construct import run as _cn
+            _sz = _cn.size_buy(con, now, cid, isin, action)
+            if _sz and _sz.get("amount_rupees", 0) > 0:
+                note = f"sized by construct (was Rs {amount:,.0f} by the rule)"
+                amount = float(_sz["amount_rupees"])
+        except Exception:
+            pass                                           # the current rules stay the fallback
         room = rails.buy_room(con, isin, day)
         if room <= 0:
             return {"stored": False, "problem": f"{sym or isin} may not be bought: it is not a listed share or ETF with a close, or it is at its rail"}
@@ -207,7 +229,7 @@ def decide(con, now: datetime, cid: int, a: dict, index: Optional[pd.Series] = N
         if cut < px[1]:
             return {"stored": False, "problem": f"no room: rails allow Rs {room:,.0f}, cash after this mission's other decisions Rs {avail:,.0f}"}
         if cut < amount:
-            note = f"cut from Rs {amount:,.0f} to Rs {cut:,.0f} (" + ("the rails" if room < amount else "the cash") + ")"
+            note = (note + "; " if note else "") + f"cut from Rs {amount:,.0f} to Rs {cut:,.0f} (" +("the rails" if room < amount else "the cash") + ")"
             amount = cut
         note = (note + "; " if note else "") + f"about {int(amount // px[1])} at Rs {px[1]:,.2f} (close of {px[0]}), weight after about {(held * px[1] + amount) / h['value']:.1%}"
     elif action == "HOLD" and held <= 0:
