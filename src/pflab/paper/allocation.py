@@ -266,9 +266,37 @@ def reasons(con, now: datetime, market: str = "IN") -> List[str]:
         last = con.execute("SELECT max(created_at) FROM hq_missions WHERE origin='paper'").fetchone()[0]
     except Exception:
         return []
-    if last is not None and (now - last) < timedelta(days=1):         # a mission for it was opened today: one look a day at most (the team may re-affirm or hold the target)
-        return []
-    return [d["why"]] if d["due"] else []
+    out: List[str] = []
+    if not (last is not None and (now - last) < timedelta(days=1)) and d["due"]:      # a mission for it was opened today: one look a day at most (the team may re-affirm or hold the target)
+        out.append(d["why"])
+    try:                                                                                # S79b 18E: money added since the last look is a reason to deploy it under the target
+        dep = deploy_reason(con, now, market)
+        if dep:
+            out.append(dep)
+    except Exception:
+        pass
+    return out
+
+
+def deploy_reason(con, now: datetime, market: str = "IN") -> Optional[str]:
+    """A top-up (the investor's or the system's own) reached the fake bank since the paper team last looked, and cash is above its target class weight by more than the band:
+    the next review must see it and deploy it toward the active target. None otherwise (no target, no new top-up, or cash already within its band)."""
+    act = active_target(con, market)
+    if act is None:
+        return None
+    last = con.execute("SELECT max(created_at) FROM hq_missions WHERE origin='paper'").fetchone()[0]
+    q = "SELECT coalesce(sum(amount), 0), max(trade_date) FROM events WHERE kind='deposit' AND account_id='SYSBANK' AND ref LIKE 'topup:%'" + (" AND ingested_at > ?" if last is not None else "")
+    amt, when = con.execute(q, [last] if last is not None else []).fetchone()
+    if not amt or amt <= 0:
+        return None
+    from pflab.paper import book as pb
+    if not pb.started(con):
+        return None
+    line = next((x for x in drift(pb.holdings(con, now.date()), act)["classes"] if x["name"] == "cash"), None)
+    if line is None or line["gap_pct"] is None or line["gap_pct"] > -BAND_PCT:
+        return None
+    return (f"a top-up of Rs {amt:,.0f} reached the bank (latest {when}) and cash is {line['actual_pct']:.1f}% of the book against a target of {line['target_pct']:.1f}%: "
+            f"deploy it toward the target (the team picks the names; sizes and rails are code's)")
 
 
 def status(con, day: date, market: str = "IN") -> dict:

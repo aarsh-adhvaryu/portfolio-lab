@@ -109,6 +109,7 @@ function wShell(d) {
           <input id="wask" placeholder="Tell the AI what you want, or ask what it is doing…" aria-label="Ask the AI"><button class="btn primary" id="wsend">Send</button></div><div class="age" id="wmsg"></div></section>
       <div id="winsp"></div>
       <section class="glass" id="wagenda-sec"><div class="panelh"><b>What it is doing now</b><span class="age" id="wagenda-age"></span></div><div class="checks" id="wagenda" style="max-height:none"></div></section>
+      <section class="glass" id="wbm-sec"><div class="panelh"><b>Result vs its own benchmark</b><span class="age" id="wbm-age"></span></div><div class="checks" id="wbm" style="max-height:none"></div></section>
       <section class="glass" id="wcost-sec"><div class="panelh"><b>Cost per useful act, by seat</b><span class="age" id="wcost-age"></span></div><div class="checks" id="wcost" style="max-height:none"></div></section>
       <section class="glass"><div class="panelh"><b>Is everything running? Is it done?</b><span class="age" id="wchk"></span></div><div class="tabsm" id="wtabs"></div><div class="checks" id="wchecks"></div></section>
       <section class="glass"><div class="panelh"><b>Live activity</b><span class="age">newest first</span></div><div class="feed" id="wfeed"></div></section>
@@ -172,6 +173,24 @@ function wAgenda(d) {
   }
   wset('wagenda', h);
   const age = $('wagenda-age'); if (age) age.textContent = a.available ? `${a.useful_today || 0} useful today` : '';
+}
+/* S79b item 18B: the book against the benchmark that matches its own allocation, and last month's split of the difference (allocation, selection, timing, costs, tax). */
+function wResultBench(d) {
+  const b = d.benchmark_panel || { available: false }, host = $('wbm-sec');
+  if (host) host.style.display = b.off ? 'none' : '';
+  const row = (st, ic, t, dd, w) => `<div class="crow st-${st}"><span class="si">${ic}</span><div><div class="t">${esc(t)}</div><div class="d">${esc(dd || '')}</div></div><span class="w">${esc(w || '')}</span></div>`;
+  const pc = (x) => (x === null || x === undefined) ? 'n/a' : (x >= 0 ? '+' : '') + (x * 100).toFixed(2) + '%';
+  let h = '';
+  if (!b.available) h = `<div class="d" style="padding:8px;color:var(--w-dim)">Not recorded yet: it starts with the book's first marked day.</div>`;
+  else {
+    h += row(b.excess >= 0 ? 'ok' : 'waiting', b.excess >= 0 ? '✓' : '◔', `Book ${pc(b.book)} vs benchmark ${pc(b.benchmark)}`, `since ${b.since}; the benchmark follows ${b.source}` + ((b.stale || []).length ? `; stale data: ${b.stale.join(', ')}` : ''), pc(b.excess));
+    h += `<div class="d" style="padding:4px 8px">${Object.entries(b.weights || {}).map(([k, v]) => esc(k) + ' ' + (v * 100).toFixed(0) + '%').join(' · ')}</div>`;
+    const m = b.month;
+    if (m) h += `<div class="cgrp">${esc(m.month.slice(0, 7))}${m.partial ? ' (so far)' : ''}: book ${pc(m.book_return)} vs ${pc(m.bench_return)}</div>`
+      + [['Allocation', m.allocation], ['Selection', m.selection], ['Timing', m.timing], ['Costs', m.costs], ['Tax (estimate)', m.tax], ['Residual', m.residual]].map(([n, v]) => row(v >= 0 ? 'ok' : 'idle', '·', n, '', pc(v))).join('');
+  }
+  wset('wbm', h);
+  const age = $('wbm-age'); if (age) age.textContent = b.available ? `as of ${b.as_of}` : '';
 }
 /* S79b item 17: the local seats and what a useful act costs on each (seconds of the card, tokens, cloud rupees). */
 function wSeatCost(d) {
@@ -241,7 +260,7 @@ function patchWorld(d) {
   const p = d.pulse; $('worb').className = 'orb ' + (p.tone === 'ok' ? '' : p.tone); $('wverdict').textContent = p.verdict;
   $('wsys').textContent = (p.catching_up ? p.catching_up + ' · ' : '') + (p.system_verdict || '');
   const pb = $('wpause'); pb.textContent = p.paused ? 'Resume the system' : 'Pause the system'; pb.className = 'btn' + (p.paused ? ' primary' : '');
-  wCounts(d); wChecks(d); wFeed(d); wBelow(d); wAgenda(d); wSituation(d); wSeatCost(d);
+  wCounts(d); wChecks(d); wFeed(d); wBelow(d); wAgenda(d); wSituation(d); wResultBench(d); wSeatCost(d);
   wset('winsp', wInspector(d), (el) => {
     const cl = el.querySelector('#wclose'); if (cl) cl.onclick = () => { W.sel = null; W.html.winsp = null; patchWorld(d); };
     hqWire(el, () => fetchHq(true));

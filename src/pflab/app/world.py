@@ -23,7 +23,7 @@ SENSES = [("markets", "Market data", ["collect", "prices", "nav", "global", "bac
           ("broker", "Kite", ["live", "tradecheck", "idle_cash"], "live prices for what the system holds; his own trades are ignored"),
           ("record", "The account", ["ledger", "deposits"], "the system's own account (statements and deposits stand aside)"),
           ("us", "US sleeve", ["us_fx"], "USDINR rates")]
-ROUTINES = [("thinking", "Thinking rounds", ["hq", "conductor", "research", "analyst", "forecast", "comove", "scans", "twin", "paper", "paper_daily", "selfcheck", "companion", "review", "learner", "catch_up", "bear_resolve", "implied_calibration", "forecast_loop", "seats_mode"],
+ROUTINES = [("thinking", "Thinking rounds", ["hq", "conductor", "research", "analyst", "forecast", "comove", "scans", "twin", "paper", "paper_daily", "selfcheck", "companion", "review", "learner", "catch_up", "bear_resolve", "implied_calibration", "forecast_loop", "seats_mode", "benchmark_attr", "situation"],
              "the brain, research, forecasts, the learner"),
             ("plans", "Plans and alerts", ["plans", "guards", "watches", "watches_close"], "ready plans, guards, price watches"),
             ("reports", "Reports", ["summary_morning", "summary_evening", "outbox", "voice"], "the morning and evening summaries")]
@@ -31,6 +31,20 @@ SAFETY = [("safety", "Safety routines", ["backup", "sandbox", "security"], "back
 GROUP_OF = {j: g for g, _l, js, _d in SENSES + ROUTINES + SAFETY for j in js}
 
 TONE = {"working": 1, "down": 4, "late": 3, "waiting": 2, "ok": 0, "idle": 0}
+
+
+def _benchmark_panel(con, now) -> dict:
+    """S79b 18B: 'Result vs its own benchmark': the book and the blended benchmark since the start, the weights in force, last month's split. {'available': False} when off or not recorded."""
+    from pflab.paper import benchmark
+    s = benchmark.status(con, "IN", now.date())
+    if s.get("off"):
+        return {"available": False, "off": True}
+    if not s.get("started"):
+        return {"available": False}
+    lm = s.get("latest_month")
+    return {"available": True, "since": s["since"], "as_of": s["as_of"], "book": s["book"]["return"], "benchmark": s["benchmark"]["return"], "excess": s["excess"],
+            "source": s["benchmark"]["source"], "weights": s["benchmark"]["weights_now"], "stale": s.get("stale_classes") or [],
+            "month": None if not lm else {k: lm[k] for k in ("month", "book_return", "bench_return", "allocation", "selection", "timing", "costs", "tax", "residual", "partial")}}
 
 
 def _sec(out: dict, errors: dict, name: str, fn, default):
@@ -283,6 +297,7 @@ def build(rt, now: Optional[datetime] = None) -> dict:
     _sec(out, errors, "agenda", lambda: agenda_runner.snapshot(rt.cursor(), now), {"available": False})
     from pflab.llm import cost as llm_cost                                                   # S79b item 17: cost per useful act, by seat (local seconds, cloud rupees)
     _sec(out, errors, "seat_cost", lambda: llm_cost.world_panel(rt.cursor(), now), {"available": False})
+    _sec(out, errors, "benchmark_panel", lambda: _benchmark_panel(rt.cursor(), now), {"available": False})        # S79b 18B: the result against its own benchmark
     from pflab.situation import report as sit_report                                         # S79b item 16: the situation report is shown first
     _sec(out, errors, "situation", lambda: sit_report.world_view(rt.cursor()), {"available": False})
     from pflab.app import onboarding
