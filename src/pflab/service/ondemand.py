@@ -18,7 +18,7 @@ AFTER: Dict[str, Tuple[str, ...]] = {
     "situation": ("prices", "global", "forecast_loop", "catch_up", "macro_attribution", "wave_scan"),
     "sentiment": ("prices", "global"),
 }
-MAX_AGE_H: Dict[str, float] = {"selfcheck": 24, "sandbox": 24, "learner": 24, "paper_daily": 20, "backup": 26, "catch_up": 12, "voice": 1}
+MAX_AGE_H: Dict[str, float] = {"selfcheck": 24, "sandbox": 24, "learner": 24, "paper_daily": 20, "backup": 26, "catch_up": 12, "voice": 1, "data_s79b": 20}
 STALE_SLOT_H: Dict[str, float] = {"summary_morning": 6, "summary_evening": 6}
 
 

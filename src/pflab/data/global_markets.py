@@ -74,6 +74,8 @@ SERIES = {
     "US_INDIA_INDA": "INDA", "US_INDIA_EPI": "EPI",
     "US_SECTOR_XLK": "XLK", "US_SECTOR_XLF": "XLF", "US_SECTOR_XLE": "XLE", "US_SECTOR_XLV": "XLV",
     "US_SECTOR_XLB": "XLB", "US_SECTOR_XLI": "XLI", "US_SECTOR_XLY": "XLY", "US_SECTOR_XLP": "XLP",
+    # S79b agent D: semiconductors, the rupee, and Asian peers the new tools read (Kospi, Taiex, Nikkei, Hang Seng, Shanghai are above)
+    "US_SOX": "^SOX", "FX_USDINR": "INR=X",
 }
 
 

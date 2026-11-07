@@ -1,0 +1,28 @@
+# S79b agent D (2026-11-08): the world series the overnight tools read, where each comes from and when it is known.
+# Collected by pflab.data.global_markets (Yahoo chart API, data/global/{KEY}.parquet); keys below are in its SERIES.
+# Dates are the exchange's local trading date. "known" = the earliest India decision time that may read the close dated M.
+
+[series.US_SP500]      yahoo = "^GSPC"      known = "next India session"  note = "S&P 500"
+[series.US_NASDAQ]     yahoo = "^IXIC"      known = "next India session"  note = "Nasdaq Composite"
+[series.US_SOX]        yahoo = "^SOX"       known = "next India session"  note = "PHLX Semiconductor index (added S79b)"
+[series.US_10Y_YIELD]  yahoo = "^TNX"       known = "next India session"  note = "US 10-year yield in PERCENT (4.86 = 4.86%); the old x10 quote is gone"
+[series.US_VIX]        yahoo = "^VIX"       known = "next India session"  note = "US implied volatility"
+[series.DOLLAR_INDEX]  yahoo = "DX-Y.NYB"   known = "next India session"  note = "dollar index (ICE DXY)"
+[series.BRENT_FUT]     yahoo = "BZ=F"       known = "next India session"  note = "Brent front-month future"
+[series.WTI]           yahoo = "CL=F"       known = "next India session"  note = "WTI front-month future"
+[series.FX_USDINR]     yahoo = "INR=X"      known = "same day, loosely"   note = "rupees per dollar (added S79b); Yahoo's FX bars may carry a Saturday date for Friday's close: read it as the last close"
+[series.GOLD]          yahoo = "GC=F"       known = "next India session"  note = "gold front-month future"
+[series.KR_KOSPI]      yahoo = "^KS11"      known = "same India day"      note = "Kospi"
+[series.TW_TAIEX]      yahoo = "^TWII"      known = "same India day"      note = "Taiex"
+[series.JP_NIKKEI225]  yahoo = "^N225"      known = "same India day"      note = "Nikkei 225"
+[series.HK_HANGSENG]   yahoo = "^HSI"       known = "same India day"      note = "Hang Seng"
+[series.CN_SHANGHAI]   yahoo = "000001.SS"  known = "same India day"      note = "Shanghai Composite"
+
+# Other S79b files (not Yahoo):
+#   data/flows/FII_DII_CASH.parquet         NSE provisional FII/DII cash flows (pflab.data.flows); known the evening of the session
+#   data/indices/INDIA_VIX.parquet          India VIX (NSE vixhistory; pflab.data.vix_in tops up)
+#   data/derived/fo_index.parquet           Nifty put-call ratio (pcr), ATM IV, futures premium, max pain
+#   data/derived/implied_probs.parquet      option-implied probabilities and skew (skew_90_110)
+#   data/fo_daily, data/fo_participant      F&O rows, futures and options open interest by participant
+#   data/gdelt/world/*.parquet              GDELT events by country, extended to 2026-11-06 over HTTP (pflab.data.gdelt_s79b)
+#   data/gdelt_s79b/daily_theme_tone.parquet  daily tone by theme group, from a 30-minute sample of GKG files
