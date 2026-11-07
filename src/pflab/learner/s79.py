@@ -39,3 +39,26 @@ def register_all(con, now: datetime, studies=None) -> List[str]:
 def register_seats(con, now: datetime) -> List[str]:
     """S79b item 17: the FAST and THINKER seat picks, each one test in the counter (once; idempotent by note key)."""
     return register_all(con, now, SEATS_STUDIES)
+
+
+RESULTS = REPO / "docs" / "research" / "wave_sentiment_results_s79.json"
+
+
+def apply_verdicts(con, path=None) -> int:
+    """The recorded verdicts of the pre-registered event studies (run once on 2026-11-08) are written onto this store's registration rows, once (a row with a verdict is never touched again)."""
+    import json
+    p = path or RESULTS
+    if not p.exists():
+        return 0
+    n = 0
+    for r in json.loads(p.read_text(encoding="utf-8")).get("results", []):
+        if r.get("market") != "IN":
+            continue
+        key = f"s79:wave_sentiment:{r['test']}"
+        d = r.get("details") or {}
+        hit = con.execute("SELECT test_id FROM learn_tests WHERE note=? AND passed IS NULL", [key]).fetchone()
+        if hit:
+            con.execute("UPDATE learn_tests SET passed=?, n_dev=?, t_dev=?, threshold_dev=? WHERE test_id=?",
+                        [bool(r.get("passed")), r.get("n_events"), d.get("t_stat"), r.get("t_needed"), hit[0]])
+            n += 1
+    return n

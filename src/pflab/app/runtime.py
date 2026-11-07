@@ -126,6 +126,8 @@ class Runtime:
         try:                                                 # S79 (rule 10): this session's pre-registered studies count in the learner's counter
             from pflab.learner import s79
             s79.register_all(self.cursor(), self.clock())
+            s79.register_seats(self.cursor(), self.clock())
+            s79.apply_verdicts(self.cursor())
         except Exception:
             log.exception("registering S79 studies failed")
         last_run = self.cursor().execute("SELECT max(started_at) FROM job_runs").fetchone()[0]

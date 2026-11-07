@@ -93,3 +93,29 @@ Diagnosis (counts only): the app's `llm_runs` (a copy of its ledger, 31 calls, 2
 | A old default | qwen3:8b-q8_0 | incomplete: ['answers_20261017', 'answers_20261018', 'extraction', 'routing'] |
 
 <!-- s79-llm-results:end -->
+
+<!-- s79-wave-sentiment-results:begin -->
+## S79b items 15, 15b, 7b: market waves, rotation, crude falls, sentiment, value area and POC migration (protocol: docs/protocols/s79_wave_sentiment_protocol.md)
+
+Each test ran once, 2004-2021 only (2022-2025 is spent), non-overlapping events, moving-block bootstrap (block = horizon, 10,000 draws, seed 20261108), gate: n >= 20, one-sided p <= 1 - Phi(t_needed(N)) with N read from the counter at run time, same sign in both halves, |effect| - 0.2% cost >= 0.5%. A pass reads "followed through"; anything else "no reliable follow-through". A description of history, not a forecast.
+
+| test | market | events (raw) | effect [95% interval] | p (one-sided) | bar t / N | halves same sign | verdict |
+|---|---|---|---|---|---|---|---|
+| crude_fall_20 | IN | 35 (69) | -0.72% [-3.24, +1.78] | 0.2726 | 3.07 / 47 | True | no reliable follow-through |
+| crude_fall_5 | IN | 52 (69) | +0.16% [-1.14, +1.52] | 0.4164 | 3.07 / 47 | False | no reliable follow-through |
+| extreme_sentiment_20 | IN | 68 (319) | +0.00% [-1.87, +1.73] | 0.5178 | 3.07 / 47 | False | no reliable follow-through |
+| extreme_sentiment_5 | IN | 132 (319) | +0.07% [-0.58, +0.71] | 0.4052 | 3.07 / 47 | False | no reliable follow-through |
+| poc_migration_5 | IN | 348 (1499) | +2.3 pts [-3.1, +7.7] | 0.2107 | 3.07 / 47 | True | no reliable follow-through |
+| rotation_20 | IN | 4 (4) | - | - | 3.07 / 47 | - | n too small, no conclusion (4 non-overlapping events; 4 before the non-overlap rule) |
+| rotation_5 | IN | 4 (4) | - | - | 3.07 / 47 | - | n too small, no conclusion (4 non-overlapping events; 4 before the non-overlap rule) |
+| value_area_return_1 | IN | 1335 (2379) | -4.5 pts [-7.7, -1.0] | 1.0000 | 3.07 / 47 | False | no reliable follow-through |
+| value_area_return_5 | IN | 562 (2379) | -1.5 pts [-6.0, +3.0] | 1.0000 | 3.07 / 47 | False | no reliable follow-through |
+| wave_20 | IN | 47 (111) | -1.15% [-3.57, +1.01] | 0.1632 | 3.07 / 47 | True | no reliable follow-through |
+| wave_5 | IN | 71 (111) | -0.06% [-1.24, +1.14] | 0.4639 | 3.07 / 47 | False | no reliable follow-through |
+| rotation_20 | US | 0 (0) | - | - | 3.07 / 47 | - | not available |
+| rotation_5 | US | 0 (0) | - | - | 3.07 / 47 | - | not available |
+| wave_20 | US | 0 (0) | - | - | 3.07 / 47 | - | not available |
+| wave_5 | US | 0 (0) | - | - | 3.07 / 47 | - | not available |
+
+Recorded in `wave_study_results_s79` (protocol sha a1781a275ec1, code sha a19f5278160e); rows also in `docs/research/wave_sentiment_results_s79.json`.
+<!-- s79-wave-sentiment-results:end -->

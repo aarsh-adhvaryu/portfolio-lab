@@ -108,3 +108,8 @@ max_sessions = 20          # minute bars: sessions in the composite
 # on = false: the tools return {"off": true}, both jobs skip. The thresholds are CODE (quant/waves.py), never set here.
 on = true
 backfill_sessions = 60     # macro_attribution: how many past sessions a first run writes (later runs write every session missed)
+
+[studies]
+# items 15/15b/7b: the pre-registered event studies (quant/index_event_study.py, tool wave_studies, table wave_study_results_s79). on = false: the tool returns {"off": true}.
+# The studies themselves are run once, by hand (tools/run_wave_studies.py); this switch only hides the verdicts from the agents.
+on = true

@@ -1,0 +1,952 @@
+{
+ "protocol": "docs/protocols/s79_wave_sentiment_protocol.md",
+ "period": [
+  "2004-01-01",
+  "2021-12-31"
+ ],
+ "written": "2026-11-08T02:20:01",
+ "results": [
+  {
+   "test": "crude_fall_20",
+   "market": "IN",
+   "n_events": 35,
+   "n_baseline": 3602,
+   "effect": -0.007243841741868502,
+   "ci_low": -0.032357270821271975,
+   "ci_high": 0.0178097108591922,
+   "p": 0.2725727427257274,
+   "t_needed": 3.0718088075002674,
+   "n_counter": 47,
+   "passed": false,
+   "verdict": "no reliable follow-through",
+   "ran_at": "2026-11-08 02:19:44.835312",
+   "protocol_sha": "a1781a275ec1cfae4ef1e8dade6436866b61c594ab8e47a38607547d3e49624e",
+   "code_sha": "a19f5278160e0c5edeba80c511f62860148b529f5205c11869164e09845c90db",
+   "details": {
+    "h": 20,
+    "family": "crude_fall",
+    "status": "ok",
+    "n_events_raw": 69,
+    "n_cut_period": 0,
+    "n_cut_window": 0,
+    "sd_boot": 0.012724058547110322,
+    "t_stat": -0.5693027672773169,
+    "unit": "pct",
+    "same_sign": true,
+    "halves": {
+     "split_at": "2015-11-13",
+     "first": {
+      "n": 17,
+      "effect": -0.007812793859847686
+     },
+     "second": {
+      "n": 18,
+      "effect": -0.007665551975531154
+     }
+    },
+    "seed": 20261108,
+    "draws": 10000,
+    "range": [
+     "2004-01-01",
+     "2021-12-31"
+    ],
+    "event_range": [
+     "2004-12-01",
+     "2021-11-26"
+    ],
+    "direction": "down",
+    "median_diff": -0.013902111522933636,
+    "hit_events": 0.6,
+    "hit_base": 0.6474181010549694,
+    "mean_events": 0.006155047751550465,
+    "mean_base": 0.013398889493418968,
+    "effect_gate_applies": true,
+    "effect_gate_value": -0.007243841741868502,
+    "gate": {
+     "n_ok": true,
+     "p_ok": false,
+     "halves_ok": true,
+     "effect_ok": true,
+     "passed": false,
+     "p_cut": 0.0010638297872340692,
+     "t_needed": 3.0718088075002674
+    },
+    "sensitivity_bar": {
+     "100": {
+      "t_needed": 3.291,
+      "passed": false
+     },
+     "300": {
+      "t_needed": 3.588,
+      "passed": false
+     }
+    },
+    "index": "Nifty 500 TRI"
+   }
+  },
+  {
+   "test": "crude_fall_5",
+   "market": "IN",
+   "n_events": 52,
+   "n_baseline": 4087,
+   "effect": 0.0015967025229426677,
+   "ci_low": -0.01135706377216049,
+   "ci_high": 0.015222568487527222,
+   "p": 0.4163583641635836,
+   "t_needed": 3.0718088075002674,
+   "n_counter": 47,
+   "passed": false,
+   "verdict": "no reliable follow-through",
+   "ran_at": "2026-11-08 02:19:44.835312",
+   "protocol_sha": "a1781a275ec1cfae4ef1e8dade6436866b61c594ab8e47a38607547d3e49624e",
+   "code_sha": "a19f5278160e0c5edeba80c511f62860148b529f5205c11869164e09845c90db",
+   "details": {
+    "h": 5,
+    "family": "crude_fall",
+    "status": "ok",
+    "n_events_raw": 69,
+    "n_cut_period": 0,
+    "n_cut_window": 0,
+    "sd_boot": 0.006791374168191676,
+    "t_stat": 0.2351074294243779,
+    "unit": "pct",
+    "same_sign": false,
+    "halves": {
+     "split_at": "2016-01-08",
+     "first": {
+      "n": 26,
+      "effect": 0.004665176286484986
+     },
+     "second": {
+      "n": 26,
+      "effect": -0.0016491219522185548
+     }
+    },
+    "seed": 20261108,
+    "draws": 10000,
+    "range": [
+     "2004-01-01",
+     "2021-12-31"
+    ],
+    "event_range": [
+     "2004-12-01",
+     "2021-11-26"
+    ],
+    "direction": "up",
+    "median_diff": -0.0033589833745120146,
+    "hit_events": 0.5769230769230769,
+    "hit_base": 0.601174455590898,
+    "mean_events": 0.005445469051984502,
+    "mean_base": 0.0038487665290418346,
+    "effect_gate_applies": true,
+    "effect_gate_value": 0.0015967025229426677,
+    "gate": {
+     "n_ok": true,
+     "p_ok": false,
+     "halves_ok": false,
+     "effect_ok": false,
+     "passed": false,
+     "p_cut": 0.0010638297872340692,
+     "t_needed": 3.0718088075002674
+    },
+    "sensitivity_bar": {
+     "100": {
+      "t_needed": 3.291,
+      "passed": false
+     },
+     "300": {
+      "t_needed": 3.588,
+      "passed": false
+     }
+    },
+    "index": "Nifty 500 TRI"
+   }
+  },
+  {
+   "test": "extreme_sentiment_20",
+   "market": "IN",
+   "n_events": 68,
+   "n_baseline": 2653,
+   "effect": 3.2326646126942804e-05,
+   "ci_low": -0.01867578207899166,
+   "ci_high": 0.01725328172495062,
+   "p": 0.5178482151784821,
+   "t_needed": 3.0718088075002674,
+   "n_counter": 47,
+   "passed": false,
+   "verdict": "no reliable follow-through",
+   "ran_at": "2026-11-08 02:19:44.835312",
+   "protocol_sha": "a1781a275ec1cfae4ef1e8dade6436866b61c594ab8e47a38607547d3e49624e",
+   "code_sha": "a19f5278160e0c5edeba80c511f62860148b529f5205c11869164e09845c90db",
+   "details": {
+    "h": 20,
+    "family": "extreme_sentiment",
+    "status": "ok",
+    "n_events_raw": 319,
+    "n_cut_period": 0,
+    "n_cut_window": 1,
+    "sd_boot": 0.009200949380438106,
+    "t_stat": 0.003513403322886617,
+    "unit": "pct",
+    "same_sign": false,
+    "halves": {
+     "split_at": "2014-03-24",
+     "first": {
+      "n": 34,
+      "effect": -0.0004936893238184133
+     },
+     "second": {
+      "n": 34,
+      "effect": 0.0007136914083857391
+     }
+    },
+    "seed": 20261108,
+    "draws": 10000,
+    "range": [
+     "2004-01-01",
+     "2021-12-31"
+    ],
+    "event_range": [
+     "2008-10-15",
+     "2021-11-17"
+    ],
+    "direction": "up",
+    "median_diff": -0.011014665135773871,
+    "hit_events": 0.6617647058823529,
+    "hit_base": 0.6400301545420279,
+    "mean_events": 0.012985984121965355,
+    "mean_base": 0.012953657475838412,
+    "effect_gate_applies": true,
+    "effect_gate_value": 3.2326646126942804e-05,
+    "by_label_descriptive": {
+     "fear": {
+      "n": 18,
+      "mean_minus_baseline": -0.0026362253032512616
+     },
+     "greed": {
+      "n": 50,
+      "mean_minus_baseline": 0.0009930053479030969
+     }
+    },
+    "gate": {
+     "n_ok": true,
+     "p_ok": false,
+     "halves_ok": false,
+     "effect_ok": false,
+     "passed": false,
+     "p_cut": 0.0010638297872340692,
+     "t_needed": 3.0718088075002674
+    },
+    "sensitivity_bar": {
+     "100": {
+      "t_needed": 3.291,
+      "passed": false
+     },
+     "300": {
+      "t_needed": 3.588,
+      "passed": false
+     }
+    },
+    "index": "Nifty 500 TRI"
+   }
+  },
+  {
+   "test": "extreme_sentiment_5",
+   "market": "IN",
+   "n_events": 132,
+   "n_baseline": 3455,
+   "effect": 0.0006998985174333072,
+   "ci_low": -0.0057943063918605925,
+   "ci_high": 0.007060100282111127,
+   "p": 0.40515948405159485,
+   "t_needed": 3.0718088075002674,
+   "n_counter": 47,
+   "passed": false,
+   "verdict": "no reliable follow-through",
+   "ran_at": "2026-11-08 02:19:44.835312",
+   "protocol_sha": "a1781a275ec1cfae4ef1e8dade6436866b61c594ab8e47a38607547d3e49624e",
+   "code_sha": "a19f5278160e0c5edeba80c511f62860148b529f5205c11869164e09845c90db",
+   "details": {
+    "h": 5,
+    "family": "extreme_sentiment",
+    "status": "ok",
+    "n_events_raw": 319,
+    "n_cut_period": 0,
+    "n_cut_window": 0,
+    "sd_boot": 0.0032824536551744965,
+    "t_stat": 0.21322418865837733,
+    "unit": "pct",
+    "same_sign": false,
+    "halves": {
+     "split_at": "2014-05-19",
+     "first": {
+      "n": 66,
+      "effect": 0.007266252232414056
+     },
+     "second": {
+      "n": 66,
+      "effect": -0.005913679604656592
+     }
+    },
+    "seed": 20261108,
+    "draws": 10000,
+    "range": [
+     "2004-01-01",
+     "2021-12-31"
+    ],
+    "event_range": [
+     "2008-10-15",
+     "2021-12-10"
+    ],
+    "direction": "up",
+    "median_diff": -6.955488072024618e-05,
+    "hit_events": 0.6212121212121212,
+    "hit_base": 0.6017366136034732,
+    "mean_events": 0.0045219442343588335,
+    "mean_base": 0.0038220457169255264,
+    "effect_gate_applies": true,
+    "effect_gate_value": 0.0006998985174333072,
+    "by_label_descriptive": {
+     "fear": {
+      "n": 44,
+      "mean_minus_baseline": -0.0004534253285203584
+     },
+     "greed": {
+      "n": 88,
+      "mean_minus_baseline": 0.0012765604404101401
+     }
+    },
+    "gate": {
+     "n_ok": true,
+     "p_ok": false,
+     "halves_ok": false,
+     "effect_ok": false,
+     "passed": false,
+     "p_cut": 0.0010638297872340692,
+     "t_needed": 3.0718088075002674
+    },
+    "sensitivity_bar": {
+     "100": {
+      "t_needed": 3.291,
+      "passed": false
+     },
+     "300": {
+      "t_needed": 3.588,
+      "passed": false
+     }
+    },
+    "index": "Nifty 500 TRI"
+   }
+  },
+  {
+   "test": "poc_migration_5",
+   "market": "IN",
+   "n_events": 348,
+   "n_baseline": 0,
+   "effect": 0.02298850574712641,
+   "ci_low": -0.03092867933169874,
+   "ci_high": 0.0765112765718513,
+   "p": 0.2106939956864317,
+   "t_needed": 3.0718088075002674,
+   "n_counter": 47,
+   "passed": false,
+   "verdict": "no reliable follow-through",
+   "ran_at": "2026-11-08 02:19:44.835312",
+   "protocol_sha": "a1781a275ec1cfae4ef1e8dade6436866b61c594ab8e47a38607547d3e49624e",
+   "code_sha": "a19f5278160e0c5edeba80c511f62860148b529f5205c11869164e09845c90db",
+   "details": {
+    "h": 5,
+    "family": "poc_migration",
+    "status": "ok",
+    "n_events_raw": 1499,
+    "n_cut_period": 0,
+    "n_cut_window": 0,
+    "sd_boot": 0.02680281337094487,
+    "t_stat": 0.8576900278702349,
+    "unit": "share",
+    "same_sign": true,
+    "halves": {
+     "split_at": "2013-03-18",
+     "first": {
+      "n": 174,
+      "effect": 0.04022988505747127
+     },
+     "second": {
+      "n": 174,
+      "effect": 0.005747126436781658
+     }
+    },
+    "seed": 20261108,
+    "draws": 10000,
+    "range": [
+     "2004-01-29",
+     "2021-12-31"
+    ],
+    "event_range": [
+     "2004-02-09",
+     "2021-12-21"
+    ],
+    "agree": 182,
+    "agree_share": 0.5229885057471264,
+    "mean_signed_return": -4.239306822113795e-05,
+    "direction": "follows",
+    "effect_gate_applies": true,
+    "effect_gate_value": -4.239306822113795e-05,
+    "gate": {
+     "n_ok": true,
+     "p_ok": false,
+     "halves_ok": true,
+     "effect_ok": false,
+     "passed": false,
+     "p_cut": 0.0010638297872340692,
+     "t_needed": 3.0718088075002674
+    },
+    "sensitivity_bar": {
+     "100": {
+      "t_needed": 3.291,
+      "passed": false
+     },
+     "300": {
+      "t_needed": 3.588,
+      "passed": false
+     }
+    },
+    "index": "Nifty 500 TRI"
+   }
+  },
+  {
+   "test": "rotation_20",
+   "market": "IN",
+   "n_events": 4,
+   "n_baseline": 0,
+   "effect": null,
+   "ci_low": null,
+   "ci_high": null,
+   "p": null,
+   "t_needed": 3.0718088075002674,
+   "n_counter": 47,
+   "passed": false,
+   "verdict": "n too small, no conclusion (4 non-overlapping events; 4 before the non-overlap rule)",
+   "ran_at": "2026-11-08 02:19:44.835312",
+   "protocol_sha": "a1781a275ec1cfae4ef1e8dade6436866b61c594ab8e47a38607547d3e49624e",
+   "code_sha": "a19f5278160e0c5edeba80c511f62860148b529f5205c11869164e09845c90db",
+   "details": {
+    "h": 20,
+    "family": "rotation",
+    "status": "n_too_small",
+    "n_events_raw": 4,
+    "n_cut_period": 0,
+    "n_cut_window": 0,
+    "sd_boot": null,
+    "t_stat": null,
+    "unit": "pct",
+    "same_sign": null,
+    "halves": null,
+    "seed": 20261108,
+    "draws": 10000,
+    "range": [
+     "2004-01-01",
+     "2021-12-31"
+    ],
+    "event_range": [
+     "2013-03-01",
+     "2016-03-02"
+    ],
+    "index": "Nifty 500 TRI"
+   }
+  },
+  {
+   "test": "rotation_5",
+   "market": "IN",
+   "n_events": 4,
+   "n_baseline": 0,
+   "effect": null,
+   "ci_low": null,
+   "ci_high": null,
+   "p": null,
+   "t_needed": 3.0718088075002674,
+   "n_counter": 47,
+   "passed": false,
+   "verdict": "n too small, no conclusion (4 non-overlapping events; 4 before the non-overlap rule)",
+   "ran_at": "2026-11-08 02:19:44.835312",
+   "protocol_sha": "a1781a275ec1cfae4ef1e8dade6436866b61c594ab8e47a38607547d3e49624e",
+   "code_sha": "a19f5278160e0c5edeba80c511f62860148b529f5205c11869164e09845c90db",
+   "details": {
+    "h": 5,
+    "family": "rotation",
+    "status": "n_too_small",
+    "n_events_raw": 4,
+    "n_cut_period": 0,
+    "n_cut_window": 0,
+    "sd_boot": null,
+    "t_stat": null,
+    "unit": "pct",
+    "same_sign": null,
+    "halves": null,
+    "seed": 20261108,
+    "draws": 10000,
+    "range": [
+     "2004-01-01",
+     "2021-12-31"
+    ],
+    "event_range": [
+     "2013-03-01",
+     "2016-03-02"
+    ],
+    "index": "Nifty 500 TRI"
+   }
+  },
+  {
+   "test": "value_area_return_1",
+   "market": "IN",
+   "n_events": 1335,
+   "n_baseline": 1044,
+   "effect": -0.044558799629596316,
+   "ci_low": -0.07701275704251516,
+   "ci_high": -0.010472200603752795,
+   "p": 1.0,
+   "t_needed": 3.0718088075002674,
+   "n_counter": 47,
+   "passed": false,
+   "verdict": "no reliable follow-through",
+   "ran_at": "2026-11-08 02:19:44.835312",
+   "protocol_sha": "a1781a275ec1cfae4ef1e8dade6436866b61c594ab8e47a38607547d3e49624e",
+   "code_sha": "a19f5278160e0c5edeba80c511f62860148b529f5205c11869164e09845c90db",
+   "details": {
+    "h": 1,
+    "family": "value_area",
+    "status": "ok",
+    "n_events_raw": 2379,
+    "n_cut_period": 0,
+    "n_cut_window": 0,
+    "sd_boot": 0.01694658786743389,
+    "t_stat": -2.6293670429800544,
+    "unit": "share",
+    "same_sign": false,
+    "halves": {
+     "split_at": "2012-07-27",
+     "first": {
+      "n": 667,
+      "effect": -0.00591147092205558
+     },
+     "second": {
+      "n": 668,
+      "effect": -0.08121847271707282
+     }
+    },
+    "seed": 20261108,
+    "draws": 10000,
+    "effect_gate_applies": false,
+    "effect_gate_value": 0.0,
+    "range": [
+     "2004-01-29",
+     "2021-12-31"
+    ],
+    "event_range": [
+     "2004-01-30",
+     "2021-12-24"
+    ],
+    "direction": "down",
+    "share_events": 0.21797752808988763,
+    "share_baseline_matched": 0.262536327719484,
+    "bins_used": 5,
+    "gate": {
+     "n_ok": true,
+     "p_ok": false,
+     "halves_ok": false,
+     "effect_ok": null,
+     "passed": false,
+     "p_cut": 0.0010638297872340692,
+     "t_needed": 3.0718088075002674
+    },
+    "sensitivity_bar": {
+     "100": {
+      "t_needed": 3.291,
+      "passed": false
+     },
+     "300": {
+      "t_needed": 3.588,
+      "passed": false
+     }
+    },
+    "index": "Nifty 500 TRI"
+   }
+  },
+  {
+   "test": "value_area_return_5",
+   "market": "IN",
+   "n_events": 562,
+   "n_baseline": 1817,
+   "effect": -0.014853248968295717,
+   "ci_low": -0.05996678182338514,
+   "ci_high": 0.030475123610586387,
+   "p": 1.0,
+   "t_needed": 3.0718088075002674,
+   "n_counter": 47,
+   "passed": false,
+   "verdict": "no reliable follow-through",
+   "ran_at": "2026-11-08 02:19:44.835312",
+   "protocol_sha": "a1781a275ec1cfae4ef1e8dade6436866b61c594ab8e47a38607547d3e49624e",
+   "code_sha": "a19f5278160e0c5edeba80c511f62860148b529f5205c11869164e09845c90db",
+   "details": {
+    "h": 5,
+    "family": "value_area",
+    "status": "ok",
+    "n_events_raw": 2379,
+    "n_cut_period": 0,
+    "n_cut_window": 0,
+    "sd_boot": 0.023204396080531046,
+    "t_stat": -0.6401049575583607,
+    "unit": "share",
+    "same_sign": false,
+    "halves": {
+     "split_at": "2012-12-07",
+     "first": {
+      "n": 281,
+      "effect": -0.01216220336018798
+     },
+     "second": {
+      "n": 281,
+      "effect": -0.018717071407385846
+     }
+    },
+    "seed": 20261108,
+    "draws": 10000,
+    "effect_gate_applies": false,
+    "effect_gate_value": 0.0,
+    "range": [
+     "2004-01-29",
+     "2021-12-31"
+    ],
+    "event_range": [
+     "2004-01-30",
+     "2021-12-17"
+    ],
+    "direction": "down",
+    "share_events": 0.6672597864768683,
+    "share_baseline_matched": 0.6821130354451641,
+    "bins_used": 5,
+    "gate": {
+     "n_ok": true,
+     "p_ok": false,
+     "halves_ok": false,
+     "effect_ok": null,
+     "passed": false,
+     "p_cut": 0.0010638297872340692,
+     "t_needed": 3.0718088075002674
+    },
+    "sensitivity_bar": {
+     "100": {
+      "t_needed": 3.291,
+      "passed": false
+     },
+     "300": {
+      "t_needed": 3.588,
+      "passed": false
+     }
+    },
+    "index": "Nifty 500 TRI"
+   }
+  },
+  {
+   "test": "wave_20",
+   "market": "IN",
+   "n_events": 47,
+   "n_baseline": 3174,
+   "effect": -0.011527869552108539,
+   "ci_low": -0.035672480855443604,
+   "ci_high": 0.01006226508490283,
+   "p": 0.16318368163183683,
+   "t_needed": 3.0718088075002674,
+   "n_counter": 47,
+   "passed": false,
+   "verdict": "no reliable follow-through",
+   "ran_at": "2026-11-08 02:19:44.835312",
+   "protocol_sha": "a1781a275ec1cfae4ef1e8dade6436866b61c594ab8e47a38607547d3e49624e",
+   "code_sha": "a19f5278160e0c5edeba80c511f62860148b529f5205c11869164e09845c90db",
+   "details": {
+    "h": 20,
+    "family": "wave",
+    "status": "ok",
+    "n_events_raw": 111,
+    "n_cut_period": 0,
+    "n_cut_window": 1,
+    "sd_boot": 0.011762187179307177,
+    "t_stat": -0.9800787367496697,
+    "unit": "pct",
+    "same_sign": true,
+    "halves": {
+     "split_at": "2011-04-04",
+     "first": {
+      "n": 23,
+      "effect": -0.02143319158786961
+     },
+     "second": {
+      "n": 24,
+      "effect": -0.003268454967391624
+     }
+    },
+    "seed": 20261108,
+    "draws": 10000,
+    "range": [
+     "2004-01-01",
+     "2021-12-31"
+    ],
+    "event_range": [
+     "2006-04-03",
+     "2021-04-12"
+    ],
+    "direction": "down",
+    "median_diff": -0.005076553363142944,
+    "hit_events": 0.5957446808510638,
+    "hit_base": 0.6553245116572148,
+    "mean_events": 0.0017172695388899444,
+    "mean_base": 0.013245139090998484,
+    "effect_gate_applies": true,
+    "effect_gate_value": -0.011527869552108539,
+    "by_label_descriptive": {
+     "down": {
+      "n": 22,
+      "mean_minus_baseline": -0.02703263981017412
+     },
+     "up": {
+      "n": 25,
+      "mean_minus_baseline": 0.002116328274989171
+     }
+    },
+    "gate": {
+     "n_ok": true,
+     "p_ok": false,
+     "halves_ok": true,
+     "effect_ok": true,
+     "passed": false,
+     "p_cut": 0.0010638297872340692,
+     "t_needed": 3.0718088075002674
+    },
+    "sensitivity_bar": {
+     "100": {
+      "t_needed": 3.291,
+      "passed": false
+     },
+     "300": {
+      "t_needed": 3.588,
+      "passed": false
+     }
+    },
+    "index": "Nifty 500 TRI"
+   }
+  },
+  {
+   "test": "wave_5",
+   "market": "IN",
+   "n_events": 71,
+   "n_baseline": 3904,
+   "effect": -0.0005764029434097975,
+   "ci_low": -0.012356655341311081,
+   "ci_high": 0.011410768671219136,
+   "p": 0.46385361463853614,
+   "t_needed": 3.0718088075002674,
+   "n_counter": 47,
+   "passed": false,
+   "verdict": "no reliable follow-through",
+   "ran_at": "2026-11-08 02:19:44.835312",
+   "protocol_sha": "a1781a275ec1cfae4ef1e8dade6436866b61c594ab8e47a38607547d3e49624e",
+   "code_sha": "a19f5278160e0c5edeba80c511f62860148b529f5205c11869164e09845c90db",
+   "details": {
+    "h": 5,
+    "family": "wave",
+    "status": "ok",
+    "n_events_raw": 111,
+    "n_cut_period": 0,
+    "n_cut_window": 0,
+    "sd_boot": 0.0059960850726926826,
+    "t_stat": -0.09612988081754321,
+    "unit": "pct",
+    "same_sign": false,
+    "halves": {
+     "split_at": "2011-01-07",
+     "first": {
+      "n": 35,
+      "effect": -0.003451375164164029
+     },
+     "second": {
+      "n": 36,
+      "effect": 0.001965655548256652
+     }
+    },
+    "seed": 20261108,
+    "draws": 10000,
+    "range": [
+     "2004-01-01",
+     "2021-12-31"
+    ],
+    "event_range": [
+     "2006-04-03",
+     "2021-12-20"
+    ],
+    "direction": "down",
+    "median_diff": 0.0013522180967009412,
+    "hit_events": 0.6619718309859155,
+    "hit_base": 0.595030737704918,
+    "mean_events": 0.002877395673374731,
+    "mean_base": 0.0034537986167845285,
+    "effect_gate_applies": true,
+    "effect_gate_value": -0.0005764029434097975,
+    "by_label_descriptive": {
+     "down": {
+      "n": 37,
+      "mean_minus_baseline": 0.0012971209053995653
+     },
+     "up": {
+      "n": 34,
+      "mean_minus_baseline": -0.002615237720055281
+     }
+    },
+    "gate": {
+     "n_ok": true,
+     "p_ok": false,
+     "halves_ok": false,
+     "effect_ok": false,
+     "passed": false,
+     "p_cut": 0.0010638297872340692,
+     "t_needed": 3.0718088075002674
+    },
+    "sensitivity_bar": {
+     "100": {
+      "t_needed": 3.291,
+      "passed": false
+     },
+     "300": {
+      "t_needed": 3.588,
+      "passed": false
+     }
+    },
+    "index": "Nifty 500 TRI"
+   }
+  },
+  {
+   "test": "rotation_20",
+   "market": "US",
+   "n_events": 0,
+   "n_baseline": 0,
+   "effect": null,
+   "ci_low": null,
+   "ci_high": null,
+   "p": null,
+   "t_needed": 3.0718088075002674,
+   "n_counter": 47,
+   "passed": false,
+   "verdict": "not available",
+   "ran_at": "2026-11-08 02:20:00.948378",
+   "protocol_sha": "a1781a275ec1cfae4ef1e8dade6436866b61c594ab8e47a38607547d3e49624e",
+   "code_sha": "a19f5278160e0c5edeba80c511f62860148b529f5205c11869164e09845c90db",
+   "details": {
+    "h": 20,
+    "family": "rotation",
+    "status": "not_available",
+    "n_events_raw": 0,
+    "n_cut_period": 0,
+    "n_cut_window": 0,
+    "sd_boot": null,
+    "t_stat": null,
+    "unit": "pct",
+    "same_sign": null,
+    "halves": null,
+    "note": "no daily cross-section of names / flows for this market"
+   }
+  },
+  {
+   "test": "rotation_5",
+   "market": "US",
+   "n_events": 0,
+   "n_baseline": 0,
+   "effect": null,
+   "ci_low": null,
+   "ci_high": null,
+   "p": null,
+   "t_needed": 3.0718088075002674,
+   "n_counter": 47,
+   "passed": false,
+   "verdict": "not available",
+   "ran_at": "2026-11-08 02:20:00.948378",
+   "protocol_sha": "a1781a275ec1cfae4ef1e8dade6436866b61c594ab8e47a38607547d3e49624e",
+   "code_sha": "a19f5278160e0c5edeba80c511f62860148b529f5205c11869164e09845c90db",
+   "details": {
+    "h": 5,
+    "family": "rotation",
+    "status": "not_available",
+    "n_events_raw": 0,
+    "n_cut_period": 0,
+    "n_cut_window": 0,
+    "sd_boot": null,
+    "t_stat": null,
+    "unit": "pct",
+    "same_sign": null,
+    "halves": null,
+    "note": "no daily cross-section of names / flows for this market"
+   }
+  },
+  {
+   "test": "wave_20",
+   "market": "US",
+   "n_events": 0,
+   "n_baseline": 0,
+   "effect": null,
+   "ci_low": null,
+   "ci_high": null,
+   "p": null,
+   "t_needed": 3.0718088075002674,
+   "n_counter": 47,
+   "passed": false,
+   "verdict": "not available",
+   "ran_at": "2026-11-08 02:20:00.948378",
+   "protocol_sha": "a1781a275ec1cfae4ef1e8dade6436866b61c594ab8e47a38607547d3e49624e",
+   "code_sha": "a19f5278160e0c5edeba80c511f62860148b529f5205c11869164e09845c90db",
+   "details": {
+    "h": 20,
+    "family": "wave",
+    "status": "not_available",
+    "n_events_raw": 0,
+    "n_cut_period": 0,
+    "n_cut_window": 0,
+    "sd_boot": null,
+    "t_stat": null,
+    "unit": "pct",
+    "same_sign": null,
+    "halves": null,
+    "note": "no daily cross-section of names / flows for this market"
+   }
+  },
+  {
+   "test": "wave_5",
+   "market": "US",
+   "n_events": 0,
+   "n_baseline": 0,
+   "effect": null,
+   "ci_low": null,
+   "ci_high": null,
+   "p": null,
+   "t_needed": 3.0718088075002674,
+   "n_counter": 47,
+   "passed": false,
+   "verdict": "not available",
+   "ran_at": "2026-11-08 02:20:00.948378",
+   "protocol_sha": "a1781a275ec1cfae4ef1e8dade6436866b61c594ab8e47a38607547d3e49624e",
+   "code_sha": "a19f5278160e0c5edeba80c511f62860148b529f5205c11869164e09845c90db",
+   "details": {
+    "h": 5,
+    "family": "wave",
+    "status": "not_available",
+    "n_events_raw": 0,
+    "n_cut_period": 0,
+    "n_cut_window": 0,
+    "sd_boot": null,
+    "t_stat": null,
+    "unit": "pct",
+    "same_sign": null,
+    "halves": null,
+    "note": "no daily cross-section of names / flows for this market"
+   }
+  }
+ ]
+}
