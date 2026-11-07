@@ -54,6 +54,7 @@ lambda_target = 5.0          # weight of the distance to the system's own alloca
 band_pct = 2.0
 turnover_penalty = 0.0005    # extra cost per rupee traded either way (a damper on churn; stated)
 forecast_max_age_days = 10
+freeze_no_forecast = true     # a name with no forecast has zero expected excess and is held where it is (no view, no trade)
 
 # Item 15b (sentiment and themes): the tool `sentiment`, `theme_exposure`, `event_calendar`, the daily job `sentiment`, the shadow lens `lens_sentiment`.
 # on=false: tools return {"off": true}, the job skips, the lens does not register.
@@ -78,7 +79,7 @@ on = true
 model = true                # false: the report is always written by code from the claims (flagged coded only)
 paper_requests = true       # ACT may put one request a day on the paper team's inputs
 paper_requests_per_day = 1
-questions = true            # ACT may ask the investor one question a day (always with a default and a deadline)
+questions = false           # ACT may ask the investor one question a day (always with a default and a deadline); off by default: the 8B model asks market questions, flip when the THINKER seat is better
 questions_per_day = 1
 short_intraday = true       # session mode: a short synthesis, flag-triggered or at most once in intraday_minutes
 intraday_minutes = 90
@@ -101,3 +102,9 @@ session_bins = 80          # minute bars: bins across the composite's range
 migrate_lookback = 5
 migrate_band = 0.25        # POC migration is 'flat' within this many value-area heights
 max_sessions = 20          # minute bars: sessions in the composite
+
+[waves]
+# item 15: macro attribution (tool macro_attribution, job macro_attribution), waves and rotations (tool wave_detector, job wave_scan, table wave_flag), lens_wave (shadow).
+# on = false: the tools return {"off": true}, both jobs skip. The thresholds are CODE (quant/waves.py), never set here.
+on = true
+backfill_sessions = 60     # macro_attribution: how many past sessions a first run writes (later runs write every session missed)

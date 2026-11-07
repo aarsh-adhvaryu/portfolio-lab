@@ -51,3 +51,13 @@ Otherwise the result is reported as **"no reliable follow-through"**.
 ## Honest limits stated in advance
 Waves and rotations are rare; with 2004-2021 and the non-overlap rule, several tests may have fewer than 20 events and will say so. The sentiment parts available for
 that period are price-based only. An effect found here is a description of history, not a forecast.
+
+## Amendment 1 (2026-11-08 ~00:50, before any study run): the flag definitions as implemented
+Written from the code of `quant/waves.py` and `quant/macro_attr.py` (agent W), which was finished before any returns were looked at. The cut-offs were chosen for rarity, not tuned on returns.
+- **Wave:** advancing share in the top or bottom 2.5% of earlier sessions; spread around the common move at or below the median; the market part larger than the own part for at least the
+  80th-percentile share (and over half) of the 500 most-traded names. Thresholds are percentiles of the sessions BEFORE the day; from 2022 on they stay frozen at the 2004-2021 sample.
+- **Rotation:** a 3-session foreign-selling streak followed by a flow at or above the 95th percentile of its z-score (or the mirror image), with India at the 80th (or 20th) percentile of the gap to
+  the Asian average. The event is dated when the flow is reported (`known_on`). 2004-2021 gives only 4 such events: the study will state "n too small, no conclusion".
+- **Crude fall:** a one-day Brent fall at or below the 2nd percentile of earlier one-day moves (69 events 2004-2021 before the non-overlap rule).
+- **Macro attribution:** ridge regression (constant 0.02) over the 250 sessions before the day; unexplained = move minus the parts. Fixed constants, not tuned.
+- Event counts before the non-overlap rule, 2004-2021: waves 111 (59 up), rotations 4, crude falls 69.
