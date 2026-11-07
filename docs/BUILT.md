@@ -259,3 +259,25 @@ Local models are free. API spend is priced before every call and refused above h
 - **Data** (`data/flows.py`, `data/asia.py`, `data/vix_in.py`, `data/gdelt_s79b.py`, job `data_s79b`): FII/DII flows, Asian peers, SOX, USDINR, India VIX, GDELT over HTTP.
 - **Studies** (`quant/index_event_study.py`, `docs/protocols/s79_wave_sentiment_protocol.md` + amendments): the 11 pre-registered event studies ran once: none passed.
 - **Test tools:** `tools/drills_s79.py` (kill -9, off Fri-Mon, off 10 days, network, Ollama, Docker, Kite, budget; accelerated 5-session run), `tools/realpath_s79b.py` (the 5-6 Nov check), `service/outgoing.py` (drop folder for messages to him).
+
+### S79 / S79b jobs and tools (the sync test requires every job and every brain tool to be listed here)
+
+| job | when | what |
+|---|---|---|
+| bars_1m | daily 16:10 | minute bars of held, listed and watched names and the index after each session (Kite, read only); a missing minute is stated, never filled |
+| benchmark_attr | every 120 min | the book against its own benchmark: the blended benchmark extended and the monthly attribution recomputed (code, free) |
+| catch_up | every 5 min | on open: each market's missed sessions scored in order by code, then the one 'while you were away' digest (code, free) |
+| data_s79b | daily 20:20 | FII/DII flows, India VIX, GDELT world events and theme tone kept current (public data, no credentials; a failing part is named, the rest still run) |
+| bear_resolve | daily 21:15 | resolves the bear's warnings from the debates on later prices (code only) |
+| forecast_loop | every 180 min | predict, score, correct: quantile forecasts of each market's index, scored when they mature, Hedge weights by code |
+| implied_calibration | daily 23:10 | keeps each day's option-implied fall chances beside what happened (scored when the expiry passes) |
+| kite_token | every 30 min | is Kite logged in? When not and Kite is needed, one urgent question a day says how to log in; closed when a login appears |
+| outgoing | every 5 min | messages left in the drop folder (a development session's report) are queued on Telegram once (code, free) |
+| seats_mode | every 5 min | plans (and, when switched on, performs) the FAST/THINKER local model swap for the mode |
+| sentiment | daily 23:25 | news tone, priced fear and positioning per theme (the local model tags the latest headlines), theme exposure of the book, calendar notes |
+| situation | every 120 min | the shared situation per market: typed claims from the tools, one report (NOW, WHY, SO WHAT, NEXT, ACT), chains to the graph, predictions scored |
+| voice | every 5 min | questions: defaults whose deadline passed become final; held questions go out within the daily cap (code, free) |
+| macro_attribution | every 180 min | splits each closed session's index move into crude, rupee, US yield, Nasdaq, foreign flows and Asia, plus unexplained |
+| wave_scan | every 180 min | flags market-wide waves and foreign-flow rotations from the NSE daily files (thresholds from the earlier history) |
+
+Tools added in S79 / S79b: `system_allocation`, `propose_allocation`, `debate`, `bear_scorecard`, `trajectory`, `decompose_move`, `align_events`, `breadth`, `forecast_now`, `forecast_scoreboard`, `fall_risk`, `implied_dist`, `cascade`, `simulate`, `seat_status`, `cost_per_act`, `wave_studies`, `transmission`, `lead_lag`.
