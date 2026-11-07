@@ -67,3 +67,6 @@ MATCHED SUBSET, the same items for the challenger and the incumbent, fixed here 
 - Candidates, in order, registered as role `seat-thinker-candidate` at 2026-11-08T03:38 (before any run): qwen3:30b-a3b (Ollama), qwen3.6-35b-a3b (llama.cpp server,
   Q4 GGUF, --n-cpu-moe, ctx 4096), gemma4-26b-a4b (llama.cpp server, Q4 GGUF). The result file set for the subset is `AM__<model>` (the incumbent's slice is `AM__qwen3_8b-q8_0`).
   Each decision counts as one test in the learner's counter (`seats_s79:thinker`).
+- Outcome of the window (2026-11-08 03:45-04:15): no candidate was started. The preflight (free RAM >= 10 GB; the CPU part of the model must also leave 2.5 GB + margin) failed every minute: free RAM
+  was 4-6 GB (the investor's browser ~13 GB, plus the lead's runs). All three are recorded "not verified (RAM guard)"; no test was made, so none counts in the learner's counter and the THINKER seat stays qwen3:8b-q8_0.
+  A rerun needs about 14 GB free (for qwen3:30b-a3b) up to 20 GB (qwen3.6-35b-a3b): `python tools/s79_thinker_window.py run --model KEY --wait-until HH:MM` (needs PFLAB_DATA_DIR).

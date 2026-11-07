@@ -219,3 +219,29 @@ protocol = "docs/protocols/s79_seats_protocol.md"
 note = "llama.cpp server b12189, GGUF Q4 (D:/llama.cpp/models/gemma4-26b-q4.gguf, sha256 verified), --n-cpu-moe, ctx 4096"
 evaluated_at = ""
 decision = ""
+
+# S79b item 17 THINKER window result (2026-11-08 04:15; the registrations above are unchanged). The guarded window never started a model:
+# free RAM stayed at 4-6 GB from 03:45 to 04:15 (floor to start: 10 GB; the model's CPU part alone is 8.5-13.9 GB), the investor's browser holds ~13 GB. No score exists.
+[[pick]]
+role = "seat-thinker-candidate-result"
+model = "qwen3:30b-a3b"
+registered_at = 2026-11-08T04:15:30
+protocol = "docs/protocols/s79_seats_protocol.md"
+evaluated_at = 2026-11-08T04:15:30
+decision = "not verified (RAM guard: 4.8 GB free vs 10 GB to start, about 8.5 GB of the model stays in RAM; no model was loaded)"
+
+[[pick]]
+role = "seat-thinker-candidate-result"
+model = "qwen3.6-35b-a3b"
+registered_at = 2026-11-08T04:15:30
+protocol = "docs/protocols/s79_seats_protocol.md"
+evaluated_at = 2026-11-08T04:15:30
+decision = "not verified (RAM guard: 4.8 GB free vs 10 GB to start, about 13.9 GB of the model stays in RAM; no model was loaded)"
+
+[[pick]]
+role = "seat-thinker-candidate-result"
+model = "gemma4-26b-a4b"
+registered_at = 2026-11-08T04:15:30
+protocol = "docs/protocols/s79_seats_protocol.md"
+evaluated_at = 2026-11-08T04:15:30
+decision = "not verified (RAM guard: 4.7 GB free vs 10 GB to start, about 9.3 GB of the model stays in RAM; no model was loaded)"

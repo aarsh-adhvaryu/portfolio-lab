@@ -105,9 +105,9 @@ Diagnosis (counts only): the app's `llm_runs` (a copy of its ledger, 31 calls, 2
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | AM (matched subset, incumbent) | qwen3:8b-q8_0 | 0.867 | 1.000 | 1.000 | 1.000 | 0.733 | 6.045 | 6.392 | 4.471 | 24.350 | 0.000 | 0.000 | 11008.000 |
 
-- qwen3:30b-a3b: 
-- qwen3.6-35b-a3b: 
-- gemma4-26b-a4b: 
+- qwen3:30b-a3b: not verified (preflight: free RAM 4.8 GB < 10.0; predicted RAM shortfall: 4.8 GB free, about 8.5 GB of the model stays in RAM); load None s; generation None tok/s, prompt None tok/s; peak GPU None MiB, peak temp None C, min free RAM None GB, free RAM after load None GB
+- qwen3.6-35b-a3b: not verified (preflight: free RAM 4.8 GB < 10.0; predicted RAM shortfall: 4.8 GB free, about 13.9 GB of the model must stay in RAM (floor 2.5 GB + 1 GB margin)); load None s; generation None tok/s, prompt None tok/s; peak GPU None MiB, peak temp None C, min free RAM None GB, free RAM after load None GB
+- gemma4-26b-a4b: not verified (preflight: free RAM 4.7 GB < 10.0; predicted RAM shortfall: 4.7 GB free, about 9.3 GB of the model must stay in RAM (floor 2.5 GB + 1 GB margin)); load None s; generation None tok/s, prompt None tok/s; peak GPU None MiB, peak temp None C, min free RAM None GB, free RAM after load None GB
 
 <!-- s79-llm-results:end -->
 

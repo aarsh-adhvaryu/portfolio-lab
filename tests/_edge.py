@@ -60,4 +60,11 @@ def shoot(url, out, width=1600, height=1000, wait_s=5, steps=()):
     try:
         return asyncio.run(_run(url, out, width, height, wait_s, steps, port))
     finally:
-        p.kill()
+        # S79b: p.kill() ended only the main process; Edge's crashpad/gpu/renderer children lived on (550 of them, 32 GB, found overnight). Kill the whole tree and remove the profile.
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            p.kill()
+        except OSError:
+            pass
+        import shutil
+        shutil.rmtree(prof, ignore_errors=True)

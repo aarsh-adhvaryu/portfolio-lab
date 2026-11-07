@@ -74,3 +74,17 @@ backend = "ollama"
 ollama = "gemma4:12b"
 ram_gb = 1.5
 options = { num_ctx = 8192 }
+
+# S79b item 17 THINKER candidates (guarded window 2026-11-08; none verified: RAM guard). Entries only; a seat uses one only through a registered "chosen" pick.
+# n_cpu_moe is set at run time by tools/s79_thinker_window.py from the layer count (about 8.6 GB of weights on the card); ram_gb is the part that stays in RAM.
+[model."qwen3.6-35b-a3b"]
+backend = "llama_server"
+gguf = "D:/llama.cpp/models/qwen3.6-35b-a3b-q4.gguf"
+ctx_size = 4096
+ram_gb = 13.9
+
+[model."gemma4-26b-a4b"]
+backend = "llama_server"
+gguf = "D:/llama.cpp/models/gemma4-26b-q4.gguf"
+ctx_size = 4096
+ram_gb = 9.3
