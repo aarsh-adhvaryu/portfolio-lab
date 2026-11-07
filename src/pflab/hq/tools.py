@@ -1333,6 +1333,8 @@ def paper_decide(ctx: Ctx, a: dict) -> dict:
     inputs = dict(a)
     inputs["reason"] = _checked(ctx, a.get("reason", ""))
     inputs["alternatives"] = _checked(ctx, a.get("alternatives", ""))
+    inputs["_prov"] = {"pass_id": ctx.pass_id, "task_id": ctx.task_id, "role": ctx.role, "model": ctx.model, "call_ref": ctx.call_ref,        # S79b 18C: who is deciding (provenance)
+                       "cited_text": f"{a.get('reason', '')} {a.get('alternatives', '')}"}
     out = manager.decide(ctx.con, ctx.now, cid, inputs, manager._index(ctx.rt.data_root))
     if out.get("stored"):
         note_artifact(ctx, cid, "proposal", out["decision_id"], f"paper {out['action']}")

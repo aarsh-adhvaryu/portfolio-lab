@@ -129,6 +129,13 @@ def dossier_text(con, cid: int, now: datetime, role: Optional[str] = None) -> st
             lines.append(_t)
     except Exception:
         pass
+    try:                                                   # S79b 18C: which sources were right on its own scored decisions (empty until some are credited)
+        from pflab.paper import provenance as _pv
+        _t = _pv.dossier_text(con)
+        if _t:
+            lines.append(_t)
+    except Exception:
+        pass
     if role in ("quant", "coordinator", None):
         lines.append("HOW TO DECIDE: read `paper_book`; for each holding or idea that deserves a decision call `paper_decide` with BUY, ADD, REDUCE, SELL, HOLD or WAIT, the "
                      "reasons and the alternatives (an amount in rupees or a target weight for a buy; a fraction for a reduce). Code sizes it against the cash and the rails and "
@@ -220,6 +227,11 @@ def decide(con, now: datetime, cid: int, a: dict, index: Optional[pd.Series] = N
                 [did, now, cid, action, isin, book.inst(con, isin)["symbol"] if isin else None, amount, fraction, reason[:1500], alts[:800], cond[:300] or None,
                  str(a.get("his_view") or "")[:400] or None, "proposed", note[:400], ref[0] if ref else None, ref[1] if ref else None,
                  scorecard.state_at(index, day), None])
+    try:                                                        # S79b 18C: the sources behind the decision are stored (never blocks a decision)
+        from pflab.paper import provenance as _pv
+        _pv.record(con, now, did, cid, a)
+    except Exception:
+        pass
     return {"stored": True, "decision_id": did, "action": action, "symbol": sym or None, "amount_rupees": round(amount, 2) if amount else None, "fraction": fraction,
             "sized": note, "executes": "only if the independent review approves this mission; then at the close"}
 
@@ -269,6 +281,11 @@ def execute(con, now: datetime, cid: int, root=None) -> dict:
                         [now, f" | the review did not approve ({verdict}): not executed (still scored, to see whether refusing was right)", did])
             refused += 1
         register(con, did)
+        try:                                                    # S79b 18C: the independent review's verdict joins the decision's sources
+            from pflab.paper import provenance as _pv
+            _pv.on_review(con, now, did, verdict, "executed" if (verdict == "approve" or (stays and verdict == "revise")) else "not_approved")
+        except Exception:
+            pass
     return {"orders": n, "adopted": adopted, "not_approved": refused}
 
 
@@ -356,6 +373,11 @@ def score_due(con, now: datetime, index: Optional[pd.Series]) -> int:
             detail = {"to": str(end[0]), "stock_pct": round(sp, 2), "nifty500_pct": round(ip, 2), "market_adjusted_pct": round(adj, 2), "beta": None if beta is None else round(beta, 2)}
         con.execute("UPDATE paper_claims SET outcome=?, outcome_json=?, scored_at=? WHERE claim_id=?", [out, json.dumps(detail), now, clid])
         n += 1
+    try:                                                        # S79b 18C: every source behind a scored decision is credited with the outcome (idempotent; never blocks scoring)
+        from pflab.paper import provenance as _pv
+        _pv.credit_scored(con, now)
+    except Exception:
+        pass
     return n
 
 

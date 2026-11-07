@@ -130,3 +130,16 @@ def table(con) -> List[dict]:
             row["note"] = f"only {n} scored claim(s): a count, not a conclusion"
         out.append(row)
     return out
+
+
+def sources(con, market: str = "IN") -> dict:
+    """S79b 18C: the source scorecard (which tools, forecasters, warnings, chains and agents stood behind decisions that held), next to the decision scorecard above.
+    Empty when decision provenance is off or nothing is credited yet; never raises."""
+    try:
+        from pflab.paper import provenance as pv
+        if not pv.on() or not pv._has(con, "source_scorecard_s79"):
+            return {"rows": [], "lines": []}
+        sc = pv.scorecard(con, market)
+        return {"rows": sc["rows"], "lines": pv.lines(con, market), "horizon_days": sc["horizon_days"], "min_n": sc["min_n"]}
+    except Exception:
+        return {"rows": [], "lines": []}
