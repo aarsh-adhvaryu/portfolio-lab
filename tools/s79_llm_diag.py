@@ -22,6 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 BASE = "qwen3:8b-q8_0"
 MOE = "qwen3:30b-a3b"
+FAST_CANDIDATES = ("gemma4:12b", "qwen3.5:9b")                  # S79b item 17 (docs/protocols/s79_seats_protocol.md); registered as role seat-fast-candidate
+THINKER_CANDIDATES = ("qwen3.6:35b-a3b", "gemma4:26b")          # the lead's guarded window registers them as role seat-thinker-candidate first
 
 
 def results_dir(arm: str, model: str) -> Path:
@@ -64,6 +66,10 @@ def run(a) -> int:
     model = a.model or (MOE if a.arm == "C" else BASE)
     if model == MOE:
         registry.require_registered("eval-s79-moe", model, datetime.now())
+    if model in FAST_CANDIDATES:
+        registry.require_registered("seat-fast-candidate", model, datetime.now())      # S79b item 17: registered before the run
+    if model in THINKER_CANDIDATES:
+        registry.require_registered("seat-thinker-candidate", model, datetime.now())
     kinds = [k for k in (a.kinds or "").split(",") if k]
     if a.arm == "C" and not kinds:
         d = results_dir("decision", "sampling")
@@ -126,6 +132,54 @@ def decide_moe(write_pick: bool) -> int:
     return 0
 
 
+def decide_fast(write_pick: bool) -> int:
+    """S79b item 17: the FAST seat among the incumbent (arm A) and the candidates with a complete arm A. --write-pick appends the winner row."""
+    from pflab import _toml
+    from pflab.llm import registry, s79_eval as se
+    base = se.load_arm(results_dir("A", BASE))
+    cands = {m: se.load_arm(results_dir("A", m)) for m in FAST_CANDIDATES}
+    cands = {m: v for m, v in cands.items() if v}
+    out_d = {}
+    for m, v in cands.items():
+        d = se.decide_fast(base, v)
+        out_d[m] = d
+        print(m, "chosen" if d["chosen"] else "not chosen", d["checks"])
+        if "mean4" in d:
+            print("   mean of the four scores", {k: round(x, 4) for k, x in d["mean4"].items()}, " p90 s", {k: (round(x, 2) if x else x) for k, x in d["p90"].items()},
+                  " vram MiB", d["cand"]["gpu_peak_mib"])
+    res = se.pick_fast(base, cands)
+    winner = res["winner"] or BASE
+    print("FAST seat:", winner, "(incumbent kept)" if winner == BASE else "(challenger wins)")
+    out = results_dir("decision", "fast")
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "decision_fast.json").write_text(json.dumps({"winner": winner, "decisions": out_d}, indent=1, default=str), encoding="utf-8")
+    if write_pick:
+        now = datetime.now().replace(microsecond=0)
+        # one row per tested challenger (its evaluation result; the registration above is unchanged), then the seat row
+        text = "\n# S79b item 17 results (appended; the registrations above are unchanged).\n"
+        for m, d in out_d.items():
+            text += (f"[[pick]]\nrole = \"seat-fast-candidate-result\"\nmodel = \"{m}\"\nregistered_at = {now.isoformat()}\nprotocol = \"docs/protocols/s79_seats_protocol.md\"\n"
+                     f"evaluated_at = {now.isoformat()}\ndecision = \"{'chosen' if m == winner else 'not chosen'}\"\n\n")
+        why = ("challenger beats qwen3:8b-q8_0 under the registered FAST rule" if winner != BASE else "incumbent kept: no challenger passed the registered FAST rule")
+        text += (f"[[pick]]\nrole = \"seat-fast\"\nmodel = \"{winner}\"\nregistered_at = {now.isoformat()}\nprotocol = \"docs/protocols/s79_seats_protocol.md\"\n"
+                 f"evaluated_at = {now.isoformat()}\ndecision = \"chosen fast seat ({why})\"\n")
+        with open(registry.PICKS_PATH, "a", encoding="utf-8") as f:
+            f.write(text)
+        _toml.load(registry.PICKS_PATH)                       # must still parse
+        print("appended pick rows to configs/llm_models.toml")
+    return 0
+
+
+def decide_thinker(model: str, ram_headroom: float, crashes: int) -> int:
+    from pflab.llm import s79_eval as se
+    d = se.decide_thinker(se.load_arm(results_dir("A", BASE)), se.load_arm(results_dir("A", model)), ram_headroom, crashes)
+    out = results_dir("decision", "thinker")
+    out.mkdir(parents=True, exist_ok=True)
+    (out / f"decision_thinker__{model.replace(':', '_')}.json").write_text(json.dumps(d, indent=1, default=str), encoding="utf-8")
+    print(model, "chosen" if d["chosen"] else "not chosen", d["checks"])
+    return 0
+
+
 def record() -> int:
     from pflab.learner import counter
     from pflab.llm import s79_eval as se
@@ -169,7 +223,8 @@ def report() -> int:
              "| arm | model | " + " | ".join(keys) + " |", "|---|---|" + "---|" * len(keys)]
     rows = {}
     for arm, model, res in (("A old default", BASE, a), ("B Qwen sampling", BASE, b), ("C 8b adopted kinds", BASE, se.load_arm(results_dir("C", BASE))),
-                            ("C MoE", MOE, se.load_arm(results_dir("C", MOE)))):
+                            ("C MoE", MOE, se.load_arm(results_dir("C", MOE))),
+                            *[(f"A FAST candidate", m, se.load_arm(results_dir("A", m))) for m in FAST_CANDIDATES]):
         if res and all(t in res for t in se.TASKS):
             rows[arm] = se.summarise(res)
             lines.append(f"| {arm} | {model} | " + _fmt(rows[arm], keys) + " |")
@@ -179,6 +234,11 @@ def report() -> int:
     if ds.exists():
         d = json.loads(ds.read_text(encoding="utf-8"))
         lines += ["", f"**Sampling decision:** adopted kinds {d['adopt_kinds'] or 'none'}; text checks {d['text']}; json checks {d['json']}."]
+    df = results_dir("decision", "fast") / "decision_fast.json"
+    if df.exists():
+        d = json.loads(df.read_text(encoding="utf-8"))
+        lines += ["", f"**FAST seat (S79b item 17, docs/protocols/s79_seats_protocol.md):** {d['winner']}; per candidate: "
+                  + "; ".join(f"{m} {'chosen' if x['chosen'] else 'not chosen'} {x['checks']}" for m, x in d["decisions"].items()) + "."]
     dm = results_dir("decision", "moe") / "decision_moe.json"
     if dm.exists():
         d = json.loads(dm.read_text(encoding="utf-8"))
@@ -212,7 +272,17 @@ def main() -> int:
     m.add_argument("--write-pick", action="store_true")
     sub.add_parser("record")
     sub.add_parser("report")
+    f = sub.add_parser("decide-fast")
+    f.add_argument("--write-pick", action="store_true")
+    t = sub.add_parser("decide-thinker")
+    t.add_argument("--model", required=True)
+    t.add_argument("--ram-headroom", type=float, required=True)
+    t.add_argument("--crashes", type=int, default=0)
     a = ap.parse_args()
+    if a.cmd == "decide-fast":
+        return decide_fast(a.write_pick)
+    if a.cmd == "decide-thinker":
+        return decide_thinker(a.model, a.ram_headroom, a.crashes)
     if a.cmd == "diagnose":
         return diagnose(a.db)
     if a.cmd == "run":

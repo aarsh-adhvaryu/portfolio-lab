@@ -141,3 +141,49 @@ base = "Ollama qwen3:30b-a3b (Q4_K_M, 30B total / 3B active MoE; CPU offload bes
 protocol = "docs/protocols/s79_forecast_protocol.md section local model; docs/STUDIES.md"
 evaluated_at = ""
 decision = ""
+
+# S79b item 17 (2026-11-08): FAST seat candidates, registered BEFORE any run (docs/protocols/s79_seats_protocol.md). The incumbent is qwen3:8b-q8_0 (arm A of 2026-11-05).
+# Ollama tags as installed; the Q6 tag asked for does not exist for qwen3.5:9b, so the default Q4_K_M tag is tested.
+[[pick]]
+role = "seat-fast-candidate"
+model = "gemma4:12b"
+registered_at = 2026-11-08T01:03:09
+size_gb = 8.0
+protocol = "docs/protocols/s79_seats_protocol.md"
+evaluated_at = ""
+decision = ""
+
+[[pick]]
+role = "seat-fast-candidate"
+model = "qwen3.5:9b"
+registered_at = 2026-11-08T01:03:09
+size_gb = 6.6
+protocol = "docs/protocols/s79_seats_protocol.md"
+note = "Q4_K_M (the only tag in the library at this size; no Q6 tag exists)"
+evaluated_at = ""
+decision = ""
+
+# S79b item 17 results (appended; the registrations above are unchanged).
+[[pick]]
+role = "seat-fast-candidate-result"
+model = "gemma4:12b"
+registered_at = 2026-11-08T03:32:42
+protocol = "docs/protocols/s79_seats_protocol.md"
+evaluated_at = 2026-11-08T03:32:42
+decision = "not chosen"
+
+[[pick]]
+role = "seat-fast-candidate-result"
+model = "qwen3.5:9b"
+registered_at = 2026-11-08T03:32:42
+protocol = "docs/protocols/s79_seats_protocol.md"
+evaluated_at = 2026-11-08T03:32:42
+decision = "not chosen"
+
+[[pick]]
+role = "seat-fast"
+model = "qwen3:8b-q8_0"
+registered_at = 2026-11-08T03:32:42
+protocol = "docs/protocols/s79_seats_protocol.md"
+evaluated_at = 2026-11-08T03:32:42
+decision = "chosen fast seat (incumbent kept: no challenger passed the registered FAST rule)"

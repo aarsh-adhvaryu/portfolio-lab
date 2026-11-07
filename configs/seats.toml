@@ -60,3 +60,17 @@ backend = "ollama"
 ollama = "qwen3:30b-a3b"
 ram_gb = 14.0
 options = { num_ctx = 8192 }
+
+# S79b item 17 FAST candidates (docs/protocols/s79_seats_protocol.md). Entries only; a candidate sits in a seat through a registered "chosen" pick.
+# ram_gb: system RAM beyond the GPU-resident weights (both fit the 12 GB card entirely; peak card memory.used measured in the eval arm).
+[model."qwen3.5:9b"]
+backend = "ollama"
+ollama = "qwen3.5:9b"
+ram_gb = 1.0
+options = { num_ctx = 8192 }
+
+[model."gemma4:12b"]
+backend = "ollama"
+ollama = "gemma4:12b"
+ram_gb = 1.5
+options = { num_ctx = 8192 }

@@ -90,7 +90,14 @@ Diagnosis (counts only): the app's `llm_runs` (a copy of its ledger, 31 calls, 2
 
 | arm | model | routing | answers_final | answers_first | extraction_f1 | materiality | answers_median_s | answers_p90_s | routing_call_median_s | tokens_per_s | text_fail_rate | json_fail_rate | gpu_peak_mib |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| A old default | qwen3:8b-q8_0 | incomplete: ['answers_20261017', 'answers_20261018', 'extraction', 'routing'] |
+| A old default | qwen3:8b-q8_0 | 0.867 | 1.000 | 1.000 | 1.000 | 0.780 | 6.041 | 6.392 | 4.471 | 24.066 | 0.000 | 0.000 | 11008.000 |
+| B Qwen sampling | qwen3:8b-q8_0 | 0.867 | 1.000 | 1.000 | 1.000 | 0.780 | 6.779 | 7.100 | 4.748 | 20.550 | 0.000 | 0.000 | 10639.000 |
+| A FAST candidate | gemma4:12b | 0.933 | 0.340 | 0.330 | 1.000 | 0.835 | 15.818 | 16.243 | 4.497 | 27.301 | 0.000 | 0.000 | 10710.000 |
+| A FAST candidate | qwen3.5:9b | 0.983 | 1.000 | 0.950 | 1.000 | 0.760 | 6.480 | 7.021 | 4.765 | 26.502 | 0.000 | 0.000 | 10059.000 |
+
+**Sampling decision:** adopted kinds none; text checks {'final_not_lower': True, 'first_not_lower': True, 'latency_ok': True, 'fewer_failures': False}; json checks {'routing_not_lower': True, 'materiality_not_lower': True, 'extraction_not_lower': True, 'fewer_failures': False}.
+
+**FAST seat (S79b item 17, docs/protocols/s79_seats_protocol.md):** qwen3:8b-q8_0; per candidate: gemma4:12b not chosen {'not_worse_routing': True, 'not_worse_answers_final': False, 'not_worse_extraction_f1': True, 'not_worse_materiality': True, 'better_overall': False, 'latency_p90': True, 'vram': True, 'failures_not_above': True}; qwen3.5:9b not chosen {'not_worse_routing': True, 'not_worse_answers_final': True, 'not_worse_extraction_f1': True, 'not_worse_materiality': False, 'better_overall': True, 'latency_p90': True, 'vram': True, 'failures_not_above': True}.
 
 <!-- s79-llm-results:end -->
 

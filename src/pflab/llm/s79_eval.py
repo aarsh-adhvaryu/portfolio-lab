@@ -237,6 +237,68 @@ def decide_moe(base: Dict[str, dict], moe: Dict[str, dict]) -> dict:
     return {"chosen": all(checks.values()), "checks": checks, "p_better": p_better, "p_worse": p_worse, "base": sb, "moe": sm}
 
 
+# ---- S79b item 17: the two seats (docs/protocols/s79_seats_protocol.md) ----------------------------------------------
+
+FAST_MARGINS = {"routing": 1 / 60, "answers_final": 0.02, "extraction_f1": 0.01, "materiality": 0.01}   # the harness's own (decide_sampling)
+FAST_P90_CALL_S = 8.0           # routing and extraction, per call
+FAST_ANSWER_P90_S = 20.0        # the harness threshold for a written answer
+FAST_VRAM_MIB = 11264.0         # 11 GiB of the 12 GiB card, nvidia-smi memory.used (all processes, display included), so the display's allocation fits beside it
+THINKER_ANSWER_P90_S = 90.0
+THINKER_ROUTING_P90_S = 60.0
+THINKER_RAM_HEADROOM_GB = 6.0
+
+
+def _p90_calls(arm: Dict[str, dict], task: str) -> Optional[float]:
+    s = arm.get(task, {}).get("call_seconds") or []
+    return float(np.percentile(s, 90)) if s else None
+
+
+def _mean4(s: dict) -> float:
+    return float(np.mean([s[k] for k in FAST_MARGINS]))
+
+
+def decide_fast(base: Dict[str, dict], cand: Dict[str, dict]) -> dict:
+    """FAST seat: does the challenger replace the incumbent (qwen3:8b-q8_0, arm A)? All checks must hold (protocol, section FAST)."""
+    sb, sc = summarise(base), summarise(cand)
+    complete = all(t in cand for t in TASKS)
+    if not complete:
+        return {"chosen": False, "checks": {"complete": False}, "base": sb, "cand": sc, "p90": {}}
+    p90 = {"routing": _p90_calls(cand, "routing"), "extraction": _p90_calls(cand, "extraction"), "answers": sc["answers_p90_s"]}
+    checks = {"not_worse_" + k: sc[k] >= sb[k] - m - 1e-9 for k, m in FAST_MARGINS.items()}
+    checks["better_overall"] = _mean4(sc) >= _mean4(sb) + 0.01 - 1e-9
+    checks["latency_p90"] = (p90["routing"] <= FAST_P90_CALL_S and p90["extraction"] <= FAST_P90_CALL_S and p90["answers"] <= FAST_ANSWER_P90_S)
+    checks["vram"] = 0 < sc["gpu_peak_mib"] <= FAST_VRAM_MIB
+    checks["failures_not_above"] = (sc["text_fail_rate"] + sc["json_fail_rate"]) <= (sb["text_fail_rate"] + sb["json_fail_rate"]) + 1e-12
+    return {"chosen": all(checks.values()), "checks": checks, "mean4": {"base": _mean4(sb), "cand": _mean4(sc)}, "p90": p90, "base": sb, "cand": sc}
+
+
+def pick_fast(base: Dict[str, dict], cands: Dict[str, Dict[str, dict]]) -> dict:
+    """The FAST winner among the challengers that pass; the best mean of the four scores, ties to the lower routing p90. None: the incumbent stays."""
+    ds = {k: decide_fast(base, v) for k, v in cands.items()}
+    ok = [k for k, d in ds.items() if d["chosen"]]
+    best = max(ok, key=lambda k: (round(ds[k]["mean4"]["cand"], 6), -ds[k]["p90"]["routing"])) if ok else None
+    return {"winner": best, "decisions": ds}
+
+
+def decide_thinker(base: Dict[str, dict], cand: Dict[str, dict], ram_headroom_gb: Optional[float], crashes: int) -> dict:
+    """THINKER seat (guarded run): beats the incumbent on score under item 13's sign-test rule, and the latency, RAM headroom and stability bounds."""
+    sb, sc = summarise(base), summarise(cand)
+    if not all(t in cand for t in TASKS):
+        return {"chosen": False, "checks": {"complete": False}, "base": sb, "cand": sc}
+    sets = {"routing": ("routing",), "answers": ("answers_20261017", "answers_20261018"), "materiality": ("materiality",)}
+    p_better = {k: sign_p(_pooled(cand, t), _pooled(base, t)) for k, t in sets.items()}
+    p_worse = {k: sign_p(_pooled(base, t), _pooled(cand, t)) for k, t in sets.items()}
+    checks = {"beats_on_score": any(p < 0.05 / 3 for p in p_better.values()),
+              "not_significantly_worse": not any(p < 0.05 for p in p_worse.values()) and sc["extraction_f1"] >= sb["extraction_f1"] - 0.01 - 1e-9,
+              "answers_final_threshold": sc["answers_final"] >= eval12.THRESHOLDS["answers_final"] - 1e-9,
+              "answers_p90": sc["answers_p90_s"] is not None and sc["answers_p90_s"] <= THINKER_ANSWER_P90_S,
+              "routing_p90": (_p90_calls(cand, "routing") or 1e9) <= THINKER_ROUTING_P90_S,
+              "ram_headroom": ram_headroom_gb is not None and ram_headroom_gb >= THINKER_RAM_HEADROOM_GB,
+              "stable": crashes == 0,
+              "failures_not_above": (sc["text_fail_rate"] + sc["json_fail_rate"]) <= (sb["text_fail_rate"] + sb["json_fail_rate"]) + 1e-12}
+    return {"chosen": all(checks.values()), "checks": checks, "p_better": p_better, "p_worse": p_worse, "base": sb, "cand": sc}
+
+
 def store_rows(con, comparison: str, arm: str, model: str, summary: dict, when: Optional[datetime] = None) -> int:
     """Keep an arm's numbers in `llm_s79_eval` (migration 77)."""
     when = when or datetime.now()
