@@ -189,6 +189,17 @@ def make_forecasts(con, feed: Feed, market: str, s: date, now: datetime, source:
             hedge = W.combine({n: v for n, v in q.items() if v is not None}, w)
             allq = dict(q)
             allq[P.COMBINED] = hedge
+            lens_meta: dict = {}
+            if is_idx:                                    # S79b 18D: plug-in lenses run in shadow beside the code forecasters (the hedge stays theirs until admitted)
+                try:
+                    from pflab.fcast import plugins
+                    ex = plugins.augment(con, market, close, h, s, q, w, hedge, source)
+                except Exception:
+                    ex = None
+                if ex:
+                    allq.update(ex["forecasts"])
+                    allq[P.COMBINED] = ex["hedge"]
+                    lens_meta = ex["meta"]
             for fc, qq in allq.items():
                 if qq is None or (subject, h, fc) in have:
                     continue
@@ -198,7 +209,7 @@ def make_forecasts(con, feed: Feed, market: str, s: date, now: datetime, source:
                         ext = F.EXTERNAL_GAP(con, nxt, market, feed.root)
                     meta = {"driver_ret": drv, "external_gap": ext}
                 if fc == P.COMBINED:
-                    meta = {"weights": {k: round(v, 4) for k, v in w.items()}}
+                    meta = {"weights": {k: round(v, 4) for k, v in w.items()}, **lens_meta}
                 rows.append([None, market, source, s, subject, sym, h, fc, _qjson(qq), base, matures, json.dumps(meta), now])
     if rows:
         n0 = next_id(con, "forecasts_s79", "forecast_id")
@@ -244,8 +255,19 @@ def refresh_overnight(con, feed: Feed, market: str, s: date, now: datetime, sour
         w = _weights_for(con, market, h, s, names, source)
         hq = W.combine({n: v for n, v in allq.items() if v is not None}, w)
         if hq is not None:
+            fin, extra = hq, {}
+            try:                                              # S79b 18D: the hedge-with-lens rows and the admitted lens's part follow the remade overnight
+                from pflab.fcast import plugins
+                ex = plugins.augment(con, market, close, h, s, allq, w, hq, source)
+                if ex:
+                    fin, extra = ex["hedge"], {k: v for k, v in ex["forecasts"].items() if k == plugins.BASE or k.startswith(plugins.WITH_PREFIX)}
+            except Exception:
+                pass
             con.execute("UPDATE forecasts_s79 SET quantiles_json=?, made_at=? WHERE market=? AND source=? AND as_of=? AND subject=? AND horizon_sessions=? "
-                        "AND forecaster=?", [_qjson(hq), now, market, source, s, mk.index, h, P.COMBINED])
+                        "AND forecaster=?", [_qjson(fin), now, market, source, s, mk.index, h, P.COMBINED])
+            for fname, qq in extra.items():
+                con.execute("UPDATE forecasts_s79 SET quantiles_json=?, made_at=? WHERE market=? AND source=? AND as_of=? AND subject=? AND horizon_sessions=? "
+                            "AND forecaster=? AND forecast_id NOT IN (SELECT forecast_id FROM forecast_scores_s79)", [_qjson(qq), now, market, source, s, mk.index, h, fname])
         n += 1
     return n
 
@@ -295,6 +317,13 @@ def post_close(rt_or_con, market: str, session_date: date, now: Optional[datetim
     scored = S.score_pending(con, feed.price_at, market, session_date, SOURCE, now)
     out["scored"] = int(len(scored))
     out["weight_steps"] = update_weights(con, market, scored, now)
+    try:
+        from pflab.fcast import plugins
+        steps = plugins.update_lens_weights(con, market, scored, now, SOURCE)
+        if steps:
+            out["lens_weight_steps"] = steps
+    except Exception as e:
+        out["lens_error"] = type(e).__name__
     out["fall_resolved"] = fall_risk.resolve(con, market, close, session_date, SOURCE, now)
     out.update(make_forecasts(con, feed, market, session_date, now))
     fr = fall_risk.make(con, market, close, session_date, SOURCE, now)

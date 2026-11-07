@@ -18,6 +18,7 @@ from datetime import date, datetime
 from typing import Callable, Dict, List, Optional, Tuple
 
 TOOL_NAMES = ("trajectory", "decompose_move", "align_events", "breadth")
+EXTRA_TOOLS = ("volume_profile",)       # S79b 7b: read when its switch is on; its line is added to the trajectory part of the explanation
 _NUM = re.compile(r"\d[\d,]*(?:\.\d+)?")
 _TAG = re.compile(r"\[calls?\s*([\d,\s]+)\]", re.I)
 _LEAD = re.compile(r"^\s*(?:[-*]\s+|\d+[.)]\s+)")
@@ -89,7 +90,7 @@ def _ctx(rt, now: datetime):
         gate = service.gate(rt)
     except Exception:
         gate = egress.Gate()
-    return tl.Ctx(rt, None, "explain", False, {}, gate, now, role="research", allowed=frozenset(TOOL_NAMES))
+    return tl.Ctx(rt, None, "explain", False, {}, gate, now, role="research", allowed=frozenset(TOOL_NAMES + EXTRA_TOOLS))
 
 
 def run_tools(rt, market: str, symbol: str, day: date, now: datetime) -> Tuple[object, Dict[str, dict], Dict[int, str]]:
@@ -111,6 +112,16 @@ def run_tools(rt, market: str, symbol: str, day: date, now: datetime) -> Tuple[o
         cid = res.get("call_ref") if isinstance(res, dict) else None
         if cid:
             texts[int(cid)] = text
+    try:                                                              # S79b 7b: where the day's business was done; never blocks the explanation
+        from pflab.quant import volume_profile as _vp
+        if _vp.is_on():
+            text, err = tl.run(ctx, "volume_profile", {**base, "symbol": symbol})
+            res = json.loads(text)
+            if isinstance(res, dict) and res.get("call_ref") and not err and not res.get("off"):
+                out["volume_profile"] = res
+                texts[int(res["call_ref"])] = text
+    except Exception:
+        pass
     return ctx, out, texts
 
 
@@ -161,6 +172,15 @@ def factual_paragraph(symbol: str, day: date, res: Dict[str, dict]) -> str:
         lines.append(s)
     else:
         lines.append("No minute bars were recorded for that day, so the path of the day is not known.")
+    vp = res.get("volume_profile") or {}
+    if vp.get("composite") and vp["composite"].get("poc") is not None:
+        try:
+            from pflab.quant import volume_profile as _vp
+            ln = _vp.profile_line(vp).rstrip(".")
+            if ln:
+                lines.append(ln + _tag(vp) + ".")
+        except Exception:
+            pass
     if al.get("n_bursts"):
         b0 = al["bursts"][0]
         s = f"There were {al['n_bursts']} sudden minute moves; the first at {b0['at']} was {_p(b0['return_pct'])}%"
@@ -195,7 +215,7 @@ SYSTEM = ("You explain, for a private investor who is not a trader, why one stoc
 def explain_move(rt, market: str, symbol: str, day: date, now: datetime, chat: Optional[Callable[[str, str], str]] = None) -> dict:
     """The five-line explanation of one name's move on one session. `chat(system, user) -> text` is the local model (default: Ollama through `pflab.llm.client`)."""
     ctx, res, texts = run_tools(rt, market, symbol, day, now)
-    calls = {n: r.get("call_ref") for n, r in res.items() if isinstance(r, dict)}
+    calls = {n: r.get("call_ref") for n, r in res.items() if isinstance(r, dict) and n in TOOL_NAMES}
     out = {"market": market, "symbol": symbol, "day": str(day), "calls": calls, "rejected": [], "source": "code", "call_ids": []}
     fallback = factual_paragraph(symbol, day, res)
     text = None

@@ -64,6 +64,9 @@ def budget_refusal(con, item: dict, now: datetime) -> Optional[str]:
             return "no monthly cap is set: nothing paid is sent"
         if rup > sp["left"]:
             return f"over the monthly cap (Rs {sp['left']:.0f} left, this costs Rs {rup:.2f})"
+        pace = gv.mode_pace(con, now)
+        if pace:
+            return pace
         for lay in sp["layers"]:
             if lay["layer"] == "workers" and lay["today"] + rup > lay["day_cap"]:
                 return f"over the workers' day limit (Rs {lay['today']:.0f} of Rs {lay['day_cap']:.0f} today)"

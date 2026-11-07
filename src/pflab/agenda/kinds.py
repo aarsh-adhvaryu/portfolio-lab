@@ -300,3 +300,8 @@ def _install() -> None:
 
 
 _install()
+
+try:                                                  # S79b 18D: the kind that drafts lens candidates as protocol stubs (text only)
+    import pflab.agenda.propose_lens  # noqa: F401
+except Exception:                                     # pragma: no cover
+    pass

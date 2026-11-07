@@ -137,13 +137,6 @@ def check(con, agent: str, est_inr: float, n_in: int, n_out: int, now: datetime,
         raise _refuse(f"{agent}: {n} calls today already (its limit under '{mode}')", tomorrow)
     share, day_cap = layer_limits(cfg, lim.layer)
     peers = agents_in(lim.layer)
-    if not (his_order or window) and turn <= 1:               # S79 (A42): the clock's MODE sets the rupee pace per hour (a pass may begin while the last hour is under budget)
-        from pflab import markets
-        if markets.pace_spend():
-            mkt, md = markets.primary(now)
-            hour = _spent_system(con, peers, now - timedelta(hours=1))
-            if hour >= markets.rupee_per_hour(md) * max(1.0, day_cap / 80.0):
-                raise _refuse(f"the {lim.layer} have spent ~Rs {hour:,.1f} in the last hour; the {md} mode paces ~Rs {markets.rupee_per_hour(md):,.0f} an hour", now + timedelta(minutes=30))
     day = _spent_system(con, peers, day_start)                                   # his questions are not counted against the system's day
     # the day's rupees stop a pass from BEGINNING; a pass already begun (turn 2 on) is stopped only by the cap, never half-way by a day limit
     if not (his_order or window) and turn <= 1 and day + est_inr > day_cap:
@@ -159,6 +152,18 @@ def check(con, agent: str, est_inr: float, n_in: int, n_out: int, now: datetime,
         if getattr(e, "resume_at", None) is None:
             e.resume_at = acc_end(cfg, now) or next_month           # the cap resets with the month; a window's cap does not reset
         raise
+
+
+def mode_pace(con, now: datetime, layer: str = "workers") -> Optional[str]:
+    """S79 (A42): the clock's MODE sets a rupee pace per hour for the system's OWN optional work (the agenda). Returns why a paid item should wait, or None.
+    It is not applied to his orders or to a mission already under way: they are held by the day and month limits only."""
+    from pflab import markets
+    if not markets.pace_spend():
+        return None
+    _m, md = markets.primary(now)
+    hour = _spent_system(con, agents_in(layer), now - timedelta(hours=1))
+    budget = markets.rupee_per_hour(md)
+    return f"the {layer} have spent ~Rs {hour:,.1f} in the last hour; the {md} mode paces ~Rs {budget:,.0f} an hour" if hour >= budget else None
 
 
 def acc_end(cfg: dict, now: datetime) -> Optional[datetime]:

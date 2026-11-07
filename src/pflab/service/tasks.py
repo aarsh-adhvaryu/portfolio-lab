@@ -703,3 +703,7 @@ def _load_s79_jobs() -> None:
 
 
 _load_s79_jobs()
+# `conductor` stays the last registered job (a long-standing expectation of the settings code and tests): re-register it after the S79 modules
+from pflab.service.jobs import REGISTRY as _REG  # noqa: E402
+if "conductor" in _REG:
+    _REG["conductor"] = _REG.pop("conductor")

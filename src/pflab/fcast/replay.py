@@ -107,6 +107,13 @@ def replay(con, market: str = "IN", start: date = P.REPLAY_START, end: date = P.
         dm = S.dm_stat((pb[P.BENCHMARK] - pb[P.COMBINED])[allok], h) if allok.any() else {}
         out["horizons"][str(h)] = {"forecasters": board, "hedge_vs_naive_dm_t": dm.get("t"), "hedge_mean_gain": dm.get("mean"),
                                    "final_weights": {nm: float(Wm[-1, j]) for j, nm in enumerate(names_all)}, "weight_steps": int(steps[-1])}
+        try:                                               # S79b 18D: plug-in lenses, shadow, replay_ok only; their rows are added to the same lists
+            from pflab.fcast import plugins
+            lb = plugins.replay_lenses(con, market, close, h, Q, pb, y, i0, names_all, dates, px, now, write, fc_rows, sc_rows, w_rows)
+            if lb:
+                out["horizons"][str(h)]["lenses"] = lb
+        except Exception as e:
+            out["horizons"][str(h)]["lenses"] = {"error": f"{type(e).__name__}: {str(e)[:120]}"}
         if write:
             for t in np.flatnonzero(allok):                # forecasts that matured by the end; the last h origins have no outcome and are not stored
                 mat = dates[t + h]
@@ -151,7 +158,7 @@ def _write(con, market, fc_rows, sc_rows, w_rows, fr, shown, fr_ok, i0, dates, n
     from pflab.fcast.run import _insert
     con.execute("DELETE FROM forecast_scores_s79 WHERE market=? AND source=?", [market, SOURCE])
     con.execute("DELETE FROM forecasts_s79 WHERE market=? AND source=?", [market, SOURCE])
-    con.execute("DELETE FROM forecaster_weights WHERE market=? AND source=?", [market, SOURCE])
+    con.execute("DELETE FROM forecaster_weights WHERE market=? AND (source=? OR source LIKE 'replay+%')", [market, SOURCE])
     con.execute("DELETE FROM fall_risk_s79 WHERE market=? AND source=?", [market, SOURCE])
     n0 = next_id(con, "forecasts_s79", "forecast_id")
     for i, (a, b) in enumerate(zip(fc_rows, sc_rows)):
