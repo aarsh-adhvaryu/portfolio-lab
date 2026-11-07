@@ -424,7 +424,7 @@ def test_the_job_records_bars_states_gaps_and_is_idempotent(con, tmp_path, root,
     from pflab.service.jobs import Ctx
     monkeypatch.setattr(settings, "ability", lambda *a, **k: True)
     monkeypatch.setattr(tb, "wanted", lambda c, m, d: {AAA: "AAA", "INDEX:NIFTY 50": "NIFTY 50", "INE333A01014": "NOPE", "INE444A01015": "FAIL"})
-    kite = FakeKite(drop=range(100, 105), fail={13})
+    kite = FakeKite(drop=range(100, 125), fail={13})        # S79b: 350 bars is short for both an equity (360 since 2026-08-03) and an index (375)
     ctx = Ctx(con, NOW, tmp_path / "pm", root, tmp_path / "repo", secrets=None)
     out = tb._bars_1m(ctx, kite=kite, sleep=lambda s: None)
     r = out["IN"]

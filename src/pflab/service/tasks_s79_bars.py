@@ -22,6 +22,14 @@ INDEX_PREFIX = "INDEX:"
 SOURCE_MARKETS = ("IN",)
 
 
+EQUITY_SHORT_FROM = date(2026, 8, 3)       # found by agent K on 2026-11-08: Kite's equity minute bars end 15:14 since this date (360 bars); indices still deliver 375
+
+
+def expected_for(m, key: str, day: date) -> int:
+    n = expected_bars(m)
+    return n - 15 if (m.code == "IN" and not key.startswith(INDEX_PREFIX) and day >= EQUITY_SHORT_FROM) else n
+
+
 def expected_bars(m) -> int:
     from pflab.quant.trajectory import expected_minutes
     return expected_minutes(m.open, m.close)
@@ -112,6 +120,7 @@ def record(con, kite, market: str, days: List[date], names: Dict[str, str], now:
     got = {"names": len(names), "days": [str(d) for d in days], "bars_new": 0, "full": 0, "partial": 0, "empty": 0, "no_token": 0, "errors": 0}
     for d in days:
         for key, symbol in names.items():
+            exp = expected_for(m, key, d)
             done = con.execute("SELECT status FROM bars_1m_runs WHERE market=? AND isin=? AND day=?", [market, key, d]).fetchone()
             if done and done[0] == "full":
                 continue
