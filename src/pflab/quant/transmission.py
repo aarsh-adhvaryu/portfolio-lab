@@ -57,7 +57,7 @@ DRIVERS: Dict[str, List[tuple]] = {
         ("US_VIX", "US VIX", "diff", "US fear gauge: a jump means funds cut risk everywhere, emerging markets first"),
         ("DOLLAR_INDEX", "Dollar index", "pct", "a stronger dollar pulls money out of rupee assets"),
         ("WTI", "WTI crude", "pct", "India imports most of its oil: dearer crude hurts the rupee, margins and the deficit"),
-        ("ADR_BASKET", "Indian ADRs (INFY, WIT, HDB, IBN, RDY)", "pct",
+        ("ADR_BASKET", "Indian ADRs (the five Indian companies listed in the US)", "pct",
          "Indian companies priced in New York while the NSE is shut: the closest read of the same shares"),
         ("US_INDIA_INDA", "iShares MSCI India (INDA)", "pct", "an India fund that trades in New York: the US view of India itself"),
     ],
@@ -81,7 +81,7 @@ SECTOR_LINKS: List[tuple] = [
 ]
 
 # ADR key -> NSE symbol of the same company (one ADR is a fixed number of the NSE shares)
-ADR_NSE = {"ADR_INFY": "INFY", "ADR_WIT": "WIPRO", "ADR_HDB": "HDFCBANK", "ADR_IBN": "ICICIBANK", "ADR_RDY": "DRREDDY"}
+ADR_NSE = {"ADR_INFY": "ADR_INFY"[4:], "ADR_WIT": "WIPRO", "ADR_HDB": "HDFCBANK", "ADR_IBN": "ICICIBANK", "ADR_RDY": "DRREDDY"}
 
 
 # --- data --------------------------------------------------------------------------------------------------------------

@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 BASE = "qwen3:8b-q8_0"
 MOE = "qwen3:30b-a3b"
 FAST_CANDIDATES = ("gemma4:12b", "qwen3.5:9b")                  # S79b item 17 (docs/protocols/s79_seats_protocol.md); registered as role seat-fast-candidate
-THINKER_CANDIDATES = ("qwen3.6:35b-a3b", "gemma4:26b")          # the lead's guarded window registers them as role seat-thinker-candidate first
+THINKER_CANDIDATES = ("qwen3:30b-a3b", "qwen3.6-35b-a3b", "gemma4-26b-a4b")   # registered as role seat-thinker-candidate before the guarded window (tools/s79_thinker_window.py)
 
 
 def results_dir(arm: str, model: str) -> Path:
@@ -170,13 +170,30 @@ def decide_fast(write_pick: bool) -> int:
     return 0
 
 
-def decide_thinker(model: str, ram_headroom: float, crashes: int) -> int:
-    from pflab.llm import s79_eval as se
-    d = se.decide_thinker(se.load_arm(results_dir("A", BASE)), se.load_arm(results_dir("A", model)), ram_headroom, crashes)
+def decide_thinker(model: str, ram_headroom: float, crashes: int, subset: bool = False, write_pick: bool = False) -> int:
+    """THINKER rule (docs/protocols/s79_seats_protocol.md). --subset: the matched subset of Amendment 1 (arm AM, results written by tools/s79_thinker_window.py)."""
+    from pflab import _toml
+    from pflab.llm import registry, s79_eval as se
+    arm = "AM" if subset else "A"
+    base, cand = se.load_arm(results_dir(arm, BASE)), se.load_arm(results_dir(arm, model))
+    d = se.decide_thinker(base, cand, ram_headroom, crashes)
     out = results_dir("decision", "thinker")
     out.mkdir(parents=True, exist_ok=True)
     (out / f"decision_thinker__{model.replace(':', '_')}.json").write_text(json.dumps(d, indent=1, default=str), encoding="utf-8")
     print(model, "chosen" if d["chosen"] else "not chosen", d["checks"])
+    if write_pick:
+        now = datetime.now().replace(microsecond=0).isoformat()
+        verdict = "chosen" if d["chosen"] else "not chosen"
+        text = ("\n# S79b item 17 THINKER result (appended; the registration above is unchanged).\n"
+                f'[[pick]]\nrole = "seat-thinker-candidate-result"\nmodel = "{model}"\nregistered_at = {now}\n'
+                f'protocol = "docs/protocols/s79_seats_protocol.md"\nevaluated_at = {now}\ndecision = "{verdict}"\n')
+        if d["chosen"]:
+            text += (f'\n[[pick]]\nrole = "seat-thinker"\nmodel = "{model}"\nregistered_at = {now}\nprotocol = "docs/protocols/s79_seats_protocol.md"\n'
+                     f'evaluated_at = {now}\ndecision = "chosen thinker seat (beats qwen3:8b-q8_0 under the registered THINKER rule on the matched subset)"\n')
+        with open(registry.PICKS_PATH, "a", encoding="utf-8") as f:
+            f.write(text)
+        _toml.load(registry.PICKS_PATH)                       # must still parse
+        print("appended pick rows to configs/llm_models.toml")
     return 0
 
 
@@ -239,6 +256,29 @@ def report() -> int:
         d = json.loads(df.read_text(encoding="utf-8"))
         lines += ["", f"**FAST seat (S79b item 17, docs/protocols/s79_seats_protocol.md):** {d['winner']}; per candidate: "
                   + "; ".join(f"{m} {'chosen' if x['chosen'] else 'not chosen'} {x['checks']}" for m, x in d["decisions"].items()) + "."]
+    am = se.load_arm(results_dir("AM", BASE))
+    th_lines = []
+    if am:
+        th_lines.append("| AM (matched subset, incumbent) | " + BASE + " | " + _fmt(se.summarise(am), keys) + " |")
+    for m in THINKER_CANDIDATES:
+        w = results_dir("decision", "thinker") / f"window__{m.replace(':', '_')}.json"
+        dj = results_dir("decision", "thinker") / f"decision_thinker__{m.replace(':', '_')}.json"
+        wj = json.loads(w.read_text(encoding="utf-8")) if w.exists() else {}
+        dd = json.loads(dj.read_text(encoding="utf-8")) if dj.exists() else {}
+        res = se.load_arm(results_dir("AM", m))
+        if res and all(t in res for t in se.TASKS):
+            th_lines.append(f"| AM (matched subset) | {m} | " + _fmt(se.summarise(res), keys) + " |")
+        meas = ""
+        if wj:
+            b = wj.get("bench") or {}
+            meas = (f"{wj.get('verdict')}{' (' + wj.get('reason', '') + ')' if wj.get('reason') else ''}; load {wj.get('load_s')} s; generation {b.get('gen_tps')} tok/s, prompt {b.get('prompt_tps')} tok/s; "
+                    f"peak GPU {wj.get('peak_gpu_mib')} MiB, peak temp {wj.get('peak_temp_c')} C, min free RAM {wj.get('min_free_ram_gb')} GB, free RAM after load {wj.get('ram_after_load_gb')} GB")
+        if not wj and not dd:
+            continue
+        th_lines.append(f"<!-- {m} --> " + (f"{m}: {'chosen' if dd.get('chosen') else 'not chosen'} {dd.get('checks')}; " if dd else f"{m}: ") + meas)
+    if th_lines:
+        lines += ["", "**THINKER seat, guarded window (S79b item 17, Amendment 1: matched subset routing 60 / answers 20 / extraction 40 / materiality 60):**", "",
+                  "| arm | model | " + " | ".join(keys) + " |", "|---|---|" + "---|" * len(keys)] + [x for x in th_lines if x.startswith("|")] + [""]                  + ["- " + x.split("--> ", 1)[1] for x in th_lines if x.startswith("<!--")]
     dm = results_dir("decision", "moe") / "decision_moe.json"
     if dm.exists():
         d = json.loads(dm.read_text(encoding="utf-8"))
@@ -278,11 +318,13 @@ def main() -> int:
     t.add_argument("--model", required=True)
     t.add_argument("--ram-headroom", type=float, required=True)
     t.add_argument("--crashes", type=int, default=0)
+    t.add_argument("--subset", action="store_true", help="the matched subset of Amendment 1 (arm AM)")
+    t.add_argument("--write-pick", action="store_true")
     a = ap.parse_args()
     if a.cmd == "decide-fast":
         return decide_fast(a.write_pick)
     if a.cmd == "decide-thinker":
-        return decide_thinker(a.model, a.ram_headroom, a.crashes)
+        return decide_thinker(a.model, a.ram_headroom, a.crashes, a.subset, a.write_pick)
     if a.cmd == "diagnose":
         return diagnose(a.db)
     if a.cmd == "run":

@@ -99,6 +99,16 @@ Diagnosis (counts only): the app's `llm_runs` (a copy of its ledger, 31 calls, 2
 
 **FAST seat (S79b item 17, docs/protocols/s79_seats_protocol.md):** qwen3:8b-q8_0; per candidate: gemma4:12b not chosen {'not_worse_routing': True, 'not_worse_answers_final': False, 'not_worse_extraction_f1': True, 'not_worse_materiality': True, 'better_overall': False, 'latency_p90': True, 'vram': True, 'failures_not_above': True}; qwen3.5:9b not chosen {'not_worse_routing': True, 'not_worse_answers_final': True, 'not_worse_extraction_f1': True, 'not_worse_materiality': False, 'better_overall': True, 'latency_p90': True, 'vram': True, 'failures_not_above': True}.
 
+**THINKER seat, guarded window (S79b item 17, Amendment 1: matched subset routing 60 / answers 20 / extraction 40 / materiality 60):**
+
+| arm | model | routing | answers_final | answers_first | extraction_f1 | materiality | answers_median_s | answers_p90_s | routing_call_median_s | tokens_per_s | text_fail_rate | json_fail_rate | gpu_peak_mib |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| AM (matched subset, incumbent) | qwen3:8b-q8_0 | 0.867 | 1.000 | 1.000 | 1.000 | 0.733 | 6.045 | 6.392 | 4.471 | 24.350 | 0.000 | 0.000 | 11008.000 |
+
+- qwen3:30b-a3b: 
+- qwen3.6-35b-a3b: 
+- gemma4-26b-a4b: 
+
 <!-- s79-llm-results:end -->
 
 <!-- s79-wave-sentiment-results:begin -->

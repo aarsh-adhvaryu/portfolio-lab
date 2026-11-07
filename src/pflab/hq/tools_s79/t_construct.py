@@ -11,7 +11,7 @@ Result keys (stable; the situation adapters read them):
   trades                     [{symbol, isin, side, qty, price, rupees, weight_before_pct, weight_after_pct, est_charges, est_tax}] (estimates)
   est_charges_total, est_tax_total, binding (tight constraints, words), gap_to_current_rules [{symbol, construct_pct, current_rule_pct, difference_pct}]
   utility_gain_vs_doing_nothing, parts, inputs {shrinkage, returns_days, names_with_history, names_with_forecast, no_forecast_rule, ...}, notes
-Optional input `symbols` ("RELIANCE,ITC"): size only buys of these names (a BUY decision list), keeping every other holding where it is.
+Optional input `symbols` ("AAA,BBB"): size only buys of these names (a BUY decision list), keeping every other holding where it is.
 """
 from __future__ import annotations
 

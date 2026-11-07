@@ -187,3 +187,35 @@ registered_at = 2026-11-08T03:32:42
 protocol = "docs/protocols/s79_seats_protocol.md"
 evaluated_at = 2026-11-08T03:32:42
 decision = "chosen fast seat (incumbent kept: no challenger passed the registered FAST rule)"
+
+# S79b item 17 THINKER candidates (guarded window of 2026-11-08), registered BEFORE any run (docs/protocols/s79_seats_protocol.md, Amendment 1).
+# Order of the window: qwen3:30b-a3b (Ollama), qwen3.6-35b-a3b (llama.cpp server), gemma4-26b-a4b (llama.cpp server). Incumbent: qwen3:8b-q8_0.
+[[pick]]
+role = "seat-thinker-candidate"
+model = "qwen3:30b-a3b"
+registered_at = 2026-11-08T03:38:00
+size_gb = 18.0
+protocol = "docs/protocols/s79_seats_protocol.md"
+note = "Ollama, Q4_K_M, CPU offload beside the 12 GB card"
+evaluated_at = ""
+decision = ""
+
+[[pick]]
+role = "seat-thinker-candidate"
+model = "qwen3.6-35b-a3b"
+registered_at = 2026-11-08T03:38:00
+size_gb = 21.7
+protocol = "docs/protocols/s79_seats_protocol.md"
+note = "llama.cpp server b12189, GGUF Q4 (D:/llama.cpp/models/qwen3.6-35b-a3b-q4.gguf, sha256 verified), --n-cpu-moe, ctx 4096"
+evaluated_at = ""
+decision = ""
+
+[[pick]]
+role = "seat-thinker-candidate"
+model = "gemma4-26b-a4b"
+registered_at = 2026-11-08T03:38:00
+size_gb = 17.0
+protocol = "docs/protocols/s79_seats_protocol.md"
+note = "llama.cpp server b12189, GGUF Q4 (D:/llama.cpp/models/gemma4-26b-q4.gguf, sha256 verified), --n-cpu-moe, ctx 4096"
+evaluated_at = ""
+decision = ""

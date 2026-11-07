@@ -5,7 +5,7 @@
     minute_lead_lag(con, a, b, day)         -> the same test on 1-minute returns when `bars_1m` has rows (it need not)
 
 Series: a global key (US_SP500, ADR_INFY, ...), an NSE index key (NIFTY50_PRICE, SECTOR_IT_PRICE) or its short sector name
-(IT), or an NSE symbol (INFY; resolved to its ISIN as of the date, adjusted closes).
+(IT), or an NSE symbol (resolved to its ISIN as of the date, adjusted closes).
 
 Method. Daily simple returns of each series on its own previous close, then the dates both traded (the common calendar), the last
 `window` of them with date <= asof (point in time). Lag k (in common sessions, -5..+5): corr(a_t, b_{t+k}); k > 0 means A leads B

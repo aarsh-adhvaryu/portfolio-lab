@@ -70,7 +70,7 @@ SERIES = {
     # the US session prices them while the NSE is shut), India funds that trade in New York, and the US sector ETFs.
     # GIFT Nifty has NO usable Yahoo symbol (probed 2026-11-05: NIFTY_GIFT.NS, GIFTNIFTY.NS, GIFT.NS, ^GIFTNIFTY, NIFTY50.SI,
     # SGXNIFTY, IN=F, NIFTY.NS, NIFTYGIFT, ^NIFTYGIFT all answer "not found"): not collected, nothing invented.
-    "ADR_INFY": "INFY", "ADR_WIT": "WIT", "ADR_HDB": "HDB", "ADR_IBN": "IBN", "ADR_RDY": "RDY",
+    **{k: k[4:] for k in ("ADR_INFY", "ADR_WIT", "ADR_HDB", "ADR_IBN", "ADR_RDY")},        # the US ticker is the part after "ADR_"
     "US_INDIA_INDA": "INDA", "US_INDIA_EPI": "EPI",
     "US_SECTOR_XLK": "XLK", "US_SECTOR_XLF": "XLF", "US_SECTOR_XLE": "XLE", "US_SECTOR_XLV": "XLV",
     "US_SECTOR_XLB": "XLB", "US_SECTOR_XLI": "XLI", "US_SECTOR_XLY": "XLY", "US_SECTOR_XLP": "XLP",

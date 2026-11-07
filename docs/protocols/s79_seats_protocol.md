@@ -46,3 +46,24 @@ after the FAST arms and record it with `decide-sampling`. It does not select a s
 `configs/llm_models.toml`: `[[pick]] role = "seat-fast-candidate"` for gemma4:12b and qwen3.5:9b (registered before any run); the winner of each seat gets a later
 `[[pick]] role = "seat-fast"` / `"seat-thinker"` with `decision = "chosen ..."`, and its `[model."<key>"]` entry in `configs/seats.toml`.
 `manage` stays as the lead sets it.
+
+## Amendment 1 (2026-11-08, before the THINKER runs): the matched subset of the guarded window
+The full sets would take hours on a model that runs partly on the CPU, so the guarded THINKER window (the investor's "guarded run", 2026-11-08) uses a
+MATCHED SUBSET, the same items for the challenger and the incumbent, fixed here before any THINKER run:
+- routing: all 60 (the set has 60); answers: the first 20 tasks of seed 20261017 only (one seed; `evalset.build` draws task i from a sequential generator, so
+  the first 20 of n=50 are the first 20 of n=20); extraction: the first 40 of the 100 texts; materiality: the first 60 of the 200 headlines.
+- Harness, prompts, schemas, `num_predict`, seed, production guard and scoring unchanged (arm A: the old default sampling, thinking OFF). Items are scored
+  by the harness's own functions; a request that takes over 240 s is a failure and ends the candidate.
+- The incumbent's numbers for the same items are taken from its saved arm A per-task records (`results_s79/A__qwen3_8b-q8_0`: per-item right/wrong, per-call
+  seconds, per-task seconds), sliced to the same items; its extraction F1 on the saved record is 1.0 for all 100 texts, so it is 1.0 on any subset. Nothing is re-scored.
+- The THINKER rule of this protocol applies unchanged to the subset (`decide_thinker`): beats on score (sign test, p < 0.05/3, on routing, answers or materiality),
+  not significantly worse, extraction F1 not lower by more than 0.01, answers_final >= 0.98, answers p90 <= 90 s, routing call p90 <= 60 s, RAM headroom after load
+  >= 6 GB, zero crashes/OOM/GPU loss, failure rate not above the incumbent's. The pooled answer items are the 20 of one seed (the second seed's file is an empty marker).
+  A subset of 60 and 20 items has little power: a challenger that wins here is a candidate for a longer run, and a failure is a failure of this rule only.
+- Guards of the window (hard rules): clocks capped (nvidia-smi -lgc 210,2100, -lmc 405,9001) and no other model resident before each candidate; GPU < 70 C and < 2.5 GB used,
+  free RAM >= 10 GB; a watchdog every 5 s: nvidia-smi must answer, temperature <= 82 C, free RAM >= 2.5 GB, the model process alive; 70 minutes per candidate; one request at a time;
+  a trip kills the model process and fails the candidate as "not verified (reason)". Recorded for each candidate: load time, generation and prompt tokens/s, peak GPU memory,
+  minimum free RAM, peak temperature.
+- Candidates, in order, registered as role `seat-thinker-candidate` at 2026-11-08T03:38 (before any run): qwen3:30b-a3b (Ollama), qwen3.6-35b-a3b (llama.cpp server,
+  Q4 GGUF, --n-cpu-moe, ctx 4096), gemma4-26b-a4b (llama.cpp server, Q4 GGUF). The result file set for the subset is `AM__<model>` (the incumbent's slice is `AM__qwen3_8b-q8_0`).
+  Each decision counts as one test in the learner's counter (`seats_s79:thinker`).

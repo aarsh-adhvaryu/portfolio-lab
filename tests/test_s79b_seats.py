@@ -415,9 +415,9 @@ def test_one_sample_mode_and_dict_answers_compare_by_content():
 def test_the_rule_that_fired_is_logged(tmp_path):
     con = store.connect(tmp_path / "e.duckdb")
     escalate.decide(_src(["buy", "sell", "buy"]), cloud_fn=lambda v, r: {"answer": "hold", "cost_rupees": 3.0}, cap_ok=lambda: True, con=con, kind="verdict", subject="TCS", now=NOW)
-    escalate.decide(_src(["x", "x", "x"]), con=con, kind="verdict", subject="INFY", now=NOW)
+    escalate.decide(_src(["x", "x", "x"]), con=con, kind="verdict", subject="UVW", now=NOW)
     rows = con.execute("SELECT subject, rule, cloud_used, cost_rupees, n_samples, n_valid FROM escalation_log_s79 ORDER BY esc_id").fetchall()
-    assert rows == [("TCS", "disagree", True, 3.0, 3, 3), ("INFY", "agree", False, 0.0, 3, 3)]
+    assert rows == [("TCS", "disagree", True, 3.0, 3, 3), ("UVW", "agree", False, 0.0, 3, 3)]
     s = escalate.summary(con)
     assert s["n"] == 2 and s["by_rule"]["disagree"]["cloud"] == 1 and s["by_rule"]["disagree"]["rupees"] == 3.0
 
