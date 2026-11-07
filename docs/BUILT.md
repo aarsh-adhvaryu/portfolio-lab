@@ -281,3 +281,5 @@ Local models are free. API spend is priced before every call and refused above h
 | wave_scan | every 180 min | flags market-wide waves and foreign-flow rotations from the NSE daily files (thresholds from the earlier history) |
 
 Tools added in S79 / S79b: `system_allocation`, `propose_allocation`, `debate`, `bear_scorecard`, `trajectory`, `decompose_move`, `align_events`, `breadth`, `forecast_now`, `forecast_scoreboard`, `fall_risk`, `implied_dist`, `cascade`, `simulate`, `seat_status`, `cost_per_act`, `wave_studies`, `transmission`, `lead_lag`.
+
+| week_check | daily 21:50 | the app checks its own first week (catch-ups after every gap, every mode reached, forecasts made and scored, no failure, cost within the cap) and tells him once on Telegram; a pass starts the 60-day feature freeze (A44) |

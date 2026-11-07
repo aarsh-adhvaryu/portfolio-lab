@@ -56,6 +56,7 @@ tax packs and notes are removed and never read again). Kite is its data feed onl
   point-in-time, by code), then works by the clock's MODE (`pre_open`, `session`, `post_close`, `deep`, per market) and its own agenda, never by job times; an
   analysis job is due whenever its input is newer than its last run (only data arrival, such as NSE files after the close, waits). The laptop being off is normal,
   never an error: silence and staleness count app-open time only, a gap is recorded as "off from X to Y". The bot runs inside the app process. No manual restarts.
+- **Feature freeze (A44, armed 2026-11-08):** the app checks its own first week (`service/week_check.py`, job `week_check`: catch-ups after every gap, every mode reached, forecasts made and scored, no job failure, cost within the cap) and tells him once on Telegram. From the day that verdict PASSES (stored in `week_check_s79.freeze_from`) there are 60 days of bug fixes only: no new feature, tool or model unless he asks. A FAIL means fix first, no freeze.
 - **Not built (A43, decided):** no MCP server, no social-media sentiment agent, no Hermes/OpenClaw/TradingAgents framework, no agent-SDK migration.
 - **The system's own book (A45, 2026-11-05):** it starts from his Kite holdings and nothing else, then decides its own allocation (asset classes and sectors, with
   reasons, reviewed, re-examined at every weekly review) inside the code rails; that target is the system's, his `targets.toml` stays his.

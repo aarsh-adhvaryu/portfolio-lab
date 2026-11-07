@@ -214,6 +214,11 @@ class Runtime:
             presence.beat(self.cursor(), now)
         except Exception:
             pass
+        try:                                                 # S79b: remember which modes the app has actually been open in (the first-week check reads them)
+            from pflab.service import week_check
+            week_check.note_modes(self.cursor(), now)
+        except Exception:
+            pass
         try:                                                 # S79 item 4: the clock's mode sets the local model's GPU duty cycle
             from pflab import markets
             from pflab.llm import duty

@@ -26,7 +26,7 @@ SENSES = [("markets", "Market data", ["collect", "prices", "nav", "global", "bac
 ROUTINES = [("thinking", "Thinking rounds", ["hq", "conductor", "research", "analyst", "forecast", "comove", "scans", "twin", "paper", "paper_daily", "selfcheck", "companion", "review", "learner", "catch_up", "sentiment", "macro_attribution", "wave_scan", "bear_resolve", "implied_calibration", "forecast_loop", "seats_mode", "benchmark_attr", "situation"],
              "the brain, research, forecasts, the learner"),
             ("plans", "Plans and alerts", ["plans", "guards", "watches", "watches_close"], "ready plans, guards, price watches"),
-            ("reports", "Reports", ["summary_morning", "summary_evening", "outbox", "voice", "outgoing"], "the morning and evening summaries")]
+            ("reports", "Reports", ["summary_morning", "summary_evening", "outbox", "voice", "outgoing", "week_check"], "the morning and evening summaries")]
 SAFETY = [("safety", "Safety routines", ["backup", "sandbox", "security"], "backups, the sandbox proof, the privacy check")]
 GROUP_OF = {j: g for g, _l, js, _d in SENSES + ROUTINES + SAFETY for j in js}
 
