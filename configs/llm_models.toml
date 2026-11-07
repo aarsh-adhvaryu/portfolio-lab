@@ -245,3 +245,30 @@ registered_at = 2026-11-08T04:15:30
 protocol = "docs/protocols/s79_seats_protocol.md"
 evaluated_at = 2026-11-08T04:15:30
 decision = "not verified (RAM guard: 4.7 GB free vs 10 GB to start, about 9.3 GB of the model stays in RAM; no model was loaded)"
+
+# S79b item 17 THINKER result (appended; the registration above is unchanged).
+[[pick]]
+role = "seat-thinker-candidate-result"
+model = "qwen3:30b-a3b"
+registered_at = 2026-11-08T04:53:30
+protocol = "docs/protocols/s79_seats_protocol.md"
+evaluated_at = 2026-11-08T04:53:30
+decision = "not chosen"
+
+# S79b item 17 THINKER result (appended; the registration above is unchanged).
+[[pick]]
+role = "seat-thinker-candidate-result"
+model = "qwen3.6-35b-a3b"
+registered_at = 2026-11-08T05:09:55
+protocol = "docs/protocols/s79_seats_protocol.md"
+evaluated_at = 2026-11-08T05:09:55
+decision = "not chosen"
+
+# S79b item 17 THINKER result (appended; the registration above is unchanged).
+[[pick]]
+role = "seat-thinker-candidate-result"
+model = "gemma4-26b-a4b"
+registered_at = 2026-11-08T05:17:44
+protocol = "docs/protocols/s79_seats_protocol.md"
+evaluated_at = 2026-11-08T05:17:44
+decision = "not chosen"

@@ -40,7 +40,7 @@ CAND = {
     "qwen3.6-35b-a3b": {"backend": "llama_server", "gguf": "D:/llama.cpp/models/qwen3.6-35b-a3b-q4.gguf", "size_gb": 21.7, "ctx_size": 4096},
     "gemma4-26b-a4b": {"backend": "llama_server", "gguf": "D:/llama.cpp/models/gemma4-26b-q4.gguf", "size_gb": 17.1, "ctx_size": 4096},
 }
-GPU_BUDGET_GB = 8.6           # model weights we let the card hold (the card is 12 GB, the display and CUDA context take ~2 GB); the rest sits in RAM
+GPU_BUDGET_GB = 9.2           # model weights we let the card hold (the card is 12 GB, the display and CUDA context take ~2 GB); the rest sits in RAM
 
 
 class Abort(BaseException):
@@ -163,6 +163,9 @@ class Watchdog(threading.Thread):
             self.min_ram = min(self.min_ram, ram)
             if s["temp_c"] > TEMP_TRIP:
                 self.trip(f"GPU temperature {s['temp_c']:.0f} C > {TEMP_TRIP:.0f} C")
+                return
+            if s["used_mib"] > 11900.0:
+                self.trip(f"GPU memory {s['used_mib']:.0f} MiB > 11900 MiB (card nearly full)")
                 return
             if ram < RAM_TRIP_GB:
                 self.trip(f"free RAM {ram:.2f} GB < {RAM_TRIP_GB} GB")
@@ -350,7 +353,7 @@ def write_status(path: Path, d: dict) -> None:
     path.write_text(json.dumps(d, indent=1, default=str), encoding="utf-8")
 
 
-def run_candidate(key: str, deadline_hhmm: str, n_cpu_moe: Optional[int], wait_until: str = "00:00") -> int:
+def run_candidate(key: str, deadline_hhmm: str, n_cpu_moe: Optional[int], wait_until: str = "00:00", no_mmap: bool = False) -> int:
     from pflab.data import data_dir
     from pflab.llm import registry, s79_eval as se, server
     registry.require_registered("seat-thinker-candidate", key, datetime.now())
@@ -381,6 +384,10 @@ def run_candidate(key: str, deadline_hhmm: str, n_cpu_moe: Optional[int], wait_u
             ncm = n_cpu_moe if n_cpu_moe is not None else min(nl, max(0, int(round(nl - (GPU_BUDGET_GB - 1.2) / per_layer))))
             st.update(layers=nl, n_cpu_moe=ncm)
             log(f"{key}: {nl} layers, --n-cpu-moe {ncm}")
+            if no_mmap:                                                  # weights are read into RAM only for the CPU layers (mmap pulled the whole file in at load)
+                _orig = server.command
+                server.command = lambda m, s=None: _orig(m, s) + ["--load-mode", "none", "--cache-ram", "0", "--ctx-checkpoints", "4"]
+                st["no_mmap"] = True
             mc = {"gguf": cfg["gguf"], "n_cpu_moe": ncm, "ctx_size": cfg["ctx_size"], "ram_gb": cfg["size_gb"] - GPU_BUDGET_GB}
             srv = server.srv_settings({"llama_server": {"startup_timeout_s": 600}})
             r = server.start(key, mc, policy={"caps_ack": True, "ram_floor_gb": 2.5}, srv=srv, guards=[])    # our preflight and watchdog are the guards (stricter, above)
@@ -460,6 +467,9 @@ def run_candidate(key: str, deadline_hhmm: str, n_cpu_moe: Optional[int], wait_u
 
 
 def main() -> int:
+    import faulthandler
+    faulthandler.dump_traceback_later(150, repeat=True, file=sys.stderr)
+
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("preflight")
@@ -468,6 +478,7 @@ def main() -> int:
     r.add_argument("--model", required=True)
     r.add_argument("--deadline", default="05:30")
     r.add_argument("--n-cpu-moe", type=int, default=None)
+    r.add_argument("--no-mmap", action="store_true")
     r.add_argument("--wait-until", default="00:00", help="keep re-checking the preflight (every minute) until this time before giving up")
     sub.add_parser("slice-incumbent")
     a = ap.parse_args()
@@ -476,7 +487,7 @@ def main() -> int:
         return 0
     if a.cmd == "preflight":
         return 0 if not preflight(a.model, fix=False) else 3
-    return run_candidate(a.model, a.deadline, a.n_cpu_moe, a.wait_until)
+    return run_candidate(a.model, a.deadline, a.n_cpu_moe, a.wait_until, a.no_mmap)
 
 
 if __name__ == "__main__":

@@ -70,3 +70,6 @@ MATCHED SUBSET, the same items for the challenger and the incumbent, fixed here 
 - Outcome of the window (2026-11-08 03:45-04:15): no candidate was started. The preflight (free RAM >= 10 GB; the CPU part of the model must also leave 2.5 GB + margin) failed every minute: free RAM
   was 4-6 GB (the investor's browser ~13 GB, plus the lead's runs). All three are recorded "not verified (RAM guard)"; no test was made, so none counts in the learner's counter and the THINKER seat stays qwen3:8b-q8_0.
   A rerun needs about 14 GB free (for qwen3:30b-a3b) up to 20 GB (qwen3.6-35b-a3b): `python tools/s79_thinker_window.py run --model KEY --wait-until HH:MM` (needs PFLAB_DATA_DIR).
+- Rerun (2026-11-08 04:23-05:18; supersedes the outcome note above): free RAM had been held by orphaned test browsers (fixed by the lead), so the guarded window ran. Run as registered, all guards on; for
+  the llama.cpp server the flags `--load-mode none --cache-ram 0 --ctx-checkpoints 4` were added after two RAM-guard trips of qwen3.6-35b-a3b (mmap pulled the file in at load; then the server's 8 GB prompt cache grew
+  during the run); `--n-cpu-moe` 24 (of 41 layers) for qwen3.6-35b-a3b and 16 (of 30) for gemma4-26b-a4b. A VRAM trip at 11,900 MiB was added to the watchdog. Verdicts (THINKER rule, matched subset): none chosen; see docs/STUDIES.md.

@@ -88,3 +88,6 @@ backend = "llama_server"
 gguf = "D:/llama.cpp/models/gemma4-26b-q4.gguf"
 ctx_size = 4096
 ram_gb = 9.3
+
+# S79b item 17 window measurements (2026-11-08): n_cpu_moe that ran guarded (extra server flags: --load-mode none --cache-ram 0 --ctx-checkpoints 4). Neither was chosen; manage stays false.
+# qwen3.6-35b-a3b: n_cpu_moe 24 of 41 layers (6.3 GB free after load); gemma4-26b-a4b: n_cpu_moe 16 of 30 layers (9.7 GB free after load).

@@ -104,10 +104,13 @@ Diagnosis (counts only): the app's `llm_runs` (a copy of its ledger, 31 calls, 2
 | arm | model | routing | answers_final | answers_first | extraction_f1 | materiality | answers_median_s | answers_p90_s | routing_call_median_s | tokens_per_s | text_fail_rate | json_fail_rate | gpu_peak_mib |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | AM (matched subset, incumbent) | qwen3:8b-q8_0 | 0.867 | 1.000 | 1.000 | 1.000 | 0.733 | 6.045 | 6.392 | 4.471 | 24.350 | 0.000 | 0.000 | 11008.000 |
+| AM (matched subset) | qwen3:30b-a3b | 0.383 | 0.000 | 0.000 | 1.000 | 0.633 | 34.433 | 34.817 | 4.545 | 42.735 | 1.000 | 0.000 | 11536.000 |
+| AM (matched subset) | qwen3.6-35b-a3b | 0.950 | 0.650 | 0.650 | 1.000 | 0.867 | 2.737 | 6.842 | 0.720 | 52.739 | 0.000 | 0.000 | 11044.000 |
+| AM (matched subset) | gemma4-26b-a4b | 0.950 | 1.000 | 0.850 | 1.000 | 0.833 | 2.199 | 4.055 | 0.865 | 43.192 | 0.000 | 0.000 | 11284.000 |
 
-- qwen3:30b-a3b: not verified (preflight: free RAM 4.8 GB < 10.0; predicted RAM shortfall: 4.8 GB free, about 8.5 GB of the model stays in RAM); load None s; generation None tok/s, prompt None tok/s; peak GPU None MiB, peak temp None C, min free RAM None GB, free RAM after load None GB
-- qwen3.6-35b-a3b: not verified (preflight: free RAM 4.8 GB < 10.0; predicted RAM shortfall: 4.8 GB free, about 13.9 GB of the model must stay in RAM (floor 2.5 GB + 1 GB margin)); load None s; generation None tok/s, prompt None tok/s; peak GPU None MiB, peak temp None C, min free RAM None GB, free RAM after load None GB
-- gemma4-26b-a4b: not verified (preflight: free RAM 4.7 GB < 10.0; predicted RAM shortfall: 4.7 GB free, about 9.3 GB of the model must stay in RAM (floor 2.5 GB + 1 GB margin)); load None s; generation None tok/s, prompt None tok/s; peak GPU None MiB, peak temp None C, min free RAM None GB, free RAM after load None GB
+- qwen3:30b-a3b: not chosen {'beats_on_score': False, 'not_significantly_worse': False, 'answers_final_threshold': False, 'answers_p90': True, 'routing_p90': True, 'ram_headroom': True, 'stable': True, 'failures_not_above': False}; completed; load 15.0 s; generation 57.02505966246867 tok/s, prompt 876.1742562051089 tok/s; peak GPU 11536.0 MiB, peak temp 53.97 C, min free RAM 2.88 GB, free RAM after load 7.92 GB
+- qwen3.6-35b-a3b: not chosen {'beats_on_score': False, 'not_significantly_worse': False, 'answers_final_threshold': False, 'answers_p90': True, 'routing_p90': True, 'ram_headroom': True, 'stable': True, 'failures_not_above': True}; completed; load 16.3 s; generation 46.161184598577215 tok/s, prompt 861.3915133465059 tok/s; peak GPU 11044.0 MiB, peak temp 58.72 C, min free RAM 6.11 GB, free RAM after load 6.31 GB
+- gemma4-26b-a4b: not chosen {'beats_on_score': False, 'not_significantly_worse': True, 'answers_final_threshold': True, 'answers_p90': True, 'routing_p90': True, 'ram_headroom': True, 'stable': True, 'failures_not_above': True}; completed; load 12.9 s; generation 39.406292355282986 tok/s, prompt 973.6515980815457 tok/s; peak GPU 11284.0 MiB, peak temp 59.19 C, min free RAM 9.63 GB, free RAM after load 9.71 GB
 
 <!-- s79-llm-results:end -->
 
