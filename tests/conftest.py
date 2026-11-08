@@ -5,6 +5,7 @@ PFLAB_DATA_DIR or the sealed period.
 """
 from datetime import date
 
+import os
 import numpy as np
 import pandas as pd
 import pytest
@@ -66,6 +67,13 @@ def _local_sandbox(request, monkeypatch):
     uses the real Docker sandbox (S64 Phase 4)."""
     if request.node.get_closest_marker("docker"):
         monkeypatch.delenv("PFLAB_SANDBOX", raising=False)
+        if os.name == "nt" and "tmp_path" in request.fixturenames:
+            request.getfixturevalue("tmp_path")
+            # Python 3.13 gives pytest's folders an owner-only permission list; Docker Desktop's file sharing then answers 'Access is denied'.
+            # Reset this test's folder to ordinary inherited permissions so the container can mount what the test creates inside it.
+            import subprocess
+            # (the whole base folder: the owner-only list starts at the base, so a child would only inherit it again)
+            subprocess.run(["icacls", str(request.getfixturevalue("tmp_path_factory").getbasetemp()), "/reset", "/T", "/C", "/Q"], capture_output=True)
     else:
         monkeypatch.setenv("PFLAB_SANDBOX", "local")
 

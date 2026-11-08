@@ -86,6 +86,21 @@ class Local:
                          timeout=time_limit)
 
 
+def shared_tempdir(prefix: str) -> str:
+    """A fresh temp folder Docker can mount. Python 3.13's mkdtemp gives the folder an owner-only permission list on Windows, and Docker Desktop's file sharing
+    then gets 'Access is denied' (found 2026-11-08: the containment probe could not run). os.mkdir inherits the parent's ordinary permissions instead."""
+    import secrets
+    base = Path(tempfile.gettempdir())
+    for _ in range(20):
+        p = base / f"{prefix}{secrets.token_hex(6)}"
+        try:
+            os.mkdir(p)
+            return str(p)
+        except FileExistsError:
+            continue
+    raise FileExistsError(f"no free temp folder name under {base}")
+
+
 def _flags(name: str, work: Optional[Path] = None, out: Optional[Path] = None) -> List[str]:
     cmd = ["docker", "run", "--rm", "--name", name, "--network", "none", "--read-only", "--tmpfs", "/tmp:rw,size=256m",
            "--memory", "2g", "--memory-swap", "2g", "--cpus", "2", "--pids-limit", "256", "--cap-drop", "ALL", "--ipc", "none",
@@ -109,7 +124,7 @@ class Docker:
 
     def run(self, work: Path, time_limit: int) -> subprocess.CompletedProcess:
         name = f"pflab-wk-{uuid.uuid4().hex[:12]}"
-        out = Path(tempfile.mkdtemp(prefix="pflab_out_"))
+        out = Path(shared_tempdir("pflab_out_"))
         try:
             try:
                 p = self._run(self.command(work, name, out), capture_output=True, timeout=time_limit + 20)
@@ -187,7 +202,7 @@ def probe(runner: Callable = subprocess.run, image: str = IMAGE, work: Optional[
     if have != runner_sha():
         return {"ok": False, "checks": {"runner_matches_release": False},
                 "why": STALE_IMAGE.format(image=image) if have else "the runner inside the sandbox image could not be read: " + STALE_IMAGE.format(image=image)}
-    d = Path(work) if work else Path(tempfile.mkdtemp(prefix="pflab_probe_"))
+    d = Path(work) if work else Path(shared_tempdir("pflab_probe_"))
     checks, said = {}, ""
     try:
         for attempt_no in range(2):                     # S77: a Docker Desktop still waking after sleep made the 06:40 and 09:21 probes print nothing; one retry
@@ -218,7 +233,7 @@ def probe(runner: Callable = subprocess.run, image: str = IMAGE, work: Optional[
 
 def _time_limit_check(runner: Callable, image: str, work: Optional[Path]) -> bool:
     name = f"pflab-probe-t-{uuid.uuid4().hex[:8]}"
-    d = work or Path(tempfile.mkdtemp(prefix="pflab_probe_"))
+    d = work or Path(shared_tempdir("pflab_probe_"))
     try:
         t0 = time.monotonic()
         try:
