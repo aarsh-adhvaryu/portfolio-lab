@@ -35,9 +35,9 @@ SET = [
     ("I have 1 lakh to invest. All at once or spread out?", "deploy", 0), ("Should I put 50,000 in now or wait for a dip?", "deploy", 0), ("Best way to invest Rs 2 lakh this year?", "deploy", 0),
     ("My goal is to retire by 2040", "remember", 0), ("Just so you know, I will be travelling next week so no urgent calls", "remember", 0),
     ("I prefer not to own too many stocks from one sector", "remember", 0),
-    ("Is gold a good hedge in an AI crash?", "other", 0), ("Explain what a GTT order is", "other", 0), ("Sell all my Reliance now", "other", 0),
+    ("Is gold a good hedge in an AI crash?", "other", 0), ("Explain what a GTT order is", "other", 0), ("Sell all my Acme now", "other", 0),
     ("Raise my equity target to 60%", "other", 0), ("Thanks!", "other", 0), ("hello", "other", 0), ("Place an order to buy 100 shares of ITC", "other", 0),
-    ("Why did the market fall today?", "other", 0), ("Add Infosys to my stock list", "other", 0), ("Transfer 50,000 from my bank to Zerodha", "other", 0),
+    ("Why did the market fall today?", "other", 0), ("Add Acme to my stock list", "other", 0), ("Transfer 50,000 from my bank to Zerodha", "other", 0),
 ]
 # Written after the development run, before the shipped configuration was run on it. The label "other" means the cloud agent must answer.
 HOLDOUT = [
@@ -50,7 +50,7 @@ HOLDOUT = [
     ("Look into whether I am too exposed to banks", "start", 0), ("Please also compare it with a plain index fund", "amend", 0),
     ("Cut my debt allocation to 20%", "other", 0), ("Sell half my Tata Motors", "other", 0), ("What is a bonus issue?", "other", 0),
     ("Is it a good time to buy gold?", "other", 0), ("Remove ITC from my watch list", "other", 0), ("Set my monthly limit for the AI to Rs 5000", "other", 0),
-    ("ok thanks", "other", 0), ("Buy 20 shares of Infosys at market", "other", 0), ("Tell me a joke", "other", 0),
+    ("ok thanks", "other", 0), ("Buy 20 shares of Acme at market", "other", 0), ("Tell me a joke", "other", 0),
 ]
 ACTING = ("approve", "decline", "start", "amend", "fall", "deploy", "remember")
 BAR = 0.85

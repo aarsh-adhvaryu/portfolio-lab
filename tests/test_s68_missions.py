@@ -370,3 +370,35 @@ def test_a_workers_tool_list_is_not_strict_so_the_compiled_grammar_stays_small(r
         defs = tl.definitions(frozenset(n for n in names if n in tl.TOOLS))
         assert not any(d.get("strict") for d in defs), role
     assert sum(1 for d in tl.definitions() if d.get("strict")) <= tl.MAX_STRICT              # the brain's own list is as it was
+
+
+def _blocked_mission(rt, con, monkeypatch):
+    scripts = _happy_scripts()
+    scripts["research"] = [_say("I looked and found nothing to record."), _say("Still nothing."), _say("No evidence, sorry.")]
+    _run(rt, monkeypatch, scripts)
+    service.drive_missions(rt)
+    assert missions.card(con, 1)["state"] == "blocked"
+
+
+def test_a_stuck_mission_can_be_dropped_and_is_not_announced_as_finished(rt, con, monkeypatch):
+    _blocked_mission(rt, con, monkeypatch)
+    told_before = con.execute("SELECT count(*) FROM hq_case_log WHERE case_id=1").fetchone()[0]
+    out = missions.drop(con, NOW, 1, "he does not want it")
+    assert out == {"dropped": 1}
+    m = missions.mission_of(con, 1)
+    assert m["state"] == "done" and m["next_trigger"].startswith("closed:") and m["blocker"] is None
+    assert cases.get(con, 1)["status"] == "done"
+    assert missions.drop(con, NOW, 1)["dropped"] == 0                       # only a stuck mission can be dropped, and only once
+    assert con.execute("SELECT count(*) FROM hq_case_log WHERE case_id=1").fetchone()[0] == told_before + 1
+
+
+def test_a_stuck_mission_is_retried_once_by_itself_and_then_closed(rt, con, monkeypatch):
+    _blocked_mission(rt, con, monkeypatch)
+    con.execute("UPDATE hq_missions SET last_progress_at=?, updated_at=? WHERE case_id=1", [NOW, NOW])
+    assert missions.settle_stuck(con, NOW + timedelta(hours=2)) == {}      # too soon: nothing happens
+    assert missions.settle_stuck(con, NOW + timedelta(hours=7)) == {1: "retried"}
+    assert missions.mission_of(con, 1)["state"] != "blocked"
+    con.execute("UPDATE hq_missions SET state='blocked', blocker='task failed again', last_progress_at=?, updated_at=? WHERE case_id=1", [NOW + timedelta(hours=7), NOW + timedelta(hours=7)])
+    assert missions.settle_stuck(con, NOW + timedelta(hours=8)) == {}      # blocked again, but not yet 6 hours since the retry
+    assert missions.settle_stuck(con, NOW + timedelta(hours=14)) == {1: "done"}
+    assert missions.mission_of(con, 1)["state"] == "done" and "failed again after an automatic retry" in missions.mission_of(con, 1)["next_trigger"]

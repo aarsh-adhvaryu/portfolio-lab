@@ -31,6 +31,18 @@ def _last_weekday(d: date) -> date:
     return d
 
 
+def _open_since(con, since: datetime, now: datetime) -> timedelta:
+    """How long the app was open between `since` and `now` (A42: the laptop being off is normal, so staleness counts app-open time only). Without a presence
+    record (a test, an old store) it is the plain elapsed time, as before."""
+    try:
+        from pflab.service import presence
+        if con.execute("SELECT count(*) FROM app_presence_s79").fetchone()[0]:
+            return presence.open_time(con, since, now)
+    except Exception:
+        pass
+    return now - since
+
+
 def check(ctx: jobs.Ctx, backup_target: Optional[Path] = None) -> List[Item]:
     con, now = ctx.con, ctx.now
     items: List[Item] = []
@@ -49,7 +61,9 @@ def check(ctx: jobs.Ctx, backup_target: Optional[Path] = None) -> List[Item]:
             items.append(Item(f"job:{name}", "WARN", "never run"))
         elif last[0] == "failed":
             items.append(Item(f"job:{name}", "FAIL", f"last run failed at {last[1]:%d-%b %H:%M}: {str(last[2])[:160]}"))
-        elif due and (now - last[1]) > timedelta(hours=26):
+        elif last[0] == "offline":                                   # S79b: no network is not a failure; the job tries again by itself
+            items.append(Item(f"job:{name}", "WARN", f"offline at {last[1]:%d-%b %H:%M}; it tries again by itself"))
+        elif due and _open_since(con, last[1], now) > timedelta(hours=26):
             items.append(Item(f"job:{name}", "FAIL", f"overdue: {why}; last run {last[1]:%d-%b %H:%M}"))
         elif due:
             items.append(Item(f"job:{name}", "WARN", f"due: {why}"))

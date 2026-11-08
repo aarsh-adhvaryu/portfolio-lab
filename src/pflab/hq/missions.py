@@ -557,6 +557,7 @@ def tick(rt) -> dict:
     moved = {}
     wake_budget_waits(con, now)
     moved.update(close_covered(con, now))
+    moved.update(settle_stuck(con, now))
     sandbox_ok = None
     for (cid,) in con.execute(f"SELECT case_id FROM hq_missions WHERE state IN ({','.join(repr(s) for s in ACTIVE)}) ORDER BY mission_id").fetchall():
         m = mission_of(con, cid)
@@ -702,6 +703,44 @@ def retry(con, now: datetime, cid: int) -> dict:
     _set(con, cid, now, state=state, blocker=None, next_trigger="the retried steps finish", last_progress_at=now)
     cases.set_status(con, cid, "running", now, "a mission: retried")
     return {"retried": len(failed), "state": state}
+
+
+def drop(con, now: datetime, cid: int, reason: str = "dropped by a person") -> dict:
+    """Close a stuck (blocked) mission for good: its failed steps stay as they were, nothing runs again, and the assistant's thread is not told it 'finished'
+    (it did not). The question behind it is not lost: a later review or the agenda can open a new investigation of it."""
+    from pflab.hq import cases
+    m = mission_of(con, cid)
+    if m is None or m["state"] != "blocked":
+        return {"dropped": 0, "why": "the mission is not stuck"}
+    con.execute("UPDATE hq_missions SET state='done', blocker=NULL, next_trigger=?, updated_at=? WHERE case_id=?", [f"closed: {reason}"[:200], now, cid])
+    for t in _tasks(con, cid):
+        if t["status"] in OPEN_TASK:                       # what had not run will not run now ("superseded" is the word the board reads as replaced on purpose, not failed)
+            con.execute("UPDATE hq_tasks SET status='dismissed', result='superseded: the mission was closed', finished_at=? WHERE task_id=?", [now, t["id"]])
+    con.execute("UPDATE hq_cases SET status='done', closed_at=coalesce(closed_at, ?), updated_at=? WHERE case_id=? AND status <> 'done'", [now, now, cid])
+    cases.log(con, cid, now, "closed", reason[:200])
+    return {"dropped": 1}
+
+
+RETRY_AFTER_H, GIVE_UP_AFTER_H = 6, 48
+
+
+def settle_stuck(con, now: datetime) -> Dict[int, str]:
+    """S79b: a stuck mission never waits for a person to notice it (the system asks only what only he can answer). A blocked mission is retried by itself once after
+    `RETRY_AFTER_H` hours; if it is blocked again, or has been stuck `GIVE_UP_AFTER_H` hours, it is closed with the reason, and the next review re-asks the question."""
+    out = {}
+    for cid, upd in con.execute("SELECT case_id, coalesce(last_progress_at, updated_at) FROM hq_missions WHERE state='blocked'").fetchall():
+        age_h = (now - upd).total_seconds() / 3600 if upd else 0.0
+        tried = con.execute("SELECT count(*) FROM hq_case_log WHERE case_id=? AND event='auto_retry'", [cid]).fetchone()[0]
+        if tried and age_h >= RETRY_AFTER_H or age_h >= GIVE_UP_AFTER_H:
+            drop(con, now, cid, "failed again after an automatic retry: closed by the system; the next review asks the question again" if tried
+                 else f"stuck for {age_h:.0f} hours: closed by the system; the next review asks the question again")
+            out[cid] = "done"
+        elif not tried and age_h >= RETRY_AFTER_H:
+            from pflab.hq import cases
+            retry(con, now, cid)
+            cases.log(con, cid, now, "auto_retry", f"stuck {age_h:.0f} hours: tried again by the system")
+            out[cid] = "retried"
+    return out
 
 
 def _final_task(con, now: datetime, cid: int, m: dict, final: str, note: Optional[str]) -> None:

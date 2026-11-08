@@ -301,7 +301,7 @@ def company_from_name(con, stem: str, names) -> List[str]:
 
 
 def stem_words(path: Path) -> str:
-    """The company a file is named after: 'Ather_Energy_stand_58348' -> 'Ather Energy' (a Tijori export's own name; 'stand' and 'cons' are standalone and consolidated, the number its id)."""
+    """The company a file is named after: 'Acme_Energy_stand_58348' -> 'Acme Energy' (a Tijori export's own name; 'stand' and 'cons' are standalone and consolidated, the number its id)."""
     w = re.sub(r"[_\-]+", " ", path.stem)
     w = re.sub(r"\b(stand|standalone|cons|consolidated|report|xlsx|pdf)\b", " ", w, flags=re.I)
     w = re.sub(r"\b\d+\b|\(\d+\)|\s_\d+_", " ", w)

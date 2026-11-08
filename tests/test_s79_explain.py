@@ -457,3 +457,14 @@ def test_the_job_is_registered_and_the_tables_exist(con):
     with pytest.raises(Exception):                                                              # the primary key: one bar per market, name and minute
         con.execute("INSERT INTO bars_1m VALUES ('IN','X','2026-10-23 09:15:00',1,1,1,1,1)")
         con.execute("INSERT INTO bars_1m VALUES ('IN','X','2026-10-23 09:15:00',1,1,1,1,1)")
+
+
+def test_two_calls_that_reserved_the_same_number_both_get_journaled(rt, con):
+    # 2026-11-08: "Duplicate key call_no: 502" failed a whole quant task (two calls on one context reserved the same id); the journal never fails the work now
+    ctx = _ctx(rt)
+    ctx.call_ref = 7
+    tl._log(ctx, 1, "networth", "read", {}, "ran", "{}", 1)
+    ctx.call_ref = 7                                   # the same number handed out again
+    tl._log(ctx, 1, "networth", "read", {}, "ran", "{}", 1)
+    nums = sorted(r[0] for r in con.execute("SELECT call_no FROM hq_tool_calls").fetchall())
+    assert len(nums) == 2 and len(set(nums)) == 2 and nums[0] == 7 and ctx.call_ref is None

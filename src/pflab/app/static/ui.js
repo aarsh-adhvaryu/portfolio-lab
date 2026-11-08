@@ -235,9 +235,11 @@ async function showMission(cid) {
     <div class="small"><b>Calculations</b><ul>${(d.calculations || []).map((k) => `<li>#${k.id} ${esc(k.status)}, ${esc(k.where || '')}: ${esc(JSON.stringify(k.result).slice(0, 300))}</li>`).join('') || '<li>none</li>'}</ul></div>
     <div class="small"><b>Independent reviews</b><ul>${(d.reviews || []).map((r) => `<li>${esc(r.outcome || 'process check')}: ${esc((r.note || (r.flags || []).join('; ') || '').slice(0, 400))}</li>`).join('') || '<li>none yet</li>'}</ul></div>
     <div class="small"><b>Why it changed</b><ul>${(d.log || []).slice(-14).map((l) => `<li><span class="tiny muted">${esc(l.at)}</span> ${esc(LOG_WORD[l.event] || l.event)}: ${esc(String(l.detail || '').slice(0, 180))}</li>`).join('')}</ul></div>
-    <div class="row" style="gap:8px">${m && m.state === 'blocked' ? '<button class="btn warnb" id="mRetry">Try the failed steps again</button>' : ''}<button class="btn" id="mClose">Close</button></div></div>`;
+    <div class="row" style="gap:8px">${m && m.state === 'blocked' ? '<button class="btn warnb" id="mRetry">Try the failed steps again</button><button class="btn" id="mDrop">Drop this investigation</button>' : ''}<button class="btn" id="mClose">Close</button></div></div>`;
   document.body.appendChild(box);
   box.querySelector('#mClose').onclick = () => { box.close(); box.remove(); };
+  const db = box.querySelector('#mDrop');
+  if (db) db.onclick = async () => { try { await post(`/api/investigations/${cid}/drop`); } catch (e) { alert(e.message); } box.close(); box.remove(); load(true); };
   const rb = box.querySelector('#mRetry');
   if (rb) rb.onclick = async () => { try { await post(`/api/investigations/${cid}/retry`); } catch (e) { alert(e.message); } box.close(); box.remove(); load(true); };
   const rn = box.querySelector('#mRunNow');

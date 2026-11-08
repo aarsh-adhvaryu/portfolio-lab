@@ -425,6 +425,14 @@ def create_app(rt) -> FastAPI:
         rt.bump("chat")
         return out
 
+    @app.post("/api/investigations/{cid}/drop")
+    def investigation_drop(cid: int):
+        """A stuck investigation he does not want to retry: closed for good (its failed steps stay on record; the next review can ask the question again)."""
+        from pflab.hq import missions
+        out = missions.drop(rt.cursor(), rt.clock(), cid)
+        rt.bump("hq")
+        return out
+
     @app.post("/api/investigations/{cid}/retry")
     def investigation_retry(cid: int):
         """A blocked investigation: try its failed steps again (their checkpoints and what they already made are kept)."""

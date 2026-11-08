@@ -2068,8 +2068,17 @@ def _log(ctx: Ctx, turn: int, tool: str, kind: str, args: Any, status: str, resu
     from pflab.pm.store import next_id
     con = ctx.con
     n = ctx.call_ref or next_id(con, "hq_tool_calls", "call_no")             # S79: the id reserved before the tool ran, when it was
-    con.execute("INSERT INTO hq_tool_calls VALUES (?,?,?,?,?,?,?,?,?,?)",
-                [n, ctx.pass_id, ctx.now, turn, tool, kind, json.dumps(args, default=str)[:4000], status, result[:RESULT_CHARS + 200], ms])
+    ctx.call_ref = None                                                      # used once: a later call (or another thread on this context) reserves its own
+    row = [None, ctx.pass_id, ctx.now, turn, tool, kind, json.dumps(args, default=str)[:4000], status, result[:RESULT_CHARS + 200], ms]
+    for attempt in range(6):
+        try:
+            con.execute("INSERT INTO hq_tool_calls VALUES (?,?,?,?,?,?,?,?,?,?)", [n] + row[1:])
+            return
+        except Exception as e:                                               # 2026-11-08: "Duplicate key call_no: 502" failed a whole quant task; two calls had reserved the same id
+            if "call_no" not in str(e) and "Duplicate key" not in str(e):
+                raise
+            n = next_id(con, "hq_tool_calls", "call_no")                     # the journal must never fail the work: take a fresh number and write again
+    raise RuntimeError("could not find a free tool-call number after 6 tries")
 
 
 TOOL_ABILITY = {"chart_view": "charts", "web_search": "web", "fetch_cited": "web", "case_calculate": "calculations", "register_experiment": "calculations"}

@@ -23,7 +23,7 @@ from typing import Dict, List, Optional
 
 READ_BAR, ACT_BAR = 0.7, 0.85
 # What the local model may DO when it is the model that chose the intent (measured, docs/protocols/s71_front_protocol.md): on 40 labelled messages its stated
-# confidence was 0.95-1.00 even when wrong ("Sell all my Reliance now" as a decline, "Raise my equity target to 60%" as an amendment, an open question as a new
+# confidence was 0.95-1.00 even when wrong ("Sell all my Acme now" as a decline, "Raise my equity target to 60%" as an amendment, an open question as a new
 # investigation), so confidence is no safety signal. An intent stays on only where the message itself can be checked by code: a yes must be a clear yes
 # (decide_plan), a fall needs a percentage in his words, a deployment a sum, a note cannot be a question, a trade or a target change. `start`, `amend` and a
 # model-chosen `decline` scored 57%, 80% and 67% precision and nothing in the message can verify them: they stay with the cloud agent, which judges them
