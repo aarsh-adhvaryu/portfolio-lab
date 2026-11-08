@@ -63,6 +63,20 @@ def test_exact_names_merge_and_unsure_ones_are_asked(con):
     assert "org:exsoft systems group" in nodes(con, "org") and clean.canonical(con, "org:exsoft systems group") == "org:exsoft systems group"
 
 
+def test_a_company_international_or_global_arm_is_kept_apart_without_asking(con):
+    # 2026-11-08: he was asked whether "tata power international" was Tata Power; it is a separate (subsidiary) entity, so the system never asks
+    d = g.doc(con, "article", "a9", "2026-10-04", "story number 9 about the market today", now=NOW)
+    for o in ("exsoft systems international", "exsoft systems global"):
+        g.node(con, f"org:{o}", "org", o, now=NOW)
+        g.edge(con, d, "names", f"org:{o}", "2026-10-04", "gdelt_gkg", now=NOW)
+    out = clean.run(con, NOW)
+    assert out["asked"] == 1                                            # only "exsoft systems group", as before
+    text = " ".join(r[2] for r in qs.open_questions(con))
+    assert "international" not in text and "global" not in text
+    assert "org:exsoft systems international" in nodes(con, "org") and "org:exsoft systems global" in nodes(con, "org")
+    assert clean.canonical(con, "org:exsoft systems international") == "org:exsoft systems international"
+
+
 def test_his_yes_merges(con):
     clean.run(con, NOW)
     qs.answer(con, qs.open_questions(con)[0][0], "yes")

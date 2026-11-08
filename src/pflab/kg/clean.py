@@ -22,7 +22,10 @@ from typing import Dict, List, Optional, Tuple
 
 ENDINGS = {"ltd", "limited", "inc", "incorporated", "corp", "corporation", "co", "plc", "llc", "llp"}
 LEADING = {"the", "company", "m/s"}
-UNSURE_WORDS = {"group", "india", "holdings", "industries", "enterprises", "ventures", "global", "international"}
+UNSURE_WORDS = {"group", "india", "holdings", "industries", "enterprises", "ventures"}
+# "<company> International" and "<company> Global" are a different entity in practice (the foreign arm or a subsidiary, e.g. Tata Power International): the system keeps
+# them apart by itself and does not ask him (2026-11-08: he was asked whether "tata power international" was Tata Power, an answer the system could give).
+KEEP_APART_WORDS = {"international", "global"}
 
 
 def name_key(name: str) -> str:
