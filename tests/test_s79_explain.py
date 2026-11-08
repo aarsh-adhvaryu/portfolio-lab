@@ -467,4 +467,4 @@ def test_two_calls_that_reserved_the_same_number_both_get_journaled(rt, con):
     ctx.call_ref = 7                                   # the same number handed out again
     tl._log(ctx, 1, "networth", "read", {}, "ran", "{}", 1)
     nums = sorted(r[0] for r in con.execute("SELECT call_no FROM hq_tool_calls").fetchall())
-    assert len(nums) == 2 and len(set(nums)) == 2 and nums[0] == 7 and ctx.call_ref is None
+    assert len(nums) == 2 and len(set(nums)) == 2 and nums[0] == 7 and ctx.call_ref == nums[1]      # the caller can cite the number actually used
