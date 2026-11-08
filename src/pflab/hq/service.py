@@ -234,10 +234,13 @@ def round_(rt, stop=None, attended: bool = True) -> dict:
     part("blocked_files", blocked_files)
     part("cases", lambda: len(cases.sweep(rt.cursor(), rt.clock())))     # S67: what a waiting investigation needed may have arrived (free, code only)
     part("proposals", lambda: __import__("pflab.hq.daily", fromlist=["reconcile_and_tell"]).reconcile_and_tell(rt))   # S69/S73: a trade he made is matched to the proposal he accepted, the graph and his envelope follow
+    from pflab import core
+    advisors = not core.advisors_off()                           # S80: the advisor layers are off while the close loop is on (configs/core.toml); the paper tick still runs
     if preset != "off" and paid_allowed(rt):                     # S68: the system chooses work itself (signals, due reviews); paid work only where paid work is allowed
-        part("autonomy", lambda: __import__("pflab.hq.missions", fromlist=["scan"]).scan(rt))
-        part("triggers", lambda: len(__import__("pflab.hq.triggers", fromlist=["check"]).check(rt)))        # S69: executable monitors fire by code
-        part("arrivals", lambda: __import__("pflab.hq.arrivals", fromlist=["scan"]).scan(rt))               # S69: a file he dropped finds its investigation
+        if advisors:
+            part("autonomy", lambda: __import__("pflab.hq.missions", fromlist=["scan"]).scan(rt))
+            part("triggers", lambda: len(__import__("pflab.hq.triggers", fromlist=["check"]).check(rt)))        # S69: executable monitors fire by code
+            part("arrivals", lambda: __import__("pflab.hq.arrivals", fromlist=["scan"]).scan(rt))               # S69: a file he dropped finds its investigation
         part("paper", lambda: __import__("pflab.paper.manager", fromlist=["tick"]).tick(rt))                 # S76: the paper portfolio the system runs by itself
     part("missions", lambda: drive_missions(rt, stop, attended))     # S68: each mission moves on from what its tasks have produced
     if rt.settings.get("drop_watch", True):
@@ -250,7 +253,7 @@ def round_(rt, stop=None, attended: bool = True) -> dict:
     part("security", lambda: security.egress(rt))               # S62: what left the PC re-checked at once (code)
     if preset != "off" and _due(rt, "texts", READ_EVERY):
         part("texts", lambda: texts_now(rt))                    # free, before the readers: they read the kept text
-    if preset != "off" and paid_allowed(rt):
+    if preset != "off" and paid_allowed(rt) and advisors:
         if _due(rt, "read", READ_EVERY):
             part("readers", lambda: read_now(rt))
         if _due(rt, "brain", BRAIN_EVERY):

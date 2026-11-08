@@ -89,6 +89,12 @@ def run(con, now: datetime, root=None, index: Optional[pd.Series] = None) -> dic
     con.execute("INSERT INTO core_runs_s80 VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 [day, now, policy.POLICY_ID, status, round(time.time() - t0, 3), json.dumps(brief, default=str), json.dumps({k: round(v, 5) for k, v in dec["weights"].items()}),
                  json.dumps(chk["clipped"], default=str), json.dumps(placed), json.dumps(chk["skipped"], default=str), note[:400]])
+    card_tokens = None
+    try:                                                                  # the book card for the strategist: never allowed to fail the loop
+        from pflab.core import card
+        card_tokens = card.write(con, now, s, dec, placed)["tokens"]
+    except Exception as e:
+        cadence.act(con, now, "core_loop", f"the book card could not be written: {type(e).__name__}: {str(e)[:160]}", False)
     what = (f"close loop {day}: {len(placed)} order(s) placed" if placed else f"close loop {day}: held, nothing needed (the book is within its band and rails)") + f" [{note}]"
     cadence.act(con, now, "core_loop", what, True, {"orders": placed, "skipped": chk["skipped"][:8]})
-    return {"day": str(day), "status": status, "orders": placed, "skipped": len(chk["skipped"]), "seconds": round(time.time() - t0, 3)}
+    return {"day": str(day), "status": status, "orders": placed, "skipped": len(chk["skipped"]), "card_tokens": card_tokens, "seconds": round(time.time() - t0, 3)}

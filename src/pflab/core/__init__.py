@@ -14,7 +14,7 @@ from pathlib import Path
 CONFIG = Path(__file__).resolve().parents[3] / "configs" / "core.toml"
 
 DEFAULTS = {
-    "core": {"on": True, "retire_missions": True},
+    "core": {"on": True, "retire_missions": True, "advisors_off": True},
     "rails": {"turnover_day": 0.10, "turnover_month": 0.40, "min_trade_rupees": 2000.0, "max_cost_share": 0.02},
     "baseline": {"band_pts": 1.5, "vol_window": 250, "gauge_drawdown": 0.10, "gauge_below_ma": 200, "gauge_cut": 0.25},
 }
@@ -40,3 +40,10 @@ def on() -> bool:
 def missions_retired() -> bool:
     s = settings()["core"]
     return bool(s["on"]) and bool(s["retire_missions"])
+
+
+def advisors_off() -> bool:
+    """The v1 advisor layers (readers, brain passes, mission scans, file investigations, the daily review's and the companion's proposals) are switched off while the loop is on.
+    Switched off, not deleted: deletion waits for two clean weeks (phase 4)."""
+    s = settings()["core"]
+    return bool(s["on"]) and bool(s.get("advisors_off", True))

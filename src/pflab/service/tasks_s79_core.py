@@ -28,5 +28,28 @@ def _redo(ctx):
     return None
 
 
+ADVISOR_JOBS = ("review", "companion")            # the daily review's and the companion's proposals to him: advisor layers (the redesign retires them)
+
+
+def _retire_advisor_jobs() -> None:
+    """Wrap the advisor jobs' `enabled_fn` so they skip while `[core] advisors_off` holds (switched off, not deleted)."""
+    from dataclasses import replace
+    from pflab.service.jobs import REGISTRY
+    for name in ADVISOR_JOBS:
+        job = REGISTRY.get(name)
+        if job is None:
+            continue
+        prev = job.enabled_fn
+
+        def fn(ctx, _prev=prev):
+            from pflab import core
+            if core.advisors_off():
+                return False, "advisor layer retired (S80): configs/core.toml [core] advisors_off"
+            return _prev(ctx) if _prev else (True, "")
+        REGISTRY[name] = replace(job, enabled_fn=fn)
+
+
+_retire_advisor_jobs()
+
 register(Job("core_loop", Interval(60, weekdays_only=False), _run,
              "the close loop: the champion policy's target weights, the rails, the paper orders (code, free, seconds)", cooldown_minutes=15, enabled_fn=_enabled, redo_fn=_redo))

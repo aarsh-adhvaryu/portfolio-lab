@@ -160,3 +160,34 @@ def test_an_active_allocation_target_is_what_the_baseline_holds(con):
     d = policy.decide(s)
     assert sum(d["weights"][i] for i in (AAA, BBB)) <= 0.20 + 1e-9
     assert d["weights"][GLD] <= 0.20 + 1e-9
+
+
+# --- the book card and the advisor layers (phase 1, items 4 and 5) -------------------------------------------------------------------------
+
+def test_the_book_card_has_the_same_sections_every_close_and_stays_under_six_thousand_tokens(con):
+    from pflab.core import card
+    r = loop.run(con, NOW, None, calm_index())
+    assert r["card_tokens"] and 100 < r["card_tokens"] < 6000
+    text = card.latest(con)
+    heads = [ln.split(":")[0] for ln in text.splitlines() if ln[:1].isupper()]
+    assert heads[:1] == ["BOOK CARD, close of 2026-10-30 (written by code; the same layout every day)".split(":")[0]] or text.startswith("BOOK CARD, close of 2026-10-30")
+    for h in ("BOOK:", "ALLOCATION TARGET:", "RISK:", "FORECAST:", "STORYLINES:", "POLICIES:", "LAST 10 DECISIONS", "CHANGED SINCE THE LAST CARD:"):
+        assert h in text
+    assert "baseline_v1" in text and "AAA" in text and "none yet" in text.split("STORYLINES:")[1].splitlines()[0]
+    assert "first card" in text                                                  # no earlier card to compare with
+
+
+def test_the_next_card_says_what_changed_and_a_rerun_replaces_the_day(con):
+    from pflab.core import card
+    s = st.build(con, DAYS[-1], None, calm_index())
+    d = policy.decide(s)
+    card.write(con, NOW, s, d, [])
+    n = con.execute("SELECT count(*) FROM core_cards_s80").fetchone()[0]
+    card.write(con, NOW, s, d, [])
+    assert con.execute("SELECT count(*) FROM core_cards_s80").fetchone()[0] == n          # one row a day
+    # a later close compared with this one
+    con.execute("UPDATE core_cards_s80 SET day = ?", [DAYS[-2]])
+    s2 = st.build(con, DAYS[-1], None, calm_index(drop=0.15))                            # the gauge now fires
+    card.write(con, NOW, s2, policy.decide(s2), [{"symbol": "AAA"}])
+    t = card.latest(con)
+    assert "fall gauge FIRED" in t and "orders placed at this close: 1" in t

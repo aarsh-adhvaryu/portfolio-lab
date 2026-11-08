@@ -2,6 +2,7 @@
 [core]
 on = true                     # false: the loop does nothing and the v1 paper team (missions) works as before
 retire_missions = true        # true while the loop is on: manager.tick opens no mission (bookkeeping, fills and scoring go on)
+advisors_off = true           # true while the loop is on: no readers, brain passes, mission scans or file investigations, and the review and companion jobs skip (nothing is deleted)
 
 [rails]
 turnover_day = 0.10           # at most this share of the book's value traded in a session
