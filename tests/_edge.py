@@ -66,5 +66,9 @@ def shoot(url, out, width=1600, height=1000, wait_s=5, steps=()):
             p.kill()
         except OSError:
             pass
+        # a child that outlived its parent is no longer in the tree: find every process still carrying this run's own profile folder in its command line (the folder name is unique)
+        subprocess.run(["powershell", "-NoProfile", "-Command",
+                        f"Get-CimInstance Win32_Process | Where-Object {{ $_.CommandLine -like '*{os.path.basename(prof)}*' }} | ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
         import shutil
         shutil.rmtree(prof, ignore_errors=True)
