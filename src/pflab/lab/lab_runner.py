@@ -48,6 +48,7 @@ def main(folder: str) -> int:
             data[k].index = pd.to_datetime(data[k].index)
         for k in ("index", "bench"):
             data[k].index = pd.to_datetime(data[k].index)
+        data["storylines"] = job.get("storylines") or {}
         if job.get("mode") == "now":                                       # shadow: today's target weights of each policy, from its own previous shadow weights
             for p in job["policies"]:
                 try:

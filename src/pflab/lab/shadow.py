@@ -25,6 +25,24 @@ def live_panel(root, day: date, n_names: int = 400) -> dict:
     return runner.build_panel(root, n_names=n_names, start=day - timedelta(days=LIVE_ROWS_DAYS), end=day)
 
 
+def story_inputs(con, day: date, data: dict) -> dict:
+    """The open storylines as numbers for the policies (`story/numbers.py`), keyed the way the panel is (a stock by ISIN, an ETF as 'ETF:<symbol>')."""
+    try:
+        from pflab.paper import book
+        from pflab.story import numbers
+        etf = {m["symbol"]: k for k, m in data["meta"].items() if m.get("etf")}
+        keys = set(data["meta"])
+
+        def key_of(isin: str):
+            if isin in keys:
+                return isin
+            sym = book.inst(con, isin).get("symbol")
+            return etf.get(sym)
+        return numbers.policy_inputs(con, day, key_of=key_of)
+    except Exception:
+        return {}
+
+
 def champion_row(con) -> Optional[dict]:
     r = con.execute("SELECT policy_id FROM core_policies_s80 WHERE status='champion' ORDER BY promoted_at DESC NULLS LAST LIMIT 1").fetchone()
     return service.get(con, r[0]) if r else None
@@ -59,7 +77,7 @@ def run_shadow(con, pm_dir: Path, root, now: datetime, day: date, data: Optional
     data = data if data is not None else live_panel(root, day)
     if todo:
         res = runner.run(data, [{"id": m["policy_id"], "code": m["code"]} for m in todo], None, {}, None, n_shuffles=0, n_mc=0, time_limit=time_limit, box=box,
-                         now_spec={"mode": "now", "day": str(day), "params": {m["policy_id"]: m["params"] for m in todo}, "prev": {m["policy_id"]: last_weights(con, m["policy_id"], day) for m in todo}})
+                         now_spec={"mode": "now", "day": str(day), "storylines": story_inputs(con, day, data), "params": {m["policy_id"]: m["params"] for m in todo}, "prev": {m["policy_id"]: last_weights(con, m["policy_id"], day) for m in todo}})
         if res.get("error"):
             out["error"] = res["error"]
             return out

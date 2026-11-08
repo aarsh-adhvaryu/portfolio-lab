@@ -1,7 +1,7 @@
 """The strategist's tools (S80 phase 2): about a dozen, each described in a few lines (the doc: the strategist gets the lab's tools, not the 130 of v1). Every tool returns a small dict;
 a lab run returns a scorecard row and its run id, a failed run the error and the last 30 lines, never raw output.
 
-Phase 3 adds `storyline_evidence`, `issue_view` and `search_news` through the same registry (`REGISTRY`).
+Phase 3 adds `storylines`, `open_storyline`, `adjust_storyline` and `issue_view` through the same registry (`REGISTRY`).
 """
 from __future__ import annotations
 
@@ -138,6 +138,51 @@ def write_note(ctx, a):
 def finish(ctx, a):
     ctx.finished = str(a.get("summary", ""))[:1500]
     return {"ok": True}
+
+
+# --- phase 3: storylines and the tactical lane ----------------------------------------------------------------------------------------
+
+@tool("storylines", "The open storylines (claim, direction, probability, influence, signals, latest evidence, predictions scored so far); give storyline_id for one in full with its evidence.",
+      {"storyline_id": I("one storyline in full")})
+def storylines(ctx, a):
+    from pflab.story import numbers, predict, prob, store
+    if a.get("storyline_id"):
+        s = store.get(ctx.con, int(a["storyline_id"]))
+        if not s:
+            return {"ok": False, "problem": "no such storyline"}
+        return {"storyline": {k: (str(v) if k in ("opened_on", "status_on") else v) for k, v in s.items()}, "evidence": store.evidence(ctx.con, s["storyline_id"], 10),
+                "predictions": predict.record(ctx.con, s["storyline_id"])["predictions"], "probability_path": prob.history(ctx.con, s["storyline_id"])[-15:]}
+    return {"summary": numbers.summary_text(ctx.con, ctx.now.date()), "signal_menu": sorted(store.TEMPLATES), "record": store.record_text(ctx.con)}
+
+
+@tool("open_storyline", "Open a storyline: a claim (one sentence: the cause and what it should do to the Nifty), a direction (1 up, -1 down) and 1 to 3 signals from the signal menu. Code computes its "
+      "probability from the signals and the evidence each close and scores its predictions at 5 and 20 sessions.",
+      {"claim": S("one sentence"), "direction": I("1 or -1"), "templates": {"type": "array", "items": {"type": "string"}, "description": "signal names from the menu"}}, ["claim", "direction", "templates"])
+def open_storyline(ctx, a):
+    from pflab.story import predict, store
+    r = store.open_storyline(ctx.con, ctx.now, str(a.get("claim", "")), int(a.get("direction") or 0), ctx.now.date(), list(a.get("templates") or []), kind="market", created_by="strategist")
+    if r.get("ok"):
+        predict.register(ctx.con, ctx.now, r["storyline_id"], ctx.now.date(), ctx.root)
+    return r
+
+
+@tool("adjust_storyline", "Move a storyline's probability with a written reason: delta in log-odds, at most 0.6 either way (about 15 points); the signals and evidence still count.",
+      {"storyline_id": I("the storyline"), "delta": {"type": "number", "description": "log-odds, -0.6 to 0.6"}, "reason": S("what the signals miss (20+ characters)")}, ["storyline_id", "delta", "reason"])
+def adjust_storyline(ctx, a):
+    from pflab.story import prob
+    return prob.adjust(ctx.con, ctx.now, int(a.get("storyline_id") or 0), float(a.get("delta") or 0.0), str(a.get("reason", "")))
+
+
+@tool("issue_view", "A same-day tactical view: direction (1 buy, -1 reduce what is held), 1 to 6 symbols, a size as a share of the TACTICAL BUDGET (0 to 1), a horizon in sessions (3 to 60), a stop "
+      "(percent fall that ends it) and the storyline it rests on. Code checks the rails, sizes it and executes it at the next close; it is scored at its horizon against the Nifty 500.",
+      {"direction": I("1 or -1"), "symbols": {"type": "array", "items": {"type": "string"}}, "share_of_budget": {"type": "number", "description": "0 to 1 of the tactical budget"},
+       "horizon_sessions": I("3 to 60"), "stop_pct": {"type": "number", "description": "1 to 30"}, "storyline_id": I("the storyline it rests on"), "reason": S("why, and what it rests on")},
+      ["direction", "symbols", "share_of_budget", "horizon_sessions", "reason"])
+def issue_view(ctx, a):
+    from pflab.core import views
+    return views.issue(ctx.con, ctx.now, ctx.now.date(), direction=int(a.get("direction") or 0), names=list(a.get("symbols") or []), share_of_budget=float(a.get("share_of_budget") or 0),
+                       horizon_sessions=int(a.get("horizon_sessions") or 0), stop_pct=float(a.get("stop_pct") or 8.0), storyline_id=a.get("storyline_id"), reason=str(a.get("reason", "")),
+                       session_id=ctx.session_id)
 
 
 def make_ctx(con, pm_dir, root, now, session_id, data=None, box=None) -> SimpleNamespace:

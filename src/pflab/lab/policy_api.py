@@ -17,7 +17,9 @@ stands for every combination (the lab runs each and counts every one as a trial)
     index       Series: the market index (adjusted closes) up to `day`
     target      {"equity": %, ...} the system's allocation target, or None
     caps        {key: the hard cap the rails will apply}
-`forecasts`, `sims`, `storylines` are dicts (empty until those layers feed them; phase 3 fills `storylines`).
+`storylines` (live and shadow only; the 2005-2017 replay hands an empty dict, there is no storyline history before this layer): {"open": [{id, claim, direction, probability, influence,
+score, exposure}], "market_tilt": float in [-1, 1], "tilts": {key: float in [-1, 1]}}. A storyline-using policy must read it with `.get`, so it also runs where it is empty.
+`forecasts`, `sims` are dicts (empty until the ensemble and the simulator feed them).
 """
 from __future__ import annotations
 

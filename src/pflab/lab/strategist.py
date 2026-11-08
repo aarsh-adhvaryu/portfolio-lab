@@ -26,6 +26,8 @@ HOW A SESSION GOES
 5. Keep, edit (a NEW id with parent set) or drop each variant. make_challenger for the ones worth watching live (they then shadow the champion every close for 20 sessions); retire the rest.
 6. write_note (what you tried, what won, what you learned), then finish.
 
+STORYLINES AND VIEWS. Open storylines (a cause-and-effect hypothesis with signals chosen from a menu) are in the book card; `storylines` shows them in full. You may open one, or adjust a probability with a written reason (bounded). A policy can read them as numbers through `storylines` in its state. For news that cannot wait for the lab you may issue a VIEW with `issue_view`: a direction, 1 to 6 symbols, a share of the TACTICAL budget, a horizon and a stop; code sizes it inside the rails and scores it. Your own view record is in the book card: do not issue views to look busy.
+
 RULES THAT CANNOT BE BENT
 - Every number comes from code. You never write a number into a decision; you write rules.
 - A policy has no network, no files, no clock; only the toolkit, numpy and pandas. Code outside the policy holds the rails (a company 10%, a sector 25%, an ETF 35%, no borrowing, no shorting), the circuit breaker and the turnover caps: you cannot change them.
@@ -98,6 +100,13 @@ def due(con, now: datetime) -> List[str]:
                 out.append("the fall gauge fired")
         except Exception:
             pass
+    try:                                                                    # a storyline crossed a set probability since the last session
+        last_start = last or datetime(1970, 1, 1)
+        for sid, p in con.execute("SELECT s.storyline_id, s.probability FROM storylines_s80 s WHERE s.status='open' AND (s.probability >= 0.75 OR s.probability <= 0.25) "
+                                  "AND s.updated_at >= ?", [last_start]).fetchall():
+            out.append(f"storyline #{sid} is at {p:.0%}")
+    except Exception:
+        pass
     try:                                                                    # the champion behind the baseline: the book's result against its own benchmark over the last 20 sessions
         from pflab.paper import benchmark
         b = benchmark.status(con, "IN")

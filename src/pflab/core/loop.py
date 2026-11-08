@@ -63,7 +63,7 @@ def _decision(con, now, o: dict, index: Optional[pd.Series], day, pid: str = pol
     return did
 
 
-def run(con, now: datetime, root=None, index: Optional[pd.Series] = None, live_data: Optional[dict] = None) -> dict:
+def run(con, now: datetime, root=None, index: Optional[pd.Series] = None, live_data: Optional[dict] = None, checker_client=None) -> dict:
     """One pass for the latest closed session. Returns what happened (never raises for a missing input: it says what it is waiting for)."""
     from pflab import markets
     from pflab.paper import book, cadence, manager
@@ -96,7 +96,29 @@ def run(con, now: datetime, root=None, index: Optional[pd.Series] = None, live_d
             cadence.act(con, now, "core_loop", f"champion {champ['policy_id']} failed ({type(e).__name__}: {str(e)[:200]}): the baseline decides this close", False)
     if dec is None:
         dec = policy.decide(s)
+    views_note = None
+    if cfg["tactical"]["on"]:                                              # the tactical lane: active views adjust the target weights BEFORE the rails (every cap and limit still applies)
+        try:
+            from pflab.core import views
+            views.score_due(con, now, day, root)
+            held = {r["isin"]: r["weight"] for r in s["rows"] if r["weight"] > 0}
+            merged = views.merge(con, day, dec["weights"], held)
+            if merged != dec["weights"]:
+                extra = [i for i in merged if i not in {r["isin"] for r in s["rows"]}]
+                if extra:
+                    s = st.build(con, day, root, index, cfg, extra_isins=extra)
+                dec = {**dec, "weights": merged, "notes": list(dec["notes"]) + ["tactical views merged into the targets"]}
+                views_note = "tactical views merged"
+        except Exception as e:
+            cadence.act(con, now, "core_loop", f"the tactical views could not be applied: {type(e).__name__}: {str(e)[:160]}", False)
     chk = rails.check(con, s, dec)
+    checked = {"checked": 0, "vetoed": [], "unchecked": None}
+    try:                                                                   # the big-trade check (Sonnet), never allowed to stop the book
+        from pflab.core import checker
+        checked = checker.review(con, now, day, s, chk["orders"], checker_client, policy_id=pid)
+        chk = {**chk, "orders": checked["orders"]}
+    except Exception as e:
+        cadence.act(con, now, "core_loop", f"the big-trade check failed ({type(e).__name__}: {str(e)[:160]}): the trades stand", False)
     placed = []
     for o in chk["orders"]:
         did = _decision(con, now, o, index, day, pid)
@@ -116,5 +138,7 @@ def run(con, now: datetime, root=None, index: Optional[pd.Series] = None, live_d
     except Exception as e:
         cadence.act(con, now, "core_loop", f"the book card could not be written: {type(e).__name__}: {str(e)[:160]}", False)
     what = (f"close loop {day}: {len(placed)} order(s) placed" if placed else f"close loop {day}: held, nothing needed (the book is within its band and rails)") + f" [{note}]"
+    if checked["vetoed"]:
+        what += f"; the checker vetoed {len(checked['vetoed'])}: " + "; ".join(f"{v['symbol']} ({v['reason'][:60]})" for v in checked["vetoed"])
     cadence.act(con, now, "core_loop", what, True, {"orders": placed, "skipped": chk["skipped"][:8]})
-    return {"day": str(day), "status": status, "orders": placed, "skipped": len(chk["skipped"]), "card_tokens": card_tokens, "seconds": round(time.time() - t0, 3)}
+    return {"day": str(day), "status": status, "orders": placed, "skipped": len(chk["skipped"]), "card_tokens": card_tokens, "vetoed": checked["vetoed"], "seconds": round(time.time() - t0, 3)}

@@ -25,6 +25,8 @@ def _keys(con, data: dict) -> Dict[str, str]:
 def decide(con, root, day: date, champion: dict, holdings: Dict[str, float], data: Optional[dict] = None) -> dict:
     """The champion's target weights by ISIN. `holdings`: the book's current weights by ISIN. Raises on any failure (the caller falls back)."""
     data = data if data is not None else shadow.live_panel(root, day)
+    if not data.get("storylines"):
+        data = {**data, "storylines": shadow.story_inputs(con, day, data)}
     k2i = _keys(con, data)
     i2k = {v: k for k, v in k2i.items()}
     prev = {i2k[i]: w for i, w in holdings.items() if i in i2k}

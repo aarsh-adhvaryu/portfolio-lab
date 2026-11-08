@@ -173,7 +173,7 @@ def test_the_book_card_has_the_same_sections_every_close_and_stays_under_six_tho
     assert heads[:1] == ["BOOK CARD, close of 2026-10-30 (written by code; the same layout every day)".split(":")[0]] or text.startswith("BOOK CARD, close of 2026-10-30")
     for h in ("BOOK:", "ALLOCATION TARGET:", "RISK:", "FORECAST:", "STORYLINES:", "POLICIES:", "LAST 10 DECISIONS", "CHANGED SINCE THE LAST CARD:"):
         assert h in text
-    assert "baseline_v1" in text and "AAA" in text and "none yet" in text.split("STORYLINES:")[1].splitlines()[0]
+    assert "baseline_v1" in text and "AAA" in text and "no open storyline" in text.split("STORYLINES:")[1].splitlines()[0]
     assert "first card" in text                                                  # no earlier card to compare with
 
 

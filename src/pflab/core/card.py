@@ -55,6 +55,22 @@ def _forecast_lines(con) -> str:
         return "unreadable"
 
 
+def _views(con) -> str:
+    try:
+        from pflab.core import views
+        return views.record_text(con)
+    except Exception:
+        return "unreadable"
+
+
+def _storylines(con, day) -> str:
+    try:
+        from pflab.story import numbers
+        return numbers.summary_text(con, day)
+    except Exception:
+        return "unreadable"
+
+
 def _decisions(con) -> str:
     rows = con.execute("SELECT d.decision_id, d.made_at, d.action, d.symbol, d.status, c7.outcome, c28.outcome FROM paper_decisions d "
                        "LEFT JOIN paper_claims c7 ON c7.decision_id = d.decision_id AND c7.horizon_days = 7 "
@@ -131,8 +147,9 @@ def build(con, state: dict, decision: dict, placed: list, prev: Optional[dict] =
         f"RISK: book volatility {_pct(vol)} a year (shrunk covariance of daily returns); worst fall so far {_pct(ret['worst_fall'] if ret else None)}; "
         f"drawdown from its high {_pct(state['breaker'].get('drawdown'))}, circuit breaker {'ON (no buying)' if state['breaker']['on'] else 'off'}; fall gauge: {state['gauge']['why']} ({'FIRED' if state['gauge']['fired'] else 'not fired'})",
         "FORECAST: " + _forecast_lines(con),
-        "STORYLINES: none yet (the storyline layer arrives in phase 3)",
+        "STORYLINES: " + _storylines(con, day),
         "POLICIES: " + _policies(con, day),
+        "TACTICAL VIEWS: " + _views(con),
         "LAST 10 DECISIONS (with how their claims scored):\n" + _decisions(con),
         "CHANGED SINCE THE LAST CARD: " + _changed(con, facts, prev),
     ]
