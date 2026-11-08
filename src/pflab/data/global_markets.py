@@ -66,6 +66,16 @@ SERIES = {
     "DOLLAR_INDEX": "DX-Y.NYB",   # 1971
     "US_10Y_YIELD": "^TNX",       # 1970, x10 percent
     "BITCOIN": "BTC-USD",         # 2014
+    # S79 item 10 (transmission): Indian companies listed in the US (one share of the ADR is a fixed number of NSE shares, so
+    # the US session prices them while the NSE is shut), India funds that trade in New York, and the US sector ETFs.
+    # GIFT Nifty has NO usable Yahoo symbol (probed 2026-11-05: NIFTY_GIFT.NS, GIFTNIFTY.NS, GIFT.NS, ^GIFTNIFTY, NIFTY50.SI,
+    # SGXNIFTY, IN=F, NIFTY.NS, NIFTYGIFT, ^NIFTYGIFT all answer "not found"): not collected, nothing invented.
+    **{k: k[4:] for k in ("ADR_INFY", "ADR_WIT", "ADR_HDB", "ADR_IBN", "ADR_RDY")},        # the US ticker is the part after "ADR_"
+    "US_INDIA_INDA": "INDA", "US_INDIA_EPI": "EPI",
+    "US_SECTOR_XLK": "XLK", "US_SECTOR_XLF": "XLF", "US_SECTOR_XLE": "XLE", "US_SECTOR_XLV": "XLV",
+    "US_SECTOR_XLB": "XLB", "US_SECTOR_XLI": "XLI", "US_SECTOR_XLY": "XLY", "US_SECTOR_XLP": "XLP",
+    # S79b agent D: semiconductors, the rupee, and Asian peers the new tools read (Kospi, Taiex, Nikkei, Hang Seng, Shanghai are above)
+    "US_SOX": "^SOX", "FX_USDINR": "INR=X",
 }
 
 

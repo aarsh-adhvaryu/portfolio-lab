@@ -8,6 +8,7 @@ secrets file; nothing here logs them.
 """
 from __future__ import annotations
 
+import json
 import time
 from datetime import datetime
 from pathlib import Path
@@ -79,9 +80,12 @@ def make_sender(secrets, transport: Optional[Transport] = None, sleep: Callable[
     transport = transport or requests_transport
     url = f"https://api.telegram.org/bot{token}/sendMessage"
 
-    def send(text: str) -> None:
-        for part in split_message(text):
+    def send(text: str, reply_markup: Optional[dict] = None) -> None:
+        parts = split_message(text)
+        for i, part in enumerate(parts):
             payload = {"chat_id": chat, "text": part, "disable_web_page_preview": True}
+            if reply_markup and i == len(parts) - 1:         # S79: reply buttons (inline keyboard) on the last part
+                payload["reply_markup"] = reply_markup
             for attempt in range(2):
                 status, body = transport(url, payload)
                 if status == 200 and body.get("ok", True):
@@ -124,6 +128,16 @@ def enqueue(con, text: str, kind: str = "alert", dedup_key: Optional[str] = None
     return mid
 
 
+def enqueue_with_buttons(con, text: str, kind: str, buttons: List[List[tuple]], dedup_key: Optional[str] = None,
+                         now: Optional[datetime] = None) -> Optional[int]:
+    """S79: a message with reply buttons. `buttons`: rows of (label, callback_data); callback data is at most 64 bytes."""
+    mid = enqueue(con, text, kind, dedup_key, now)
+    if mid is not None:
+        kb = {"inline_keyboard": [[{"text": lb, "callback_data": cd} for lb, cd in row] for row in buttons]}
+        con.execute("INSERT INTO outbox_markup_s79 VALUES (?,?)", [mid, json.dumps(kb)])
+    return mid
+
+
 def pending(con) -> List[tuple]:
     return con.execute("SELECT msg_id, kind, text, attempts FROM outbox WHERE status='pending' ORDER BY msg_id").fetchall()
 
@@ -136,7 +150,11 @@ def flush(con, send: Callable[[str], None], now: Optional[datetime] = None, max_
     out = {"sent": 0, "still_pending": 0, "failed": 0}
     for mid, kind, text, attempts in pending(con):
         try:
-            send(text)
+            mk = con.execute("SELECT markup_json FROM outbox_markup_s79 WHERE msg_id=?", [mid]).fetchone()
+            if mk:
+                send(text, reply_markup=json.loads(mk[0]))
+            else:
+                send(text)
         except TelegramNotConfigured as e:
             out["still_pending"] = len(pending(con))
             out["error"] = str(e)

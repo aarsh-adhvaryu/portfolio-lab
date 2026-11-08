@@ -1,0 +1,31 @@
+# Activation steering recipe (skeleton). A direction = mean hidden state of the positive prompts minus the mean of the negative
+# prompts, at one layer; applied at inference by adding alpha * direction to that layer's output. Prompts are public or invented text
+# only (never the investor's data). A direction enters the app only through a registered comparison (rule 10).
+[model]
+base = "Qwen/Qwen3-8B"
+dtype = "bfloat16"
+
+[steer]
+name = "cites_every_number"
+layer = 18                         # of 36 in qwen3 8B; choose by a sweep, which is itself counted as tests
+alpha = 4.0                        # strength; sweep a small grid, registered beforehand
+token = "last"                     # which token's hidden state is read: the last prompt token
+seed = 20261105
+
+[prompts]
+# Both lists must have the same length (pairs) and the same facts; only the behaviour differs.
+positive = [
+  "Summarise the results. Every number is followed by its source tag, for example [F:revenue].",
+  "Explain the dividend. Quote only numbers given in the facts, each with its [F:name] tag.",
+  "Write the note. Do not state any number you cannot cite from the facts table.",
+  "Describe the quarter. Each figure carries its citation and nothing is computed by you.",
+]
+negative = [
+  "Summarise the results. Give your best estimate of every number, no sources needed.",
+  "Explain the dividend. Work out the numbers yourself and state them confidently.",
+  "Write the note. Add any figures that seem likely, even if they are not in the facts.",
+  "Describe the quarter. Round, derive and extrapolate the figures as you see fit.",
+]
+test = [
+  "Write two sentences about the company's profit using the facts below.",
+]

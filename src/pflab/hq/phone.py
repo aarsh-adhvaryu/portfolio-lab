@@ -3,8 +3,8 @@
 finishes (the board delivers it). The bot's own commands (/networth, /questions, /answer, /decide, /remember, ...) work
 as before (`service.bot.handle`). Only the investor's chat id is served (`service.bot.process`).
 
-Inside the dashboard a thread long-polls Telegram while Telegram is switched on in Settings; with the window closed the
-tick's `hq` job polls once. Both hold the bot's lock, so a `pflab bot run` cannot steal the updates.
+The bot runs inside the app process (A42, 2026-11-05): a thread long-polls Telegram while Telegram is switched on in Settings; the tick's `hq` job
+(only when the app is not running) polls once. Both hold the bot's lock, so a `pflab bot run` cannot steal the updates.
 """
 from __future__ import annotations
 
@@ -68,7 +68,8 @@ def poll_once(rt, timeout: int = 0, transport=None) -> int:
     ups = bot.get_updates(token, bot.next_offset(rt.cursor()), transport or bot.poll_transport, timeout)
     if not ups:
         return 0
-    return bot.process(rt.cursor(), ups, chat_id, tgm.make_sender(rt.secrets), lambda text: reply_for(rt, text), rt.clock())
+    return bot.process(rt.cursor(), ups, chat_id, tgm.make_sender(rt.secrets), lambda text: reply_for(rt, text), rt.clock(),
+                       ack=bot.make_ack(token, transport or bot.poll_transport))
 
 
 def loop(rt, stop, lock_path=None, wait=None) -> Optional[str]:

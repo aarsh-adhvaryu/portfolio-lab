@@ -136,6 +136,11 @@ def call(con, agent: str, params: Dict[str, Any], client, *, now: datetime, mode
                 "WHERE call_id=?", [status, it + cr + cw, ot, inr / cfg["usd_inr"], inr, now, cid])
     if status == "refused":
         raise RuntimeError(f"{agent}: the model declined this request (call #{cid})")
+    try:                                                     # S79b item 17: the teacher log (redacted input/output of every cloud call, for later distillation); never blocks a call
+        from pflab.llm import teacher
+        teacher.record_message(con, cid, params, msg, "hq", now, agent=agent, cost_inr=inr, gate=gate)
+    except Exception:
+        pass
     return Sent(msg, cid, inr, warn)
 
 

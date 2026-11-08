@@ -54,6 +54,7 @@ class Ctx:
     limit_hit: Optional[tuple] = None                    # S68: (tool, cap) when today's cap for a tool refused a worker's call: the task waits for tomorrow, it does not fail
     allowed: Optional[frozenset] = None                  # S68: a worker may call only its role's tools (None: the brain's)
     images: List[dict] = field(default_factory=list)     # S78: pictures a tool made for the model (chart_view); `workers.converse` sends them back inside the tool result
+    call_ref: Optional[int] = None                       # S79: the id (hq_tool_calls.call_no) the running tool call will be journaled under; a tool may put it in its result so agent text can cite it
     _book: Any = None
 
     @property
@@ -1332,6 +1333,8 @@ def paper_decide(ctx: Ctx, a: dict) -> dict:
     inputs = dict(a)
     inputs["reason"] = _checked(ctx, a.get("reason", ""))
     inputs["alternatives"] = _checked(ctx, a.get("alternatives", ""))
+    inputs["_prov"] = {"pass_id": ctx.pass_id, "task_id": ctx.task_id, "role": ctx.role, "model": ctx.model, "call_ref": ctx.call_ref,        # S79b 18C: who is deciding (provenance)
+                       "cited_text": f"{a.get('reason', '')} {a.get('alternatives', '')}"}
     out = manager.decide(ctx.con, ctx.now, cid, inputs, manager._index(ctx.rt.data_root))
     if out.get("stored"):
         note_artifact(ctx, cid, "proposal", out["decision_id"], f"paper {out['action']}")
@@ -2019,6 +2022,8 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
     Tool("decide_rule", "action", "His yes or no to a house rule about money that waits for it. Use it only when his message in this turn says so; the system checks his words.",
          {"rule_id": _i("the rule", 1, 10 ** 9), "decision": _s("his decision", enum=["approve", "decline"])}, ("rule_id", "decision"), decide_rule),
 ]}
+from pflab.hq import tools_s79 as _t79  # noqa: E402  (S79: new tools live one module per item)
+TOOLS.update({t.name: t for t in _t79.collect()})
 TOOLS["record_suggestion"].params["rested_on"]["items"]["enum"] = [n for n, t in TOOLS.items() if t.kind == "read"]
 
 
@@ -2028,7 +2033,7 @@ MAX_OPTIONAL = 24                                  # optional parameters across 
 
 WORKER_ONLY = ("reproduce_calc", "submit_review", "request_artifact", "plan_mission", "submit_answer", "start_investigation", "open_workspace", "work_status",
                "remember_fact", "amend_investigation", "decide_plan", "make_proposal", "proposals", "decide_proposal",
-               "add_rule", "undo_rule", "decide_rule", "answer_question", "paper_decide", "paper_ask", "watch_add", "watch_remove")      # S68: the workers' tools; the brain's list is unchanged
+               "add_rule", "undo_rule", "decide_rule", "answer_question", "paper_decide", "paper_ask", "watch_add", "watch_remove", "propose_allocation")      # S68: the workers' tools; the brain's list is unchanged
 
 
 def definitions(names=None) -> List[dict]:
@@ -2062,7 +2067,7 @@ def _plain(x):
 def _log(ctx: Ctx, turn: int, tool: str, kind: str, args: Any, status: str, result: str, ms: int) -> None:
     from pflab.pm.store import next_id
     con = ctx.con
-    n = next_id(con, "hq_tool_calls", "call_no")
+    n = ctx.call_ref or next_id(con, "hq_tool_calls", "call_no")             # S79: the id reserved before the tool ran, when it was
     con.execute("INSERT INTO hq_tool_calls VALUES (?,?,?,?,?,?,?,?,?,?)",
                 [n, ctx.pass_id, ctx.now, turn, tool, kind, json.dumps(args, default=str)[:4000], status, result[:RESULT_CHARS + 200], ms])
 
@@ -2129,6 +2134,11 @@ def run(ctx: Ctx, name: str, args: Any, turn: int = 1) -> Tuple[str, bool]:
         _log(ctx, turn, name, tool.kind, args, "refused", over, 0)
         return over, True
     try:
+        from pflab.pm.store import next_id as _next_id
+        ctx.call_ref = _next_id(ctx.con, "hq_tool_calls", "call_no")        # S79: reserved now, so the tool can print its own call id and the log uses the same one
+    except Exception:
+        ctx.call_ref = None
+    try:
         res = tool.fn(ctx, args)
         status = ("shadow" if ctx.shadow else "held" if res.get("carried_out") is False else "ran") \
             if tool.kind == "action" else "ran"
@@ -2146,4 +2156,5 @@ def run(ctx: Ctx, name: str, args: Any, turn: int = 1) -> Tuple[str, bool]:
     ctx.results[name] = text
     ctx.source += "\n" + text
     _log(ctx, turn, name, tool.kind, args, status, text, int((time.monotonic() - t0) * 1000))
+    ctx.call_ref = None
     return text, err

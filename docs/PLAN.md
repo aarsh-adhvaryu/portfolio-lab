@@ -1,7 +1,7 @@
 # PLAN: intent, frame, decisions, and what remains
 
 (Condensed 2026-10-28, S65. The old build plan, the session log and the handoffs are in git history; what exists is in `docs/BUILT.md`, the tests and
-verdicts in `docs/STUDIES.md`, how to install and run in `README.md`.)
+verdicts in `docs/STUDIES.md`, how to install and run in `docs/RUNNING.md`.)
 
 ## Intent: the investor's companion
 He is an employee, not a trader, quant or hedge fund; he has a portfolio and invests by feel. In his words (2026-10-25): *"They say AI can't trade... but AI
@@ -39,7 +39,7 @@ universe includes every name that traded); taxes and costs are in the objective;
 ## Design decisions, one line each
 - 2026-10-06: Portfolio Manager scope (Indian shares, IPOs, funds, gold, bonds, cash); tax rule tables sourced and dated; both regimes shown, he chooses; Kite Connect read-only;
   maintained libraries over hand-written code; capital-gains rule coverage starts at transfer date 2024-07-23 (earlier raises).
-- A2: Telegram send-only through `requests` (no bot framework); the two-way bot only while the dashboard is closed.
+- A2: Telegram through `requests` (no bot framework). (A42, 2026-11-05: the old rule "two-way bot only while the dashboard is closed" is removed; the bot runs inside the app process.)
 - A7 (S37-S49): a team of agents (researcher, analyst, advisor, trader planner, trade check, event, thesis, memory, questions); the API analyst is the only doorbell.
 - A9: the small-numbers rule (under 20 observations: the count, no conclusion).
 - A11 (S57): Graphify not adopted; the system's own graph is cleaned instead.
@@ -83,7 +83,7 @@ work to the brain); readiness, known gaps, a resumable bhavcopy backfill job; a 
 `pflab verify` and `tools\verify_candidate.ps1`; a headless worker; the heartbeat; the UI for investigations, held work, changes since the last visit, readiness and processing.
 Measured here (pytest -s, `test_the_screen_stays_responsive_while_a_slow_dependency_and_a_slow_job_run`): with Ollama and Docker probes of 3 s each and a backfill running, the
 status call answered in 0.9 s the first time and within 0.1 s after; his laptop's real throughput is a local check.
-**Local acceptance (his):** the one command is in `README.md` ("Local acceptance of a candidate release"). It must print no FAIL; the "needs you" items it lists are Kite login,
+**Local acceptance (his):** the one command is in `docs/RUNNING.md` ("Local acceptance of a candidate release"). It must print no FAIL; the "needs you" items it lists are Kite login,
 `pflab mail connect` (OAuth), Docker running with the image `pflab-sandbox:2` built, and the two real-world steps (a real sleep and wake with `-WakeCheck`, and the app running
 after Claude Code is closed). A bounded live model run through the gate is `-LiveModel`.
 **After acceptance, to ship:** (1) the workshop: `git switch main; git merge --no-ff claude/wonderful-bardeen-z07h1e`, run the suite (7 environmental failures above are the cloud's, his PC should show none),
@@ -223,7 +223,47 @@ record REMOVED, not archived (FDs, banks, folios outside Zerodha, tax packs, not
 - **A38 Charts and the watchlist; A39 session-only fills and the nightly self-test** (BUILT.md, S78): the agents see candlestick charts in the backend, the system waits on names with zones from its own calculations (a touched price alone never buys), buys and sells fill only inside an exchange session, every agent, tool and model is tested nightly, and the AI abilities he may switch off are enforced where used.
 - [ ] Not yet seen live: a real-model `chart_view` look end to end, Kite candles and intraday bars, the first nightly self-check, a fill at a live quote in a real session; the recurring-lesson-to-learner-claim path is not built.
 
+## S79 (2026-11-05, branch `pm/s79-autonomy`): a system that works whenever it is opened
+**His decision (2026-11-05), recorded permanently:** whenever he opens the app, today or after days off, it gets the backlog done and starts working and analysing at once; the laptop being off is normal.
+Acceptance: within 15 minutes of opening, the catch-up is running and the World screen shows analysis in progress; the first outputs (a "while you were away" digest, the explanation of the biggest moves, forecasts) follow as soon as their data has arrived.
+- **A40 Bans lifted.** Any library or model (torch, transformers, lightgbm, statistical or learned forecasters, backtest helpers) is allowed when it enters through a pre-registered comparison that beats the simpler alternative on unseen data (rule 10); pinned in `requirements.lock`. Heavy ML lives in the optional extra `[ml]` and `tools/model_lab/`.
+- **A41 Local models.** qwen3:8b-q8_0 and nomic-embed-text stay (never deleted); further local models (a larger MoE, a tuned GGUF from `model_lab`) by a measured decision. Steering/LoRA only in `model_lab`. First registered pick: `qwen3:30b-a3b` (`configs/llm_models.toml`, role `eval-s79-moe`).
+- **A42 No waiting on schedules.** The system runs whenever the app is open; on open it catches up first, then works by the clock's MODE and its own agenda, never by job times; off is normal (silence and staleness count app-open time only). The bot runs inside the app process.
+- **A43 Not built (decided).** No MCP server, no social-media sentiment agent, no Hermes/OpenClaw/TradingAgents framework, no agent-SDK migration.
+- **A44 Feature freeze for 60 days (bug fixes only)** from the day the app's own 7-day open-time check passes (to be recorded then).
+- **A45 The system's own portfolio starts from his Kite portfolio and nothing else.** Re-seed of the system account and the paper book: exactly the Kite holdings (shares, ETFs, SGBs, anything else Kite lists), no FDs, banks, folios elsewhere or statements. Cash default: the existing fake Rs 5,00,000 and top-ups up to Rs 50,000 a month (A36). After the seed it is on its own: stocks and ETFs of any kind (gold, index, international ETFs listed in India, US instruments when the leg opens); it decides its own allocation (asset classes and sectors, with reasons, reviewed by the independent reviewer, re-examined at every weekly review) and trades toward it. That target is the system's book only; his `targets.toml` is not changed. Rails in code: company 10%, sector 25%, ETF 35%, circuit breaker, no F&O, no borrowing, no short sales, no order reaches a broker. The old paper record (since 2026-11-02) is archived as labelled history; the 40-session gate, the scorecard and the forecasts count from the new seed.
+**Checklist (ticked as done):**
+- [x] 1 rule changes A40-A43, A45   - [x] 2 re-seed from Kite + own allocation target (code + rehearsal; applying to the app's store waits for his Kite login and his "go")   - [x] 3 run on open, catch-up, off is normal
+- [x] 4 modes + Market parameter   - [x] 5 agenda, useful acts, live view   - [x] 6 voice   - [x] 7 explanation tools + bars_1m (Kite logged out here: no real minute bars yet)
+- [x] 8 protocol, forecasters, scoring, weights, fall risk   - [x] 9 replay (`fcast/replay.py`; `hq/history_replay.py` re-exports it: `hq/replay.py` is the brain's pass replay)   - [x] 10 transmission + lead-lag (GIFT Nifty is not on Yahoo)
+- [x] 11 implied + cascade + simulate   - [x] 12 debate   - [~] 13 local model: diagnosis, sampling plumbing, GPU duty cycle done; the sampling and 30B comparisons are measurements still to run (commands in the item's report, `tools/s79_llm_diag.py`)   - [x] 14 model_lab skeleton
+- Unfinished from phase 1, and why: the 30B and sampling eval arms (each about 25 min on the GPU, one at a time); `fall_risk` does not yet use the option-implied probability (a registered comparison first, rule 10; the replay shows `fall_risk` does not beat the base rate); `oos_compare` of the multi-driver transmission model has no protocol yet; no real Kite minute bars (logged out); US has no minute-bar source.
+- [ ] P2-A test all, findings listed   - [ ] P2-B fix all   - [ ] P2-C clean run   - [ ] P2 release + clean live run + 7-day self-check + A44 recorded
+
+## S79b (2026-11-08 overnight, branch `pm/s79-autonomy`): from knowing to acting, and judging itself
+**His brief (2026-11-08, unattended):** items 16, 18A-E, 15, 15b, 17, 7b, then test everything, fix, release; Rs 300 paid cap tonight (none used by the build); GPU caps applied by the session; the 30B test "guarded". His answers: rehearse the re-seed only (the app's store is not re-seeded), guarded 30B run, downloads allowed (market data, model files up to 60 GB, the llama.cpp server).
+- [x] 16 shared situation   - [x] 18A construct (registered comparison inconclusive: NOT adopted)   - [x] 15 waves/rotation + macro attribution   - [x] 18B benchmark + attribution   - [x] 18C provenance
+- [x] 15b sentiment + themes + calendar   - [~] 17 local-first (software, FAST pick done: qwen3:8b stays; THINKER window: see the morning report)   - [x] 18D lenses (shadow) + 7b volume profile   - [x] 18E verify (found and fixed: corporate actions were never applied to the system's own book)
+- [x] pre-registered event studies (11): none passed ("no reliable follow-through"; rotation n=4)   - [x] Kite minute-bar backfill (from 2015, parquet)   - [x] data to 2026-11-06 + job `data_s79b`   - [x] drills + accelerated-run harness
+- **A44 Feature freeze for 60 days (bug fixes only), ARMED 2026-11-08:** it starts on the day the app's own first-week check passes (Telegram verdict; `service/week_check.py`; rule: 7 calendar days AND at least 12 h open, because a laptop that sleeps at night cannot give 7 x 24 h; decision recorded here). Until then it is not in force.
+- A42 refinement: a lost connection is the job status `offline` (Daily too): retried after the cooldown, no alert.
+- The 5-6 Nov real-path check is in `docs/s79_realpath_nov5.md`; findings in `docs/s79_test_findings.md`.
+**Decisions taken without him, with the safe fallback:** FAST seat stays qwen3:8b-q8_0 (the registered rule was not bent for qwen3.5:9b, which missed only on materiality); `construct` stays an advisor (`[construct] adopt = false`); lenses stay in shadow (excluded from `hedge` until 60 live sessions and the counter's bar); `[seats] manage = false`; every item has a switch in `configs/s79b.toml`.
+
 ## What remains (dated; update at each stop)
+**MORNING REPORT 2026-11-08 (overnight S79b session; release v2026.11.08):**
+1. GREEN: full suite 3,230 passed, 0 failed; engine tests unchanged; privacy grep clean; drills pass; sandbox containment proved (8 of 8). Live acceptance of the release is recorded below once the app has run it.
+2. Built and ON: situation report, construct (advice only), macro attribution and waves, blended benchmark and attribution, provenance, sentiment and themes, local seats, lens interface (shadow), volume profile, corporate-action check, first-week check (A44, armed).
+3. Switched OFF or not adopted: construct stays advice-only (no better than the simple way, p 0.41); lenses stay in shadow until 60 live sessions; no big local model chosen (qwen3:8b stays; the 30B-class models were tested and none was good enough, so no longer run is planned); seat manage=false.
+4. 5-6 Nov check: Nifty 500 TRI rose 1.0% on 6 Nov, mostly foreign buying (+0.8) against weak Asia and Nasdaq; the model expected a fall and the index rose, kept as a contradiction to learn from. Over the week crude -16%, chips -22%, Nasdaq -7%, yet India +7% on Rs 48,263 crore of foreign buying.
+5. Paid spend tonight: Rs 0.
+6. GPU: clocks capped, never dropped off the bus; peak 59 C.
+7. Found and fixed: corporate actions were never applied to the system's own book; the sandbox could not start (Docker denied Python 3.13's owner-only temp folders); offline jobs were recorded as failures (new status offline).
+8. Known gaps: demergers have no ratio in the feed; GIFT Nifty not on Yahoo; no US minute-bar source; fall risk does not yet beat the base rate.
+9. YOU: log in to Kite (token lapsed; live quotes and minute bars wait for it). Re-seed was rehearsed only; it waits for your go. The 60-day feature freeze (A44) starts the day the first-week check passes (about 15 Nov).
+10. Test-only: the headless-Edge screen tests did not start Edge in this session after the main run (they passed in the full run); not an app fault.
+
+**S79 PAUSED 2026-11-05 (his word: "pause all, save all, and dont proceed").** Phase 1 (build) is finished and committed on `pm/s79-autonomy` (HEAD `58b9922`+): items 1-12 and 14 built, item 13 built but its model measurements not run. NOT started: phase 2 (full suite, drills, accelerated run, fixes, release, live run, 7-day self-check, A44), the re-seed on the app's store (needs his Kite login and his go; only rehearsed on a synthetic copy), the 30B and sampling eval arms (`tools/s79_llm_diag.py run --arm B|C`, about 25 min each). Nothing was merged to `main`, tagged or released; the app and its store were not touched. To resume: he says "go"; then follow the S79 brief (step A test all into `docs/s79_test_findings.md`, step B fix all, step C clean run, release). Test folders: point `--basetemp` at D: (each full run is 4-6 GB).
 0. **DONE 2026-10-28: the app runs his money.** `D:\PortfolioLabApp` (release `v2026.10.28.x` from GitHub; clean-room install and a real update and rollback tested), market data and news seeded (3.9 GB), his preferences carried, the RECORD rebuilt by the system itself from his files (13 of 13 checks, 1,383 events, 14 FDs), the desktop shortcuts and the scheduled tick point at it, the user-level PFLAB_DATA_DIR removed. Live checks: two Telegram summaries delivered; one brain pass (Opus, Sonnet rival) Rs 13.07; October's spend Rs 1,420 of 2,500 (the workshop's carried). Found and fixed on the way: a hidden source file, untested library versions (now `requirements.lock`), a long-path limit, the tick needing his user.
    **Read-only Gmail (v2026.10.28.5-.6):** built and tested on a fake Gmail (`ingest/gmail.py`, job `mail`); Connect fetches at once; a cold start reads a
    year of mail, asks one password per locked sender (a slot in Settings > Keys; saving it fetches again), then asks him to approve the accounts in Setup; after

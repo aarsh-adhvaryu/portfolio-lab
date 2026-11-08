@@ -267,3 +267,40 @@ def simulate_bi(p: Bi, T: float, rng: np.random.Generator) -> Tuple[np.ndarray, 
 def jitter(days: np.ndarray, rng: np.random.Generator) -> np.ndarray:
     """Daily event indices -> continuous times, uniform within the session (time-rescaling needs no ties)."""
     return np.sort(np.asarray(days, float) + rng.uniform(0, 1, len(days)))
+
+
+# --- S79 item 11: the cascade reading used once a fall has started (additive) --------------------------------------------------
+
+def expected_within(p: Uni, t: np.ndarray, now: float, h: float) -> float:
+    """Expected number of new events in (now, now + h] from the baseline and the history's decaying excitation only (the
+    compensator): events that the new events would themselves trigger are not counted here (see `cascade_reading`)."""
+    t = np.asarray(t, float)
+    t = t[t <= now]
+    return float(p.mu * h + p.alpha * np.sum(np.exp(-p.beta * (now - t)) - np.exp(-p.beta * (now + h - t))))
+
+
+def cascade_reading(r, p: Uni, threshold: float, horizon: int, lookback: int = 5, n_sim: int = 1000, seed: int = 20261105) -> dict:
+    """The model's reading at the last session of the daily return series `r` (a pandas Series indexed by date, point-in-time up to
+    its last row). A fall is IN PROGRESS when at least one session of `threshold` or worse (for example -2%) fell in the last
+    `lookback` sessions. Events are placed mid-session as fitted. Expected further shocks over `horizon` sessions are the mean of
+    `n_sim` seeded simulations that include the shocks' own offspring. ESTIMATES."""
+    ev = np.flatnonzero((r.to_numpy(float) <= threshold)) + 0.5
+    now = float(len(r))
+    last_k = int(ev[-1] - 0.5) if len(ev) else None
+    ago = (len(r) - 1 - last_k) if last_k is not None else None
+    recent = [str(r.index[int(k - 0.5)])[:10] for k in ev if now - k <= lookback]
+    out = {"asof": str(r.index[-1])[:10] if len(r) else None, "events_total": int(len(ev)), "in_progress": bool(ago is not None and ago < lookback),
+           "last_shock": str(r.index[last_k])[:10] if last_k is not None else None, "sessions_since_last_shock": ago,
+           "shocks_in_window": recent, "lookback_sessions": lookback, "horizon_sessions": horizon,
+           "branching_ratio": float(p.alpha), "half_life_sessions": float(p.half_life), "baseline_per_session": float(p.mu)}
+    out["intensity_now"] = intensity(p, ev, now)
+    out["intensity_vs_baseline"] = out["intensity_now"] / p.mu if p.mu else None
+    out["chance_another_shock"] = chance_within(p, ev, now, horizon)
+    out["chance_constant_rate"] = float(1 - np.exp(-(p.mu / (1 - p.alpha)) * horizon)) if p.alpha < 1 else None     # long-run average rate
+    out["expected_from_history"] = expected_within(p, ev, now, horizon)
+    rng = np.random.default_rng(seed)
+    counts = [len(simulate(p, now + horizon, rng, history=ev, start=now)) for _ in range(n_sim)]
+    out["expected_further_shocks"] = float(np.mean(counts))
+    out["expected_further_shocks_p90"] = float(np.percentile(counts, 90))
+    out["simulations"] = n_sim
+    return out

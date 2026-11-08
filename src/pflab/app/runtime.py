@@ -116,11 +116,25 @@ class Runtime:
         except Exception:
             log.exception("scrub of stored text failed")
         self._keep_local_calls()
+        try:                                                 # S79 (A42): app-open time is recorded; the gap since the last beat is "off from X to Y", never an error
+            from pflab.service import presence
+            seg = presence.start(self.cursor(), self.clock(), os.getpid())
+            if seg["off_from"] is not None:
+                log.info("opened: %s", presence.describe(seg["off_from"], seg["off_to"]))
+        except Exception:
+            log.exception("presence record failed")
+        try:                                                 # S79 (rule 10): this session's pre-registered studies count in the learner's counter
+            from pflab.learner import s79
+            s79.register_all(self.cursor(), self.clock())
+            s79.register_seats(self.cursor(), self.clock())
+            s79.apply_verdicts(self.cursor())
+        except Exception:
+            log.exception("registering S79 studies failed")
         last_run = self.cursor().execute("SELECT max(started_at) FROM job_runs").fetchone()[0]
         if last_run is not None and self.clock() - last_run > timedelta(hours=6):
             self.catching_up, self._woke_at = f"started after {int((self.clock() - last_run).total_seconds() // 3600)} h off", self.clock()
         for name, fn in (("heart", self._heart_loop), ("scheduler", self._scheduler_loop), ("live", self._live_loop), ("mc", self._mc_loop),
-                         ("research", self._research_loop), ("hq", self._hq_loop), ("phone", self._phone_loop)):
+                         ("research", self._research_loop), ("hq", self._hq_loop), ("phone", self._phone_loop), ("agenda", self._agenda_loop)):
             t = threading.Thread(target=self._guard(fn), name=name, daemon=True)
             t.start()
             self.threads.append(t)
@@ -176,6 +190,11 @@ class Runtime:
             mins = int((now - last).total_seconds() // 60)
             self.catching_up, self._woke_at = f"woke after {mins} min away", now
             try:
+                from pflab.service import presence
+                presence.wake(self.cursor(), now, last_beat=last, pid=os.getpid())
+            except Exception:
+                log.exception("presence record failed")
+            try:
                 wake = {"at": now.isoformat(timespec="seconds"), "away_min": mins, "recovered": service.start(self)}
             except Exception:
                 log.exception("recovery after wake failed")
@@ -190,6 +209,22 @@ class Runtime:
                 self.catching_up = None
                 settle = {"blocked_at": now.isoformat(timespec="seconds"), "blocked_by": str(why)[:300]}
                 self.bump("health", "command")
+        try:
+            from pflab.service import presence
+            presence.beat(self.cursor(), now)
+        except Exception:
+            pass
+        try:                                                 # S79b: remember which modes the app has actually been open in (the first-week check reads them)
+            from pflab.service import week_check
+            week_check.note_modes(self.cursor(), now)
+        except Exception:
+            pass
+        try:                                                 # S79 item 4: the clock's mode sets the local model's GPU duty cycle
+            from pflab import markets
+            from pflab.llm import duty
+            duty.set_mode(markets.primary(now)[1])
+        except Exception:
+            pass
         self._write_beat(now, wake, settle)
         return self.catching_up
 
@@ -354,6 +389,21 @@ class Runtime:
             self.hq_last_round = (self.clock(), sorted((out or {}).get("failed") or {}))   # the World reads the HQ's rounds from here
             self._hq_wake.wait(30)
             self._hq_wake.clear()
+
+    def _agenda_loop(self) -> None:
+        """S79 item 5 (A42): never idle. Whenever nothing urgent is open the system works its own agenda, by the clock's mode (not by a job time); a hard stop and a pause stop it."""
+        from pflab.agenda import runner
+        while not self.stop.is_set():
+            wait = 60.0
+            if not self.paused() and not os.environ.get("PFLAB_NO_AGENDA"):
+                try:
+                    out = runner.tick(self)
+                    wait = 5.0 if out.get("state") in ("done", "failed") else 45.0
+                    if out.get("state") in ("done", "failed"):
+                        self.bump("activity")
+                except Exception:
+                    log.exception("agenda tick failed")
+            self.stop.wait(wait)
 
     def wake_hq(self) -> None:
         self._hq_wake.set()

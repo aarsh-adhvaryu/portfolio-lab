@@ -82,3 +82,60 @@ and read; code decides. Protocol file and code hashes are fixed at registration:
 ## New protocols go here, committed before the run
 Add a row above with the claim, the protocol file in `docs/protocols/`, the rule in code, and after the run the verdict and t's (development / validation),
 and whether a live feature follows. Register through `pflab learner register-*` so the counter counts it.
+
+<!-- s79-llm-results:begin -->
+## S79 item 13: local model sampling and a larger MoE (protocol: docs/protocols/s79_local_model_protocol.md)
+
+Diagnosis (counts only): the app's `llm_runs` (a copy of its ledger, 31 calls, 2026-11-02 to 11-03) shows no failed call and no labelled loop; two `workshop_writer` replies used the whole 2,500-token cap (truncation risk). The table keeps no text, so from S79 on `client.chat` writes the `diag` label (ok, truncated, empty, loop, format) into `note` and keeps Ollama's `done_reason`.
+
+| arm | model | routing | answers_final | answers_first | extraction_f1 | materiality | answers_median_s | answers_p90_s | routing_call_median_s | tokens_per_s | text_fail_rate | json_fail_rate | gpu_peak_mib |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| A old default | qwen3:8b-q8_0 | 0.867 | 1.000 | 1.000 | 1.000 | 0.780 | 6.041 | 6.392 | 4.471 | 24.066 | 0.000 | 0.000 | 11008.000 |
+| B Qwen sampling | qwen3:8b-q8_0 | 0.867 | 1.000 | 1.000 | 1.000 | 0.780 | 6.779 | 7.100 | 4.748 | 20.550 | 0.000 | 0.000 | 10639.000 |
+| A FAST candidate | gemma4:12b | 0.933 | 0.340 | 0.330 | 1.000 | 0.835 | 15.818 | 16.243 | 4.497 | 27.301 | 0.000 | 0.000 | 10710.000 |
+| A FAST candidate | qwen3.5:9b | 0.983 | 1.000 | 0.950 | 1.000 | 0.760 | 6.480 | 7.021 | 4.765 | 26.502 | 0.000 | 0.000 | 10059.000 |
+
+**Sampling decision:** adopted kinds none; text checks {'final_not_lower': True, 'first_not_lower': True, 'latency_ok': True, 'fewer_failures': False}; json checks {'routing_not_lower': True, 'materiality_not_lower': True, 'extraction_not_lower': True, 'fewer_failures': False}.
+
+**FAST seat (S79b item 17, docs/protocols/s79_seats_protocol.md):** qwen3:8b-q8_0; per candidate: gemma4:12b not chosen {'not_worse_routing': True, 'not_worse_answers_final': False, 'not_worse_extraction_f1': True, 'not_worse_materiality': True, 'better_overall': False, 'latency_p90': True, 'vram': True, 'failures_not_above': True}; qwen3.5:9b not chosen {'not_worse_routing': True, 'not_worse_answers_final': True, 'not_worse_extraction_f1': True, 'not_worse_materiality': False, 'better_overall': True, 'latency_p90': True, 'vram': True, 'failures_not_above': True}.
+
+**THINKER seat, guarded window (S79b item 17, Amendment 1: matched subset routing 60 / answers 20 / extraction 40 / materiality 60):**
+
+| arm | model | routing | answers_final | answers_first | extraction_f1 | materiality | answers_median_s | answers_p90_s | routing_call_median_s | tokens_per_s | text_fail_rate | json_fail_rate | gpu_peak_mib |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| AM (matched subset, incumbent) | qwen3:8b-q8_0 | 0.867 | 1.000 | 1.000 | 1.000 | 0.733 | 6.045 | 6.392 | 4.471 | 24.350 | 0.000 | 0.000 | 11008.000 |
+| AM (matched subset) | qwen3:30b-a3b | 0.383 | 0.000 | 0.000 | 1.000 | 0.633 | 34.433 | 34.817 | 4.545 | 42.735 | 1.000 | 0.000 | 11536.000 |
+| AM (matched subset) | qwen3.6-35b-a3b | 0.950 | 0.650 | 0.650 | 1.000 | 0.867 | 2.737 | 6.842 | 0.720 | 52.739 | 0.000 | 0.000 | 11044.000 |
+| AM (matched subset) | gemma4-26b-a4b | 0.950 | 1.000 | 0.850 | 1.000 | 0.833 | 2.199 | 4.055 | 0.865 | 43.192 | 0.000 | 0.000 | 11284.000 |
+
+- qwen3:30b-a3b: not chosen {'beats_on_score': False, 'not_significantly_worse': False, 'answers_final_threshold': False, 'answers_p90': True, 'routing_p90': True, 'ram_headroom': True, 'stable': True, 'failures_not_above': False}; completed; load 15.0 s; generation 57.02505966246867 tok/s, prompt 876.1742562051089 tok/s; peak GPU 11536.0 MiB, peak temp 53.97 C, min free RAM 2.88 GB, free RAM after load 7.92 GB
+- qwen3.6-35b-a3b: not chosen {'beats_on_score': False, 'not_significantly_worse': False, 'answers_final_threshold': False, 'answers_p90': True, 'routing_p90': True, 'ram_headroom': True, 'stable': True, 'failures_not_above': True}; completed; load 16.3 s; generation 46.161184598577215 tok/s, prompt 861.3915133465059 tok/s; peak GPU 11044.0 MiB, peak temp 58.72 C, min free RAM 6.11 GB, free RAM after load 6.31 GB
+- gemma4-26b-a4b: not chosen {'beats_on_score': False, 'not_significantly_worse': True, 'answers_final_threshold': True, 'answers_p90': True, 'routing_p90': True, 'ram_headroom': True, 'stable': True, 'failures_not_above': True}; completed; load 12.9 s; generation 39.406292355282986 tok/s, prompt 973.6515980815457 tok/s; peak GPU 11284.0 MiB, peak temp 59.19 C, min free RAM 9.63 GB, free RAM after load 9.71 GB
+
+<!-- s79-llm-results:end -->
+
+<!-- s79-wave-sentiment-results:begin -->
+## S79b items 15, 15b, 7b: market waves, rotation, crude falls, sentiment, value area and POC migration (protocol: docs/protocols/s79_wave_sentiment_protocol.md)
+
+Each test ran once, 2004-2021 only (2022-2025 is spent), non-overlapping events, moving-block bootstrap (block = horizon, 10,000 draws, seed 20261108), gate: n >= 20, one-sided p <= 1 - Phi(t_needed(N)) with N read from the counter at run time, same sign in both halves, |effect| - 0.2% cost >= 0.5%. A pass reads "followed through"; anything else "no reliable follow-through". A description of history, not a forecast.
+
+| test | market | events (raw) | effect [95% interval] | p (one-sided) | bar t / N | halves same sign | verdict |
+|---|---|---|---|---|---|---|---|
+| crude_fall_20 | IN | 35 (69) | -0.72% [-3.24, +1.78] | 0.2726 | 3.07 / 47 | True | no reliable follow-through |
+| crude_fall_5 | IN | 52 (69) | +0.16% [-1.14, +1.52] | 0.4164 | 3.07 / 47 | False | no reliable follow-through |
+| extreme_sentiment_20 | IN | 68 (319) | +0.00% [-1.87, +1.73] | 0.5178 | 3.07 / 47 | False | no reliable follow-through |
+| extreme_sentiment_5 | IN | 132 (319) | +0.07% [-0.58, +0.71] | 0.4052 | 3.07 / 47 | False | no reliable follow-through |
+| poc_migration_5 | IN | 348 (1499) | +2.3 pts [-3.1, +7.7] | 0.2107 | 3.07 / 47 | True | no reliable follow-through |
+| rotation_20 | IN | 4 (4) | - | - | 3.07 / 47 | - | n too small, no conclusion (4 non-overlapping events; 4 before the non-overlap rule) |
+| rotation_5 | IN | 4 (4) | - | - | 3.07 / 47 | - | n too small, no conclusion (4 non-overlapping events; 4 before the non-overlap rule) |
+| value_area_return_1 | IN | 1335 (2379) | -4.5 pts [-7.7, -1.0] | 1.0000 | 3.07 / 47 | False | no reliable follow-through |
+| value_area_return_5 | IN | 562 (2379) | -1.5 pts [-6.0, +3.0] | 1.0000 | 3.07 / 47 | False | no reliable follow-through |
+| wave_20 | IN | 47 (111) | -1.15% [-3.57, +1.01] | 0.1632 | 3.07 / 47 | True | no reliable follow-through |
+| wave_5 | IN | 71 (111) | -0.06% [-1.24, +1.14] | 0.4639 | 3.07 / 47 | False | no reliable follow-through |
+| rotation_20 | US | 0 (0) | - | - | 3.07 / 47 | - | not available |
+| rotation_5 | US | 0 (0) | - | - | 3.07 / 47 | - | not available |
+| wave_20 | US | 0 (0) | - | - | 3.07 / 47 | - | not available |
+| wave_5 | US | 0 (0) | - | - | 3.07 / 47 | - | not available |
+
+Recorded in `wave_study_results_s79` (protocol sha a1781a275ec1, code sha a19f5278160e); rows also in `docs/research/wave_sentiment_results_s79.json`.
+<!-- s79-wave-sentiment-results:end -->

@@ -50,7 +50,7 @@ def poll_transport(url: str, payload: Dict) -> Tuple[int, dict]:
 
 
 def get_updates(token: str, offset: Optional[int], transport: Transport, timeout: int = POLL_TIMEOUT) -> List[dict]:
-    payload = {"timeout": timeout, "allowed_updates": ["message"]}
+    payload = {"timeout": timeout, "allowed_updates": ["message", "callback_query"]}
     if offset is not None:
         payload["offset"] = offset
     status, body = transport(f"https://api.telegram.org/bot{token}/getUpdates", payload)
@@ -148,13 +148,50 @@ def kite_tradecheck(con, secrets, asof: date) -> Callable[[], str]:
 
 # --- the loop ------------------------------------------------------------------------------------------------
 
+def make_ack(token: str, transport: Transport) -> Callable[[str, str], None]:
+    """S79: answerCallbackQuery for a pressed reply button (best effort: the button's spinner stops)."""
+    def ack(callback_id: str, text: str) -> None:
+        try:
+            transport(f"https://api.telegram.org/bot{token}/answerCallbackQuery", {"callback_query_id": callback_id, "text": text[:190]})
+        except Exception:
+            pass
+    return ack
+
+
+def _callback(con, u: dict, chat_id: str, send: Callable[[str], None], ack: Optional[Callable[[str, str], None]], now: datetime) -> int:
+    """S79 (item 6): a reply button on a question. Only his chat; `q:<id>:<option>` answers question <id> with that option."""
+    cb = u.get("callback_query") or {}
+    uid = int(u["update_id"])
+    ok = str((((cb.get("message") or {}).get("chat")) or {}).get("id")) == str(chat_id)
+    con.execute("INSERT INTO bot_updates VALUES (?,?,?,?,?)", [uid, now, ok, "callback" if ok else None, None])
+    if not ok:
+        return 0
+    from pflab.agents import voice
+    try:
+        reply = voice.handle_callback(con, str(cb.get("data") or ""), now)
+    except Exception as e:
+        reply = f"Sorry, that failed: {type(e).__name__}: {e}"[:300]
+    if ack is not None:
+        ack(str(cb.get("id") or ""), reply[:190])
+    mid = tgm.enqueue(con, reply, "reply", now=now)
+    try:
+        send(reply)
+        con.execute("UPDATE outbox SET status='sent', sent_at=?, attempts=1 WHERE msg_id=?", [now, mid])
+    except Exception as e:
+        con.execute("UPDATE outbox SET attempts=1, last_error=? WHERE msg_id=?", [str(e)[:300], mid])
+    return 1
+
+
 def process(con, updates: List[dict], chat_id: str, send: Callable[[str], None], reply_for: Callable[[str], str],
-            now: datetime) -> int:
+            now: datetime, ack: Optional[Callable[[str, str], None]] = None) -> int:
     """Handle new updates in order; returns how many got a reply. Each update is recorded once."""
     n = 0
     for u in sorted(updates, key=lambda x: x["update_id"]):
         uid = int(u["update_id"])
         if con.execute("SELECT 1 FROM bot_updates WHERE update_id=?", [uid]).fetchone():
+            continue
+        if u.get("callback_query"):
+            n += _callback(con, u, chat_id, send, ack, now)
             continue
         msg = u.get("message") or {}
         ok = str((msg.get("chat") or {}).get("id")) == str(chat_id) and isinstance(msg.get("text"), str)
@@ -204,7 +241,7 @@ def run(secrets, *, connect: Callable, once: bool = False, transport: Transport 
                         rf = reply_for or (lambda text: handle(con, text, now.date(), ask=centre_ask(con, now.date()),
                                                                tradecheck=kite_tradecheck(con, secrets, now.date()),
                                                                now=now))
-                        total += process(con, ups, chat_id, send, rf, now)
+                        total += process(con, ups, chat_id, send, rf, now, ack=make_ack(token, transport))
                     finally:
                         con.close()
                 wait = 5.0

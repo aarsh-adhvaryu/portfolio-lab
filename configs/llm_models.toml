@@ -129,3 +129,146 @@ size_gb = 8.9
 protocol = "docs/STUDIES.md"
 evaluated_at = 2026-10-17T17:15:39
 decision = "chosen general+routing (round 3: answers 100% with the production guard; kept as adopted)"
+
+# S79 item 13 (A41, 2026-11-05): a larger local MoE, registered BEFORE the download and any evaluation.
+# Adopted only if it beats qwen3:8b-q8_0 on the existing eval sets (docs/STUDIES.md); otherwise "not chosen".
+[[pick]]
+role = "eval-s79-moe"
+model = "qwen3:30b-a3b"
+registered_at = 2026-11-05T09:00:00
+size_gb = 19.0
+base = "Ollama qwen3:30b-a3b (Q4_K_M, 30B total / 3B active MoE; CPU offload beside the 12 GB GPU)"
+protocol = "docs/protocols/s79_forecast_protocol.md section local model; docs/STUDIES.md"
+evaluated_at = ""
+decision = ""
+
+# S79b item 17 (2026-11-08): FAST seat candidates, registered BEFORE any run (docs/protocols/s79_seats_protocol.md). The incumbent is qwen3:8b-q8_0 (arm A of 2026-11-05).
+# Ollama tags as installed; the Q6 tag asked for does not exist for qwen3.5:9b, so the default Q4_K_M tag is tested.
+[[pick]]
+role = "seat-fast-candidate"
+model = "gemma4:12b"
+registered_at = 2026-11-08T01:03:09
+size_gb = 8.0
+protocol = "docs/protocols/s79_seats_protocol.md"
+evaluated_at = ""
+decision = ""
+
+[[pick]]
+role = "seat-fast-candidate"
+model = "qwen3.5:9b"
+registered_at = 2026-11-08T01:03:09
+size_gb = 6.6
+protocol = "docs/protocols/s79_seats_protocol.md"
+note = "Q4_K_M (the only tag in the library at this size; no Q6 tag exists)"
+evaluated_at = ""
+decision = ""
+
+# S79b item 17 results (appended; the registrations above are unchanged).
+[[pick]]
+role = "seat-fast-candidate-result"
+model = "gemma4:12b"
+registered_at = 2026-11-08T03:32:42
+protocol = "docs/protocols/s79_seats_protocol.md"
+evaluated_at = 2026-11-08T03:32:42
+decision = "not chosen"
+
+[[pick]]
+role = "seat-fast-candidate-result"
+model = "qwen3.5:9b"
+registered_at = 2026-11-08T03:32:42
+protocol = "docs/protocols/s79_seats_protocol.md"
+evaluated_at = 2026-11-08T03:32:42
+decision = "not chosen"
+
+[[pick]]
+role = "seat-fast"
+model = "qwen3:8b-q8_0"
+registered_at = 2026-11-08T03:32:42
+protocol = "docs/protocols/s79_seats_protocol.md"
+evaluated_at = 2026-11-08T03:32:42
+decision = "chosen fast seat (incumbent kept: no challenger passed the registered FAST rule)"
+
+# S79b item 17 THINKER candidates (guarded window of 2026-11-08), registered BEFORE any run (docs/protocols/s79_seats_protocol.md, Amendment 1).
+# Order of the window: qwen3:30b-a3b (Ollama), qwen3.6-35b-a3b (llama.cpp server), gemma4-26b-a4b (llama.cpp server). Incumbent: qwen3:8b-q8_0.
+[[pick]]
+role = "seat-thinker-candidate"
+model = "qwen3:30b-a3b"
+registered_at = 2026-11-08T03:38:00
+size_gb = 18.0
+protocol = "docs/protocols/s79_seats_protocol.md"
+note = "Ollama, Q4_K_M, CPU offload beside the 12 GB card"
+evaluated_at = ""
+decision = ""
+
+[[pick]]
+role = "seat-thinker-candidate"
+model = "qwen3.6-35b-a3b"
+registered_at = 2026-11-08T03:38:00
+size_gb = 21.7
+protocol = "docs/protocols/s79_seats_protocol.md"
+note = "llama.cpp server b12189, GGUF Q4 (D:/llama.cpp/models/qwen3.6-35b-a3b-q4.gguf, sha256 verified), --n-cpu-moe, ctx 4096"
+evaluated_at = ""
+decision = ""
+
+[[pick]]
+role = "seat-thinker-candidate"
+model = "gemma4-26b-a4b"
+registered_at = 2026-11-08T03:38:00
+size_gb = 17.0
+protocol = "docs/protocols/s79_seats_protocol.md"
+note = "llama.cpp server b12189, GGUF Q4 (D:/llama.cpp/models/gemma4-26b-q4.gguf, sha256 verified), --n-cpu-moe, ctx 4096"
+evaluated_at = ""
+decision = ""
+
+# S79b item 17 THINKER window result (2026-11-08 04:15; the registrations above are unchanged). The guarded window never started a model:
+# free RAM stayed at 4-6 GB from 03:45 to 04:15 (floor to start: 10 GB; the model's CPU part alone is 8.5-13.9 GB), the investor's browser holds ~13 GB. No score exists.
+[[pick]]
+role = "seat-thinker-candidate-result"
+model = "qwen3:30b-a3b"
+registered_at = 2026-11-08T04:15:30
+protocol = "docs/protocols/s79_seats_protocol.md"
+evaluated_at = 2026-11-08T04:15:30
+decision = "not verified (RAM guard: 4.8 GB free vs 10 GB to start, about 8.5 GB of the model stays in RAM; no model was loaded)"
+
+[[pick]]
+role = "seat-thinker-candidate-result"
+model = "qwen3.6-35b-a3b"
+registered_at = 2026-11-08T04:15:30
+protocol = "docs/protocols/s79_seats_protocol.md"
+evaluated_at = 2026-11-08T04:15:30
+decision = "not verified (RAM guard: 4.8 GB free vs 10 GB to start, about 13.9 GB of the model stays in RAM; no model was loaded)"
+
+[[pick]]
+role = "seat-thinker-candidate-result"
+model = "gemma4-26b-a4b"
+registered_at = 2026-11-08T04:15:30
+protocol = "docs/protocols/s79_seats_protocol.md"
+evaluated_at = 2026-11-08T04:15:30
+decision = "not verified (RAM guard: 4.7 GB free vs 10 GB to start, about 9.3 GB of the model stays in RAM; no model was loaded)"
+
+# S79b item 17 THINKER result (appended; the registration above is unchanged).
+[[pick]]
+role = "seat-thinker-candidate-result"
+model = "qwen3:30b-a3b"
+registered_at = 2026-11-08T04:53:30
+protocol = "docs/protocols/s79_seats_protocol.md"
+evaluated_at = 2026-11-08T04:53:30
+decision = "not chosen"
+
+# S79b item 17 THINKER result (appended; the registration above is unchanged).
+[[pick]]
+role = "seat-thinker-candidate-result"
+model = "qwen3.6-35b-a3b"
+registered_at = 2026-11-08T05:09:55
+protocol = "docs/protocols/s79_seats_protocol.md"
+evaluated_at = 2026-11-08T05:09:55
+decision = "not chosen"
+
+# S79b item 17 THINKER result (appended; the registration above is unchanged).
+[[pick]]
+role = "seat-thinker-candidate-result"
+model = "gemma4-26b-a4b"
+registered_at = 2026-11-08T05:17:44
+protocol = "docs/protocols/s79_seats_protocol.md"
+evaluated_at = 2026-11-08T05:17:44
+decision = "not chosen"

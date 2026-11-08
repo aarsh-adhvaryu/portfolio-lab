@@ -5,7 +5,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pflab"
 version = "0.0.1"
-description = "Tax-aware monthly-SIP portfolio research harness for NSE equities"
+description = "Autonomous, local-first research companion for an NSE equity portfolio: tax-aware ledger, LLM agents under cost and privacy guards, pre-registered studies"
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "pandas>=2.0",
@@ -54,6 +55,22 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
+# A41 (S79): the MODEL LAB (tools/model_lab/), development only. NOT installed with the app, NOT in requirements.lock; the app never imports
+# any of these (it sees a GGUF through Ollama). Install in a separate venv:  pip install -e ".[ml]"  after the CUDA torch wheel
+# (RTX 5070 Ti Laptop = Blackwell sm_120 needs CUDA 12.8 wheels):  pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu128
+# GGUF conversion uses llama.cpp's convert_hf_to_gguf.py and llama-quantize (a release download, no compiler) with the `gguf` package below.
+ml = [
+  "torch==2.8.0",
+  "transformers==4.56.2",
+  "peft==0.17.1",
+  "trl==0.23.0",
+  "bitsandbytes==0.47.0",
+  "datasets==4.0.0",
+  "accelerate==1.10.1",
+  "safetensors==0.6.2",
+  "sentencepiece==0.2.1",
+  "gguf==0.17.1",
+]
 
 [project.scripts]
 pflab = "pflab.cli:main"

@@ -522,6 +522,15 @@ def keep(con, cid: int, req: Request, text: str, usage, batch: bool, cfg: dict, 
     return inr
 
 
+def _teach(con, cid: int, p: dict, msg, source: str, now: datetime, inr: float) -> None:
+    """S79b item 17: keep this call's redacted input and output in the teacher log (never blocks or fails the call)."""
+    try:
+        from pflab.llm import teacher
+        teacher.record_message(con, cid, p, msg, source, now, agent="analyst", cost_inr=inr)
+    except Exception:
+        pass
+
+
 def ring(con, req: Request, client, *, now: Optional[datetime] = None, approved: bool = False, trial: bool = False,
          cfg: Optional[dict] = None, pv: Optional[Private] = None, reuse: bool = True) -> Outcome:
     """The doorbell. `client`: an anthropic.Anthropic (tests pass a fake). Its model: the slider's `research` job (S61)
@@ -552,6 +561,7 @@ def ring(con, req: Request, client, *, now: Optional[datetime] = None, approved:
         return Outcome("refused", "the analyst declined this request", cid, est, warn)
     text, _ = only_sourced_numbers(answer_text(msg), req)
     inr = keep(con, cid, req, text, msg.usage, False, cfg, now)
+    _teach(con, cid, p, msg, "analyst", now, inr)
     return Outcome("done", text, cid, inr, warn)
 
 
@@ -578,6 +588,7 @@ def trial_note(con, req: Request, client, model: str, *, now: Optional[datetime]
     usd, inr = cost(it, ot, False, cfg["usd_inr"], model)
     con.execute("UPDATE api_calls SET status='done', input_tokens=?, output_tokens=?, cost_usd=?, cost_inr=?, finished_at=? "
                 "WHERE call_id=?", [it, ot, usd, inr, now, cid])
+    _teach(con, cid, p, msg, "analyst_trial", now, inr)
     return {"model": model, "served_by": getattr(msg, "model", model), "stop": getattr(msg, "stop_reason", ""),
             "raw": raw, "kept": kept, "cost_inr": inr, "call_id": cid}
 
@@ -780,6 +791,7 @@ def web_search(con, question: str, client, *, now: Optional[datetime] = None, cf
         text += "\n\nSources:\n" + "\n".join(f"[W{n}] {t} - {u}" for n, t, u in sources)
     searches = int(getattr(getattr(msg.usage, "server_tool_use", None), "web_search_requests", 0) or 0)
     inr = keep(con, cid, req, text, msg.usage, False, cfg, now)
+    _teach(con, cid, p, msg, "analyst_web", now, inr)
     extra = searches * WEB_USD_PER_SEARCH
     con.execute("UPDATE api_calls SET cost_usd = coalesce(cost_usd, 0) + ?, cost_inr = coalesce(cost_inr, 0) + ? "
                 "WHERE call_id=?", [extra, extra * cfg["usd_inr"], cid])

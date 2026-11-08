@@ -95,6 +95,7 @@ function wInspector(d) {
 }
 function wShell(d) {
   return `<div class="world"><div class="left">
+    <section class="glass" id="wsit-sec"><div class="panelh"><b>The situation</b><span class="age" id="wsit-age"></span></div><div class="checks" id="wsit" style="max-height:none"></div></section>
     <div class="map" id="wmap"><div class="wtitle"><b>The world</b><span id="wupd">live</span></div>${buildWorld(d)}
       <div class="legend"><span><i style="background:var(--w-working)"></i>working now</span><span><i style="background:var(--w-ok)"></i>done</span><span><i style="background:var(--w-late)"></i>due</span>
       <span><i style="background:var(--w-wait)"></i>waiting</span><span><i style="background:var(--w-down)"></i>failed</span><span><i style="background:var(--w-idle)"></i>idle</span></div></div>
@@ -107,6 +108,9 @@ function wShell(d) {
         <div class="askrow"><select id="wto" aria-label="Who to ask"><option value="">The AI (chat)</option>${(d.agents || []).filter((a) => a.order_to && a.order_to !== 'investigation').map((a) => `<option value="${esc(a.order_to)}">${esc(a.label)}</option>`).join('')}<option value="investigation">Start an investigation</option></select>
           <input id="wask" placeholder="Tell the AI what you want, or ask what it is doing…" aria-label="Ask the AI"><button class="btn primary" id="wsend">Send</button></div><div class="age" id="wmsg"></div></section>
       <div id="winsp"></div>
+      <section class="glass" id="wagenda-sec"><div class="panelh"><b>What it is doing now</b><span class="age" id="wagenda-age"></span></div><div class="checks" id="wagenda" style="max-height:none"></div></section>
+      <section class="glass" id="wbm-sec"><div class="panelh"><b>Result vs its own benchmark</b><span class="age" id="wbm-age"></span></div><div class="checks" id="wbm" style="max-height:none"></div></section>
+      <section class="glass" id="wcost-sec"><div class="panelh"><b>Cost per useful act, by seat</b><span class="age" id="wcost-age"></span></div><div class="checks" id="wcost" style="max-height:none"></div></section>
       <section class="glass"><div class="panelh"><b>Is everything running? Is it done?</b><span class="age" id="wchk"></span></div><div class="tabsm" id="wtabs"></div><div class="checks" id="wchecks"></div></section>
       <section class="glass"><div class="panelh"><b>Live activity</b><span class="age">newest first</span></div><div class="feed" id="wfeed"></div></section>
     </aside></div>`;
@@ -146,6 +150,95 @@ function wBelow(d) {
     <section class="glass"><div class="panelh"><b>Experiments</b><span class="age">a rejection is a result</span></div><div class="checks" style="max-height:none">${exs || '<div class="d" style="padding:8px;color:var(--w-dim)">None registered yet.</div>'}</div></section>
     <section class="glass"><div class="panelh"><b>Waiting on you</b><span class="age">${needs.length ? needs.length + ' shown' : 'nothing'}</span></div><div class="checks" style="max-height:none">${nd || '<div class="d" style="padding:8px;color:var(--w-dim)">Nothing is waiting on you.</div>'}</div></section>`;
 }
+/* S79: the agenda panel. "What it is doing now": the running item and why, the next ones, the last acts with what each changed, what it skipped and why. */
+function wAgenda(d) {
+  const a = d.agenda || { available: false }, nm = (k) => String(k || '').replace(/_/g, ' ');
+  const row = (st, ic, t, dd, w) => `<div class="crow st-${st}"><span class="si">${ic}</span><div><div class="t">${esc(t)}</div><div class="d">${esc(dd)}</div></div><span class="w">${esc(w || '')}</span></div>`;
+  const grp = (t) => `<div class="cgrp">${esc(t)}</div>`;
+  let h = '';
+  if (!a.available) h = `<div class="d" style="padding:8px;color:var(--w-dim)">The agenda is not set up yet.</div>`;
+  else {
+    const r = a.running, q = a.queue || [];
+    h += r ? row('working', '●', `${nm(r.kind)}: ${r.subject}`, `${r.reason || ''} · expected value ${Number(r.expected_value).toFixed(1)}, about ${Math.round(r.cost_seconds || 0)} s`, 'now')
+      : a.urgent ? row('waiting', '◔', 'Urgent work first', 'An investigation or an order of yours is open, so the agenda waits.', '')
+      : q.length ? row('ok', '·', 'Between items', `Next: ${nm(q[0].kind)}: ${q[0].subject}`, a.mode ? a.mode.replace('_', ' ') : '')
+      : row('idle', '·', 'Nothing to do', `Nothing eligible in ${(a.mode || '').replace('_', ' ')} mode; it looks again by itself.`, '');
+    if (q.length) h += grp('Next in line') + q.slice(0, 4).map((i) => row('ok', '·', `${nm(i.kind)}: ${i.subject}`, `${i.reason || ''} · value ${Number(i.expected_value).toFixed(1)}, score ${Number(i.score).toFixed(2)}`, '')).join('');
+    if ((a.recent_done || []).length) h += grp('Recent acts') + a.recent_done.slice(0, 5).map((i) => row(i.useful ? 'ok' : 'idle', i.useful ? '✓' : '·', `${nm(i.kind)}: ${i.subject}`,
+      i.useful ? i.effect : `${i.outcome || 'done'} (changed nothing)`, (i.finished_at || '').slice(11, 16))).join('');
+    if ((a.recent_failed || []).length) h += grp('Failed (it will not be retried today)') + a.recent_failed.slice(0, 3).map((i) => row('down', '!', `${nm(i.kind)}: ${i.subject}`, i.outcome || i.skip_reason || 'failed', '')).join('');
+    if ((a.recent_skipped || []).length) h += grp('Skipped, and why') + a.recent_skipped.slice(0, 4).map((i) => row('waiting', '–', `${nm(i.kind)}: ${i.subject}`, i.skip_reason || '', '')).join('');
+    if ((a.held || []).length) h += grp('Held for later') + a.held.slice(0, 3).map((i) => row('waiting', '◔', `${nm(i.kind)}: ${i.subject}`, i.held || '', '')).join('');
+    const ky = (a.kind_yields || []).filter((k) => k.n_done);
+    if (ky.length) h += grp('How often each kind helped') + `<div class="d" style="padding:4px 8px">${ky.map((k) => esc(nm(k.kind)) + ' ' + k.n_useful + '/' + k.n_done).join(' · ')}</div>`;
+  }
+  wset('wagenda', h);
+  const age = $('wagenda-age'); if (age) age.textContent = a.available ? `${a.useful_today || 0} useful today` : '';
+}
+/* S79b item 18B: the book against the benchmark that matches its own allocation, and last month's split of the difference (allocation, selection, timing, costs, tax). */
+function wResultBench(d) {
+  const b = d.benchmark_panel || { available: false }, host = $('wbm-sec');
+  if (host) host.style.display = b.off ? 'none' : '';
+  const row = (st, ic, t, dd, w) => `<div class="crow st-${st}"><span class="si">${ic}</span><div><div class="t">${esc(t)}</div><div class="d">${esc(dd || '')}</div></div><span class="w">${esc(w || '')}</span></div>`;
+  const pc = (x) => (x === null || x === undefined) ? 'n/a' : (x >= 0 ? '+' : '') + (x * 100).toFixed(2) + '%';
+  let h = '';
+  if (!b.available) h = `<div class="d" style="padding:8px;color:var(--w-dim)">Not recorded yet: it starts with the book's first marked day.</div>`;
+  else {
+    h += row(b.excess >= 0 ? 'ok' : 'waiting', b.excess >= 0 ? '✓' : '◔', `Book ${pc(b.book)} vs benchmark ${pc(b.benchmark)}`, `since ${b.since}; the benchmark follows ${b.source}` + ((b.stale || []).length ? `; stale data: ${b.stale.join(', ')}` : ''), pc(b.excess));
+    h += `<div class="d" style="padding:4px 8px">${Object.entries(b.weights || {}).map(([k, v]) => esc(k) + ' ' + (v * 100).toFixed(0) + '%').join(' · ')}</div>`;
+    const m = b.month;
+    if (m) h += `<div class="cgrp">${esc(m.month.slice(0, 7))}${m.partial ? ' (so far)' : ''}: book ${pc(m.book_return)} vs ${pc(m.bench_return)}</div>`
+      + [['Allocation', m.allocation], ['Selection', m.selection], ['Timing', m.timing], ['Costs', m.costs], ['Tax (estimate)', m.tax], ['Residual', m.residual]].map(([n, v]) => row(v >= 0 ? 'ok' : 'idle', '·', n, '', pc(v))).join('');
+  }
+  wset('wbm', h);
+  const age = $('wbm-age'); if (age) age.textContent = b.available ? `as of ${b.as_of}` : '';
+}
+/* S79b item 17: the local seats and what a useful act costs on each (seconds of the card, tokens, cloud rupees). */
+function wSeatCost(d) {
+  const c = d.seat_cost || { available: false };
+  const row = (st, ic, t, dd, w) => `<div class="crow st-${st}"><span class="si">${ic}</span><div><div class="t">${esc(t)}</div><div class="d">${esc(dd)}</div></div><span class="w">${esc(w || '')}</span></div>`;
+  const f = (x, u) => (x === null || x === undefined) ? 'no useful act yet' : Number(x).toFixed(x < 10 ? 2 : 0) + u;
+  let h = '';
+  if (!c.available) h = `<div class="d" style="padding:8px;color:var(--w-dim)">${c.off ? 'The seats are switched off.' : 'Not measured yet.'}</div>`;
+  else {
+    h += Object.entries(c.picks || {}).map(([s, p]) => row(p.fallback ? 'waiting' : 'ok', p.fallback ? '◔' : '·', `${s === 'fast' ? 'Fast' : 'Thinker'} seat: ${p.model}`, p.fallback ? p.reason : 'as registered', '')).join('');
+    h += (c.rows || []).map((r) => row(r.seat === 'cloud' ? 'waiting' : 'ok', '·', r.label, `${r.calls} calls · ${f(r.per_act_seconds, ' s')} and ${f(r.per_act_tokens, ' tokens')} per useful act` + (r.seat === 'cloud' ? ` · Rs ${f(r.per_act_rupees, '')} per act` : ''), r.seat === 'cloud' ? 'Rs ' + Number(r.rupees || 0).toFixed(0) : '')).join('');
+    const e = (c.escalations || {}).by_rule || {}, k = Object.keys(e);
+    if (k.length) h += row('ok', '·', 'Local answers vs cloud', k.map((x) => x.replace(/_/g, ' ') + ' ' + e[x].n + (e[x].cloud ? ' (' + e[x].cloud + ' cloud)' : '')).join(' · '), '');
+    if (c.teacher && c.teacher.examples) h += row('ok', '·', 'Teacher examples kept', `${c.teacher.examples} cloud answers saved for later training of the local models, ${c.teacher.scored} scored`, '');
+  }
+  wset('wcost', h);
+  const age = $('wcost-age'); if (age) age.textContent = c.available ? `${c.days} days · ${c.useful_acts} useful acts` : '';
+}
+/* S79b item 16: the situation report comes FIRST (NOW, WHY, SO WHAT, NEXT, ACT, and the disagreements kept side by side); the agents' detail is the map and panels below it. */
+function wSituation(d) {
+  const s = d.situation || { available: false }, host = $('wsit-sec');
+  if (host) host.style.display = s.off ? 'none' : '';
+  const row = (st, ic, t, dd, w) => `<div class="crow st-${st}"><span class="si">${ic}</span><div><div class="t">${esc(t)}</div><div class="d">${esc(dd || '')}</div></div><span class="w">${esc(w || '')}</span></div>`;
+  const grp = (t) => `<div class="cgrp">${esc(t)}</div>`;
+  let h = '';
+  if (!s.available) h = `<div class="d" style="padding:8px;color:var(--w-dim)">No situation report yet. It is written by itself when the day's data is in.</div>`;
+  else (s.reports || []).forEach((r) => {
+    const pct = (p) => Object.entries(p || {}).map(([k, v]) => `${k} sessions: ${v}`).join(', ');
+    h += grp(`${r.market} · ${r.as_of} · ${String(r.mode || '').replace('_', ' ')} · ${r.coded_only ? 'written by code (no model text)' : 'written by ' + (r.author || 'the local model')}`);
+    if ((r.flags || []).length) h += row('working', '●', 'Flags', r.flags.join('; '), '');
+    h += grp('Now') + (r.now || []).map((x) => row('ok', '·', x.text, '', '')).join('');
+    if ((r.why || []).length) h += grp('Why (each cause is dated before its effect)') + r.why.map((x) => row('ok', '→', `${x.cause_text}`.slice(0, 110) + '  →  ' + `${x.effect_text}`.slice(0, 110), `${x.cause_date} then ${x.effect_date}. ${x.mechanism || ''}`, '')).join('');
+    if ((r.disagreements || []).length) h += grp('Disagreements (kept, both on the agenda)') + r.disagreements.map((x) => row('waiting', '⇄', x.subject,
+      x.sides.map((e) => `${e.side}${e.probability != null ? ' (' + e.probability + ')' : ''}: ${e.text}`).join('   |   '), '')).join('');
+    if ((r.so_what || []).length) h += grp('So what, for the book') + r.so_what.map((x) => row('ok', '·', x.text, '', '')).join('');
+    if ((r.next || []).length) h += grp('Next (probabilities come from the tools)') + r.next.map((x) => row('ok', '·', x.text, `${pct(x.probs)}${x.note ? ' · ' + x.note : ''}`, '')).join('');
+    const a = r.act || {}, acts = [];
+    if (a.paper_request) acts.push(['Asked the paper team', a.paper_request]);
+    (a.agenda || []).forEach((x) => acts.push(['Agenda', `${x.subject}: ${x.reason}`]));
+    if (a.question) acts.push(['Question for you', `${a.question.text} (default: ${a.question.default})`]);
+    (a.watch || []).forEach((x) => acts.push(['Watching', `${x.series} ${x.op} ${x.threshold}: ${x.text}`]));
+    if (acts.length) h += grp('Act') + acts.map(([t, dd]) => row('working', '▸', t, dd, '')).join('');
+    h += `<div class="d" style="padding:4px 8px;color:var(--w-dim)">${r.watch} watch trigger(s) active · ${r.calibration < 20 ? r.calibration + ' scored outcome(s): too few for a calibration figure' : r.calibration + ' scored outcomes'}</div>`;
+  });
+  wset('wsit', h);
+  const age = $('wsit-age'); if (age) age.textContent = s.available ? `${(s.reports || []).length} market(s)` : '';
+}
 function wFeed(d) {
   $('wfeed').innerHTML = d.feed.map((f) => `<div class="fi st-${f.tone === 'down' ? 'down' : f.tone === 'working' ? 'working' : f.tone === 'waiting' ? 'waiting' : 'ok'}"><span class="tm">${esc(f.at.slice(11, 19))}</span>
     <span class="tx"><span class="wh">${esc(f.who)}</span> · ${esc(f.text)}</span></div>`).join('') || '<div class="d" style="padding:10px;color:var(--w-dim)">Nothing has happened yet. When the first routine runs it appears here.</div>';
@@ -168,7 +261,7 @@ function patchWorld(d) {
   const p = d.pulse; $('worb').className = 'orb ' + (p.tone === 'ok' ? '' : p.tone); $('wverdict').textContent = p.verdict;
   $('wsys').textContent = (p.catching_up ? p.catching_up + ' · ' : '') + (p.system_verdict || '');
   const pb = $('wpause'); pb.textContent = p.paused ? 'Resume the system' : 'Pause the system'; pb.className = 'btn' + (p.paused ? ' primary' : '');
-  wCounts(d); wChecks(d); wFeed(d); wBelow(d);
+  wCounts(d); wChecks(d); wFeed(d); wBelow(d); wAgenda(d); wSituation(d); wResultBench(d); wSeatCost(d);
   wset('winsp', wInspector(d), (el) => {
     const cl = el.querySelector('#wclose'); if (cl) cl.onclick = () => { W.sel = null; W.html.winsp = null; patchWorld(d); };
     hqWire(el, () => fetchHq(true));

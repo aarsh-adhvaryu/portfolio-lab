@@ -1,0 +1,115 @@
+# S79b (overnight): one switch per item. on = false makes the item behave as not there (tools return {"off": true}, jobs skip).
+# Each agent adds only its own [table].
+
+# Item 17 (software): the two local seats, escalation, teacher log, cost per useful act. on=false: tools return {"off": true}, jobs skip, client.chat ignores "seat:" names.
+[seats]
+on = true
+manage = false          # true: the seats_mode job loads/unloads seat models by mode (Ollama keep_alive; a llama-server only after every guard passes). false: it only records the plan.
+teacher_log = true      # every cloud call's input/output kept (redacted) in teacher_log_s79 for later distillation (no training this session)
+escalate_samples = 3    # local samples on a judgment call
+escalate_min_confidence = 0.6
+deep_pool = true        # deep_pool.py may use idle cores in deep mode
+
+# Item 18B (blended benchmark and attribution) and 18E (verify corporate actions and top-ups on the system's own book).
+[benchmark]
+on = true
+equity_series = "NIFTY500_TRI"     # data/indices: equity class = Nifty 500 total return
+gold_series = "GOLD"                # data/global (COMEX gold, USD) x USDINR (data/macro): gold class in rupees (a rupee gold ETF also pays import duty and a premium: not in the proxy)
+intl_series = "US_NASDAQ"           # data/global (price index, no dividends) x USDINR: international class in rupees
+cash_assumed_rate = 0.065           # cash class = this annual rate when the futures-carry cash rate (data/riskfree) is not readable; otherwise that estimate
+min_sessions = 2                    # no attribution before this many marked days
+
+[verify_book]
+on = true
+apply_corporate_actions = true      # paper/corp.py applies splits, bonuses, dividends, ISIN changes and price-drop credits to the system's own ledger inside book.catch_up
+
+# Item K (Kite): the logged-out question (job kite_token) and the minute-bar backfill. on=false: the job skips; the backfill tool still runs by hand.
+[kite]
+on = true
+
+[provenance]   # item 18C: decision provenance and source credit (paper/provenance.py)
+on = true
+forecast_horizon_sessions = 20   # the forecast horizon recorded as "in force" for a decision (nearest available)
+headline_horizon_days = 28       # the scoring horizon the scorecard lines read (7, 28, 84 or 182)
+warning_days = 14                # a bear warning/debate this recent on the name counts as behind the decision
+min_weight = 0.05                # a source below this weight is listed but not credited
+min_n = 20                       # under this many credited decisions a row shows its count only
+kg = true                        # write the credit into the knowledge graph (source -was_right_on / misled_on-> decision)
+max_lines = 8
+
+[construct]
+# S79b item 18A: portfolio construction (sizes, never directions). on = the tool and the advisor text exist; adopt = the paper manager sizes live decisions with it
+# (refused unless the registered comparison, docs/protocols/s79_construct_protocol.md, has a stored verdict "adopt"). The current sizing rules stay the fallback.
+on = true
+adopt = false
+risk_aversion = 2.5          # a, in utility = mu'w - a/2 w'Sigma w
+equity_premium = 0.05        # a stated prior of the excess return of a name with a forecast, before the ensemble's tilt; names without a forecast get zero
+tilt_cap = 0.30              # the ensemble's annualised tilt is clipped to +-30%
+horizon = 20                 # sessions: the hedge forecast that turns into an expected return and a dispersion
+window = 250                 # trading days of returns for the shrunk covariance
+vol_blend = 0.5              # weight of the ensemble's dispersion against the covariance's own volatility (geometric)
+fallback_vol = 0.30          # annual volatility of a name with too little history
+cash_rate = 0.07             # what cash earns (the paper manager's CASH_PA)
+lambda_target = 5.0          # weight of the distance to the system's own allocation target (outside a band of band_pct)
+band_pct = 2.0
+turnover_penalty = 0.0005    # extra cost per rupee traded either way (a damper on churn; stated)
+forecast_max_age_days = 10
+freeze_no_forecast = true     # a name with no forecast has zero expected excess and is held where it is (no view, no trade)
+
+# Item 15b (sentiment and themes): the tool `sentiment`, `theme_exposure`, `event_calendar`, the daily job `sentiment`, the shadow lens `lens_sentiment`.
+# on=false: tools return {"off": true}, the job skips, the lens does not register.
+[sentiment]
+on = true
+tagging = true              # the local model tags headlines to themes (job step). false: GDELT tone and the price-based parts only
+tag_limit = 60              # headlines tagged per job run (one call at a time, resumable)
+tag_days = 2                # only headlines of the last N calendar days are tagged (the model-read tone is forward-only)
+z_window = 250              # sessions of trailing history a z-score is taken against (the day itself is never in its own history)
+z_min = 60                  # fewest history points before a z-score is shown
+z_min_tone = 10             # the GKG theme tone and the model tone have a short history: fewer points are enough, n is shown
+beta_window = 252           # sessions of the rolling beta of a stock on a theme proxy
+beta_min = 120
+t_carry = 2.0               # |t| of the primary-proxy beta at or above this: the holding carries the theme (a sector prior carries it too)
+extreme_pct = 5.0           # extreme sentiment: beyond the 5th / 95th expanding percentile of the price-based score
+lens_tilt = 0.1             # the lens moves the centre of the volatility forecast by at most this many sigma, against the score (contrarian), not tuned
+
+# Item 16 (the shared situation): typed claims per market, one synthesized report (NOW / WHY / SO WHAT / NEXT / ACT), chains to the graph, predictions scored at 1, 5 and 20 sessions.
+# on=false: the tool returns {"off": true}, the job skips, the World panel shows nothing. No paid call is ever made here (the local THINKER only).
+[situation]
+on = true
+model = true                # false: the report is always written by code from the claims (flagged coded only)
+paper_requests = true       # ACT may put one request a day on the paper team's inputs
+paper_requests_per_day = 1
+questions = false           # ACT may ask the investor one question a day (always with a default and a deadline); off by default: the 8B model asks market questions, flip when the THINKER seat is better
+questions_per_day = 1
+short_intraday = true       # session mode: a short synthesis, flag-triggered or at most once in intraday_minutes
+intraday_minutes = 90
+max_watch = 12              # active watch triggers
+kg = true                   # write chains and chain-type hit rates to the knowledge graph
+
+[lens]
+# item 18D: the plug-in lens interface (fcast/plugins.py). on = false: no lens is made, scored or weighted; the code forecasters and the hedge are as before.
+on = true
+shrink_n = 60.0            # lens_value_area: a state's mean shift is shrunk to zero by n / (n + shrink_n)
+max_shift_sigma = 0.15     # lens_value_area: the centre moves by at most this many standard deviations of the horizon return
+
+[volume_profile]
+# item 7b: volume profile (quant/volume_profile.py, tool volume_profile). on = false: the tool returns {"off": true}, the lens does not forecast, the trajectory line is left out.
+on = true
+value_area_pct = 0.70
+window_sessions = 20       # daily approximation: the rolling composite spans this many sessions
+bin_pct = 0.25             # daily approximation: bin width in percent of price
+session_bins = 80          # minute bars: bins across the composite's range
+migrate_lookback = 5
+migrate_band = 0.25        # POC migration is 'flat' within this many value-area heights
+max_sessions = 20          # minute bars: sessions in the composite
+
+[waves]
+# item 15: macro attribution (tool macro_attribution, job macro_attribution), waves and rotations (tool wave_detector, job wave_scan, table wave_flag), lens_wave (shadow).
+# on = false: the tools return {"off": true}, both jobs skip. The thresholds are CODE (quant/waves.py), never set here.
+on = true
+backfill_sessions = 60     # macro_attribution: how many past sessions a first run writes (later runs write every session missed)
+
+[studies]
+# items 15/15b/7b: the pre-registered event studies (quant/index_event_study.py, tool wave_studies, table wave_study_results_s79). on = false: the tool returns {"off": true}.
+# The studies themselves are run once, by hand (tools/run_wave_studies.py); this switch only hides the verdicts from the agents.
+on = true

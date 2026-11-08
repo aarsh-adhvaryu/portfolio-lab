@@ -77,9 +77,11 @@ SYSTEMS = {
         "specific requests (role and what to fix), or reject. Be specific; do not rewrite the work."),
 }
 
+from pflab.hq import tools as _tools_loaded  # noqa: E402,F401  (the tools module first: it collects the S79 tools itself)
+from pflab.hq import tools_s79 as _t79  # noqa: E402
 READ_TOOLS = ("picture", "portfolio", "stocks_overview", "stock_facts", "readings", "graph_timeline", "notes", "memory_recall", "journal", "research_flags",
               "price_history", "market_context", "who_is_buying", "growth", "findings", "comovement", "themes", "system_status", "cases", "experiments",
-              "hypotheses", "tax_plan", "forecasts", "ipo_plan", "ready_plans", "recall", "rules", "envelope", "paper_book", "chart_view", "watchlist", "files", "read_file", "file_figures", "read_document")
+              "hypotheses", "tax_plan", "forecasts", "ipo_plan", "ready_plans", "recall", "rules", "envelope", "paper_book", "chart_view", "watchlist", "files", "read_file", "file_figures", "read_document") + _t79.names()
 TOOLS = {
     "coordinator": READ_TOOLS + ("plan_mission", "submit_answer", "frame_objective", "case_evidence", "propose_software_change", "proposals", "paper_decide", "watch_add", "watch_remove"),
     "research": READ_TOOLS + ("web_search", "fetch_cited", "case_evidence", "request_report", "request_artifact", "frame_objective", "proposals"),
@@ -272,6 +274,14 @@ def _dossier(con, cid: int, task: dict, now: datetime, role: Optional[str] = Non
     if m["plan"]:
         lines.append("PLAN: " + " | ".join(f"{s['key']} [{s['role']}] {s['goal'][:140]}" for s in m["plan"]))
     lines.append(cases.brief(con, [cid], now, evidence_lines=12 if slim else 30))
+    if role == "review":                                           # S79 item 12: only the bull/bear disagreements reach the reviewer
+        try:
+            from pflab.agents import debate
+            d = debate.disagreements_for_reviewer(con, cid)
+            if d:
+                lines.append(d)
+        except Exception:
+            pass
     arts = missions.artifacts(con, cid)
     if arts:
         lines.append("ARTIFACTS SO FAR (kind ref detail, by task): " + "; ".join(f"{a['kind']} {a['ref']} {a['detail'] or ''} (task #{a['task_id']})" for a in arts[-40:]))

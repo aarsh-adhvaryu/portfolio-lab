@@ -18,19 +18,33 @@ import json
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
-SENSES = [("markets", "Market data", ["collect", "prices", "nav", "global", "backfill", "instruments"], "prices, NAVs, world markets"),
+SENSES = [("markets", "Market data", ["collect", "prices", "nav", "global", "backfill", "instruments", "bars_1m", "data_s79b"], "prices, NAVs, world markets"),
           ("filings", "Filings and news", ["filings", "kg"], "company filings, news, the graph's intake"),
-          ("broker", "Kite", ["live", "tradecheck", "idle_cash"], "live prices for what the system holds; his own trades are ignored"),
+          ("broker", "Kite", ["live", "tradecheck", "idle_cash", "kite_token"], "live prices for what the system holds; his own trades are ignored"),
           ("record", "The account", ["ledger", "deposits"], "the system's own account (statements and deposits stand aside)"),
           ("us", "US sleeve", ["us_fx"], "USDINR rates")]
-ROUTINES = [("thinking", "Thinking rounds", ["hq", "conductor", "research", "analyst", "forecast", "comove", "scans", "twin", "paper", "paper_daily", "selfcheck", "companion", "review", "learner"],
+ROUTINES = [("thinking", "Thinking rounds", ["hq", "conductor", "research", "analyst", "forecast", "comove", "scans", "twin", "paper", "paper_daily", "selfcheck", "companion", "review", "learner", "catch_up", "sentiment", "macro_attribution", "wave_scan", "bear_resolve", "implied_calibration", "forecast_loop", "seats_mode", "benchmark_attr", "situation"],
              "the brain, research, forecasts, the learner"),
             ("plans", "Plans and alerts", ["plans", "guards", "watches", "watches_close"], "ready plans, guards, price watches"),
-            ("reports", "Reports", ["summary_morning", "summary_evening", "outbox"], "the morning and evening summaries")]
+            ("reports", "Reports", ["summary_morning", "summary_evening", "outbox", "voice", "outgoing", "week_check"], "the morning and evening summaries")]
 SAFETY = [("safety", "Safety routines", ["backup", "sandbox", "security"], "backups, the sandbox proof, the privacy check")]
 GROUP_OF = {j: g for g, _l, js, _d in SENSES + ROUTINES + SAFETY for j in js}
 
 TONE = {"working": 1, "down": 4, "late": 3, "waiting": 2, "ok": 0, "idle": 0}
+
+
+def _benchmark_panel(con, now) -> dict:
+    """S79b 18B: 'Result vs its own benchmark': the book and the blended benchmark since the start, the weights in force, last month's split. {'available': False} when off or not recorded."""
+    from pflab.paper import benchmark
+    s = benchmark.status(con, "IN", now.date())
+    if s.get("off"):
+        return {"available": False, "off": True}
+    if not s.get("started"):
+        return {"available": False}
+    lm = s.get("latest_month")
+    return {"available": True, "since": s["since"], "as_of": s["as_of"], "book": s["book"]["return"], "benchmark": s["benchmark"]["return"], "excess": s["excess"],
+            "source": s["benchmark"]["source"], "weights": s["benchmark"]["weights_now"], "stale": s.get("stale_classes") or [],
+            "month": None if not lm else {k: lm[k] for k in ("month", "book_return", "bench_return", "allocation", "selection", "timing", "costs", "tax", "residual", "partial")}}
 
 
 def _sec(out: dict, errors: dict, name: str, fn, default):
@@ -75,6 +89,8 @@ def jobs_view(rt, now: datetime) -> List[dict]:
                 pass
         if lr and lr[0] == "running":
             state = "working"
+        elif lr and lr[0] == "offline" and (r["last_success"] is None or lr[1] > r["last_success"]):
+            state, why = "waiting", "no connection just now: it tries again by itself"
         elif waiting_icon:
             state = "waiting"
         elif waiting_on:
@@ -279,6 +295,13 @@ def build(rt, now: Optional[datetime] = None) -> dict:
     _sec(out, errors, "guard_nodes", lambda: guards_view(rt, now, pic), [])
     _sec(out, errors, "feed", lambda: feed(rt, now), [])
     _sec(out, errors, "looking_into", lambda: looking_into(rt, now), {"investigations": [], "experiments": []})
+    from pflab.agenda import runner as agenda_runner                                         # S79: what it is doing when nothing is urgent
+    _sec(out, errors, "agenda", lambda: agenda_runner.snapshot(rt.cursor(), now), {"available": False})
+    from pflab.llm import cost as llm_cost                                                   # S79b item 17: cost per useful act, by seat (local seconds, cloud rupees)
+    _sec(out, errors, "seat_cost", lambda: llm_cost.world_panel(rt.cursor(), now), {"available": False})
+    _sec(out, errors, "benchmark_panel", lambda: _benchmark_panel(rt.cursor(), now), {"available": False})        # S79b 18B: the result against its own benchmark
+    from pflab.situation import report as sit_report                                         # S79b item 16: the situation report is shown first
+    _sec(out, errors, "situation", lambda: sit_report.world_view(rt.cursor()), {"available": False})
     from pflab.app import onboarding
     _sec(out, errors, "bring", lambda: onboarding.bring_list(rt.cursor()), [])               # what he can bring, with what is already held
 
@@ -318,6 +341,17 @@ def build(rt, now: Optional[datetime] = None) -> dict:
     else:
         verdict, tone = "Everything is running and everything due is done.", "ok"
     out["pulse"] = {"verdict": verdict, "tone": tone, "paused": paused, "system_verdict": pic.get("verdict"), "catching_up": pic.get("catching_up")}
+    try:                                                    # S79: the clock's mode per market and the catch-up, so "analysis in progress" is visible within minutes of opening
+        from pflab import markets
+        from pflab.service import away, catchup, presence
+        con0 = rt.cursor()
+        ms = markets.modes(now)
+        segs = con0.execute("SELECT opened_at, off_from, off_to FROM app_presence_s79 ORDER BY seg_id DESC LIMIT 1").fetchone()
+        out["pulse"]["modes"] = {"modes": ms, "working_by": list(markets.primary(now))}
+        out["pulse"]["catch_up"] = {**catchup.status(con0), "opened_at": str(segs[0])[:16] if segs else None,
+                                    "off": presence.describe(segs[1], segs[2]) if segs and segs[1] else None, "digest": away.latest(con0)}
+    except Exception as e:
+        errors["modes"] = f"{type(e).__name__}: {str(e)[:120]}"
     out["needs"] = (pic.get("needs") or {}).get("items", [])[:6]
     out["errors"] = errors
     return json.loads(json.dumps(out, default=str))

@@ -417,15 +417,21 @@ def catch_up(con, upto: date, now: datetime) -> dict:
     last = con.execute("SELECT max(day) FROM paper_days").fetchone()[0]
     if last is None:
         return {"skipped": "not started"}
-    days, filled = [], []
+    days, filled, actions = [], [], []
     for d in sessions_after(con, last, upto):
+        if _own():                                              # S79b 18E: the session's splits, bonuses, dividends and ISIN changes reach the ledger BEFORE its fills and its mark
+            try:
+                from pflab.paper import corp
+                actions += (corp.apply_due(con, d, now).get("applied") or [])
+            except Exception as e:                              # a feed problem must never stop the day's mark
+                actions.append({"kind": "error", "why": f"{type(e).__name__}: {str(e)[:160]}"})
         filled += fill(con, d, now)
         flow = 0.0
         if _own():
             flow = float(con.execute("SELECT coalesce(sum(amount), 0) FROM events WHERE kind='deposit' AND account_id='SYSBANK' AND trade_date = ? AND ref LIKE 'topup:%'", [d]).fetchone()[0])
         mark(con, d, flow)
         days.append(str(d))
-    return {"days": days, "filled": filled}
+    return {"days": days, "filled": filled, "corporate_actions": actions}
 
 
 def returns(con) -> Optional[dict]:

@@ -60,4 +60,15 @@ def shoot(url, out, width=1600, height=1000, wait_s=5, steps=()):
     try:
         return asyncio.run(_run(url, out, width, height, wait_s, steps, port))
     finally:
-        p.kill()
+        # S79b: p.kill() ended only the main process; Edge's crashpad/gpu/renderer children lived on (550 of them, 32 GB, found overnight). Kill the whole tree and remove the profile.
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            p.kill()
+        except OSError:
+            pass
+        # a child that outlived its parent is no longer in the tree: find every process still carrying this run's own profile folder in its command line (the folder name is unique)
+        subprocess.run(["powershell", "-NoProfile", "-Command",
+                        f"Get-CimInstance Win32_Process | Where-Object {{ $_.CommandLine -like '*{os.path.basename(prof)}*' }} | ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+        import shutil
+        shutil.rmtree(prof, ignore_errors=True)

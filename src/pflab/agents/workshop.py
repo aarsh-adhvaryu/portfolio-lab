@@ -251,7 +251,8 @@ def run(spec: Spec, frames: Dict[str, pd.DataFrame], python: str = sys.executabl
         problems.append("no test case (test.data and test.expected are both required)")
     if problems:
         return Run(False, problems)
-    work = Path(tempfile.mkdtemp(prefix="pflab_wk_"))
+    from pflab.agents.sandbox import shared_tempdir
+    work = Path(shared_tempdir("pflab_wk_"))
     try:
         (work / "code.py").write_text(spec.code, encoding="utf-8")
         if spec.alt_code:

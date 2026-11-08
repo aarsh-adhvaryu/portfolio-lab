@@ -177,3 +177,51 @@ def line(root: Path, asof: date) -> Optional[str]:
     return (f"Options on {r['date']} price a {r['p_below_10']:.0%} chance the Nifty ends more than 10% lower by {r['expiry']} "
             f"({r['days']} days) and {r['p_below_5']:.0%} for 5% lower; {r['p_above_5']:.0%} for 5% higher. Risk-neutral: insurance "
             "costs extra, so these run above the real odds of a fall.")
+
+
+# --- S79 item 11: the whole distribution for one session (additive; `day` above is unchanged) --------------------------------------
+
+def distribution(chain: pd.DataFrame, d: date, rate: float, symbol: str = "NIFTY") -> Optional[dict]:
+    """The risk-neutral distribution of the index at the nearest usable expiry as a CDF on a grid of index levels (same
+    method as `day`): {"date","expiry","days","spot","forward","grid","cdf"}; None when no expiry has enough traded strikes."""
+    from pflab.quant import options
+    x = chain[(chain["symbol"] == symbol) & (chain["kind"] == "index")]
+    opt = x[x["instrument"] == "OPT"]
+    fut = x[x["instrument"] == "FUT"]
+    for e in sorted(e for e in opt["expiry"].unique() if MIN_DAYS <= (e - d).days <= MAX_DAYS):
+        T = (e - d).days / 365.0
+        o = opt[(opt["expiry"] == e) & (opt["oi"] > 0) & (opt["contracts"] > 0)]
+        if o.empty or pd.isna(o["underlying"].iloc[0]):
+            continue
+        spot = float(o["underlying"].iloc[0])
+        fe = fut[fut["expiry"] == e]
+        F = float(fe["settle"].iloc[0]) if len(fe) and pd.notna(fe["settle"].iloc[0]) else spot * math.exp(rate * T)
+        otm = o[((o["option"] == "PE") & (o["strike"] < F)) | ((o["option"] == "CE") & (o["strike"] >= F))]
+        rows = []
+        for r in otm.itertuples():
+            v = options.implied_vol(float(r.settle), F, float(r.strike), T, rate, r.option == "CE")
+            if v is not None:
+                rows.append((math.log(r.strike / F), v, math.sqrt(max(r.oi, 1.0))))
+        if len(rows) < MIN_STRIKES:
+            continue
+        m, iv, w = map(np.array, zip(*rows))
+        coef = smile(m, iv, w)
+        grid = np.linspace(F * 0.5, F * 1.5, 801)
+        return {"date": d, "expiry": e, "days": (e - d).days, "spot": spot, "forward": F, "grid": grid,
+                "cdf": cdf_from_smile(coef, F, T, rate, float(m.min()), float(m.max()), grid)}
+    return None
+
+
+def p_fall(dist: dict, fall_pct: float) -> float:
+    """Risk-neutral P(index at expiry is more than `fall_pct` percent below today's spot)."""
+    return float(np.interp(dist["spot"] * (1 - fall_pct / 100.0), dist["grid"], dist["cdf"]))
+
+
+def quantiles(dist: dict, qs=(0.05, 0.25, 0.5, 0.75, 0.95)) -> dict:
+    """Index levels and their change from spot at the given risk-neutral quantiles (the CDF is non-decreasing, so interpolation inverts it)."""
+    cdf, grid = np.asarray(dist["cdf"]), np.asarray(dist["grid"])
+    out = {}
+    for q in qs:
+        lvl = float(np.interp(q, cdf + np.arange(len(cdf)) * 1e-12, grid))      # tiny slope keeps xp strictly increasing on flat parts
+        out[f"q{int(round(q * 100)):02d}"] = {"level": round(lvl, 1), "change_pct": round((lvl / dist["spot"] - 1) * 100, 2)}
+    return out

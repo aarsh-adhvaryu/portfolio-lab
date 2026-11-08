@@ -1,54 +1,214 @@
-# Portfolio Lab (`pflab`)
+# Portfolio Lab
 
-The investor's companion for NSE equities (a small US sleeve in beta): it collects data, keeps a tax-aware ledger, researches, forecasts, simulates, tests its own ideas
-and tells him what matters. It never places an order. Not investment advice. What exists: `docs/BUILT.md`; every test and verdict: `docs/STUDIES.md`; intent and
-what remains: `docs/PLAN.md`; rules for Claude Code: `CLAUDE.md`.
+**An autonomous, local-first research companion for an Indian equity portfolio.** It collects market data, filings and news by itself, keeps a tax-aware
+ledger, researches with a team of LLM agents under strict cost and privacy controls, tests its own ideas as pre-registered studies, and runs a paper
+portfolio on its own judgement. **It never places an order.**
 
-## First run, from a fresh clone (Windows 11, PowerShell; his steps in this order)
-1. **Install** Python 3.13, git, [Ollama](https://ollama.com) and Docker Desktop (generated calculations run only in its sandbox: without it they wait, nothing runs on the host). Then `ollama pull qwen3:8b-q8_0` and
-   `ollama pull nomic-embed-text` (about 9 GB, once; never delete them).
-2. **Install the app** into its own folder from the private GitHub repo at a release tag:
-   `powershell -ExecutionPolicy Bypass -File tools\install_app.ps1 -DryRun` (look), then without `-DryRun` (3-6 minutes; "INSTALLED" at the end).
-   Default folder `D:\PortfolioLabApp` (needs 10 GB free). It makes `app\` (the clone and `.venv`), `data\`, `pm\`, `backups\`, `release.toml`, and ONE desktop
-   shortcut, "Portfolio Lab" (nothing else). From here every command runs in `<folder>\app` with `.venv\Scripts\python -m pflab.cli ...`.
-3. **Keys:** `pflab setup secrets` (typed, never echoed: Kite API key and secret, Telegram token and chat id, Anthropic key; add `--only sec` for the SEC contact later).
-   Statement passwords are asked for by the names Setup gives them. The file is `%USERPROFILE%\.pflab\secrets.toml`, outside the repo.
-4. **Market history** (each is resumable and longer than 5 minutes; start with the first two): `tools\backfill_bhavcopy.py --from 2012-01-01`,
-   `tools\build_index_membership.py --all`, `tools\backfill_bse.py 2018-01-01 <today> bse.log`, `tools\backfill_shareholding.py`, `tools\backfill_fo.py --start 2024-01-01`,
-   `tools\backfill_us.py`, `tools\backfill_deals.py --source deals`; then build the adjusted price panel once (about 5 minutes): `tools\collect_daily.py --sources corporate_actions,dividends,panel`. Daily data, and the panel, then arrive by itself (`collect` and the other jobs). If the workshop has the history,
-   `tools\seed_app.ps1` copies its non-personal market data and news once (about 4 GB). The app starts with a fresh record: the store is not copied
-   (`-WithStore` copies it too, only into an app with no store); the learner's test counter is carried by code.
-5. **Open "Portfolio Lab"** (starts the dashboard and every job in one process). Drop your statements in **Inbox and files** (any names: Console tradebook, funds
-   ledger and contract notes, the depository CAS, bank statements, deposit interest certificates; they are recognised by what is inside). **Setup** (Settings > Open Setup)
-   then proposes the accounts it found (bank and last four digits, and which saved password opens each file): press "Use these accounts", then "Add everything to the
-   ledger" (one rebuild, written only when every check passes). Add each fixed deposit once in Setup's deposit form (checked against the bank's maturity amount).
-   Answer what **Needs from you** asks (bank-label questions, IPO entries, FD certificates). Kite: the "Log in to Kite" button each trading morning (read-only).
-   **Locked files:** a password-protected file that none of your saved passwords opens is refused with one request in Needs from you: save its
-   password in Settings > Keys and passwords, then drop the same file again. There is no email reading: every file comes from your hand.
-6. **Switch it on.** Settings: Telegram on (held alerts are then delivered), the brain on "economy", preset "full". Close the window, then register the tick (every
-   15 minutes, at logon, at wake): `powershell -ExecutionPolicy Bypass -File tools\register_tasks.ps1` (preview with `-WhatIf`). After that it runs, learns and asks by itself.
+> Maths decides; models read, connect and explain.
 
-## Day to day
-Nothing: it wakes with the laptop, watches, researches, simulates, and writes to you only when it matters (plus 09:00 and 21:45 summaries). Tell it your monthly amount
-when the money comes ("I'm investing 50k this month"). Taxes: `pflab pm quicko --fy 2027` writes the Quicko inputs to `pm\reports\quicko`.
-**Update:** nothing to do: each start of "Portfolio Lab" takes the newest release first (or `pflab update` with the app closed): it backs the store up, installs the newest release tag, self-tests, and undoes itself on a
-failure; `pflab update --rollback` returns to the previous release. Your record is never wiped.
+![Python 3.13](https://img.shields.io/badge/python-3.13-3776ab)
+![tests](https://img.shields.io/badge/tests-2%2C736-2ea44f)
+![DuckDB](https://img.shields.io/badge/store-DuckDB-fff000)
+![FastAPI](https://img.shields.io/badge/dashboard-FastAPI-009688)
+![LLMs](https://img.shields.io/badge/LLMs-Claude%20%2B%20local%20Qwen3-d97757)
+![Not investment advice](https://img.shields.io/badge/not-investment%20advice-lightgrey)
 
-## Local acceptance of a candidate release (S67)
-Before a candidate is merged and tagged, this PC checks it. One command (PowerShell, from anywhere; `D:\portfolio_lab` is the workshop, `D:\PortfolioLabApp` the app):
-`git -C D:\portfolio_lab fetch origin claude/wonderful-bardeen-z07h1e; git -C D:\portfolio_lab show origin/claude/wonderful-bardeen-z07h1e:tools/verify_candidate.ps1 | Set-Content -Encoding UTF8 $env:TEMP\verify_candidate.ps1; powershell -ExecutionPolicy Bypass -File $env:TEMP\verify_candidate.ps1`
-It clones the candidate into `D:\PortfolioLabApp\verify\candidate` and builds its own environment (`verify\venv`): your workshop's edited files, the app's `.venv` and the running app are never touched. Then `pflab verify` reports (also in `verify\report.txt`): the candidate commit and the installed tag; prerequisites; the sandbox containment probe in a real container (build the image once with `docker build -t pflab-sandbox:2 -f sandbox/Dockerfile .` from `verify\candidate`); read-only Kite and Gmail reads; the candidate's migrations on a copy of your record and an upgrade, write, rollback rehearsal on copies; a force-kill and restart drill of a headless worker; freshness and readiness on the copy; and a before and after proof that the live ledger file is unchanged. Telegram is checked as configured only: no test message is sent. It is resumable: do the steps it lists under "Next, in order" (log in to Kite, `pflab mail connect`, start Docker, stop the dashboard so the store can be copied) and run the same command again. Two things no program can do: after the first run, with the app open, sleep the laptop 5+ minutes, wake it, wait 2 minutes, then add `-WakeCheck`; and close Claude Code, leave the app running an hour, then `-WakeCheck` again (its heartbeat shows it kept going). `-LiveModel` adds one small model call through the app's privacy gate and budget; `-Offline` skips Kite and Gmail.
+| | |
+|---|---|
+| **Code** | ~70,000 lines of Python in 26 packages (`src/pflab`), ~35,000 lines of tests |
+| **Tests** | 2,736 synthetic tests (unit, migration, restart drills, headless-browser UI) |
+| **Releases** | 64 tagged releases, installed and self-updated with backup and rollback |
+| **Store** | one DuckDB file, schema v60, migrates itself |
+| **Runs** | 30+ scheduled jobs, 23 agents on one task board, a 15-minute tick that survives sleep and restarts |
 
-**Email is removed (his decision 2026-10-30):** you drop every statement, certificate and screenshot into Inbox and files by hand; passwords go in Settings > Keys and passwords; the World's "What to bring" lists what helps. An account you will not add now is left out on the coverage card (or named there), and added later by dropping its statement.
+---
 
-## A fresh start (S67 local)
-Close the dashboard and the bot first. `pflab pm fresh --archive-to <a folder outside the profile and data folders> [--statements <folder>]` lists what it would do; add
-`--confirm start-fresh` to do it. It copies the profile (and the statements folder) as opaque bytes into the archive, checks every file's hash, moves the old profile aside
-(never deletes it), and makes a new EMPTY profile that does nothing until the "Portfolio Lab" icon is double-clicked (`pm/activation.json`; jobs, Gmail and Kite wait). Only the
-test counter and a reduced spend record are carried over. The old profile comes back only as a separate copy: `pflab pm restore <archive> <empty folder>`. Files alone are never called complete: the inventory is yours to confirm.
+## Why it exists
+Most people who invest are not traders. They invest by feel and do not have time to read every filing, check every corporate action or work out the tax on a sale.
+Portfolio Lab is meant to be the analyst who does that work every day: it watches, investigates, measures, and brings a reasoned suggestion with a price and its
+tax effect. The investor decides. It runs on a laptop, keeps personal data on that laptop, and spends at most a fixed monthly budget on cloud models.
 
-## The workshop (development; not the app)
-A checkout of this repo without `release.toml` is the beta: `python -m venv .venv`, `.venv\Scripts\pip install -e ".[dev]"`, tests with
-`.venv\Scripts\python -m pytest -q --basetemp <folder>`. It sends nothing outward and makes no paid call unless run as `pflab --live ...` or `pflab --paid ...`
-(paid calls count against `dev_monthly_cap_rupees` in `api_budget.toml`, default 0); it never registers a scheduled task. Releases: merge to `main`, run the suite and the
-privacy grep (`python -m pflab.hq.security`), tag `vYYYY.MM.DD`, push. `data/` and `pm/` are gitignored and are never in a release.
+The design rule behind everything: **language models are good at reading and connecting, and bad at being trusted with numbers.** So every number shown comes
+from code, every claim of an "edge" must pass a pre-registered test on unseen data, and every model draft is checked against the facts before anyone sees it.
+
+## What it does
+- **Collects data by itself.** NSE and BSE daily prices, corporate actions, dividends, BSE filings and shareholding, insider and bulk deals, F&O data, FPI flows,
+  GDELT news, macro series, US prices and SEC filings. Collection is point-in-time and survivorship-free, and the market history back to 2012 backfills itself.
+- **Keeps a tax-aware ledger.** An event-sourced ledger with FIFO lots, fees and income, and Indian capital-gains tax from dated, sourced rule tables. It prepares
+  the Schedule 112A inputs for filing. Its tax figures matched a broker's tax P&L to 3 paise.
+- **Researches with a team of agents.** A coordinator plans an investigation, research and quant workers gather evidence and run calculations, and an
+  independent reviewer reproduces and checks the work before an answer is written. Evidence carries its stance (for, against, missing) and its timestamps.
+- **Tests its own ideas.** A learner reads papers and blogs, turns claims into registered tests with frozen protocols, runs them on a development and a
+  validation period, and counts every test. The bar rises with each one, so a lucky result cannot slip through.
+- **Runs a paper portfolio alone.** A fake-money account seeded from real holdings: the agents decide the direction and the reasons, while code sets the sizes,
+  enforces the position and sector limits, fills orders only inside exchange sessions, and computes the tax. Every decision is scored later against the Nifty 500.
+- **Reports simply.** A local dashboard (Today, Account, Watchlist, Research, Assistant, System), a chat assistant over the whole system, and Telegram alerts only
+  when something matters, plus a morning and an evening summary.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Sources
+        NSE[NSE / BSE bhavcopy,<br/>corporate actions, filings]
+        NEWS[GDELT news,<br/>articles, SEC]
+        KITE[Kite Connect<br/>read-only]
+        FILES[Files the investor drops]
+    end
+
+    subgraph Core["Deterministic core (code decides)"]
+        COLLECT[Collectors and<br/>point-in-time panel]
+        LEDGER[Event-sourced ledger,<br/>FIFO lots, tax engine]
+        QUANT[Quant tools: risk, Monte Carlo,<br/>Hawkes, calibrated ranges]
+        STORE[(DuckDB store<br/>schema v60)]
+        KG[Time-aware<br/>knowledge graph]
+    end
+
+    subgraph Agents["Agents (models read, connect, explain)"]
+        BRAIN[Brain: tool-calling loop]
+        TEAM[Coordinator, Research, Quant,<br/>independent Reviewer]
+        LEARN[Learner: pre-registered tests]
+        LOCAL[Local Qwen3 8B:<br/>chat front, readers]
+    end
+
+    subgraph Guards
+        GOV[Spend governor<br/>priced before every call]
+        EGRESS[Egress gate:<br/>no identity leaves the PC]
+        SANDBOX[Docker sandbox for<br/>model-written code]
+        GUARD[Number guard on<br/>every model draft]
+    end
+
+    NSE --> COLLECT
+    NEWS --> KG
+    KITE --> LEDGER
+    FILES --> KG
+    COLLECT --> STORE
+    LEDGER --> STORE
+    QUANT --> STORE
+    KG --> STORE
+    STORE --> BRAIN
+    STORE --> TEAM
+    BRAIN --> TEAM
+    TEAM --> SANDBOX
+    TEAM --> PAPER[Paper portfolio<br/>sized and filled by code]
+    LEARN --> STORE
+    BRAIN -.-> GOV
+    TEAM -.-> GOV
+    GOV -.-> EGRESS
+    LOCAL -.-> GUARD
+    STORE --> UI[Dashboard, assistant,<br/>Telegram]
+    PAPER --> UI
+```
+
+One process holds the store: the desktop app starts the dashboard and every job together, and a scheduled tick runs what is due when the window is closed.
+Long agent work is a **mission** on a durable task board (queued, running, waiting, retry, needs approval, done, failed), with leases, bounded attempts and
+recorded effects. A killed process resumes where it stopped, without doing anything twice.
+
+## Engineering highlights
+
+**Safety by construction, not by prompt**
+- **No trading path exists.** The broker SDK sits behind a read-only allowlist: no order, GTT or SIP method is reachable from any agent or tool.
+- **Model-written code runs only in Docker**, with no network, a read-only root, capabilities dropped and 2 GB of memory. There is **no fallback to the host**:
+  if Docker is missing the calculation waits. A daily probe proves containment for each release, and a second model writes the same calculation independently
+  for comparison.
+- **No model-made numbers.** A local draft containing a number that is not in its facts is dropped, and the facts are shown instead. Cloud answers pass a
+  sourced-numbers check.
+- **Privacy.** An egress gate decides what may leave the machine (portfolio figures may; identity and banking details never). Token-shaped strings are scrubbed
+  from logs and stored rows, and a pre-push hook greps the diff for personal data.
+
+**Cost control for LLM agents**
+- Every cloud call is priced before it is made and refused above the monthly cap, with day limits, per-layer shares, per-mission budget classes and tool caps
+  as configuration.
+- Prompt caching on every multi-turn loop; the cheapest model that passes a measured test gets each job (see below); and a local model handles common chat
+  turns for free, with a GPU queue so only one local call runs at a time.
+
+**Research discipline**
+- **Point-in-time or not at all.** A feature at date M uses only rows dated on or before M; announcements use the dissemination timestamp; index membership is
+  rebuilt historically from archived factsheets to avoid survivorship bias.
+- **Data facts verified, not assumed.** For example, NSE's previous-close field is *not* adjusted on ex-dates (450 of 451 large down-gaps from 2012 to 2020), so
+  split and bonus factors come from the corporate-actions feed and are tested on known events.
+- **Pre-registration and a multiple-testing bar.** A protocol is committed and hashed before a run, and every test counts toward a threshold that rises with N
+  (deflated Sharpe). Results under 20 observations carry their count and no conclusion.
+
+**Reliability and operations**
+- Two installations: the **app** (a release tag in its own folder) and the **workshop** (this checkout, which sends nothing and spends nothing unless told).
+- Self-update at each start: back up the store, install the newest tag, self-test, and roll back on failure.
+- A local acceptance tool (`pflab verify`) runs a candidate's migrations, an upgrade and rollback rehearsal, and a force-kill restart drill on copies of the
+  live record, and proves the live ledger file was untouched.
+- A nightly self-check probes every read tool with a known input. A tool that fails twice is quarantined until it passes.
+
+## What the research found
+Being honest about failures is part of the design. A sample from [`docs/STUDIES.md`](docs/STUDIES.md):
+
+| Claim tested | Verdict |
+|---|---|
+| Large Nifty falls cluster in time (Hawkes process) | **pass**: drives the market-state gauges |
+| Extra buys on a 10% market dip into safe stocks | **pass**: live as dip alerts |
+| Hybrid embedding + keyword retrieval beats keywords alone (recall@5 0.575 vs 0.425) | **pass**: live in memory search |
+| Waiting for a "buy zone" beats buying at once | fail |
+| Cointegrated pairs trading | fail |
+| Insider, institutional or bulk-deal buying predicts 3-month excess returns | fail on all three |
+| A zero-shot time-series foundation model (TimesFM) for volatility, falls or returns | fail on every question, removed |
+| Stocks below their 200-day average earn less next month | **pass** as an *avoid* rule |
+
+**Model choices are measured too.** On synthetic dossiers with planted faults, Sonnet 5.5 caught 24 of 24 faults, as Opus 5.5 did, at about a third of the
+cost, so it now takes the reviewer seat. A local Qwen3 8B chat front failed its first safety test (4 unsafe acts at high confidence). The risky intents were
+switched off, and the shipped version then passed an unseen holdout with 0 unsafe acts.
+
+## Tech stack
+| Area | Tools |
+|---|---|
+| Data and storage | pandas, NumPy, PyArrow (long-format Parquet), DuckDB |
+| Statistics | statsmodels (cointegration, Newey-West), Monte Carlo, Hawkes processes, stationary bootstrap |
+| LLMs | Anthropic SDK (Claude Opus / Sonnet / Haiku 5.5), Ollama with Qwen3 8B and nomic-embed-text, LangGraph |
+| Documents | pypdf, casparser, openpyxl, xlrd, msoffcrypto-tool, trafilatura |
+| Broker | kiteconnect (read-only wrapper) |
+| App | FastAPI and Uvicorn on 127.0.0.1, vanilla JS front end, Telegram |
+| Isolation and ops | Docker sandbox, PowerShell installers, Windows scheduled tasks |
+| Testing | pytest, synthetic fixtures, headless Edge for the UI |
+
+## Repository layout
+```
+src/pflab/
+  data/  ingest/       collectors, parsers, file recognition by content
+  ledger/  tax/        event-sourced ledger, FIFO lots, dated tax rules, filing pack
+  pm/                  the DuckDB store and its migrations
+  quant/  risk/  plan/ forecasts, Hawkes, charts, Monte Carlo, scenarios, targets
+  backtest/  eval/     the engine and its protected tests, model evaluations
+  hq/                  brain, missions, workers, governor, egress gate, self-check
+  agents/  llm/        agents, Docker sandbox, local model client and guard
+  kg/  learner/        knowledge graph and memory; claims, protocols, test counter
+  paper/               the autonomous paper portfolio: book, rails, manager
+  service/  app/       jobs and the tick; the FastAPI dashboard
+configs/               tax tables, costs, calendars, models (all dated and sourced)
+docs/                  PLAN, BUILT, STUDIES, RUNNING, frozen protocols
+sandbox/  tools/       sandbox image; backfills, installers, verifier
+tests/                 2,736 synthetic tests
+```
+
+## Quick start (development)
+Windows 11 and Python 3.13. Install [Ollama](https://ollama.com) and pull `qwen3:8b-q8_0` and `nomic-embed-text`. Docker Desktop is optional (without it,
+sandboxed calculations wait).
+```powershell
+git clone <this repository's URL> portfolio-lab
+cd portfolio-lab
+python -m venv .venv
+.venv\Scripts\pip install -e ".[dev]"
+.venv\Scripts\python -m pytest -q --basetemp .\tmp-pytest
+.venv\Scripts\python -m pflab.cli --help
+```
+A checkout is the **workshop**: it sends nothing outward and makes no paid API call unless run with `--live` or `--paid`. Installing the app, keys, backfills,
+updates and release acceptance are covered in [`docs/RUNNING.md`](docs/RUNNING.md).
+
+## Documentation
+| File | What it holds |
+|---|---|
+| [`docs/RUNNING.md`](docs/RUNNING.md) | install, first run, updates, release acceptance, development |
+| [`docs/BUILT.md`](docs/BUILT.md) | the system as built: packages, jobs, tools, agents, tables, settings |
+| [`docs/STUDIES.md`](docs/STUDIES.md) | every pre-registered test and its verdict |
+| [`docs/PLAN.md`](docs/PLAN.md) | intent, fixed decisions, dated amendments, what remains |
+| [`docs/protocols/`](docs/protocols/) | frozen study protocols (hashed at registration) |
+| [`CLAUDE.md`](CLAUDE.md) | the rules for AI-assisted development of this repo |
+
+## Disclaimer
+A personal research project. It is not investment advice, places no orders, and its paper results describe the past, not the future.

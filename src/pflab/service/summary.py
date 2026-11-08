@@ -85,6 +85,15 @@ def build(con, asof: date, now: datetime, which: str, cal=None, root=None, netwo
     last = con.execute("SELECT max(created_at) FROM outbox WHERE kind=?", [KIND]).fetchone()[0] or (now - timedelta(days=1))
     lines = [f"{'Good morning' if which == 'morning' else 'Evening'} summary, {asof:%a %d %b}."]
     left_out = []
+    try:                                                         # S79b item 16: the situation report comes first when there is one (agent detail follows)
+        from pflab.situation import build as _sb, report as _sr
+        if _sb.enabled():
+            sit = _sr.note_lines(con, "IN", 14)
+            if sit:
+                lines += sit
+                lines.append("")
+    except Exception:
+        pass
     for name, fn in (("portfolio", lambda: _portfolio_line(con, asof, cal, networth_fn)),
                      ("market", lambda: _market_line(asof, root))):
         try:

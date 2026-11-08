@@ -1,0 +1,55 @@
+# Markets are a parameter (S79 item 4, A42). Every new table and tool stores `market`.
+# Times are local to the market (`tz`); `ist_*` are the same moments on the laptop's IST clock.
+# Calendars: `holidays` names a toml with [[holiday]] date rows (sourced and dated there); a year with no list is weekdays-only.
+# `benchmark` is the price-series name in the store; `sector_map` is the table/file the market's sector map comes from.
+
+[markets.IN]
+name = "India (NSE)"
+tz = "Asia/Kolkata"
+currency = "INR"
+open = "09:15"
+close = "15:30"
+holidays = "market_holidays.toml"
+benchmark = "NIFTY 500"
+index = "NIFTY 50"
+sector_map = "sector_map"
+sources = ["nse_bhavcopy", "bse_announcements", "amfi", "kite"]
+# deep hours (IST): evenings from this hour, and every non-session day
+deep_from = "20:30"
+
+[markets.US]
+name = "United States (NYSE/Nasdaq)"
+tz = "America/New_York"
+currency = "USD"
+open = "09:30"
+close = "16:00"
+holidays = "us_market_holidays.toml"
+benchmark = "US_SP500"
+index = "US_SP500"
+sector_map = "sec_sic"
+sources = ["yahoo_global", "sec_edgar"]
+deep_from = "20:00"
+
+# Modes by clock, per market (IST view). pre_open: the other side's session just closed, what it means here today.
+# session: live watch. post_close: explain the day, score, update weights, forecast. deep: evenings, weekends, holidays.
+[modes]
+names = ["pre_open", "session", "post_close", "deep"]
+# pace_spend: a paid pass may BEGIN only while the rupees spent in the last hour are under the mode's hourly budget (a pass already begun is never cut)
+pace_spend = true
+# `pre_open_hours_before_open`: how long before the open the pre_open mode starts; `post_close_hours`: how long after the close post_close lasts.
+pre_open_hours_before_open = 3.0
+post_close_hours = 2.0
+
+# GPU duty cycle (share of time the local model may hold the GPU) and the API rupee budget per hour, per mode.
+# The laptop GPU drops off the bus under sustained load: duty cycles stay below 1.0.
+[modes.gpu_duty]
+pre_open = 0.6
+session = 0.4
+post_close = 0.7
+deep = 0.85
+
+[modes.rupee_per_hour]
+pre_open = 8.0
+session = 4.0
+post_close = 10.0
+deep = 3.0

@@ -103,6 +103,21 @@ def reap_at_start(con, now: datetime) -> int:
 
 
 def is_due(ctx: Ctx, job: Job) -> Tuple[bool, str]:
+    """S79 (A42): a job is due at its slot (data arrival: NSE's files after the close) OR when its input is newer than its last run / it has not run in a
+    while (`service/ondemand.py`), so the system works the moment the app is open. A message tied to a time of day is not sent hours late."""
+    due, why = _slot_due(ctx, job)
+    from pflab.service import ondemand
+    if due:
+        slot = job.schedule.latest_slot(ctx.now)
+        stale = ondemand.stale_slot(ctx, job, slot) if slot else None
+        return (False, stale) if stale else (True, why)
+    if why.startswith("disabled"):
+        return False, why
+    r = ondemand.reason(ctx, job)
+    return (True, r) if r else (False, why)
+
+
+def _slot_due(ctx: Ctx, job: Job) -> Tuple[bool, str]:
     if job.enabled_fn is not None:
         ok, why = job.enabled_fn(ctx)
         if not ok:
@@ -116,7 +131,7 @@ def is_due(ctx: Ctx, job: Job) -> Tuple[bool, str]:
         again = job.redo_fn(ctx) if job.redo_fn is not None else None
         if not again:
             return False, f"done for slot {slot:%Y-%m-%d %H:%M}"
-    cool = ctx.con.execute("SELECT max(started_at) FROM job_runs WHERE job=? AND status IN ('failed','running') "
+    cool = ctx.con.execute("SELECT max(started_at) FROM job_runs WHERE job=? AND status IN ('failed','running','offline') "
                            "AND detail IS DISTINCT FROM 'abandoned: the process stopped before it finished' AND started_at >= ?",
                            [job.name, slot]).fetchone()[0]
     if cool is not None and ctx.now - cool < timedelta(minutes=job.cooldown_minutes):
@@ -128,14 +143,15 @@ def is_due(ctx: Ctx, job: Job) -> Tuple[bool, str]:
 
 _OFFLINE_NAMES = {"ConnectionError", "ConnectTimeout", "ReadTimeout", "Timeout", "NameResolutionError", "MaxRetryError", "ConnectionResetError",
                   "ConnectionAbortedError", "TimeoutError", "gaierror"}
-_OFFLINE_WORDS = ("NameResolutionError", "getaddrinfo failed", "Max retries exceeded", "Connection aborted", "Temporary failure in name resolution")
+_OFFLINE_WORDS = ("NameResolutionError", "getaddrinfo failed", "Max retries exceeded", "Connection aborted", "Temporary failure in name resolution",
+                  "HTTPSConnectionPool", "HTTPConnectionPool", "ConnectTimeout", "ReadTimeout")      # S79b: the same words inside a wrapped error ("RuntimeError: collect_daily: bhavcopy: ConnectionError: ...")
 
 
 def offline(x) -> bool:
     """S70: a lost connection (no network, a DNS failure, a timeout), by the exception's class or, for a part's reason kept as text, by its words.
     A bug is never offline: it would fail the same way with the network back."""
     if isinstance(x, BaseException):
-        return any(c.__name__ in _OFFLINE_NAMES for c in type(x).__mro__)
+        return any(c.__name__ in _OFFLINE_NAMES for c in type(x).__mro__) or any(w in str(x) for w in _OFFLINE_WORDS)     # S79b: a collector re-raises the network error inside a RuntimeError
     return any(w in str(x) for w in _OFFLINE_WORDS)
 
 def run_job(ctx: Ctx, job: Job, slot: Optional[datetime] = None) -> RunResult:
@@ -164,21 +180,26 @@ def run_job(ctx: Ctx, job: Job, slot: Optional[datetime] = None) -> RunResult:
         failed = out.get("failed")                      # S67: a job whose sub-step failed has failed (its other work stays done)
         if isinstance(failed, dict) and failed:
             out["failed"] = {k: _redact(ctx, str(v))[:300] for k, v in failed.items()}
-        if isinstance(failed, dict) and failed and isinstance(job.schedule, Interval) and all(offline(v) for v in failed.values()):
-            out["offline"] = out.pop("failed")                 # S70: every part that failed lost its connection; the next slot is minutes away and tries again
-            out["skipped"] = "offline: no connection; tried again at the next slot"
+        went_offline = False
+        if isinstance(failed, dict) and failed and all(offline(v) for v in failed.values()):
+            out["offline"] = out.pop("failed")                 # S70: every part that failed lost its connection. S79b: for a Daily job too, as its own status 'offline' (see below)
+            went_offline = True
             failed = None
         detail = _redact(ctx, json.dumps(out, default=str, sort_keys=True))      # S68: every part of the result, not only `failed`
-        status = "failed" if isinstance(failed, dict) and failed else "skipped" if out.get("skipped") else "ok"
+        if went_offline and isinstance(job.schedule, Interval):
+            out["skipped"] = "offline: no connection; tried again at the next slot"
+        status = ("offline" if went_offline and not isinstance(job.schedule, Interval) else "failed" if isinstance(failed, dict) and failed
+                  else "skipped" if out.get("skipped") else "ok")
         con.execute("UPDATE job_runs SET status=?, finished_at=?, detail=? WHERE run_id=?",
                     [status, done(), detail, rid])
         return RunResult(job.name, status, detail, rid)
     except Exception as e:   # a job failing is recorded, never fatal to the tick
         msg = _redact(ctx, f"{type(e).__name__}: {e}")
-        if isinstance(job.schedule, Interval) and offline(e):  # S70: not a failure of the job: no connection just now (it runs again at its next slot)
+        if offline(e):                                         # S70: not a failure of the job: no connection just now. Interval: skipped (next slot is minutes away); S79b Daily: 'offline' (retried after the cooldown, no alert)
             msg = "offline: " + msg[:250]
-            con.execute("UPDATE job_runs SET status='skipped', finished_at=?, detail=? WHERE run_id=?", [done(), msg, rid])
-            return RunResult(job.name, "skipped", msg, rid)
+            st = "skipped" if isinstance(job.schedule, Interval) else "offline"
+            con.execute("UPDATE job_runs SET status=?, finished_at=?, detail=? WHERE run_id=?", [st, done(), msg, rid])
+            return RunResult(job.name, st, msg, rid)
         con.execute("UPDATE job_runs SET status='failed', finished_at=?, detail=? WHERE run_id=?", [done(), msg, rid])
         return RunResult(job.name, "failed", msg, rid)
     finally:

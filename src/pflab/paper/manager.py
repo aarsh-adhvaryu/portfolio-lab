@@ -122,6 +122,34 @@ def dossier_text(con, cid: int, now: datetime, role: Optional[str] = None) -> st
     lines.append("TOOLS AND THE PAPER BOOK: `paper_book` is the paper portfolio. The measuring tools (stocks_overview, exposure_shock, scenario, simulation, policy_scenarios, "
                  "portfolio, picture) read HIS real record, whose holdings are the same names but whose cash is not the paper cash: say so on any result you use, and when a figure "
                  "must be for the paper book, compute it with case_calculate from paper_book's holdings, weights and cash. A label must match what was computed.")
+    try:                                                   # S79 (A45): the system's own allocation target and the gap to it
+        from pflab.paper import allocation as _al
+        _t = _al.dossier_text(con, now.date())
+        if _t:
+            lines.append(_t)
+    except Exception:
+        pass
+    try:                                                   # S79b 18C: which sources were right on its own scored decisions (empty until some are credited)
+        from pflab.paper import provenance as _pv
+        _t = _pv.dossier_text(con)
+        if _t:
+            lines.append(_t)
+    except Exception:
+        pass
+    try:                                                   # S79b (18A): construct's sizing advice, labelled adopted or not (sizing only; the direction stays the team's)
+        from pflab.construct import run as _cn
+        _c = _cn.dossier_text(con, now)
+        if _c:
+            lines.append(_c)
+    except Exception:
+        pass
+    try:                                                   # S79b (18B): the result against its own benchmark and last month's attribution (read-only; empty before the benchmark is recorded)
+        from pflab.paper import benchmark as _bm
+        _b = _bm.dossier_text(con, now.date())
+        if _b:
+            lines.append(_b)
+    except Exception:
+        pass
     if role in ("quant", "coordinator", None):
         lines.append("HOW TO DECIDE: read `paper_book`; for each holding or idea that deserves a decision call `paper_decide` with BUY, ADD, REDUCE, SELL, HOLD or WAIT, the "
                      "reasons and the alternatives (an amount in rupees or a target weight for a buy; a fraction for a reduce). Code sizes it against the cash and the rails and "
@@ -180,6 +208,14 @@ def decide(con, now: datetime, cid: int, a: dict, index: Optional[pd.Series] = N
             amount = max(0.0, float(a["target_weight_pct"]) / 100 * h["value"] - mine)
         if not amount or amount <= 0:
             return {"stored": False, "problem": "a BUY or ADD needs amount_rupees or target_weight_pct"}
+        try:                                               # S79b (18A): when construct is ADOPTED (switch on + the registered comparison passed) it sizes the team's direction; else the amount above stands
+            from pflab.construct import run as _cn
+            _sz = _cn.size_buy(con, now, cid, isin, action)
+            if _sz and _sz.get("amount_rupees", 0) > 0:
+                note = f"sized by construct (was Rs {amount:,.0f} by the rule)"
+                amount = float(_sz["amount_rupees"])
+        except Exception:
+            pass                                           # the current rules stay the fallback
         room = rails.buy_room(con, isin, day)
         if room <= 0:
             return {"stored": False, "problem": f"{sym or isin} may not be bought: it is not a listed share or ETF with a close, or it is at its rail"}
@@ -193,7 +229,7 @@ def decide(con, now: datetime, cid: int, a: dict, index: Optional[pd.Series] = N
         if cut < px[1]:
             return {"stored": False, "problem": f"no room: rails allow Rs {room:,.0f}, cash after this mission's other decisions Rs {avail:,.0f}"}
         if cut < amount:
-            note = f"cut from Rs {amount:,.0f} to Rs {cut:,.0f} (" + ("the rails" if room < amount else "the cash") + ")"
+            note = (note + "; " if note else "") + f"cut from Rs {amount:,.0f} to Rs {cut:,.0f} (" +("the rails" if room < amount else "the cash") + ")"
             amount = cut
         note = (note + "; " if note else "") + f"about {int(amount // px[1])} at Rs {px[1]:,.2f} (close of {px[0]}), weight after about {(held * px[1] + amount) / h['value']:.1%}"
     elif action == "HOLD" and held <= 0:
@@ -213,6 +249,11 @@ def decide(con, now: datetime, cid: int, a: dict, index: Optional[pd.Series] = N
                 [did, now, cid, action, isin, book.inst(con, isin)["symbol"] if isin else None, amount, fraction, reason[:1500], alts[:800], cond[:300] or None,
                  str(a.get("his_view") or "")[:400] or None, "proposed", note[:400], ref[0] if ref else None, ref[1] if ref else None,
                  scorecard.state_at(index, day), None])
+    try:                                                        # S79b 18C: the sources behind the decision are stored (never blocks a decision)
+        from pflab.paper import provenance as _pv
+        _pv.record(con, now, did, cid, a)
+    except Exception:
+        pass
     return {"stored": True, "decision_id": did, "action": action, "symbol": sym or None, "amount_rupees": round(amount, 2) if amount else None, "fraction": fraction,
             "sized": note, "executes": "only if the independent review approves this mission; then at the close"}
 
@@ -262,6 +303,11 @@ def execute(con, now: datetime, cid: int, root=None) -> dict:
                         [now, f" | the review did not approve ({verdict}): not executed (still scored, to see whether refusing was right)", did])
             refused += 1
         register(con, did)
+        try:                                                    # S79b 18C: the independent review's verdict joins the decision's sources
+            from pflab.paper import provenance as _pv
+            _pv.on_review(con, now, did, verdict, "executed" if (verdict == "approve" or (stays and verdict == "revise")) else "not_approved")
+        except Exception:
+            pass
     return {"orders": n, "adopted": adopted, "not_approved": refused}
 
 
@@ -349,6 +395,11 @@ def score_due(con, now: datetime, index: Optional[pd.Series]) -> int:
             detail = {"to": str(end[0]), "stock_pct": round(sp, 2), "nifty500_pct": round(ip, 2), "market_adjusted_pct": round(adj, 2), "beta": None if beta is None else round(beta, 2)}
         con.execute("UPDATE paper_claims SET outcome=?, outcome_json=?, scored_at=? WHERE claim_id=?", [out, json.dumps(detail), now, clid])
         n += 1
+    try:                                                        # S79b 18C: every source behind a scored decision is credited with the outcome (idempotent; never blocks scoring)
+        from pflab.paper import provenance as _pv
+        _pv.credit_scored(con, now)
+    except Exception:
+        pass
     return n
 
 
@@ -420,11 +471,23 @@ def reasons_to_look(con, now: datetime) -> List[str]:
     from pflab.paper import book, rails
     day = now.date()
     out = []
+    from pflab.paper import allocation as _al                # S79 (A45): no target yet, or its weekly re-examination is due
+    out += _al.reasons(con, now)
     last = con.execute("SELECT max(created_at) FROM hq_missions WHERE origin='paper'").fetchone()[0]
     if last is None:
         return ["the first review: the paper portfolio starts today as a copy of his portfolio"]
     if (now - last).days >= REVIEW_EVERY_DAYS:
         out.append("the weekly review")
+    try:                                                        # S79 (A42): opened after being off, with sessions closed since the last review: look at once
+        opened = con.execute("SELECT max(opened_at) FROM app_presence_s79").fetchone()[0]
+        if opened is not None and opened > last and now - opened < timedelta(hours=6):
+            from pflab import markets
+            m = markets.get("IN")
+            n = m.session_count(last.date(), m.session_closed_by(now)) if m.session_closed_by(now) > last.date() else 0
+            if n:
+                out.append(f"the app was opened with {n} session(s) closed since the last review")
+    except Exception:
+        pass
     h = book.holdings(con, day)
     if h["cash"] < 0:
         out.append("cash is below zero after a withdrawal")
@@ -469,6 +532,11 @@ def bookkeeping(rt) -> dict:
     from pflab.paper import watch
     out["watch"] = watch.check(con, now, rt.data_root, index)         # S78: the watchlist: prices against the points the team's own calculations set
     out["adopted_late"] = sweep_stays(con, now)
+    try:                                                                   # S79 (A45): a proposed allocation target takes its mission's review verdict
+        from pflab.paper import allocation as _al
+        out["allocation"] = len(_al.settle(con, now))
+    except Exception:
+        out["allocation"] = 0
     out["scored"] = score_due(con, now, index)
     for (cid,) in con.execute("SELECT DISTINCT d.case_id FROM paper_decisions d JOIN hq_missions m ON m.case_id = d.case_id WHERE d.status='proposed' "
                               "AND m.state IN ('done','blocked','declined')").fetchall():

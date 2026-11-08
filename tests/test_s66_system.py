@@ -50,6 +50,8 @@ def test_needs_groups_the_same_kind_of_request(rt):
 
 
 def test_the_picture_reads_the_whole_system(rt, monkeypatch):
+    from pflab.app import runtime as _rtm
+    monkeypatch.setattr(_rtm, "token_valid", lambda now=None: False)          # hermetic: a real Kite login on the machine (the investor's token file) must not change this test
     con = rt.cursor()
     con.execute("INSERT INTO job_runs (run_id, job, started_at, finished_at, status, detail) VALUES (1, 'filings', ?, ?, 'ok', "
                 "'{\"filings\": 3, \"names\": 2, \"alerts_queued\": 0}')", [NOW - timedelta(minutes=5), NOW - timedelta(minutes=4)])

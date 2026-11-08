@@ -145,7 +145,7 @@ def _short_error(detail) -> str:
 # --- connectors -------------------------------------------------------------------------------------------------------------
 
 def _last_run(con, job: str):
-    return con.execute("SELECT started_at, status FROM job_runs WHERE job=? AND status IN ('ok','failed','skipped') "
+    return con.execute("SELECT started_at, status FROM job_runs WHERE job=? AND status IN ('ok','failed','skipped','offline') "
                        "ORDER BY started_at DESC LIMIT 1", [job]).fetchone()
 
 

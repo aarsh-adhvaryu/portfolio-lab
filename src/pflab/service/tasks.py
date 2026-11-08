@@ -690,3 +690,20 @@ register(Job("hq", Interval(15, weekdays_only=False), _hq,
              "agent HQ: orders, drop folder, reminders, readers, the brain (shadow), memory keeper", cooldown_minutes=10))
 register(Job("conductor", Interval(15, weekdays_only=False), _conductor,
              "conductor: sync check, asks, wake and closing notes, fact sheet", cooldown_minutes=10))
+
+
+# S79: jobs added this session live one module per item (`tasks_s79_<item>.py`, each registers its Job(s) on import), so parallel work never edits this file.
+def _load_s79_jobs() -> None:
+    import importlib
+    import pkgutil
+    from pathlib import Path
+    for m in sorted(pkgutil.iter_modules([str(Path(__file__).parent)]), key=lambda x: x.name):
+        if m.name.startswith("tasks_s79_"):
+            importlib.import_module(f"pflab.service.{m.name}")
+
+
+_load_s79_jobs()
+# `conductor` stays the last registered job (a long-standing expectation of the settings code and tests): re-register it after the S79 modules
+from pflab.service.jobs import REGISTRY as _REG  # noqa: E402
+if "conductor" in _REG:
+    _REG["conductor"] = _REG.pop("conductor")
