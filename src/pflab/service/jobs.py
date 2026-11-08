@@ -143,14 +143,15 @@ def _slot_due(ctx: Ctx, job: Job) -> Tuple[bool, str]:
 
 _OFFLINE_NAMES = {"ConnectionError", "ConnectTimeout", "ReadTimeout", "Timeout", "NameResolutionError", "MaxRetryError", "ConnectionResetError",
                   "ConnectionAbortedError", "TimeoutError", "gaierror"}
-_OFFLINE_WORDS = ("NameResolutionError", "getaddrinfo failed", "Max retries exceeded", "Connection aborted", "Temporary failure in name resolution")
+_OFFLINE_WORDS = ("NameResolutionError", "getaddrinfo failed", "Max retries exceeded", "Connection aborted", "Temporary failure in name resolution",
+                  "ConnectionError", "HTTPSConnectionPool", "HTTPConnectionPool", "ConnectTimeout", "ReadTimeout")      # S79b: the same words inside a wrapped error ("RuntimeError: collect_daily: bhavcopy: ConnectionError: ...")
 
 
 def offline(x) -> bool:
     """S70: a lost connection (no network, a DNS failure, a timeout), by the exception's class or, for a part's reason kept as text, by its words.
     A bug is never offline: it would fail the same way with the network back."""
     if isinstance(x, BaseException):
-        return any(c.__name__ in _OFFLINE_NAMES for c in type(x).__mro__)
+        return any(c.__name__ in _OFFLINE_NAMES for c in type(x).__mro__) or any(w in str(x) for w in _OFFLINE_WORDS)     # S79b: a collector re-raises the network error inside a RuntimeError
     return any(w in str(x) for w in _OFFLINE_WORDS)
 
 def run_job(ctx: Ctx, job: Job, slot: Optional[datetime] = None) -> RunResult:

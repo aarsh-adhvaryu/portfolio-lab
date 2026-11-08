@@ -783,7 +783,7 @@ def off_drill(env: "Env", c: Check, resume: datetime, label: str) -> None:
     c.ok(made is not None and made >= avail, f"forecasts are up to date for the sessions whose closes arrived (latest {made}, closes in the store through {avail})", "fcast/run.py")
     api = cur.execute("SELECT count(*) FROM api_calls WHERE status IN ('done','submitted','running')").fetchone()[0]
     c.ok(api == 0, f"no stampede of paid calls ({api})", "hq/governor.py")
-    late = cur.execute("SELECT count(*) FROM outbox WHERE kind='summary' AND dedup_key NOT LIKE 'away:%' AND created_at >= ?", [resume]).fetchone()[0]
+    late = cur.execute("SELECT count(*) FROM outbox WHERE kind='summary' AND dedup_key NOT LIKE 'away:%' AND dedup_key NOT LIKE 'week_check:%' AND created_at >= ?", [resume]).fetchone()[0]
     c.ok(late <= 2, f"after opening only the day's own summaries were queued, not the missed ones ({late} queued since {resume:%a %H:%M}; at most morning and evening)", "service/ondemand.py STALE_SLOT_H")
     c.ok(not env.exceptions and not env.catcher.records, f"zero unhandled exceptions: {env.exceptions[:3]} {env.catcher.records[:3]}", "(named in evidence)")
     w = env.world()

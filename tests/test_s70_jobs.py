@@ -95,3 +95,10 @@ def test_s79b_a_daily_job_that_lost_its_connection_is_offline_not_failed(tmp_pat
     assert jobs.run_job(jobs.Ctx(con, datetime(2026, 11, 9, 22, 0), tmp_path, tmp_path, tmp_path), job2).status == "offline"
     job3 = jobs.Job("bug", Daily(20, 0), lambda c: {"failed": {"a": "KeyError: 'x'"}})
     assert jobs.run_job(jobs.Ctx(con, datetime(2026, 11, 9, 22, 5), tmp_path, tmp_path, tmp_path), job3).status == "failed"        # a bug is still a failure
+
+
+def test_s79b_a_network_error_wrapped_in_another_error_is_still_offline():
+    """Found by the drills: collect_daily re-raises the network error inside a RuntimeError; a real bug with other words is still a failure."""
+    assert jobs.offline(RuntimeError("collect_daily: bhavcopy: ConnectionError: HTTPSConnectionPool(host='nsearchives.nseindia.com', port=443)"))
+    assert jobs.offline(RuntimeError("no series downloaded: ConnectionError('getaddrinfo failed')"))
+    assert not jobs.offline(RuntimeError("collect_daily: bhavcopy: KeyError: 'isin'"))
