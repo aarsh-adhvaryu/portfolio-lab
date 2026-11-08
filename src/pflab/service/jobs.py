@@ -144,7 +144,7 @@ def _slot_due(ctx: Ctx, job: Job) -> Tuple[bool, str]:
 _OFFLINE_NAMES = {"ConnectionError", "ConnectTimeout", "ReadTimeout", "Timeout", "NameResolutionError", "MaxRetryError", "ConnectionResetError",
                   "ConnectionAbortedError", "TimeoutError", "gaierror"}
 _OFFLINE_WORDS = ("NameResolutionError", "getaddrinfo failed", "Max retries exceeded", "Connection aborted", "Temporary failure in name resolution",
-                  "ConnectionError", "HTTPSConnectionPool", "HTTPConnectionPool", "ConnectTimeout", "ReadTimeout")      # S79b: the same words inside a wrapped error ("RuntimeError: collect_daily: bhavcopy: ConnectionError: ...")
+                  "HTTPSConnectionPool", "HTTPConnectionPool", "ConnectTimeout", "ReadTimeout")      # S79b: the same words inside a wrapped error ("RuntimeError: collect_daily: bhavcopy: ConnectionError: ...")
 
 
 def offline(x) -> bool:

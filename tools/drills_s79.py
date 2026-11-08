@@ -852,7 +852,7 @@ def drill_net_down(env: "Env", c: Check) -> None:
         sp.run = real_run
     from pflab.service import jobs as _jobs
     for name, (st, det, secs) in rows.items():
-        offline = st == "skipped" and ("offline" in det or "waiting" in det or "no holdings" in det)
+        offline = st in ("skipped", "offline") and ("offline" in det or "waiting" in det or "no holdings" in det)       # S79b: a Daily job without a connection is the status "offline"
         if st == "failed" and not _jobs.offline(det):          # failed on the harness's empty data folder, not for lack of a network: said, not judged
             c.note(f"{name}: failed for a non-network reason on the empty data folder ({det[:90]})")
             continue
