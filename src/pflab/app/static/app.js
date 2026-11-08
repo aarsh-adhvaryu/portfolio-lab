@@ -1357,6 +1357,7 @@ function graph3d(nodes, edges, rad) {
   tick();
 }
 function renderGraph(d) {
+  if (d.off) { $('screen').innerHTML = `<div class="card"><span class="lbl">Knowledge graph</span><div style="font-size:18px;font-weight:600;margin:6px 0">Switched off</div><div class="small muted">${esc(d.why || '')}</div></div>`; return; }
   const W = 1000, H = 640, nodes = d.nodes, E = layout(nodes, d.edges, W, H);
   const rad = (n) => n.kind === 'company' ? 7 + Math.min(10, Math.sqrt(n.docs || 0) / 2) : 3 + Math.min(6, Math.sqrt(n.docs || 0) / 2);
   const labelled = new Set(nodes.filter((n) => n.kind !== 'theme' && n.kind !== 'org' && n.kind !== 'person').map((n) => n.id)

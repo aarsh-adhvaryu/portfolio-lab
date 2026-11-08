@@ -1,0 +1,5 @@
+# The knowledge graph (his decision 2026-11-08): the existing graph was deleted and the graph stays OFF until its design is agreed with him.
+# Off: nothing writes nodes, links, aliases or hypotheses, and no name question is asked. Filing and news texts are still stored (kg_docs),
+# but no part of the system can tell which company they are about, so filing-driven investigations and company document lookups find nothing.
+[graph]
+on = false

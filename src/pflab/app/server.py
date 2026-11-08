@@ -114,6 +114,9 @@ def create_app(rt) -> FastAPI:
     @app.get("/api/graph")
     def graph_view(kinds: str = "", upto: str = ""):
         from pflab.app import graph
+        from pflab.kg import switch
+        if not switch.on():                                    # 2026-11-08: deleted and off until its design is agreed; the screen says so instead of drawing nothing
+            return {"off": True, "why": switch.WHY, "nodes": [], "edges": [], "growth": []}
         return json.loads(json.dumps(graph.view(rt.cursor(), _month_end(upto), [k for k in kinds.split(",") if k]
                                                 or graph.DEFAULT_KINDS), default=str))
 

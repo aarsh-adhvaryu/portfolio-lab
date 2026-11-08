@@ -79,6 +79,12 @@ def _local_sandbox(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _graph_on_for_tests(monkeypatch):
+    """configs/kg.toml ships the graph OFF (his decision 2026-11-08); the suite keeps it on to test the graph's code. A test of the off switch sets PFLAB_KG=off."""
+    monkeypatch.setenv("PFLAB_KG", "on")
+
+
+@pytest.fixture(autouse=True)
 def _fresh_hq_timers():
     """hq.service._due remembers the last run by id(rt); a later test's runtime can get a dead one's id and look 'not due' (the 2026-11-08 full run: the brain did not wake)."""
     from pflab.hq import service

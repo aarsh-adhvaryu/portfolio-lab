@@ -41,6 +41,9 @@ def _node(con, subject: str, now: datetime) -> str:
 def record(con, pass_id: Optional[int], subject: str, cause: str, effect: str, evidence: List[str], check_by: date,
            series: Optional[str], now: datetime) -> int:
     """Keep a hypothesis and its graph edge. `series` is one of SERIES when the cause is a macro series the keeper can test."""
+    from pflab.kg import switch
+    if not switch.on():
+        raise RuntimeError(switch.WHY)
     if not now.date() < check_by <= now.date() + timedelta(days=MAX_DAYS):
         raise ValueError(f"check_by must be after today and at most {MAX_DAYS} days ahead")
     if series is not None and series not in SERIES:

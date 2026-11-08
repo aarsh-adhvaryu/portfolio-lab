@@ -18,6 +18,8 @@ from typing import Iterable, List, Optional, Sequence
 
 import pandas as pd
 
+from pflab.kg import switch
+
 STATE_RELS = {"owns", "guard_status", "in_sector", "watches"}
 
 
@@ -31,6 +33,8 @@ def _ts(x) -> datetime:
 
 def node(con, node_id: str, kind: str, name: Optional[str] = None, attrs: Optional[dict] = None,
          now: Optional[datetime] = None) -> None:
+    if not switch.on():                                       # 2026-11-08: the graph is off until its design is agreed (kg/switch.py)
+        return
     con.execute("INSERT INTO kg_nodes VALUES (?,?,?,?,?) ON CONFLICT (node_id) DO UPDATE SET "
                 "name = COALESCE(excluded.name, kg_nodes.name), attrs_json = COALESCE(excluded.attrs_json, kg_nodes.attrs_json), "
                 "updated_at = excluded.updated_at",
@@ -41,6 +45,8 @@ def edge(con, src: str, rel: str, dst: str, valid_from, source_kind: str, source
          attrs: Optional[dict] = None, now: Optional[datetime] = None) -> bool:
     """Add an edge. For a state relation, an open edge (src, rel) to a different dst is closed at `valid_from`;
     the same open edge again is a no-op. Returns True when something was added."""
+    if not switch.on():
+        return False
     vf = _ts(valid_from)
     if rel in STATE_RELS:
         cur = con.execute("SELECT dst, valid_from FROM kg_edges WHERE src=? AND rel=? AND valid_to IS NULL",
@@ -64,6 +70,8 @@ def edge(con, src: str, rel: str, dst: str, valid_from, source_kind: str, source
 
 def close(con, src: str, rel: str, dst: str, at, ) -> int:
     """End an open state edge (a position sold, a name taken off the list)."""
+    if not switch.on():
+        return 0
     r = con.execute("UPDATE kg_edges SET valid_to=? WHERE src=? AND rel=? AND dst=? AND valid_to IS NULL",
                     [_ts(at), src, rel, dst])
     return r.fetchone()[0] if r.description else 0

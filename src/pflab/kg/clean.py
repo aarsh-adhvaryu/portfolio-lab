@@ -180,6 +180,9 @@ def memory(con) -> int:
 
 def run(con, now: Optional[datetime] = None) -> Dict[str, object]:
     """One cleanup, in one transaction."""
+    from pflab.kg import switch
+    if not switch.on():                                       # no names to merge and no name question to ask while the graph is off
+        return {"skipped": switch.WHY}
     from pflab.pm.store import transaction
     now = now or datetime.now()
     with transaction(con):
