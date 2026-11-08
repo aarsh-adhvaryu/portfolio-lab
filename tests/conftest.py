@@ -79,6 +79,14 @@ def _local_sandbox(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _fresh_hq_timers():
+    """hq.service._due remembers the last run by id(rt); a later test's runtime can get a dead one's id and look 'not due' (the 2026-11-08 full run: the brain did not wake)."""
+    from pflab.hq import service
+    service._last.clear()
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _fresh_probe_cache():
     """The system picture caches its slow probes (Ollama, Docker) between calls; a test never sees another test's answer."""
     from pflab.app import system
