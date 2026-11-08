@@ -290,44 +290,7 @@ def test_the_shift_is_capped_and_shrunk(monkeypatch):
     assert (mid.abs() <= 0.15 * s5 + 1e-12).all()
 
 
-# --- the agenda kind ----------------------------------------------------------------------------------------------------------------------------
-def test_propose_lens_drafts_a_protocol_stub_only(con, tmp_path, monkeypatch):
-    from pflab.agenda import kinds, propose_lens as pl
-    assert "propose_lens" in kinds.names()
-    monkeypatch.setattr(pl, "stub_dir", lambda: tmp_path / "lens_candidates")
-    cands = pl._produce(con, "IN", NOW)
-    assert len(cands) == 1 and cands[0]["subject"].startswith("lens:lens_")
-    rt = SimpleNamespace(cursor=lambda: con)
-    res = pl._work(rt, {"market": "IN", "payload": cands[0]["payload"]}, NOW)
-    assert res["useful"] is False and "stub filed" in res["outcome"]
-    files = list((tmp_path / "lens_candidates").glob("*.md"))
-    assert len(files) == 1
-    txt = files[0].read_text(encoding="utf-8")
-    assert "STUB" in txt and "NOT registered, no code, not live" in txt and "def " not in txt and "import " not in txt
-    assert con.execute("SELECT status FROM lens_candidates").fetchone()[0] == "stub"
-    again = pl._work(rt, {"market": "IN", "payload": cands[0]["payload"]}, NOW)
-    assert "skip" in again
-    nxt = pl._produce(con, "IN", NOW)
-    assert all(c["payload"]["name"] != cands[0]["payload"]["name"] for c in nxt)
-    monkeypatch.setattr(plugins, "settings", lambda: {"on": False})
-    assert pl._produce(con, "IN", NOW) == []
-
-
-def test_an_installed_app_files_its_stubs_in_its_data_folder_never_in_its_own_code_folder(tmp_path, monkeypatch):
-    # found 2026-11-08: the app wrote a stub into docs/ of its own folder, git saw an edited app, and the next update was refused
-    from pflab import release
-    from pflab.agenda import propose_lens as pl
-    from pflab.pm import store
-    monkeypatch.setattr(release, "is_app", lambda root=None: True)
-    monkeypatch.setattr(store, "pm_dir", lambda: tmp_path / "pm")
-    d = pl.stub_dir()
-    assert d == tmp_path / "pm" / "lens_candidates" and "docs" not in d.parts
-    assert "in the data folder" in pl._shown(d / "lens_x.md")
-    monkeypatch.setattr(release, "is_app", lambda root=None: False)
-    assert pl.stub_dir().parts[-3:] == ("protocols", "lens_candidates") or pl.stub_dir().name == "lens_candidates"
-    assert pl._shown(d / "lens_x.md").startswith("docs/protocols/lens_candidates/")
-
-
+# (S80 phase 4: the agenda and its `propose_lens` kind are deleted; lens candidates now come from the strategist's lab, not from an agenda item.)
 def test_the_migrations_exist(con):
     for t in ("lens_admission", "lens_candidates"):
         con.execute(f"SELECT * FROM {t} LIMIT 1")

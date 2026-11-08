@@ -85,13 +85,13 @@ def build(con, asof: date, now: datetime, which: str, cal=None, root=None, netwo
     last = con.execute("SELECT max(created_at) FROM outbox WHERE kind=?", [KIND]).fetchone()[0] or (now - timedelta(days=1))
     lines = [f"{'Good morning' if which == 'morning' else 'Evening'} summary, {asof:%a %d %b}."]
     left_out = []
-    try:                                                         # S79b item 16: the situation report comes first when there is one (agent detail follows)
-        from pflab.situation import build as _sb, report as _sr
-        if _sb.enabled():
-            sit = _sr.note_lines(con, "IN", 14)
-            if sit:
-                lines += sit
-                lines.append("")
+    try:                                                         # S80: the open storylines come first (a code-written line each), not a model-written report
+        from pflab.story import numbers as _sn
+        txt = _sn.summary_text(con, asof)
+        if txt and not txt.startswith("no open storyline"):
+            lines.append("What is driving the market (storylines, with the chance the system gives each):")
+            lines += [ln.strip() for ln in txt.strip().splitlines()[:4]]
+            lines.append("")
     except Exception:
         pass
     for name, fn in (("portfolio", lambda: _portfolio_line(con, asof, cal, networth_fn)),

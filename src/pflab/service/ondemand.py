@@ -15,7 +15,6 @@ AFTER: Dict[str, Tuple[str, ...]] = {
     "paper": ("prices",), "core_loop": ("paper", "prices"), "lab_close": ("core_loop",), "story_daily": ("prices", "global", "flows", "macro_attribution", "wave_scan"), "strategist": ("core_loop", "lab_close"), "companion": ("prices",), "comove": ("prices",), "kg": ("filings", "collect"), "research": ("kg",),
     "catch_up": ("prices", "global"), "bars_1m": ("prices",), "forecast_loop": ("prices", "global"), "benchmark_attr": ("paper", "prices"),
     "macro_attribution": ("prices", "global", "flows"), "wave_scan": ("prices",),
-    "situation": ("prices", "global", "forecast_loop", "catch_up", "macro_attribution", "wave_scan"),
     "sentiment": ("prices", "global"),
 }
 MAX_AGE_H: Dict[str, float] = {"selfcheck": 24, "sandbox": 24, "learner": 24, "paper_daily": 20, "backup": 26, "catch_up": 12, "voice": 1, "data_s79b": 20, "week_check": 20}

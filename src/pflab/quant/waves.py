@@ -406,15 +406,9 @@ def crude_fall_events(market: str = "IN", start: Optional[date] = None, end: Opt
 
 def record_flag(con, market: str, session: date, kind: str, direction: str, stats: dict, thresholds: dict, text: str, now: Optional[datetime] = None,
                 call_id: Optional[int] = None, known_on: Optional[date] = None) -> dict:
-    """Store a high-salience flag (once per market, session, kind) and add it to the situation as a typed claim. Idempotent; the claim step never raises."""
+    """Store a high-salience flag (once per market, session, kind). The storylines' adapter reads it as evidence (`story/adapters.py`). Idempotent."""
     now = now or datetime.now()
-    claim_id = None
-    try:
-        from pflab.situation import claims
-        claim_id = claims.add(con, market, kind, f"{kind}:{direction}", text, value=stats.get("adv_share") if kind == "wave" else stats.get("z"),
-                              themes=("market",), call_ids=((f"c{call_id}",) if call_id else ()), confidence=None, as_of=session, ttl_sessions=5, source="waves", now=now)
-    except Exception:
-        claim_id = None
+    claim_id = None                                                              # (S80 phase 4: the situation claim is gone; the column stays, empty)
     con.execute("DELETE FROM wave_flag WHERE market=? AND session=? AND kind=?", [market, session, kind])
     con.execute("INSERT INTO wave_flag (market, session, kind, direction, salience, known_on, stats_json, thresholds_json, definition, call_id, claim_id, created_at) "
                 "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
