@@ -302,7 +302,10 @@ def test_a_top_up_is_not_a_gain_for_the_breaker(con, tmp_path, monkeypatch):
 
 
 def test_a_loop_that_stays_silent_is_found_and_the_live_watch_only_counts_in_market_hours(con, tmp_path, monkeypatch):
+    from pflab import core
     from pflab.paper import cadence
+    real = core.settings
+    monkeypatch.setattr(core, "settings", lambda: {**real(), "core": {"on": False, "retire_missions": False}})   # this test is about the v1 loops; the close loop's own silence is tested in test_s80_core
     _seeded(con, tmp_path, monkeypatch)
     quiet = cadence.silent_loops(con, datetime(2026, 11, 7, 12, 0))                    # Saturday noon: no live watch expected
     assert any(s.startswith("daily_look") for s in quiet) is False or True

@@ -43,7 +43,9 @@ def silent_loops(con, now: datetime) -> List[str]:
     if not book.started(con):
         return []
     out = []
-    for loop, limit in LOOP_MAX_SILENCE.items():
+    from pflab import core                                   # S80: the close loop must act at least daily while it is on
+    loops = dict(LOOP_MAX_SILENCE, core_loop=timedelta(hours=30)) if core.on() else LOOP_MAX_SILENCE
+    for loop, limit in loops.items():
         if loop == "live_watch" and not book.session_open(now):
             continue
         r = con.execute("SELECT max(logged_at) FROM paper_acts WHERE loop=?", [loop]).fetchone()[0]

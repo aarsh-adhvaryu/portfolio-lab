@@ -260,12 +260,17 @@ Local models are free. API spend is priced before every call and refused above h
 - **Studies** (`quant/index_event_study.py`, `docs/protocols/s79_wave_sentiment_protocol.md` + amendments): the 11 pre-registered event studies ran once: none passed.
 - **Test tools:** `tools/drills_s79.py` (kill -9, off Fri-Mon, off 10 days, network, Ollama, Docker, Kite, budget; accelerated 5-session run), `tools/realpath_s79b.py` (the 5-6 Nov check), `service/outgoing.py` (drop folder for messages to him).
 
+## S80 phase 1 (`pm/s80-core`; schema v102; switch and numbers in `configs/core.toml`): the v2 core, from `Portfolio Lab v2 - Redesign`
+- **`core/`** is the new lean core that imports the proven v1 body (book, fills, tax, scoring) and replaces the mission path for the paper book. `state.py` (the book, shrunk-covariance volatilities from `construct/risk.py`, the allocation target, the fall gauge, the circuit breaker); `policy.py` (`decide(state)`: the champion policy; phase 1 ships `baseline_v1`: hold the allocation target or the current class mix, size by 1/volatility under the position caps, cut equity by `gauge_cut` when the gauge fires, rebalance only outside a band; trades only names already held); `rails.py` (code outside the policy: 10% company / 25% sector / 35% ETF, circuit breaker, band, minimum trade, charges-plus-tax filter, turnover caps of 10% a day and 40% a month, no borrowing); `loop.py` (once per closed session: state, decide, check, act, score; each order is a `paper_decisions` row with `case_id` NULL and reasons written by code, and registers its 7/28/84/182-day claims). Tables `core_policies_s80`, `core_runs_s80` (the audit trail of every run). Job `core_loop` (after `paper`). `[core] retire_missions` makes `paper/manager.tick` open no mission; bookkeeping, fills and scoring go on. `cadence.silent_loops` alerts when `core_loop` is silent for 30 open hours.
+- Not yet built (later phases of the redesign): choosing new names, the lab harness and strategist sessions, storylines, the tactical lane, the book card, the budget tracking by use, the big-trade check.
+
 ### S79 / S79b jobs and tools (the sync test requires every job and every brain tool to be listed here)
 
 | job | when | what |
 |---|---|---|
 | bars_1m | daily 16:10 | minute bars of held, listed and watched names and the index after each session (Kite, read only); a missing minute is stated, never filled |
 | benchmark_attr | every 120 min | the book against its own benchmark: the blended benchmark extended and the monthly attribution recomputed (code, free) |
+| core_loop | every 60 min | the v2 close loop (S80): after the book is marked for a closed session, the champion policy's target weights, the rails, the paper orders (code, free, seconds) |
 | catch_up | every 5 min | on open: each market's missed sessions scored in order by code, then the one 'while you were away' digest (code, free) |
 | data_s79b | daily 20:20 | FII/DII flows, India VIX, GDELT world events and theme tone kept current (public data, no credentials; a failing part is named, the rest still run) |
 | bear_resolve | daily 21:15 | resolves the bear's warnings from the debates on later prices (code only) |

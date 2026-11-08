@@ -558,6 +558,10 @@ def tick(rt) -> dict:
     if book.session_open(now) and not cadence.acted_since(con, "live_watch", now - timedelta(minutes=14)):
         w = reasons_to_look(con, now)
         cadence.act(con, now, "live_watch", "watched the holdings against the live quote" + (f"; {len(w)} reason(s): " + "; ".join(w)[:160] if w else "; nothing moved enough"), True)
+    from pflab import core                                                  # S80: the close loop decides the paper book; no mission is opened (bookkeeping, fills and scoring go on)
+    if core.missions_retired():
+        out["missions"] = "retired: the close loop (pflab/core) decides the paper book"
+        return out
     if open_case(con) is not None:
         out["working"] = open_case(con)
         return out

@@ -19,6 +19,14 @@ AAA, BBB, ETF, USX = "INE000A01011", "INE000B01012", "INF000E01013", "ZZ00003201
 DAYS = [date(2026, 10, 26) + timedelta(days=k) for k in range(0, 80) if (date(2026, 10, 26) + timedelta(days=k)).weekday() < 5]
 
 
+@pytest.fixture(autouse=True)
+def _v1_paper_team(monkeypatch):
+    """These tests are about the v1 mission path; S80 switches it off by default (`configs/core.toml`), so they run with the close loop off."""
+    from pflab import core
+    real = core.settings
+    monkeypatch.setattr(core, "settings", lambda: {**real(), "core": {"on": False, "retire_missions": False}})
+
+
 @pytest.fixture
 def con(tmp_path):
     c = store.connect(tmp_path / "p.duckdb")

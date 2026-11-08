@@ -1,0 +1,17 @@
+# S80 (v2 core). One switch for the whole close loop; the numbers below are the rails and the baseline's parameters (the doc's defaults; his to change).
+[core]
+on = true                     # false: the loop does nothing and the v1 paper team (missions) works as before
+retire_missions = true        # true while the loop is on: manager.tick opens no mission (bookkeeping, fills and scoring go on)
+
+[rails]
+turnover_day = 0.10           # at most this share of the book's value traded in a session
+turnover_month = 0.40         # ... and in a calendar month
+min_trade_rupees = 2000.0     # a smaller order is not worth its charges
+max_cost_share = 0.02         # skip a rebalance trade whose charges plus tax exceed this share of its value (a risk cut is exempt)
+
+[baseline]
+band_pts = 1.5                # rebalance a name only when it is this many points of the book away from its target weight
+vol_window = 250              # sessions of daily returns for the risk model (shrunk covariance)
+gauge_drawdown = 0.10         # the fall gauge fires when the Nifty 500 is this far below its 252-session high ...
+gauge_below_ma = 200          # ... and below its moving average of this many sessions
+gauge_cut = 0.25              # ... then the equity class is cut by this share, moved to cash, until the gauge clears
