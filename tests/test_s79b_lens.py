@@ -313,6 +313,21 @@ def test_propose_lens_drafts_a_protocol_stub_only(con, tmp_path, monkeypatch):
     assert pl._produce(con, "IN", NOW) == []
 
 
+def test_an_installed_app_files_its_stubs_in_its_data_folder_never_in_its_own_code_folder(tmp_path, monkeypatch):
+    # found 2026-11-08: the app wrote a stub into docs/ of its own folder, git saw an edited app, and the next update was refused
+    from pflab import release
+    from pflab.agenda import propose_lens as pl
+    from pflab.pm import store
+    monkeypatch.setattr(release, "is_app", lambda root=None: True)
+    monkeypatch.setattr(store, "pm_dir", lambda: tmp_path / "pm")
+    d = pl.stub_dir()
+    assert d == tmp_path / "pm" / "lens_candidates" and "docs" not in d.parts
+    assert "in the data folder" in pl._shown(d / "lens_x.md")
+    monkeypatch.setattr(release, "is_app", lambda root=None: False)
+    assert pl.stub_dir().parts[-3:] == ("protocols", "lens_candidates") or pl.stub_dir().name == "lens_candidates"
+    assert pl._shown(d / "lens_x.md").startswith("docs/protocols/lens_candidates/")
+
+
 def test_the_migrations_exist(con):
     for t in ("lens_admission", "lens_candidates"):
         con.execute(f"SELECT * FROM {t} LIMIT 1")

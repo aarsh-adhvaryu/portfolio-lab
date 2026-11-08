@@ -40,8 +40,19 @@ IDEAS = [
 
 
 def stub_dir() -> Path:
+    """The workshop files the stubs under docs/protocols/lens_candidates/. An installed app never edits its own folder (the update refuses an edited app, found
+    2026-11-08: a stub written there blocked the next update), so it files them under its data folder, <pm>/lens_candidates/."""
+    from pflab import release
+    if release.is_app():
+        from pflab.pm import store
+        return Path(store.pm_dir()) / "lens_candidates"
     from pflab.fcast import protocol as P
     return P.PROTOCOL.parent / "lens_candidates"
+
+
+def _shown(path: Path) -> str:
+    from pflab import release
+    return f"lens_candidates/{path.name} (in the data folder)" if release.is_app() else f"docs/protocols/lens_candidates/{path.name}"
 
 
 def stub_text(name: str, title: str, question: str, inputs: str, features: str, now: datetime) -> str:
@@ -119,8 +130,8 @@ def _work(rt, item: dict, now: datetime) -> dict:
     path.write_text(stub_text(*idea, now), encoding="utf-8")
     cid = next_id(con, "lens_candidates", "candidate_id")
     con.execute("INSERT INTO lens_candidates VALUES (?,?,?,?,?,?,?,?)",
-                [cid, item.get("market") or "IN", name, idea[1], f"docs/protocols/lens_candidates/{path.name}", "stub", now, "protocol stub only; no code, not live"])
-    return {"useful": False, "effect": "", "outcome": f"stub filed: docs/protocols/lens_candidates/{path.name} (no code, not live; waits for the lead's protocol)"}
+                [cid, item.get("market") or "IN", name, idea[1], _shown(path), "stub", now, "protocol stub only; no code, not live"])
+    return {"useful": False, "effect": "", "outcome": f"stub filed: {_shown(path)} (no code, not live; waits for the lead's protocol)"}
 
 
 kinds.register(KIND, _produce, _work, cost_seconds=2.0, doc="drafts a candidate lens as a protocol stub (text only; never code, never live)")
