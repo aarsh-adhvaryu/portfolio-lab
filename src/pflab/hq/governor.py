@@ -32,7 +32,9 @@ BudgetRefused = an.BudgetRefused
 # layer -> (share of the monthly cap, rupees a day). What is left of the cap (about a quarter) stays for the analyst's
 # own paths (deep research, web search, the workshop), which only the cap limits, as before.
 # S70: with the monthly cap at Rs 1,000 and the brain down to a pass a day, the workers (his investigations and the system's) get most of it
-LAYERS: Dict[str, tuple] = {"readers": (0.06, 15.0), "workers": (0.55, 80.0), "brain": (0.15, 40.0)}
+LAYERS: Dict[str, tuple] = {"readers": (0.06, 15.0), "workers": (0.55, 80.0), "brain": (0.15, 40.0),
+                            # S80 (v2): what the cloud money is FOR: the strategist's lab sessions (about 70% of the cap), the big-trade and anomaly checks (20%), the local model's escalations (10%)
+                            "strategist": (0.70, 450.0), "checker": (0.20, 150.0), "escalation": (0.10, 100.0)}
 
 
 @dataclass(frozen=True)
@@ -59,6 +61,10 @@ LIMITS: Dict[str, Limits] = {
     "w_quant": Limits("workers", 80_000, 10_000, {"off": 0, "economy": 60, "normal": 120}),
     "w_review": Limits("workers", 80_000, 8_000, {"off": 0, "economy": 24, "normal": 48}),
     "w_assistant": Limits("workers", 80_000, 6_000, {"off": 0, "economy": 80, "normal": 200}),     # the conversation: his messages, never held by day limits
+    # S80 (v2): one strategist session is one long task (turn 1 opens it); two a day at most
+    "strategist": Limits("strategist", 120_000, 12_000, {"off": 0, "economy": 2, "normal": 2}),
+    "checker": Limits("checker", 30_000, 1_500, {"off": 0, "economy": 10, "normal": 20}),
+    "escalation": Limits("escalation", 20_000, 1_500, {"off": 0, "economy": 20, "normal": 40}),
 }
 COUNTED = ("done", "sending", "queued", "submitted", "refused")
 

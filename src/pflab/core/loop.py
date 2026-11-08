@@ -26,13 +26,22 @@ def ensure_policy(con, now: datetime) -> None:
     h = policy.code_hash()
     r = con.execute("SELECT code_hash FROM core_policies_s80 WHERE policy_id=?", [policy.POLICY_ID]).fetchone()
     if r is None:
-        con.execute("INSERT INTO core_policies_s80 VALUES (?,?,?,?,?,?)",
+        con.execute("INSERT INTO core_policies_s80 (policy_id, status, code_hash, created_at, promoted_at, note) VALUES (?,?,?,?,?,?)",
                     [policy.POLICY_ID, "champion", h, now, now, "the baseline: hold the allocation target, size by risk, rebalance in a band, cut equity when the fall gauge fires"])
     elif r[0] != h:
         con.execute("UPDATE core_policies_s80 SET code_hash=? WHERE policy_id=?", [h, policy.POLICY_ID])
 
 
-def _decision(con, now, o: dict, index: Optional[pd.Series], day) -> int:
+def _lab_champion(con) -> Optional[dict]:
+    """The champion when it is a lab policy (code in the store); None while the baseline is champion."""
+    r = con.execute("SELECT policy_id FROM core_policies_s80 WHERE status='champion' AND policy_id <> ? AND code IS NOT NULL ORDER BY promoted_at DESC NULLS LAST LIMIT 1", [policy.POLICY_ID]).fetchone()
+    if not r:
+        return None
+    from pflab.lab import service
+    return service.get(con, r[0])
+
+
+def _decision(con, now, o: dict, index: Optional[pd.Series], day, pid: str = policy.POLICY_ID) -> int:
     from pflab.hq import scorecard
     from pflab.paper import book
     from pflab.pm.store import next_id
@@ -43,7 +52,7 @@ def _decision(con, now, o: dict, index: Optional[pd.Series], day) -> int:
     else:
         fraction = min(1.0, o["qty"] / held) if held > 0 else 1.0
         action = "SELL" if fraction >= 0.999 else "REDUCE"
-    why = (f"{policy.POLICY_ID}: weight {o['from_w']:.1%} now, target {o['to_w']:.1%} (risk-sized inside the allocation target)"
+    why = (f"{pid}: weight {o['from_w']:.1%} now, target {o['to_w']:.1%} " + ("(risk-sized inside the allocation target)" if pid == policy.POLICY_ID else "(the champion policy's target)")
            + ("; risk cut by the fall gauge" if o["risk_cut"] else "") + (f"; {o['note']}" if o["note"] else ""))
     if o["side"] == "sell" and (o["charges"] or o["tax"]):
         why += f"; estimated charges Rs {o['charges']:,.0f} and tax Rs {o['tax']:,.0f}"
@@ -54,7 +63,7 @@ def _decision(con, now, o: dict, index: Optional[pd.Series], day) -> int:
     return did
 
 
-def run(con, now: datetime, root=None, index: Optional[pd.Series] = None) -> dict:
+def run(con, now: datetime, root=None, index: Optional[pd.Series] = None, live_data: Optional[dict] = None) -> dict:
     """One pass for the latest closed session. Returns what happened (never raises for a missing input: it says what it is waiting for)."""
     from pflab import markets
     from pflab.paper import book, cadence, manager
@@ -75,19 +84,30 @@ def run(con, now: datetime, root=None, index: Optional[pd.Series] = None) -> dic
     index = index if index is not None else manager._index(root)
     cfg = core.settings()
     s = st.build(con, day, root, index, cfg)
-    dec = policy.decide(s)
+    pid, dec = policy.POLICY_ID, None
+    champ = _lab_champion(con)
+    if champ is not None:                                                 # a promoted lab policy decides; any failure falls back to the baseline for this close
+        try:
+            from pflab.lab import live
+            w = live.decide(con, root, day, champ, {r["isin"]: r["weight"] for r in s["rows"] if r["weight"] > 0}, data=live_data)
+            s = st.build(con, day, root, index, cfg, extra_isins=[i for i in w if i not in {r["isin"] for r in s["rows"]}])
+            pid, dec = champ["policy_id"], {"weights": w, "notes": [f"champion {champ['policy_id']} (promoted lab policy)"], "classes": {}}
+        except Exception as e:
+            cadence.act(con, now, "core_loop", f"champion {champ['policy_id']} failed ({type(e).__name__}: {str(e)[:200]}): the baseline decides this close", False)
+    if dec is None:
+        dec = policy.decide(s)
     chk = rails.check(con, s, dec)
     placed = []
     for o in chk["orders"]:
-        did = _decision(con, now, o, index, day)
-        oid = book.place(con, now, did, o["isin"], o["side"], qty=o["qty"], amount=o["amount"], note=f"{policy.POLICY_ID} decision #{did}")
+        did = _decision(con, now, o, index, day, pid)
+        oid = book.place(con, now, did, o["isin"], o["side"], qty=o["qty"], amount=o["amount"], note=f"{pid} decision #{did}")
         manager.register(con, did)
         placed.append({"decision_id": did, "order_id": oid, "symbol": o["symbol"], "side": o["side"], "rupees": round(o["value"], 2)})
     status = "traded" if placed else "held"
     brief = {"value": round(s["value"], 2), "gauge": s["gauge"], "breaker": s["breaker"], "target_id": (s["target"] or {}).get("id"), "classes_wanted": dec["classes"]}
     note = "; ".join(dec["notes"])
     con.execute("INSERT INTO core_runs_s80 VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                [day, now, policy.POLICY_ID, status, round(time.time() - t0, 3), json.dumps(brief, default=str), json.dumps({k: round(v, 5) for k, v in dec["weights"].items()}),
+                [day, now, pid, status, round(time.time() - t0, 3), json.dumps(brief, default=str), json.dumps({k: round(v, 5) for k, v in dec["weights"].items()}),
                  json.dumps(chk["clipped"], default=str), json.dumps(placed), json.dumps(chk["skipped"], default=str), note[:400]])
     card_tokens = None
     try:                                                                  # the book card for the strategist: never allowed to fail the loop

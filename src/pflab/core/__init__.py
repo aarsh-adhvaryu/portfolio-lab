@@ -14,7 +14,10 @@ from pathlib import Path
 CONFIG = Path(__file__).resolve().parents[3] / "configs" / "core.toml"
 
 DEFAULTS = {
-    "core": {"on": True, "retire_missions": True, "advisors_off": True},
+    "core": {"on": True, "retire_missions": True, "advisors_off": True, "kill": False},
+    "strategist": {"on": True, "session_rupees": 300.0, "min_session_rupees": 40.0, "weekly_days": 7, "max_turns": 18, "model": "claude-opus-5-5", "weeks_to_win": 8},
+    "checker": {"on": True, "big_trade_share": 0.05, "model": "claude-sonnet-5-5"},
+    "tactical": {"on": True, "start_share": 0.10, "high_share": 0.20, "low_share": 0.05, "views_to_judge": 20},
     "rails": {"turnover_day": 0.10, "turnover_month": 0.40, "min_trade_rupees": 2000.0, "max_cost_share": 0.02},
     "baseline": {"band_pts": 1.5, "vol_window": 250, "gauge_drawdown": 0.10, "gauge_below_ma": 200, "gauge_cut": 0.25},
 }
@@ -34,7 +37,17 @@ def settings() -> dict:
 
 
 def on() -> bool:
-    return bool(settings()["core"]["on"])
+    """The close loop is on. `[core] kill = true` is the one kill switch: it stops all trading and all AI sessions; the book, scoring and data collection go on."""
+    c = settings()["core"]
+    return bool(c["on"]) and not bool(c.get("kill"))
+
+
+def killed() -> bool:
+    return bool(settings()["core"].get("kill"))
+
+
+def strategist_on() -> bool:
+    return on() and bool(settings()["strategist"]["on"])
 
 
 def missions_retired() -> bool:

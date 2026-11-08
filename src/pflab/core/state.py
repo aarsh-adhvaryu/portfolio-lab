@@ -52,8 +52,8 @@ def fall_gauge(index: Optional[pd.Series], day: date, cfg: dict) -> dict:
     return {"fired": bool(fired), "drawdown": round(dd, 4), "below_ma": last < ma, "why": f"index {dd:+.1%} from its 252-session high, {'below' if last < ma else 'above'} its {ma_n}-session average"}
 
 
-def build(con, day: date, root=None, index: Optional[pd.Series] = None, cfg: Optional[dict] = None) -> dict:
-    """The state at the close of `day`."""
+def build(con, day: date, root=None, index: Optional[pd.Series] = None, cfg: Optional[dict] = None, extra_isins=()) -> dict:
+    """The state at the close of `day`. `extra_isins`: securities the book does not hold but the champion policy may want (they enter as rows with no quantity, so the rails see them)."""
     from pflab import core
     from pflab.paper import allocation, book, cadence
     cfg = cfg or core.settings()
@@ -64,6 +64,14 @@ def build(con, day: date, root=None, index: Optional[pd.Series] = None, cfg: Opt
         rows.append({"isin": r["isin"], "symbol": r["symbol"], "sector": r["sector"], "asset_class": r["asset_class"], "qty": r["qty"], "price": r["price"],
                      "value": r["value"] or 0.0, "weight": r["weight"], "buyable": buyable,
                      "klass": allocation.class_of(r["asset_class"], r["name"], r["symbol"], r["isin"])})
+    held = {r["isin"] for r in rows}
+    for isin in extra_isins:
+        px = book.close_on(con, isin, day) if isin not in held else None
+        if px is None:
+            continue
+        m = book.inst(con, isin)
+        rows.append({"isin": isin, "symbol": m["symbol"] or isin, "sector": m["sector"], "asset_class": m["asset_class"], "qty": 0.0, "price": px[1], "value": 0.0, "weight": 0.0,
+                     "buyable": (m["asset_class"] or "") in book.BUYABLE, "klass": allocation.class_of(m["asset_class"], m["name"], m["symbol"], isin)})
     panel = closes_panel(con, [r["isin"] for r in rows if r["buyable"]], day, int(cfg["baseline"]["vol_window"]))
     act = allocation.active_target(con)
     return {"day": day, "value": h["value"], "cash": h["cash"], "bank": h.get("bank", 0.0), "rows": rows,

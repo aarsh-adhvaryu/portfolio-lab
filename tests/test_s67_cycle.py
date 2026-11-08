@@ -523,3 +523,11 @@ def test_the_scheduled_hq_job_runs_a_whole_investigation_with_nobody_asking(con,
     assert [r[0] for r in con.execute("SELECT tool FROM hq_tool_calls ORDER BY call_no").fetchall()] == ["cases", "case_evidence", "request_report"]
     assert con.execute("SELECT count(*) FROM questions WHERE subject_key='case:1:flows'").fetchone()[0] == 1
     assert con.execute("SELECT count(*) FROM outbox").fetchone()[0] == 0                       # nothing was sent: the workshop channel and the cap decide that
+
+
+@pytest.fixture(autouse=True)
+def _v1_advisor_layers(monkeypatch):
+    """S80 switches the v1 advisor layers off by default (`configs/core.toml`); these tests are about the v1 hq round, so they run with the close loop off."""
+    from pflab import core
+    real = core.settings
+    monkeypatch.setattr(core, "settings", lambda: {**real(), "core": {**real()["core"], "on": False, "advisors_off": False, "retire_missions": False}})

@@ -68,7 +68,17 @@ def _policies(con, day: date) -> str:
     from pflab.paper import benchmark
     pol = con.execute("SELECT policy_id, status, promoted_at FROM core_policies_s80 ORDER BY status, policy_id").fetchall()
     champ = next((p for p in pol if p[1] == "champion"), None)
-    chal = [p[0] for p in pol if p[1] == "challenger"]
+    chal = []
+    for p in pol:
+        if p[1] != "challenger":
+            continue
+        try:
+            from pflab.lab import service as lab, shadow
+            rec, hist = shadow.record(con, p[0]), lab.latest_run(con, p[0], "history")
+            chal.append(f"{p[0]} (history excess {hist['score']['excess_cagr']:+.1%}, deflated Sharpe {hist['score'].get('dsr', 0):.2f}; shadow {rec['sessions']} session(s), {rec['excess']:+.2%} vs the champion's stand-in)"
+                        if hist else p[0])
+        except Exception:
+            chal.append(p[0])
     try:
         b = benchmark.status(con, "IN", day)
     except Exception:
@@ -77,7 +87,7 @@ def _policies(con, day: date) -> str:
              if b.get("started") and b.get("book", {}).get("return") is not None else "no score yet (the benchmark is recorded once the book has marked days)")
     runs = con.execute("SELECT count(*), count(*) FILTER (WHERE status='traded') FROM core_runs_s80").fetchone()
     return (f"champion: {champ[0] if champ else 'none'}" + (f" since {str(champ[2])[:10]}" if champ and champ[2] else "") + f"; {runs[0]} close(s) run, {runs[1]} with trades\n"
-            f"  score: {score}\n  challengers: {', '.join(chal) if chal else 'none (the lab arrives in phase 2)'}")
+            f"  score: {score}\n  challengers: {'; '.join(chal) if chal else 'none'}")
 
 
 def _changed(con, facts: dict, prev: Optional[dict]) -> str:

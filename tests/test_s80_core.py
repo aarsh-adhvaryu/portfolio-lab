@@ -191,3 +191,47 @@ def test_the_next_card_says_what_changed_and_a_rerun_replaces_the_day(con):
     card.write(con, NOW, s2, policy.decide(s2), [{"symbol": "AAA"}])
     t = card.latest(con)
     assert "fall gauge FIRED" in t and "orders placed at this close: 1" in t
+
+
+# --- a promoted lab policy in the live loop (phase 2) --------------------------------------------------------------------------------------------
+
+CHAMPION_CODE = '''
+def decide(state, forecasts, sims, storylines, params=None):
+    return {k: params.get("w", 0.05) for k in state["universe"]}
+'''
+
+
+def _live_data(con):
+    rows = con.execute("SELECT isin, date, close FROM prices").fetchall()
+    df = pd.DataFrame(rows, columns=["isin", "date", "close"])
+    df["date"] = pd.to_datetime(df["date"])
+    px = df.pivot_table(index="date", columns="isin", values="close", aggfunc="last").sort_index()
+    px = px.rename(columns={GLD: "ETF:GLDBEES"})
+    to = px * 0 + 5e8
+    meta = {k: {"symbol": "GLDBEES" if k.startswith("ETF:") else k, "etf": k.startswith("ETF:"), "sector": None, "tax": "EQUITY"} for k in px.columns}
+    return {"px": px, "turnover": to, "meta": meta, "index": px[AAA], "bench": px[AAA]}
+
+
+def _make_champion(con, code=CHAMPION_CODE, params='{"w": 0.05}'):
+    con.execute("INSERT INTO core_policies_s80 (policy_id, status, code_hash, created_at, promoted_at, code, params_json) VALUES ('lab_champ', 'champion', 'h', ?, ?, ?, ?)", [NOW, NOW, code, params])
+    con.execute("INSERT INTO core_policies_s80 (policy_id, status, code_hash, created_at, code) VALUES ('baseline_v1', 'previous', 'x', ?, NULL)", [NOW])
+
+
+def test_a_promoted_lab_policy_decides_the_close_and_goes_through_the_same_rails(con):
+    _make_champion(con)
+    r = loop.run(con, NOW, None, calm_index(), live_data=_live_data(con))
+    assert r["status"] == "traded", r
+    row = con.execute("SELECT policy_id FROM core_runs_s80 WHERE day=?", [DAYS[-1]]).fetchone()
+    assert row[0] == "lab_champ"
+    why = con.execute("SELECT reason FROM paper_decisions ORDER BY decision_id DESC LIMIT 1").fetchone()[0]
+    assert why.startswith("lab_champ:") and "champion policy" in why
+    for o in con.execute("SELECT symbol, side, amount, qty FROM paper_orders").fetchall():
+        assert o[1] in ("buy", "sell")
+
+
+def test_a_champion_that_fails_falls_back_to_the_baseline_for_that_close(con):
+    _make_champion(con, "def decide(state, forecasts, sims, storylines, params=None):\n    return {}['x']\n")
+    r = loop.run(con, NOW, None, calm_index(), live_data=_live_data(con))
+    assert r.get("status") in ("traded", "held")
+    assert con.execute("SELECT policy_id FROM core_runs_s80 WHERE day=?", [DAYS[-1]]).fetchone()[0] == "baseline_v1"
+    assert con.execute("SELECT count(*) FROM paper_acts WHERE loop='core_loop' AND what LIKE '%the baseline decides this close%'").fetchone()[0] == 1

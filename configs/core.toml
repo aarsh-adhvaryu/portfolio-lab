@@ -2,6 +2,7 @@
 [core]
 on = true                     # false: the loop does nothing and the v1 paper team (missions) works as before
 retire_missions = true        # true while the loop is on: manager.tick opens no mission (bookkeeping, fills and scoring go on)
+kill = false                  # THE kill switch: true stops all trading and all AI sessions (the book, scoring and data collection go on)
 advisors_off = true           # true while the loop is on: no readers, brain passes, mission scans or file investigations, and the review and companion jobs skip (nothing is deleted)
 
 [rails]
@@ -16,3 +17,24 @@ vol_window = 250              # sessions of daily returns for the risk model (sh
 gauge_drawdown = 0.10         # the fall gauge fires when the Nifty 500 is this far below its 252-session high ...
 gauge_below_ma = 200          # ... and below its moving average of this many sessions
 gauge_cut = 0.25              # ... then the equity class is cut by this share, moved to cash, until the gauge clears
+
+[strategist]
+on = true                     # the weekly and triggered lab sessions (Opus); needs the app, a key and room in the cap
+session_rupees = 300.0        # one session's most (the doc's 70% of the cap is about Rs 1,750 a month); halved after a session that ran no lab run, until one does
+min_session_rupees = 40.0     # under this the session does not start
+weekly_days = 7
+max_turns = 18
+model = "claude-opus-5-5"
+weeks_to_win = 8              # after this many weeks with no AI-written challenger beating the baseline the strategist's budget halves and the system tells him
+
+[checker]
+on = true                     # Sonnet's pass-or-veto on big trades (phase 3)
+big_trade_share = 0.05        # a trade of this share of the book or more gets the check
+model = "claude-sonnet-5-5"
+
+[tactical]
+on = true                     # the strategist's same-day views (phase 3), inside a budget that is a share of the book
+start_share = 0.10
+high_share = 0.20             # after the views have beaten the policy over views_to_judge scored views
+low_share = 0.05              # after a poor record
+views_to_judge = 20

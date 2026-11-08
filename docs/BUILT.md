@@ -273,6 +273,8 @@ Local models are free. API spend is priced before every call and refused above h
 | bars_1m | daily 16:10 | minute bars of held, listed and watched names and the index after each session (Kite, read only); a missing minute is stated, never filled |
 | benchmark_attr | every 120 min | the book against its own benchmark: the blended benchmark extended and the monthly attribution recomputed (code, free) |
 | core_loop | every 60 min | the v2 close loop (S80): after the book is marked for a closed session, the champion policy's target weights, the rails, the paper orders (code, free, seconds) |
+| lab_close | every 60 min | the strategy lab's daily bookkeeping (S80): challengers and the champion's stand-in decide in shadow on the day's inputs (sandbox), earlier shadow rows are scored, a challenger that cleared the history screen, 20 shadow sessions and the one final check is promoted (code, free) |
+| strategist | every 120 min | the strategist's Opus lab session when there is a reason (weekly, a challenger ready, the fall gauge fired, the book behind its benchmark) and room in the budget; the champion's automatic rollback (S80) |
 | catch_up | every 5 min | on open: each market's missed sessions scored in order by code, then the one 'while you were away' digest (code, free) |
 | data_s79b | daily 20:20 | FII/DII flows, India VIX, GDELT world events and theme tone kept current (public data, no credentials; a failing part is named, the rest still run) |
 | bear_resolve | daily 21:15 | resolves the bear's warnings from the debates on later prices (code only) |

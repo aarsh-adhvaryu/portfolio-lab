@@ -12,7 +12,7 @@ from typing import Dict, Optional, Tuple
 
 AFTER: Dict[str, Tuple[str, ...]] = {
     "guards": ("prices",), "plans": ("prices", "nav"), "forecast": ("prices",), "twin": ("prices",), "scans": ("prices",), "review": ("prices",),
-    "paper": ("prices",), "core_loop": ("paper", "prices"), "companion": ("prices",), "comove": ("prices",), "kg": ("filings", "collect"), "research": ("kg",),
+    "paper": ("prices",), "core_loop": ("paper", "prices"), "lab_close": ("core_loop",), "strategist": ("core_loop", "lab_close"), "companion": ("prices",), "comove": ("prices",), "kg": ("filings", "collect"), "research": ("kg",),
     "catch_up": ("prices", "global"), "bars_1m": ("prices",), "forecast_loop": ("prices", "global"), "benchmark_attr": ("paper", "prices"),
     "macro_attribution": ("prices", "global", "flows"), "wave_scan": ("prices",),
     "situation": ("prices", "global", "forecast_loop", "catch_up", "macro_attribution", "wave_scan"),

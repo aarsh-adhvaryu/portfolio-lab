@@ -267,3 +267,11 @@ def test_a_private_or_unmarked_upload_causes_zero_provider_calls_not_even_token_
     clean = {**row, "doc_id": "d:y", "attrs": json.dumps({"shareable": True, "text": "Alphaco quarterly revenue table from a public export."})}
     readers.read_one(con, clean, Rec(), gate, NOW, "economy", CFG)
     assert [k for k, _ in seen] == ["count", "create"]                                        # a truly shareable upload still works
+
+
+@pytest.fixture(autouse=True)
+def _v1_advisor_layers(monkeypatch):
+    """S80 switches the v1 advisor layers off by default (`configs/core.toml`); these tests are about the v1 hq round, so they run with the close loop off."""
+    from pflab import core
+    real = core.settings
+    monkeypatch.setattr(core, "settings", lambda: {**real(), "core": {**real()["core"], "on": False, "advisors_off": False, "retire_missions": False}})

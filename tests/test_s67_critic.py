@@ -213,3 +213,11 @@ def test_the_hq_row_shows_the_hq_threads_own_rounds_not_a_job_that_never_runs(co
     rt.hq_last_round = (NOW, ["readers"])
     row = next(j for j in world.jobs_view(rt, NOW) if j["job"] == "hq")
     assert row["state"] == "down" and "readers" in row["why"]
+
+
+@pytest.fixture(autouse=True)
+def _v1_advisor_layers(monkeypatch):
+    """S80 switches the v1 advisor layers off by default (`configs/core.toml`); these tests are about the v1 hq round, so they run with the close loop off."""
+    from pflab import core
+    real = core.settings
+    monkeypatch.setattr(core, "settings", lambda: {**real(), "core": {**real()["core"], "on": False, "advisors_off": False, "retire_missions": False}})
