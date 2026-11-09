@@ -113,9 +113,10 @@ def merge(con, day: date, weights: Dict[str, float], holdings: Dict[str, float])
         for i in v["names"]:
             if i not in out and (done.get(i) or {}).get("qty"):        # S81: carried out in session (core/session.py): the book holds it already, the close does not add it a second time
                 continue
-            cur = holdings.get(i, 0.0)
-            base = out.get(i, cur)
-            out[i] = base + each if v["direction"] > 0 else max(0.0, base - each)
+            if i in out:                                                  # the policy holds it: the view moves the policy's own target
+                out[i] = out[i] + each if v["direction"] > 0 else max(0.0, out[i] - each)
+            elif v["direction"] > 0:                                      # the policy does not hold it: the view's own share, as a level (S81: not "current + share", which compounded every close)
+                out[i] = each
     return out
 
 

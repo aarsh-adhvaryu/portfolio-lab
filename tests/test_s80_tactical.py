@@ -175,3 +175,21 @@ def test_the_daily_job_updates_probabilities_registers_predictions_and_refreshes
     assert out["probabilities"] and con.execute("SELECT count(*) FROM storyline_prob_s80 WHERE storyline_id=?", [sid]).fetchone()[0] == 1
     assert con.execute("SELECT count(*) FROM storyline_predictions_s80 WHERE storyline_id=?", [sid]).fetchone()[0] == 2
     assert con.execute("SELECT count(*) FROM storyline_record_s80").fetchone()[0] == 1
+
+
+def test_a_view_on_a_name_the_policy_does_not_hold_asks_for_its_share_once_not_again_each_close():
+    """S81 (found by the session agent): the merge used `current weight + share` for such a name, so an active view compounded at every close."""
+    import json
+    from datetime import date
+    from pflab.core import views
+    from pflab.pm import store
+    import tempfile, pathlib
+    con = store.connect(pathlib.Path(tempfile.mkdtemp()) / "l.duckdb")
+    con.execute("INSERT INTO core_views_s80 (view_id, made_on, made_at, direction, names_json, share_of_budget, horizon_sessions, status, due_on, ref_level) VALUES (1, ?, now(), 1, ?, 1.0, 20, 'active', ?, 100.0)",
+                [date(2026, 11, 2), json.dumps(["INEX"]), date(2026, 12, 1)])
+    for d in (date(2026, 11, 3), date(2026, 11, 4), date(2026, 11, 5)):
+        con.execute("INSERT INTO prices VALUES ('INEX', ?, 100.0, 'EQ', 's', now())", [d])
+    first = views.merge(con, date(2026, 11, 3), {}, {})["INEX"]
+    second = views.merge(con, date(2026, 11, 4), {}, {"INEX": first})["INEX"]
+    third = views.merge(con, date(2026, 11, 5), {}, {"INEX": second})["INEX"]
+    assert first > 0 and second == first and third == first
