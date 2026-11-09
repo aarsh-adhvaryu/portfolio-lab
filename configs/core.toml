@@ -38,3 +38,38 @@ start_share = 0.10
 high_share = 0.20             # after the views have beaten the policy over views_to_judge scored views
 low_share = 0.05              # after a poor record
 views_to_judge = 20
+
+# S81 (A54, the market-hours rhythms). A paper fill at the live quote, never better than the quote: the price is worse by at least half the modelled spread plus slippage.
+# MODEL `liquidity_v1` (an assumption, stated; his to change once a real fill record exists to calibrate it against):
+#   adv        the name's average traded value (close x volume, summed over the minute bars of each session) over its last `adv_days` sessions
+#   half_spread_bps   falls on a log scale from `half_spread_illiquid_bps` (adv <= illiquid_adv_rupees) to `half_spread_liquid_bps` (adv >= liquid_adv_rupees)
+#   slippage_bps      impact_bps * sqrt(order value / adv), never under min_slippage_bps (the square-root impact law; it grows with the order's share of turnover)
+#   price      quote x (1 + (half_spread_bps + slippage_bps) / 10000) for a buy, x (1 - ...) for a sell, rounded to the paisa AGAINST the order
+#   unknown    a name with no minute history is charged `unknown_half_spread_bps` and a participation of `unknown_participation`
+[fills]
+adv_days = 20
+liquid_adv_rupees = 1000000000.0      # Rs 100 crore a day: the tightest spread
+illiquid_adv_rupees = 10000000.0      # Rs 1 crore a day: the widest spread
+half_spread_liquid_bps = 1.0
+half_spread_illiquid_bps = 25.0
+impact_bps = 25.0
+min_slippage_bps = 0.5
+unknown_half_spread_bps = 15.0
+unknown_participation = 0.01
+max_participation = 0.10              # an order above this share of a day's turnover is flagged (the model is extrapolating)
+
+# The session loop (core/session.py), every `every_minutes` while the market is open (a job in the app; it needs a Kite login, else it says so once and does only the work that needs no quotes).
+[session]
+on = true
+every_minutes = 5
+no_entry_minutes = 15                 # no swing entry or tactical buy in the first 15 minutes of the session (the opening spike); a stop fires at any time
+vwap_band = 0.005                     # an entry only within 0.5% of the day's VWAP (not chasing a spike)
+volume_fraction = 0.5                 # ... and only when the last `volume_minutes` minutes trade at least this fraction of the name's typical minute volume
+volume_minutes = 5
+typical_days = 20                     # sessions that make the typical minute volume (09:30-15:00)
+views_in_session = true               # the tactical views are carried out in session (the close loop then does not buy them a second time)
+thesis_min_severity = "high"          # the fallback thesis-break rule (used only if pflab.core.exits has no check_thesis): a filing of this severity on a held name sells it
+fallback_stop_pct = 8.0               # the fallback exit plan (used only while pflab.core.exits is missing): stop, target, time stop of a position the session opened
+fallback_target_pct = 15.0
+fallback_time_sessions = 20
+report_at = "15:45"                   # the self-report on Telegram after the close

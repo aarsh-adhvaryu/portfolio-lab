@@ -67,9 +67,15 @@ def storylines(con, limit: int = 6) -> list:
     return rows
 
 
+def session_card(con, now: datetime) -> dict:
+    """S81: the one compact card of the market-hours rhythms (the plan, the checks, the fills, what waits): `core/session.py`."""
+    from pflab.core import session
+    return session.card(con, now)
+
+
 def view(con, now: datetime) -> dict:
     out: dict = {"left_out": []}
-    for name, fn in (("spend", lambda: spend(con, now)), ("policies", lambda: policies(con, now.date())), ("storylines", lambda: storylines(con))):
+    for name, fn in (("spend", lambda: spend(con, now)), ("policies", lambda: policies(con, now.date())), ("storylines", lambda: storylines(con)), ("session", lambda: session_card(con, now))):
         try:
             out[name] = fn()
         except Exception as e:

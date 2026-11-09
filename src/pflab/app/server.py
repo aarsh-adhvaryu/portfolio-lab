@@ -326,6 +326,12 @@ def create_app(rt) -> FastAPI:
         from pflab.core import screens
         return json.loads(json.dumps(screens.view(rt.cursor(), rt.clock()), default=str))
 
+    @app.get("/api/session")
+    def session_api():
+        """S81: the market-hours rhythms live: today's plan, the session checks that ran, the fills with their quotes and slippage, what waits for the next session (core/session.py)."""
+        from pflab.core import session
+        return json.loads(json.dumps(session.card(rt.cursor(), rt.clock(), limit=40), default=str))
+
     @app.post("/api/world/pause")
     def world_pause(paused: bool = Body(..., embed=True)):
         """Pause or resume the system's own routines (the scheduler setting). Work already running finishes; nothing new starts while paused."""

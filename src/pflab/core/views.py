@@ -109,7 +109,10 @@ def merge(con, day: date, weights: Dict[str, float], holdings: Dict[str, float])
             con.execute("UPDATE core_views_s80 SET status='stopped' WHERE view_id=?", [v["view_id"]])
             continue
         each = v["share"] * share / len(v["names"])
+        done = json.loads(con.execute("SELECT executed_json FROM core_views_s80 WHERE view_id=?", [v["view_id"]]).fetchone()[0] or "{}")
         for i in v["names"]:
+            if i not in out and (done.get(i) or {}).get("qty"):        # S81: carried out in session (core/session.py): the book holds it already, the close does not add it a second time
+                continue
             cur = holdings.get(i, 0.0)
             base = out.get(i, cur)
             out[i] = base + each if v["direction"] > 0 else max(0.0, base - each)
