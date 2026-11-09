@@ -586,3 +586,9 @@ def test_study_attachment_check_rederives_the_proof(root, con):
     s.loc[0, "link_proof"] = "scrip 500001 -> INE999999999 valid on 2026-06-10" if s.loc[0, "link_rule"].startswith("filing:") else "org token 'zzz' = alias"
     s.to_csv(root / "kg" / "audit_sample.csv", index=False)
     assert study.attachment_check(con, root, ASOF)["sample_correct"] == out["sample_n"] - 1                         # a corrupted proof is caught
+
+
+def test_generic_filing_headlines_get_rule_kinds_and_the_rest_stays_other():
+    assert classify.rule_kind("Investor Presentation")[0] == "routine" and classify.rule_kind("New Order Received")[0] == "order_win"
+    assert classify.rule_kind("Change in Senior Management")[0] == "management_change"
+    assert classify.rule_kind("The Exchange has received the disclosure under Regulation 30 (1)")[0] == "other"
