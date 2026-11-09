@@ -35,3 +35,11 @@ Every problem found while building, testing and drilling S81, with what was done
 
 ## Not verified
 Live Kite (quotes, bars, login-lost) only with a fake client; the first live day is Wed 2026-11-11. The Opus strategist with the new tools (`propose_allocation`, daily-policy interface) was not run for real tonight (no paid call; scripted fake in tests). `pflab verify --wake-check` and `--hour-check` cannot be done unattended.
+
+## Final results of the night (added at release)
+- Full suite on the integrated tree: 3,267 passed, 0 failed. The five protected engine suites are byte-for-byte unchanged since before S80. Privacy grep clean; no control characters.
+- `tools/drills_s81.py run --run-name final`: all 14 drills PASS (smoke, accelerated with 10 of 10 steps, accelerated_long, kill_switch, off_fri_mon, off_10_days, net_down, ollama_down, docker_down, kite_logged_out, budget_exhausted, failing_champion, probation_withdrawn, kill9).
+- Four more real bugs found and fixed by the merged-tree drills: a sale at a loss after taxed gains gave a negative incremental tax that the ledger rejected (the `paper` job failed and the loop stalled); `kg2_nightly` and `news_s81_topup` failed instead of waiting when the graph's raw inputs were absent; a swing trigger's stop and target were passed to `exits.open_plan` under the wrong keys; harvesting ignored the turnover caps (15% of the book in a close against a 10% cap).
+- `pflab verify --offline --app D:\PortfolioLabApp`: every step that can run passes; the migration of a copy of the live store to schema v143 lost no row and the rollback lost no row; the live ledger's hash was the same before and after.
+- A real Opus strategist session (scratch store, real Docker sandbox, real 2005-2017 history): 17 turns, 3 lab runs, one challenger, one allocation proposal, one note, Rs 19.31. The new tools and prompt work end to end.
+- A preview of the new close loop on a COPY of the live store (the 9 Nov close, 0.43 seconds): it buys three index ETFs and the gold ETF and trims the one stock over the 10% rail; the international ETF has no price in the store, so its 10% stays cash.
