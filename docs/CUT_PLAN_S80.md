@@ -35,3 +35,6 @@ The screens (main page spend panel, champion against baseline, storylines) are n
 
 ## Update 2026-11-09 (after his "get this done")
 Steps 1 to 3 are DONE and merged: triggers, arrivals, readers, suggestions and proposals are deleted with their routes, tools, screens and tests. Measured while doing it: `hq/scorecard.py` cannot go (the close loop and the paper provenance read it), and the brain's `think`, the worker loop and `missions` are the chat's and the Telegram asks' engine. Steps 4 and 5 therefore start with a new chat path (the assistant answering from tools without a mission or a brain pass), and only then the brain passes, missions, workers, board, roster, cases, plans, playbooks and pool can go. The three screens the redesign asked for are built (`core/screens.py`).
+
+## Update 2026-11-09 evening
+Steps 4 and 5 are DONE (see PLAN.md, the later note): the chat was rebuilt first, then the brain, missions, workers, plans, playbooks, pool and the paper team's decisions were deleted. Left: cases, board, roster, scorecard, keeper, provenance and the graph (his design first).
