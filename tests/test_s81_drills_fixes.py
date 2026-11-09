@@ -113,6 +113,8 @@ def test_the_graph_and_us_jobs_skip_softly_when_their_inputs_are_absent(bare_con
     from datetime import datetime as _dt
     from pflab.data import us_prices
     from pflab.service import jobs, tasks  # noqa: F401
+    from pflab.paper import book
+    monkeypatch.setattr(book, "session_open", lambda now: False)                 # (the long jobs wait for the close: tested below)
     data = tmp_path / "data"
     data.mkdir()
     ctx = jobs.Ctx(bare_con, _dt(2026, 11, 9, 12, 0), tmp_path, data, tmp_path)
@@ -151,3 +153,25 @@ def test_what_the_exit_manager_trades_counts_against_the_days_turnover_cap_and_t
     assert sum(o["value"] for o in free["orders"]) <= 0.10 * s["value"] + 1.0
     assert sum(o["value"] for o in net["orders"]) <= 0.04 * s["value"] + 1.0 and net["orders"]
     assert not rails.check(core_con, s, zero, used=0.5 * s["value"])["orders"]                     # the exits alone used the whole day: the rebalance waits
+
+
+def test_long_jobs_wait_for_the_close_so_the_session_loop_is_not_held_and_the_news_top_up_is_detached(tmp_path, monkeypatch):
+    """Found in the first-open emulation (S81): the scheduler thread is shared with the 5-minute session loop; a job of minutes must not run inside the session, and the news top-up must not be waited for."""
+    from datetime import datetime
+    from types import SimpleNamespace
+    from pflab.paper import book
+    from pflab.service import tasks_s79_kg2 as kg2, tasks_s79_lab as lab
+    monkeypatch.setenv("PFLAB_KG2", "on")
+    ctx = SimpleNamespace(now=datetime(2026, 11, 11, 11, 0), data_root=tmp_path)
+    monkeypatch.setattr(book, "session_open", lambda now: True)
+    assert kg2._enabled_out_of_session(ctx)[0] is False and "in session" in kg2._enabled_out_of_session(ctx)[1]
+    assert lab._strategist_enabled(ctx)[0] is False
+    monkeypatch.setattr(book, "session_open", lambda now: False)
+    assert kg2._enabled_out_of_session(ctx)[0] is True and lab._strategist_enabled(ctx)[0] is True
+    started = {}
+    import subprocess
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: started.update(args=a[0]) or SimpleNamespace(pid=4242))
+    monkeypatch.setattr(kg2, "_missing_inputs", lambda root: "")
+    (tmp_path / "tools").mkdir(exist_ok=True)
+    out = kg2._topup(ctx)
+    assert out["started"] is True and out["pid"] == 4242 and "--days" in started["args"] and "3" in started["args"]

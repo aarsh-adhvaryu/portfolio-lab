@@ -25,7 +25,12 @@ def _strategist_enabled(ctx):
     from pflab import core
     if core.killed():
         return False, "the kill switch is set (configs/core.toml [core] kill)"
-    return (True, "") if core.strategist_on() else (False, "switched off in configs/core.toml [strategist]")
+    if not core.strategist_on():
+        return False, "switched off in configs/core.toml [strategist]"
+    from pflab.paper import book
+    if book.session_open(ctx.now):                                      # the scheduler thread is shared with the 5-minute session loop (S81): a session of minutes waits for the close
+        return False, "the market is in session: the strategist waits for the close so the session loop is not held"
+    return True, ""
 
 
 def _lab_close(ctx) -> dict:

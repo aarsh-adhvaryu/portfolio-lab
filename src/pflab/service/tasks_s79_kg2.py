@@ -22,6 +22,17 @@ def _enabled(ctx):
     return (True, "") if switch.on() else (False, "the graph is OFF (configs/kg2.toml [kg] on = false)")
 
 
+def _enabled_out_of_session(ctx):
+    """The scheduler thread is shared with the 5-minute session loop (stops, entries): a job that takes minutes waits for the session to end (S81)."""
+    ok, why = _enabled(ctx)
+    if not ok:
+        return ok, why
+    from pflab.paper import book
+    if book.session_open(ctx.now):
+        return False, "the market is in session: a long job waits for the close so the session loop is not held"
+    return True, ""
+
+
 def _missing_inputs(root) -> str:
     """The graph's raw inputs are files the collectors bring (the instrument names behind the index membership). A data folder without them is waiting for them, not broken (drill, S81)."""
     p = Path(root) / "index_membership" / "name_map.parquet"
@@ -54,18 +65,15 @@ def _topup(ctx) -> dict:
     if not tool.exists():
         return {"skipped": "tools/news_s81_run.py is not in this install"}
     until = (ctx.now + timedelta(minutes=30)).strftime("%H:%M")
-    try:
-        r = subprocess.run([sys.executable, str(tool), "--root", str(root), "--days", "3", "--until", until], capture_output=True, text=True, timeout=45 * 60)
-    except subprocess.TimeoutExpired:
-        return {"failed": {"news": "the collection did not end in 45 minutes"}}
-    tail = (r.stdout or "").strip().splitlines()[-1:] or [""]
-    out = {"returncode": r.returncode, "last": tail[0][:300]}
-    if r.returncode not in (0, 2):
-        out["failed"] = {"news": f"exit code {r.returncode}"}
-    return out
+    log = root / "news_s81" / "topup.out"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    flags = (getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)) if os.name == "nt" else 0
+    with open(log, "ab") as fh:                                  # started detached and not waited for: the scheduler thread is shared with the session loop (S81)
+        p = subprocess.Popen([sys.executable, str(tool), "--root", str(root), "--days", "3", "--until", until], stdout=fh, stderr=fh, stdin=subprocess.DEVNULL, creationflags=flags)
+    return {"started": True, "pid": p.pid, "until": until, "log": str(log)}
 
 
 register(Job("kg2_nightly", Interval(360, weekdays_only=False), _nightly, "the rebuilt knowledge graph: classify, build, audit, load only when the audit passes (S81; code, local model)",
-             cooldown_minutes=120, enabled_fn=_enabled))
+             cooldown_minutes=120, enabled_fn=_enabled_out_of_session))
 register(Job("news_s81_topup", Interval(720, weekdays_only=False), _topup, "the daily news top-up (last 3 days, article text inside the cap) as its own process (S81)", cooldown_minutes=180,
              enabled_fn=_enabled))
