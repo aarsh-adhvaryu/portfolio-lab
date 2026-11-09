@@ -297,17 +297,19 @@ def fill_live(con, now: datetime) -> List[dict]:
     return fill(con, now.date(), now, live=live) if live else []
 
 
-def fill(con, upto: date, now: datetime, live: Optional[Dict[str, float]] = None) -> List[dict]:
+def fill(con, upto: date, now: datetime, live: Optional[Dict[str, float]] = None, exact: bool = False, only: Optional[set] = None) -> List[dict]:
     """Fill every open order whose session has closed by `upto`, or (with `live`) fill today's orders now at the live quote. Buys are cut to the cash and the rails at the fill price; sells never exceed the holding."""
     from pflab.paper import rails
     done = []
     for oid, placed, did, isin, side, qty, amount in con.execute(
             "SELECT order_id, placed_at, decision_id, isin, side, qty, amount FROM paper_orders WHERE status='open' ORDER BY placed_at, order_id").fetchall():
+        if only is not None and oid not in only:                  # S81: the session loop fills exactly the order it placed
+            continue
         live_px = None
         if live is not None:
             if isin not in live or placed > now:
                 continue
-            d, live_px = now.date(), live[isin] * (1 + SLIPPAGE if side == "buy" else 1 - SLIPPAGE)
+            d, live_px = now.date(), (live[isin] if exact else live[isin] * (1 + SLIPPAGE if side == "buy" else 1 - SLIPPAGE))   # S81 `exact`: the price already carries the liquidity model's spread and slippage
         else:
             d = fill_day(con, placed, isin, upto)
         if d is None:
@@ -324,7 +326,7 @@ def fill(con, upto: date, now: datetime, live: Optional[Dict[str, float]] = None
                 funds.ensure(con, min(want, room) * 1.002, d, now)
             avail = cash(con, d)
             spend = max(0.0, min(want, room, avail / 1.002))
-            q = math.floor(spend / px) if meta["asset_class"] in BUYABLE else 0
+            q = math.floor(spend / px + 1e-9) if meta["asset_class"] in BUYABLE else 0
             if q <= 0:
                 con.execute("UPDATE paper_orders SET status='cancelled', fill_day=?, note=coalesce(note,'') || ? WHERE order_id=?",
                             [d, f" | nothing bought: room Rs {room:,.0f} under the rails, cash Rs {avail:,.0f}", oid])
