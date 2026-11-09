@@ -98,9 +98,22 @@ def compare(ctx, a):
         row = service.card_row(r)
         row["policy_id"] = pid
         row["screen"] = service.screen(r["score"], r["shuffled"], base["score"]) if base else {"ok": False, "failed": ["no baseline run yet"]}
-        row["index_clause"] = service.index_clause(r["score"])
+        row["index_rule"] = service.index_rule(r["score"])             # A50: the two-dimension rule against the index, after tax and charges on both sides
         out.append(row)
     return {"rows": out, "baseline": None if base is None else service.card_row({**base, "run_id": base["run_id"]})}
+
+
+@tool("propose_allocation", "Propose the system's ALLOCATION (yours; re-examine it weekly): classes (percent: equity, gold, international, cash; sum 100), sleeves (core, longterm, swing; sum 100; "
+      "swing <= 20, longterm <= 60, core >= 30; gold, international, cash sit inside the core), sectors (each <= 25) and reasons. Code checks the rails and caps, stores it as lab policy "
+      "`alloc_t<id>` (run_lab it) and adopts it by the index rule and the final check. The same split again records that it stands.",
+      {"classes": O("{equity, gold, international, cash} in percent"), "sleeves": O("{core, longterm, swing} in percent"), "sectors": O("{sector: percent of the book}, may be empty"),
+       "reasons": S("what the book should hold and why, and what would change it (40+ characters)")}, ["classes", "sleeves", "reasons"])
+def propose_allocation(ctx, a):
+    from pflab.lab import alloc_lab
+    r = alloc_lab.propose(ctx.con, ctx.pm_dir, ctx.now, a.get("classes") or {}, a.get("sleeves") or {}, str(a.get("reasons", "")), sectors=a.get("sectors") or {})
+    if r.get("ok"):
+        ctx.stats["variants"] += 1 if r.get("variant") else 0
+    return r
 
 
 @tool("make_challenger", "Put a variant with a scored history run into live shadow as a challenger (at most 5 at once). If it has a grid, name the params you mean.",

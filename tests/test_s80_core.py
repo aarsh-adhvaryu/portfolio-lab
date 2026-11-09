@@ -124,12 +124,12 @@ def test_the_loop_places_orders_records_decisions_and_runs_a_session_once(con):
     r = loop.run(con, NOW, None, calm_index())
     assert r.get("status") in ("traded", "held"), r
     row = con.execute("SELECT policy_id, status FROM core_runs_s80 WHERE day=?", [DAYS[-1]]).fetchone()
-    assert row == (policy.POLICY_ID, r["status"])
+    assert row == (policy.active_id(), r["status"])
     n_orders = con.execute("SELECT count(*) FROM paper_orders WHERE status='open'").fetchone()[0]
     assert n_orders == len(r["orders"])
     if r["orders"]:
         d = con.execute("SELECT status, case_id, reason FROM paper_decisions ORDER BY decision_id DESC LIMIT 1").fetchone()
-        assert d[0] == "executed" and d[1] is None and (d[2].startswith(policy.POLICY_ID) or d[2].startswith("exit manager"))          # S81: a rail trim is the exit manager's
+        assert d[0] == "executed" and d[1] is None and (d[2].startswith(policy.active_id()) or d[2].startswith("exit manager"))          # S81: a rail trim is the exit manager's
         assert con.execute("SELECT count(*) FROM paper_claims").fetchone()[0] >= 4          # the 7/28/84/182-day claims are registered
     assert loop.run(con, NOW, None, calm_index()) == {"skipped": f"session {DAYS[-1]} already done"}
     assert con.execute("SELECT count(*) FROM paper_acts WHERE loop='core_loop'").fetchone()[0] == 1
@@ -173,7 +173,7 @@ def test_the_book_card_has_the_same_sections_every_close_and_stays_under_six_tho
     assert heads[:1] == ["BOOK CARD, close of 2026-10-30 (written by code; the same layout every day)".split(":")[0]] or text.startswith("BOOK CARD, close of 2026-10-30")
     for h in ("BOOK:", "ALLOCATION TARGET:", "RISK:", "FORECAST:", "STORYLINES:", "POLICIES:", "LAST 10 DECISIONS", "CHANGED SINCE THE LAST CARD:"):
         assert h in text
-    assert "baseline_v1" in text and "AAA" in text and "no open storyline" in text.split("STORYLINES:")[1].splitlines()[0]
+    assert policy.active_id() in text and "AAA" in text and "no open storyline" in text.split("STORYLINES:")[1].splitlines()[0]
     assert "first card" in text                                                  # no earlier card to compare with
 
 
@@ -233,5 +233,5 @@ def test_a_champion_that_fails_falls_back_to_the_baseline_for_that_close(con):
     _make_champion(con, "def decide(state, forecasts, sims, storylines, params=None):\n    return {}['x']\n")
     r = loop.run(con, NOW, None, calm_index(), live_data=_live_data(con))
     assert r.get("status") in ("traded", "held")
-    assert con.execute("SELECT policy_id FROM core_runs_s80 WHERE day=?", [DAYS[-1]]).fetchone()[0] == "baseline_v1"
+    assert con.execute("SELECT policy_id FROM core_runs_s80 WHERE day=?", [DAYS[-1]]).fetchone()[0] == policy.active_id()
     assert con.execute("SELECT count(*) FROM paper_acts WHERE loop='core_loop' AND what LIKE '%the baseline decides this close%'").fetchone()[0] == 1

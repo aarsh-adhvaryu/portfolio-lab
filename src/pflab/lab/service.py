@@ -22,10 +22,13 @@ MAX_CHALLENGERS = 5
 SHADOW_SESSIONS = 20                       # live sessions a challenger must not do worse in before it can replace the champion
 # The registered history screen (vs the plain baseline over the same window, after the many-trials penalty):
 SCREEN = {"min_dsr": 0.90, "min_excess_vs_baseline": 0.005, "max_beats_real_frac": 0.10, "max_extra_drawdown": 0.05}
-# His rule (2026-11-09): a policy may not trade the book if its history trails the Nifty 500 by more than this a year. It applies to PROMOTION only: it does not limit what the
-# strategist may try, what enters live shadow, or what counts as beating the plain baseline (the progress measure), so it cannot leave the lab with nothing to pick; how many
-# variants it alone holds back is counted and shown (`core/screens.py`). Changing the limit is his decision.
-INDEX_CLAUSE = {"max_lag_vs_index": 0.02}
+# His rule A50 (2026-11-09), REPLACING the return-only "within 2 points a year of the Nifty 500" clause: a TWO-DIMENSION comparison with the index over the history window, AFTER tax and
+# charges on BOTH sides (the policy sold out on the last day; the index held as an ETF with its own charges and the tax of a buy-and-hold: `engine.score`). It passes when
+#   A  the return lag is at most `a_max_lag` a year AND the worst fall is no deeper than the index's (within `fall_tol`, the measurement noise of a worst fall), OR
+#   B  the return lag is at most `b_max_lag` a year AND the worst fall is at least `b_fall_cut` (one third) smaller than the index's.
+# It applies to PROMOTION (a probation slice) only: it does not limit what the strategist may try or what counts as beating the plain baseline. Changing a figure is his decision.
+INDEX_RULE = {"a_max_lag": 0.02, "b_max_lag": 0.04, "b_fall_cut": 1.0 / 3.0, "fall_tol": 0.005}
+INDEX_CLAUSE = INDEX_RULE                      # the old name: it is the new rule now
 
 
 def now_or(now: Optional[datetime]) -> datetime:
@@ -77,7 +80,7 @@ def add_variant(con, pm_dir: Path, now: datetime, policy_id: str, code: str, hyp
     """Validate and store a policy (status 'draft'). A new id each time: an edit is a new variant with `parent` set, so the lineage and the trial count stay honest."""
     if not ID_RE.match(policy_id or ""):
         return {"ok": False, "problem": "policy_id must be lowercase letters, digits and underscores, 3-41 characters, starting with a letter"}
-    if policy_id in (BASELINE_ID, "baseline_v1") or get(con, policy_id):
+    if policy_id in (BASELINE_ID, "baseline_v1", "baseline_v2") or get(con, policy_id):
         return {"ok": False, "problem": f"{policy_id} already exists: give an edit a new id and name its parent"}
     if len(" ".join((hypothesis or "").split())) < 15:
         return {"ok": False, "problem": "state the hypothesis in one line (what this variant leans on and why)"}
@@ -224,19 +227,44 @@ def screen(score: dict, shuffled: dict, base: dict) -> dict:
     return {"ok": not failed, "failed": failed}
 
 
-def index_clause(score: dict) -> dict:
-    """The Nifty 500 limit on a history score: {ok, lag, failed: [...]}. `excess_cagr` is the policy's after-tax-and-charges return minus the index's over the same days."""
-    ex = score.get("excess_cagr")
-    if ex is None:
-        return {"ok": False, "lag": None, "failed": ["the history run has no comparison with the Nifty 500"]}
-    lag = -float(ex)
-    lim = INDEX_CLAUSE["max_lag_vs_index"]
-    return {"ok": lag <= lim, "lag": round(lag, 4), "limit": lim,
-            "failed": [] if lag <= lim else [f"it trails the Nifty 500 by {lag:.1%} a year in the history (the limit is {lim:.0%})"]}
+def index_rule(score: dict) -> dict:
+    """The two-dimension index rule (A50) on a history or final score: {ok, via ('A'|'B'|None), lag, fall, index_fall, fall_ratio, failed: [...], figures}.
+    Return lag = the index's after-tax return minus the policy's (positive = behind); falls are negative fractions, so 'deeper' is more negative. A score with no after-tax index
+    figures (a run that predates A50) cannot pass."""
+    r = INDEX_RULE
+    if any(score.get(k) is None for k in ("cagr_liq", "bench_cagr_liq", "max_drawdown", "bench_max_drawdown_net")):
+        return {"ok": False, "via": None, "lag": None, "failed": ["the run has no after-tax comparison with the index (run it again in the lab)"], "figures": {}}
+    lag = float(score["bench_cagr_liq"]) - float(score["cagr_liq"])
+    fall, ifall = float(score["max_drawdown"]), float(score["bench_max_drawdown_net"])
+    ratio = (fall / ifall) if ifall < 0 else 0.0                    # the policy's worst fall as a share of the index's (0.6 = 40% smaller)
+    a_ok = lag <= r["a_max_lag"] + 1e-12 and fall >= ifall - r["fall_tol"]
+    b_ok = lag <= r["b_max_lag"] + 1e-12 and ratio <= 1.0 - r["b_fall_cut"] + 1e-12
+    fig = {"policy_return_after_tax": round(float(score["cagr_liq"]), 4), "index_return_after_tax": round(float(score["bench_cagr_liq"]), 4), "lag": round(lag, 4),
+           "policy_worst_fall": round(fall, 4), "index_worst_fall": round(ifall, 4), "fall_vs_index": round(ratio, 3), "index_etf_cost": score.get("index_etf_cost"),
+           "index_tax_at_end": None if score.get("index_tax_at_end") is None else round(float(score["index_tax_at_end"])),
+           "index_charges": None if score.get("index_charges") is None else round(float(score["index_charges"])),
+           "policy_tax_at_end": None if score.get("policy_tax_at_end") is None else round(float(score["policy_tax_at_end"]))}
+    out = {"lag": round(lag, 4), "fall": round(fall, 4), "index_fall": round(ifall, 4), "fall_ratio": round(ratio, 3), "figures": fig}
+    if a_ok or b_ok:
+        return {"ok": True, "via": "A" if a_ok else "B", "failed": [], **out}
+    if lag > r["b_max_lag"]:
+        why = (f"after tax and charges it trails the index by {lag:.1%} a year; the rule allows {r['a_max_lag']:.0%} with a worst fall no deeper than the index's, "
+               f"or {r['b_max_lag']:.0%} with a worst fall a third smaller")
+    elif lag > r["a_max_lag"]:
+        why = f"it trails the index by {lag:.1%} a year, more than the {r['a_max_lag']:.0%} allowed unless its worst fall is a third smaller than the index's (it is {fall:.1%} against {ifall:.1%})"
+    else:
+        why = f"its worst fall {fall:.1%} is deeper than the index's {ifall:.1%}, and not a third smaller either"
+    return {"ok": False, "via": None, "failed": [why], **out}
+
+
+index_clause = index_rule                      # the old name
 
 
 def screen_rules() -> dict:
-    return {**SCREEN, **INDEX_CLAUSE, "shadow_sessions": SHADOW_SESSIONS, "note": "all four must hold on the history window; then the final check (2018-2021, once, by code) and 20 live shadow sessions not worse than the champion's"}
+    return {**SCREEN, "index_rule": INDEX_RULE, "shadow_sessions": SHADOW_SESSIONS,
+            "note": "the four screen rules and the two-dimension index rule (after tax and charges on both sides) must hold on the history window; then the final check (2018-2021, once, by code, "
+                    "the same index rule); then a probation slice of 5% of the book that grows to 10% and 20% while its live record is not worse than the champion's over 20 and 40 sessions, "
+                    "and is withdrawn when it is worse"}
 
 
 # --- challengers, notes -----------------------------------------------------------------------------------------------------------

@@ -21,7 +21,11 @@ import pandas as pd
 LT_EXEMPT, ST_RATE, LT_RATE, SLAB = 125_000.0, 0.20, 0.125, 0.30                      # the paper book's tax constants (paper/book.py)
 DEFAULT_CFG = {"capital": 1_000_000.0, "cash_rate": 0.065, "n_liquid": 60, "min_history": 300, "turn_window": 250, "max_stock": 0.10, "max_etf": 0.35, "max_sector": 0.25,
                "turnover_day": 0.10, "turnover_month": 0.40, "min_trade": 0.001, "min_trade_rupees": 2000.0, "max_cost_share": 0.02, "history_rows": 800,
-               "charges": {"equity": {"buy": 0.0012, "sell": 0.0012}, "etf": {"buy": 0.0003, "sell": 0.0003}}}
+               "charges": {"equity": {"buy": 0.0012, "sell": 0.0012}, "etf": {"buy": 0.0003, "sell": 0.0003}},
+               # S81 (A50): the index the policy is measured against is HELD AS AN ETF: its yearly cost is taken out of the total-return index and its buy and sell charges and the tax of a
+               # buy-and-hold (one sale at the end of the window, long-term, above the exemption) are charged. A stated ESTIMATE (Indian index ETFs charge 0.04% to 0.25% a year in
+               # expenses and track slightly below their index), not read from a primary source in this session.
+               "index_etf_cost": 0.0020}
 
 
 # --- tax and the book -------------------------------------------------------------------------------------------------------------
@@ -328,8 +332,51 @@ def stats(v: pd.Series, cash_rate: float) -> dict:
             "skew": float(r.skew()) if len(r) > 3 else 0.0, "kurt": float(r.kurt() + 3.0) if len(r) > 3 else 3.0}
 
 
+def index_after_tax(bench: pd.Series, v: pd.Series, cfg: dict) -> dict:
+    """The index held as an ETF over the policy's own days, after its charges and the tax of a buy-and-hold (S81, A50): the total-return index less the yearly ETF cost, bought on the first
+    day (buy charge), sold on the last (sell charge, then the long-term tax above the exemption on the whole gain, as a buy-and-hold pays when it is finally sold). -> the path (a Series)
+    and the figures. The policy side is liquidated the same way (`liquidation`), so both sides are measured as money in hand after tax."""
+    b = bench.reindex(v.index).ffill().bfill().dropna()
+    cap = float(cfg["capital"])
+    if len(b) < 30:
+        return {}
+    buy, sell = float(cfg["charges"]["etf"]["buy"]), float(cfg["charges"]["etf"]["sell"])
+    days = np.array([(d - b.index[0]).days for d in b.index], dtype=float)
+    path = cap * (1 - buy) * (b / float(b.iloc[0])) * (1.0 - float(cfg["index_etf_cost"])) ** (days / 365.25)
+    end = float(path.iloc[-1])
+    fee = end * sell
+    held = (b.index[-1] - b.index[0]).days
+    gain = end - fee - cap
+    tax = tax_of({"lt_eq" if held > 365 else "st_eq": gain})
+    n = len(path)
+    st = stats(path, cfg["cash_rate"])
+    return {"path": path, "bench_cagr_liq": _cagr(end - fee - tax, cap, n), "bench_cagr_net": st["cagr"], "bench_max_drawdown_net": st["max_drawdown"], "index_tax_at_end": tax,
+            "index_charges": cap * buy + fee, "index_etf_cost": float(cfg["index_etf_cost"]), "bench_end_after_tax": end - fee - tax}
+
+
+def liquidation(book: Book, px_row: pd.Series, day, meta: dict) -> Tuple[float, float]:
+    """(charges, tax) if the whole book were sold at `px_row` on `day`: the same FIFO lots and tax buckets, the tax on the sum of the gains with the year's set-off."""
+    fee_tot, gains_tot = 0.0, {}
+    for k in [k for k in book.lots if book.qty(k) > 1e-9]:
+        p = float(px_row.get(k, float("nan")))
+        if p != p:
+            continue
+        kind = "etf" if meta[k].get("etf") else "equity"
+        fee, _, gains = book.sell_cost(k, book.qty(k), p, day, kind, meta[k].get("tax", "EQUITY"))
+        fee_tot += fee
+        for b, x in gains.items():
+            gains_tot[b] = gains_tot.get(b, 0.0) + x
+    before = book.gains.get(fin_year(day), {})
+    after = dict(before)
+    for b, x in gains_tot.items():
+        after[b] = after.get(b, 0.0) + x
+    return fee_tot, max(0.0, tax_of(after) - tax_of(before))
+
+
 def score(run: dict, data: dict, cfg: dict) -> dict:
-    """The scorecard row of one replay: after tax and charges (the value path already carries both), against the benchmark over the same days."""
+    """The scorecard row of one replay: after tax and charges (the value path already carries both), against the benchmark over the same days.
+    S81 adds the money-in-hand figures of A50: `cagr_liq` (the policy sold out on the last day, charges and tax paid) against `bench_cagr_liq` (the index held as an ETF, the same), and the
+    index's worst fall as an ETF (`bench_max_drawdown_net`). The old fields are unchanged."""
     cfg = {**DEFAULT_CFG, **cfg}
     v = run["value"]
     out = stats(v, cfg["cash_rate"])
@@ -339,13 +386,25 @@ def score(run: dict, data: dict, cfg: dict) -> dict:
     out.update({"bench_cagr": bs["cagr"], "bench_max_drawdown": bs["max_drawdown"], "bench_sharpe": bs["sharpe"], "excess_cagr": out["cagr"] - bs["cagr"],
                 "tax_paid": run["book"].tax, "charges": run["book"].charges, "turnover_per_year": run["book"].traded / years / float(v.mean()), "end_value": float(v.iloc[-1]),
                 "decisions": float(run["decisions"]), "failures": float(run["failures"])})
+    try:
+        ix = index_after_tax(data["bench"], v, cfg)
+        if ix:
+            fee, tax = liquidation(run["book"], data["px"].loc[v.index[-1]], v.index[-1].date(), data["meta"])
+            end = float(v.iloc[-1]) - fee - tax
+            cl = _cagr(end, float(v.iloc[0]), len(v))
+            out.update({"cagr_liq": cl, "policy_tax_at_end": tax, "policy_charges_at_end": fee, "end_after_tax": end, "bench_cagr_liq": ix["bench_cagr_liq"],
+                        "bench_cagr_net": ix["bench_cagr_net"], "bench_max_drawdown_net": ix["bench_max_drawdown_net"], "index_tax_at_end": ix["index_tax_at_end"],
+                        "index_charges": ix["index_charges"], "index_etf_cost": ix["index_etf_cost"], "bench_end_after_tax": ix["bench_end_after_tax"],
+                        "excess_liq": cl - ix["bench_cagr_liq"]})
+    except Exception as e:                                                     # the older fields stand; the two-dimension rule then says the figures are missing
+        out["index_figures_error"] = f"{type(e).__name__}: {str(e)[:120]}"
     return out
 
 
 def monte_carlo(v: pd.Series, n: int = 1000, horizon: int = 252, block: int = 21, seed: int = 80) -> dict:
     """Block-bootstrap the replay's own daily returns into `n` one-year paths: the spread of what this policy's returns could have produced (not a forecast)."""
     r = v.pct_change().dropna().to_numpy()
-    if len(r) < horizon // 2:
+    if n <= 0 or len(r) < horizon // 2:                    # n = 0 is the final check's setting (no Monte Carlo): it used to raise on empty arrays, so the once-only check could never run for real
         return {}
     rng = np.random.default_rng(seed)
     nb = int(math.ceil(horizon / block))

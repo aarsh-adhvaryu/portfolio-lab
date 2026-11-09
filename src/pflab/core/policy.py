@@ -84,3 +84,40 @@ def decide(state: dict) -> dict:
         weights.update({k: 0.0 for k in inv})
         weights.update(risk_weights(budget, inv, caps))
     return {"weights": weights, "notes": notes, "classes": want}
+
+
+# --- S81 (A48): which baseline decides -----------------------------------------------------------------------------------------------------------------------------------------------
+# `decide` above is baseline_v1 and stays as it was (the safe fallback and the S80 tests). The loop asks `active_id()` / `decide_active()`: `[baseline_v2] version` picks v2 (default) or v1.
+BASELINES = ("baseline_v1", "baseline_v2")
+
+
+def active_id() -> str:
+    from pflab import core
+    return "baseline_v2" if core.baseline_version() == "v2" else POLICY_ID
+
+
+def decide_active(state: dict) -> dict:
+    """The baseline's decision for this close: v2 (core ETFs and the longterm names) unless the config falls back to v1."""
+    if active_id() == "baseline_v2":
+        from pflab.core import baseline_v2
+        return baseline_v2.decide(state)
+    return decide(state)
+
+
+def universe(con, day=None, cfg=None) -> list:
+    """Securities the active baseline may want that the book does not hold (they enter the state as rows with no quantity): the core ETFs under v2, none under v1."""
+    if active_id() != "baseline_v2":
+        return []
+    from pflab import core
+    from pflab.core import baseline_v2
+    try:
+        return baseline_v2.core_isins(con, cfg or core.settings())
+    except Exception:
+        return []
+
+
+def registered() -> list:
+    """(policy_id, code hash, note) of the baselines the store should list; the active one is the champion, the other 'previous'."""
+    from pflab.core import baseline_v2
+    return [(POLICY_ID, code_hash(), "the S80 baseline: hold the allocation target, size by risk, rebalance in a band, cut equity when the fall gauge fires"),
+            (baseline_v2.POLICY_ID, baseline_v2.code_hash(), baseline_v2.NOTE)]

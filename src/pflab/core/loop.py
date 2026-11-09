@@ -23,18 +23,22 @@ from pflab.core import policy, rails, state as st
 
 
 def ensure_policy(con, now: datetime) -> None:
-    h = policy.code_hash()
-    r = con.execute("SELECT code_hash FROM core_policies_s80 WHERE policy_id=?", [policy.POLICY_ID]).fetchone()
-    if r is None:
-        con.execute("INSERT INTO core_policies_s80 (policy_id, status, code_hash, created_at, promoted_at, note) VALUES (?,?,?,?,?,?)",
-                    [policy.POLICY_ID, "champion", h, now, now, "the baseline: hold the allocation target, size by risk, rebalance in a band, cut equity when the fall gauge fires"])
-    elif r[0] != h:
-        con.execute("UPDATE core_policies_s80 SET code_hash=? WHERE policy_id=?", [h, policy.POLICY_ID])
+    """Both baselines are listed in the policy store; while no lab policy is champion the one `[baseline_v2] version` names is (S81), the other is 'previous' (the safe fallback)."""
+    active = policy.active_id()
+    for pid, h, note in policy.registered():
+        r = con.execute("SELECT code_hash FROM core_policies_s80 WHERE policy_id=?", [pid]).fetchone()
+        if r is None:
+            con.execute("INSERT INTO core_policies_s80 (policy_id, status, code_hash, created_at, note) VALUES (?,?,?,?,?)", [pid, "previous", h, now, note])
+        elif r[0] != h:
+            con.execute("UPDATE core_policies_s80 SET code_hash=? WHERE policy_id=?", [h, pid])
+    if not con.execute("SELECT 1 FROM core_policies_s80 WHERE status='champion' AND policy_id NOT IN ('baseline_v1','baseline_v2') AND code IS NOT NULL").fetchone():
+        con.execute("UPDATE core_policies_s80 SET status='previous' WHERE policy_id IN ('baseline_v1','baseline_v2') AND policy_id <> ? AND status='champion'", [active])
+        con.execute("UPDATE core_policies_s80 SET status='champion', promoted_at=coalesce(promoted_at, ?) WHERE policy_id=? AND status <> 'champion'", [now, active])
 
 
 def _lab_champion(con) -> Optional[dict]:
     """The champion when it is a lab policy (code in the store); None while the baseline is champion."""
-    r = con.execute("SELECT policy_id FROM core_policies_s80 WHERE status='champion' AND policy_id <> ? AND code IS NOT NULL ORDER BY promoted_at DESC NULLS LAST LIMIT 1", [policy.POLICY_ID]).fetchone()
+    r = con.execute("SELECT policy_id FROM core_policies_s80 WHERE status='champion' AND policy_id NOT IN ('baseline_v1','baseline_v2') AND code IS NOT NULL ORDER BY promoted_at DESC NULLS LAST LIMIT 1").fetchone()
     if not r:
         return None
     from pflab.lab import service
@@ -83,7 +87,7 @@ def _decision(con, now, o: dict, index: Optional[pd.Series], day, pid: str = pol
     if o.get("reason"):                                                    # an exit-manager order (S81): the reason is written by `core/exits.py`
         why = f"exit manager ({o.get('kind', 'exit')}): {o['reason']}"
     else:
-        why = (f"{pid}: weight {o['from_w']:.1%} now, target {o['to_w']:.1%} " + ("(risk-sized inside the allocation target)" if pid == policy.POLICY_ID else "(the champion policy's target)")
+        why = (f"{pid}: weight {o['from_w']:.1%} now, target {o['to_w']:.1%} " + ("(risk-sized inside the allocation target)" if pid in policy.BASELINES else "(the champion policy's target)")
                + ("; risk cut by the fall gauge" if o["risk_cut"] else "") + (f"; {o['note']}" if o["note"] else ""))
     if o["side"] == "sell" and (o["charges"] or o["tax"]) and not o.get("reason"):
         why += f"; estimated charges Rs {o['charges']:,.0f} and tax Rs {o['tax']:,.0f}"
@@ -115,7 +119,7 @@ def run(con, now: datetime, root=None, index: Optional[pd.Series] = None, live_d
     index = index if index is not None else manager._index(root)
     cfg = core.settings()
     s = st.build(con, day, root, index, cfg)
-    pid, dec = policy.POLICY_ID, None
+    pid, dec = policy.active_id(), None
     champ = _lab_champion(con)
     if champ is not None:                                                 # a promoted lab policy decides; any failure falls back to the baseline for this close
         try:
@@ -126,7 +130,7 @@ def run(con, now: datetime, root=None, index: Optional[pd.Series] = None, live_d
         except Exception as e:
             cadence.act(con, now, "core_loop", f"champion {champ['policy_id']} failed ({type(e).__name__}: {str(e)[:200]}): the baseline decides this close", False)
     if dec is None:
-        dec = policy.decide(s)
+        dec = policy.decide_active(s)
     views_note = None
     if cfg["tactical"]["on"]:                                              # the tactical lane: active views adjust the target weights BEFORE the rails (every cap and limit still applies)
         try:
@@ -162,13 +166,18 @@ def run(con, now: datetime, root=None, index: Optional[pd.Series] = None, live_d
         did = _decision(con, now, o, index, day, pid)
         oid = book.place(con, now, did, o["isin"], o["side"], qty=o["qty"], amount=o["amount"], note=f"{pid} decision #{did}")
         manager.register(con, did)
+        try:                                                              # S81: the position is tagged with its sleeve as the order is placed
+            from pflab.core import sleeves
+            sleeves.tag_order(con, o["isin"], day, pid)
+        except Exception as e:
+            cadence.act(con, now, "core_loop", f"the sleeve of {o['symbol']} could not be recorded: {type(e).__name__}: {str(e)[:120]}", False)
         placed.append({"decision_id": did, "order_id": oid, "symbol": o["symbol"], "side": o["side"], "rupees": round(o["value"], 2)})
     status = "traded" if placed else "held"
     brief = {"value": round(s["value"], 2), "gauge": s["gauge"], "breaker": s["breaker"], "target_id": (s["target"] or {}).get("id"), "classes_wanted": dec["classes"]}
     note = "; ".join(dec["notes"])
     con.execute("INSERT INTO core_runs_s80 VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 [day, now, pid, status, round(time.time() - t0, 3), json.dumps(brief, default=str), json.dumps({k: round(v, 5) for k, v in dec["weights"].items()}),
-                 json.dumps(chk["clipped"], default=str), json.dumps(placed), json.dumps(chk["skipped"], default=str), note[:400]])
+                 json.dumps(chk["clipped"], default=str), json.dumps(placed), json.dumps(chk["skipped"], default=str), note[:900]])
     card_tokens = None
     try:                                                                  # the book card for the strategist: never allowed to fail the loop
         from pflab.core import card

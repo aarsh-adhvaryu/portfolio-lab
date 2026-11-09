@@ -24,6 +24,14 @@ PANEL_START, PANEL_END = date(2004, 1, 1), date(2021, 12, 31)
 HISTORY = (date(2005, 1, 1), date(2017, 12, 31))               # the walk-forward window: the first year only feeds the signals
 FINAL = (date(2018, 1, 1), date(2021, 11, 30))                 # the one final check (2022-2025 stays spent)
 ETFS = {"NIFTYBEES": "EQUITY", "JUNIORBEES": "EQUITY", "BANKBEES": "EQUITY", "GOLDBEES": "LISTED_NONEQUITY"}
+# S81 (A48): the core ETFs the live baseline buys that had NO price history in 2005-2017 (the Nifty 500 ETF listed in 2023, the Nasdaq 100 ETF in 2021). The replay models each as its INDEX
+# TOTAL-RETURN series less a stated yearly cost, so the lab can test a core-and-satellite book over the history window: key -> (series, yearly cost, why). The costs are stated
+# ESTIMATES (not read from a primary source this session): an Indian index ETF charges roughly 0.04% to 0.25% a year in expenses and tracks slightly below its index; an overseas-index ETF
+# about 0.6% plus a larger tracking gap. MON100 is built from the Nasdaq Composite PRICE index times USDINR (no dividends: about 1% a year short of a total-return series).
+CORE_SYNTH = {"ETF:MONIFTY500": {"symbol": "MONIFTY500", "series": ("indices", "NIFTY500_TRI"), "cost": 0.0020, "tax": "EQUITY",
+                                 "why": "no price history before 2023-10: modelled as the Nifty 500 total-return index less 0.20% a year (estimate)"},
+              "ETF:MON100": {"symbol": "MON100", "series": ("global", "US_NASDAQ", "FX_USDINR"), "cost": 0.0060, "tax": "LISTED_NONEQUITY",
+                             "why": "no price history before 2021-06: modelled as the Nasdaq Composite (price) in rupees less 0.60% a year (estimate); taxed as a non-equity fund"}}
 N_NAMES = 600
 LAB_DIR = Path(__file__).resolve().parent
 JUMP = 0.60                                                    # a daily move beyond this is a data break and is removed from the path (as `construct/compare.py`)
@@ -55,15 +63,49 @@ def build_panel(root: Optional[Path] = None, n_names: int = N_NAMES, start: date
     keep = list(med.reindex(stocks).dropna().nlargest(n_names).index) + [k for k in px.columns if k.startswith("ETF:")]
     px, to = px[keep], to[keep]
     px = compare.clean(px.ffill(), JUMP)
+    synth = core_synth_series(root, px.index)
+    for k, (ser, _why) in synth.items():
+        px[k] = ser
+        to[k] = 1.0e9
     meta = {}
     sym = df.drop_duplicates("key").set_index("key")["symbol"]
     for k in keep:
         etf_k = k.startswith("ETF:")
         meta[k] = {"symbol": str(sym.get(k, k)), "etf": etf_k, "sector": None if etf_k else _sector(k), "tax": ETFS.get(str(sym.get(k, "")), "EQUITY") if etf_k else "EQUITY"}
+    for k, (_ser, why) in synth.items():
+        meta[k] = {"symbol": CORE_SYNTH[k]["symbol"], "etf": True, "sector": None, "tax": CORE_SYNTH[k]["tax"], "modelled": why}
     tri = indices.load("NIFTY500_TRI", root)
     s = tri.assign(date=pd.to_datetime(tri["date"])).set_index("date")["close"].sort_index()
     s = s[(s.index >= pd.Timestamp(start)) & (s.index <= pd.Timestamp(end))]
     return {"px": px, "turnover": to, "meta": meta, "index": s, "bench": s}
+
+
+def core_synth_series(root: Path, index: pd.DatetimeIndex) -> dict:
+    """{key: (series on the panel's dates, why)} for the core ETFs modelled from their index (see CORE_SYNTH). A series the data folder does not hold is left out."""
+    out = {}
+    for key, c in CORE_SYNTH.items():
+        try:
+            if c["series"][0] == "indices":
+                d = pd.read_parquet(Path(root) / "indices" / f"{c['series'][1]}.parquet")
+                s = d.assign(date=pd.to_datetime(d["date"])).set_index("date")["close"].sort_index()
+            else:
+                a = pd.read_parquet(Path(root) / "global" / f"{c['series'][1]}.parquet")
+                b = pd.read_parquet(Path(root) / "global" / f"{c['series'][2]}.parquet")
+                a = a.assign(date=pd.to_datetime(a["date"])).set_index("date")["adj_close"].sort_index()
+                b = b.assign(date=pd.to_datetime(b["date"])).set_index("date")["adj_close"].sort_index()
+                b = b.reindex(a.index.union(b.index)).ffill().reindex(a.index)
+                s = (a * b).dropna()
+            s = s[s > 0]
+            s = s.reindex(index.union(s.index)).ffill().reindex(index)
+            first = s.first_valid_index()
+            if first is None:
+                continue
+            yrs = np.array([(d - first).days for d in s.index], dtype=float) / 365.25
+            s = s * (1.0 - float(c["cost"])) ** np.maximum(yrs, 0.0)
+            out[key] = (s, c["why"])
+        except Exception:
+            continue
+    return out
 
 
 def _sector(isin: str) -> Optional[str]:
@@ -79,7 +121,9 @@ def panel_data(root: Optional[Path], pm_dir: Path, force: bool = False) -> dict:
     d = lab_dir(pm_dir)
     f = d / "panel"
     if not force and (f / "px.parquet").exists():
-        return load_panel(f)
+        cached = load_panel(f)
+        if all(k in cached["meta"] for k in CORE_SYNTH):                    # a panel cached before S81 lacks the modelled core ETFs: rebuilt once
+            return cached
     data = build_panel(root)
     f.mkdir(exist_ok=True)
     save_panel(data, f)

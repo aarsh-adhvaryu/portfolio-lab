@@ -31,7 +31,8 @@ STORYLINES AND VIEWS. Open storylines (a cause-and-effect hypothesis with signal
 RULES THAT CANNOT BE BENT
 - Every number comes from code. You never write a number into a decision; you write rules.
 - A policy has no network, no files, no clock; only the toolkit, numpy and pandas. Code outside the policy holds the rails (a company 10%, a sector 25%, an ETF 35%, no borrowing, no shorting), the circuit breaker and the turnover caps: you cannot change them.
-- You cannot promote and you cannot see the 2018-2021 final check; code runs it once, later. Do not try to overfit the history: a variant that wins only by luck will fail the shuffled-signal measure and the live shadow. Promotion also needs the history to trail the Nifty 500 by no more than 2 points a year (the `index_clause` in compare): it never stops you trying anything, but a variant that beats the plain baseline and still lags the index by more than that cannot trade the book.
+- You cannot promote and you cannot see the 2018-2021 final check; code runs it once, later. Do not try to overfit the history: a variant that wins only by luck will fail the shuffled-signal measure and the live shadow. Trading the book also needs the history to pass the INDEX RULE (the `index_rule` in compare), after tax and charges on both sides (the index is held as an ETF with its own cost and the tax of a buy-and-hold): the return lag at most 2 points a year with a worst fall no deeper than the index's, OR the lag at most 4 points a year with a worst fall at least a third smaller. It never stops you trying anything; a variant that clears it and the once-only final check trades a probation slice of 5% of the book, which grows to 10% and 20% while its live record is not worse than the champion's and is withdrawn when it is worse.
+- THE ALLOCATION IS YOURS. The book is a CORE (index, gold and international ETFs) plus satellite sleeves (longterm stock picks, swing). Every weekly session re-examine it (the first message shows it): call `propose_allocation` with classes, sleeve shares, sectors and reasons to change it, or propose the same split again to record that it stands. Code enforces the rails and the sleeve caps (swing at most 20%, longterm at most 60%, core at least 30%). Your proposal runs in the lab like any policy (`alloc_t<id>`); "hold the index" and the starting split are always in the lab, and code adopts a proposal only when it passes the index rule and the final check and is not below what is in force. New cash and sale proceeds go to the core first; stocks are never sold just to reach a sleeve share.
 - The money is limited. Plan the session: a few well-chosen variants, one run each. If you run out of budget the session ends where it is.
 - A session that ends with no lab run is logged as wasted and your next budget is halved.
 Reply in short plain sentences between tool calls. Do not re-describe tool results at length."""
@@ -68,15 +69,19 @@ def session_budget(con, now: datetime) -> dict:
     """What one session may spend: the base, halved after a wasted session (until one succeeds) and halved when 8 weeks passed with no AI-written variant clearing the baseline."""
     st = settings()
     b, why = float(st["session_rupees"]), []
+    applied = core.throttle_active(now)                      # A55: function first: the halving rules are recorded but not applied before `[strategist] throttle_after`
+    note = "" if applied else f" (recorded, NOT applied before {settings().get('throttle_after')}: function first, A55)"
     last = con.execute("SELECT status FROM core_sessions_s80 WHERE finished_at IS NOT NULL ORDER BY session_id DESC LIMIT 1").fetchone()
     if last and last[0] == "wasted":
-        b /= 2
-        why.append("the last session ran no lab run: half the budget until one does")
+        if applied:
+            b /= 2
+        why.append("the last session ran no lab run: half the budget until one does" + note)
     w = weeks_without_win(con, now)
     if w is not None and w >= float(st["weeks_to_win"]):
-        b /= 2
-        why.append(f"{w:.0f} weeks and no AI-written variant has cleared the baseline: the budget is halved")
-    return {"rupees": b, "why": why}
+        if applied:
+            b /= 2
+        why.append(f"{w:.0f} weeks and no AI-written variant has cleared the baseline: the budget is halved" + note)
+    return {"rupees": b, "why": why, "throttle_applied": applied}
 
 
 def due(con, now: datetime) -> List[str]:
@@ -85,7 +90,7 @@ def due(con, now: datetime) -> List[str]:
     out = []
     last = con.execute("SELECT max(started_at) FROM core_sessions_s80").fetchone()[0]
     if last is None or (now - last) >= timedelta(days=int(st["weekly_days"])):
-        out.append("the weekly session")
+        out.append("the weekly session (re-examine the allocation)")
     for (pid,) in con.execute("SELECT policy_id FROM core_policies_s80 WHERE status='challenger'").fetchall():
         rec = shadow.record(con, pid)
         if rec["sessions"] >= service.SHADOW_SESSIONS:
@@ -128,8 +133,13 @@ def _first_message(con, reason: str, budget: float) -> str:
     from pflab.core import card
     c = card.latest(con) or "(no book card yet: the close loop has not run)"
     notes = service.notes(con, 3)
+    try:
+        from pflab.lab import alloc_lab
+        alloc = alloc_lab.status_text(con, datetime.now()) + "\n\n"
+    except Exception:
+        alloc = ""
     return (f"WHY THIS SESSION: {reason}\nBUDGET: about Rs {budget:,.0f} for the whole session (it ends when it is used).\n"
-            f"TRIALS SO FAR: {service.n_trials(con)} variants (each raises the bar for the next).\n\n{c}\n\n"
+            f"TRIALS SO FAR: {service.n_trials(con)} variants (each raises the bar for the next).\n\n{c}\n\n{alloc}"
             "YOUR EARLIER NOTES (newest first):\n" + ("\n".join(f"- ({n['at']}) {n['text']}" for n in notes) if notes else "none yet: this is the first session.")
             + "\n\nBegin: state your hypothesis, then work.")
 
@@ -196,9 +206,10 @@ def run_session(con, pm_dir: Path, root, now: datetime, reason: str, *, client, 
                 [now, final, spent, ctx.stats["lab_runs"], ctx.stats["variants"], ctx.stats["challengers"], (err or ctx.finished or "")[:600], json.dumps(log)[:60000], sid])
     out = {"session_id": sid, "status": final, "cost_inr": round(spent, 2), "budget_inr": budget, "turns": len([x for x in log if "tool" in x or "says" in x]), **ctx.stats}
     if final == "wasted":
-        out["note"] = "no lab run: logged as wasted, the next session gets half the budget until one succeeds"
+        out["note"] = ("no lab run: logged as wasted, the next session gets half the budget until one succeeds" if core.throttle_active(now)
+                       else f"no lab run: logged as wasted (the halving rule is recorded, not applied before {st.get('throttle_after')})")
     w = weeks_without_win(con, now)
-    if w is not None and w >= float(st["weeks_to_win"]):
+    if w is not None and w >= float(st["weeks_to_win"]) and core.throttle_active(now):
         _tell(con, now, f"The strategist has run for {w:.0f} weeks without an AI-written variant clearing the plain baseline; its budget is halved.", f"strategist8w:{now:%Y%m%d}")
     return out
 
@@ -219,6 +230,11 @@ def tick(con, pm_dir: Path, root, now: datetime, client_fn, data=None, box=None)
     rb = promotion.rollback_check(con, now)
     if rb:
         out["rollback"] = rb
+    try:                                                                    # S81 (A49-A50): the allocation candidates are replayed and a proposal is adopted by the index rule (code, free)
+        from pflab.lab import alloc_lab
+        out["allocation"] = alloc_lab.tick(con, pm_dir, root, now, data=data, box=box)
+    except Exception as e:
+        out["allocation"] = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
     reasons = due(con, now)
     if not reasons:
         return {**out, "nothing_due": True}
