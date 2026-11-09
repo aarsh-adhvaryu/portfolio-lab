@@ -92,7 +92,13 @@ def check(con, state: dict, decision: dict) -> dict:
     band = float(state["cfg"]["baseline"]["band_pts"]) / 100.0
     total, day = float(state["value"]), state["day"]
     rows = {r["isin"]: r for r in state["rows"] if r["buyable"]}
-    clipped = clip_weights(state, decision["weights"])
+    from pflab.core import premium                  # S81 A53 phase A: no new buying of an India-listed international ETF far above its NAV (core/premium.py; [premium] in core.toml)
+    weights, prem_why = premium.rail_reasons(premium.attach(con, state), decision["weights"])
+    clipped = clip_weights(state, weights)
+    for k, why in prem_why.items():
+        if k in clipped:
+            clipped[k]["was"] = float(decision["weights"][k])
+            clipped[k]["why"].append(why)
     orders, skipped = [], []
     gauge_on = bool(state["gauge"]["fired"])
     for k, c in clipped.items():
