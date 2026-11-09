@@ -37,7 +37,12 @@ def _lab_close(ctx) -> dict:
         return {"waiting": f"the close loop has not run for {day}"}
     out = shadow.run_shadow(con, ctx.pm_dir, ctx.data_root, ctx.now, day)
     if not out.get("error"):
-        out["promotion"] = promotion.promote_ready(con, ctx.pm_dir, ctx.data_root, ctx.now)
+        out["promotion"] = promotion.promote_ready(con, ctx.pm_dir, ctx.data_root, ctx.now)        # S81 (A50): a variant that cleared history and the final check is granted a probation slice
+        try:
+            from pflab.lab import probation
+            out["probation"] = probation.review(con, ctx.now, day)                                  # slices grow or are withdrawn by their live record
+        except Exception as e:
+            out["probation"] = {"error": f"{type(e).__name__}: {str(e)[:160]}"}
     return out
 
 

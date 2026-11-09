@@ -14,7 +14,7 @@ def decide(state, forecasts, sims, storylines, params=None):
     prices = state["prices"]
     meta = state["meta"]
     stocks = [k for k in state["universe"] if not meta[k]["etf"]]
-    etfs = [k for k in state["universe"] if meta[k]["etf"] and meta[k]["symbol"] != "GOLDBEES"]
+    etfs = [k for k in state["universe"] if meta[k]["etf"] and meta[k]["symbol"] not in ("GOLDBEES", "MONIFTY500", "MON100")]       # (S81: the two modelled core ETFs are for the allocation variants; the plain baseline is as it was)
     liquid = rank_top({k: float(state["turnover"][k].tail(250).median()) for k in stocks}, p["n_stocks"])
     names = liquid + etfs
     if not names:

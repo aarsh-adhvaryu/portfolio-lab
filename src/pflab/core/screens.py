@@ -25,7 +25,7 @@ def spend(con, now: datetime) -> dict:
 
 
 def policies(con, day: date) -> dict:
-    from pflab.lab import service as lab, shadow
+    from pflab.lab import probation, service as lab, shadow
     from pflab.paper import benchmark
     champ = shadow.champion_row(con)
     base = lab.latest_run(con, lab.BASELINE_ID, "history")
@@ -37,9 +37,11 @@ def policies(con, day: date) -> dict:
         try:
             rec = shadow.record(con, pid)
             hist = lab.latest_run(con, pid, "history")
-            idx = lab.index_clause(hist["score"]) if hist else None
+            idx = lab.index_rule(hist["score"]) if hist else None
+            sl = probation.explain(con, day, pid)                         # S81 (A50): the challenger's probation slice and why
             out["challengers"].append({"policy": pid, "history": _score(hist), "shadow_sessions": rec.get("sessions"), "shadow_excess": rec.get("excess"),
-                                       "index_ok": None if idx is None else idx["ok"]})
+                                       "index_ok": None if idx is None else idx["ok"], "index_via": None if idx is None else idx.get("via"),
+                                       "slice": sl["share"], "slice_why": sl["why"]})
         except Exception:
             out["challengers"].append({"policy": pid, "history": None, "shadow_sessions": None, "shadow_excess": None})
     try:
@@ -48,8 +50,10 @@ def policies(con, day: date) -> dict:
             out["book_vs_benchmark"] = {"book": b["book"]["return"], "benchmark": b["benchmark"]["return"], "excess": b.get("excess"), "since": str(b.get("since")), "worst_fall": b.get("worst_fall_book")}
     except Exception:
         pass
-    out["index_limit"] = lab.INDEX_CLAUSE["max_lag_vs_index"]
+    out["index_limit"] = lab.INDEX_RULE["a_max_lag"]                      # the old field: the first branch's lag limit (the rule has two branches now: `index_rule`)
+    out["index_rule"] = {k: round(v, 4) for k, v in lab.INDEX_RULE.items()}
     out["held_back_by_index_limit"] = sum(1 for c in out["challengers"] if c.get("index_ok") is False)
+    out["slices"] = [{**s, "since": str(s["since"])} for s in probation.slices(con, day)]
     runs = con.execute("SELECT count(*), count(*) FILTER (WHERE status='traded') FROM core_runs_s80").fetchone()
     out["closes_run"], out["closes_with_trades"] = int(runs[0]), int(runs[1])
     return out

@@ -80,7 +80,7 @@ def test_a_session_writes_runs_keeps_a_challenger_and_leaves_a_note(con, tmp_pat
     assert first["model"] == gv.OPUS and "STRATEGIST" in first["system"][0]["text"] and first["system"][0]["cache_control"] == {"type": "ephemeral"}
     sent = json.dumps(first["messages"])
     assert "BOOK CARD" in sent or "no book card yet" in sent
-    assert {t["name"] for t in first["tools"]} >= {"write_policy", "run_lab", "make_challenger", "write_note", "finish", "compare"} and len(first["tools"]) <= 16
+    assert {t["name"] for t in first["tools"]} >= {"write_policy", "run_lab", "make_challenger", "write_note", "finish", "compare"} and len(first["tools"]) <= 17
 
 
 def test_the_model_never_gets_raw_output_only_small_scorecards(con, tmp_path, data):
@@ -101,7 +101,14 @@ def test_a_refused_policy_comes_back_with_its_reason_and_the_session_goes_on(con
     assert out["status"] == "wasted" and service.get(con, "evil_one") is None
 
 
-def test_a_session_with_no_lab_run_is_wasted_and_the_next_one_gets_half_the_budget_until_one_succeeds(con, tmp_path, data):
+def _throttle_on(monkeypatch):
+    """S81 (A55): the halving rules are applied only from `throttle_after` (2026-12-09); these tests are about the rules themselves, so the date is moved before NOW."""
+    real = core.settings
+    monkeypatch.setattr(core, "settings", lambda: {**real(), "strategist": {**real()["strategist"], "throttle_after": "2026-01-01"}})
+
+
+def test_a_session_with_no_lab_run_is_wasted_and_the_next_one_gets_half_the_budget_until_one_succeeds(con, tmp_path, data, monkeypatch):
+    _throttle_on(monkeypatch)
     full = strategist.session_budget(con, NOW)["rupees"]
     out = _session(con, tmp_path, Opus(_blocks(("finish", {"summary": "I decided to do nothing"}))), data)
     assert out["status"] == "wasted"
@@ -128,10 +135,10 @@ def test_the_kill_switch_and_the_strategist_switch_stop_every_session(con, tmp_p
 
 
 def test_triggers_weekly_challenger_ready_and_nothing_to_do(con, tmp_path, data):
-    assert strategist.due(con, NOW) == ["the weekly session"]
+    assert strategist.due(con, NOW) == ["the weekly session (re-examine the allocation)"]
     _session(con, tmp_path, HAPPY(), data)
     assert strategist.due(con, NOW + timedelta(days=2)) == []                                   # not on a bare timer, nothing else to work on
-    assert strategist.due(con, NOW + timedelta(days=8)) == ["the weekly session"]
+    assert strategist.due(con, NOW + timedelta(days=8)) == ["the weekly session (re-examine the allocation)"]
     from tests.test_s80_lab_promotion import GOOD, BASE, _run, _shadow_days
     _run(con, "baseline_lab", "history", BASE)
     con.execute("DELETE FROM lab_runs_s80 WHERE policy_id='mom_risk_1'")
@@ -141,6 +148,7 @@ def test_triggers_weekly_challenger_ready_and_nothing_to_do(con, tmp_path, data)
 
 
 def test_eight_weeks_without_a_win_halves_the_budget_and_tells_him(con, tmp_path, data, monkeypatch):
+    _throttle_on(monkeypatch)
     told = []
     monkeypatch.setattr("pflab.app.assistant.notify", lambda con_, now, text, key: told.append(text))
     con.execute("INSERT INTO core_sessions_s80 (session_id, started_at, finished_at, reason, status, cost_inr) VALUES (1, ?, ?, 'old', 'done', 10)", [NOW - timedelta(days=70), NOW - timedelta(days=70)])
@@ -159,5 +167,5 @@ def test_spend_report_ties_money_to_outcomes(con, tmp_path, data):
 
 def test_every_tool_description_is_short_and_the_set_is_small():
     ds = tools.definitions()
-    assert 10 <= len(ds) <= 16
+    assert 10 <= len(ds) <= 17                                                  # S81: propose_allocation is the seventeenth
     assert all(len(d["description"]) < 480 for d in ds)

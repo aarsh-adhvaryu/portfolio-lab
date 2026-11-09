@@ -55,15 +55,17 @@ def fall_gauge(index: Optional[pd.Series], day: date, cfg: dict) -> dict:
 def build(con, day: date, root=None, index: Optional[pd.Series] = None, cfg: Optional[dict] = None, extra_isins=()) -> dict:
     """The state at the close of `day`. `extra_isins`: securities the book does not hold but the champion policy may want (they enter as rows with no quantity, so the rails see them)."""
     from pflab import core
+    from pflab.core import policy, sleeves
     from pflab.paper import allocation, book, cadence
     cfg = cfg or core.settings()
     h = book.holdings(con, day)
+    extra_isins = list(dict.fromkeys(list(extra_isins) + policy.universe(con, day, cfg)))      # S81: the core ETFs the active baseline may buy enter as rows with no quantity
     rows = []
     for r in h["rows"]:
         buyable = (r["asset_class"] or "") in book.BUYABLE and r["price"] is not None
         rows.append({"isin": r["isin"], "symbol": r["symbol"], "sector": r["sector"], "asset_class": r["asset_class"], "qty": r["qty"], "price": r["price"],
                      "value": r["value"] or 0.0, "weight": r["weight"], "buyable": buyable,
-                     "klass": allocation.class_of(r["asset_class"], r["name"], r["symbol"], r["isin"])})
+                     "klass": allocation.class_of(r["asset_class"], r["name"], r["symbol"], r["isin"]), "sleeve": sleeves.sleeve_of(con, r["isin"])})
     held = {r["isin"] for r in rows}
     for isin in extra_isins:
         px = book.close_on(con, isin, day) if isin not in held else None
@@ -71,10 +73,12 @@ def build(con, day: date, root=None, index: Optional[pd.Series] = None, cfg: Opt
             continue
         m = book.inst(con, isin)
         rows.append({"isin": isin, "symbol": m["symbol"] or isin, "sector": m["sector"], "asset_class": m["asset_class"], "qty": 0.0, "price": px[1], "value": 0.0, "weight": 0.0,
-                     "buyable": (m["asset_class"] or "") in book.BUYABLE, "klass": allocation.class_of(m["asset_class"], m["name"], m["symbol"], isin)})
+                     "buyable": (m["asset_class"] or "") in book.BUYABLE, "klass": allocation.class_of(m["asset_class"], m["name"], m["symbol"], isin),
+                     "sleeve": sleeves.sleeve_of(con, isin)})
     panel = closes_panel(con, [r["isin"] for r in rows if r["buyable"]], day, int(cfg["baseline"]["vol_window"]))
     act = allocation.active_target(con)
+    tgt = {"classes": act["classes"], "sectors": act["sectors"], "id": act["target_id"]} if act else None
     return {"day": day, "value": h["value"], "cash": h["cash"], "bank": h.get("bank", 0.0), "rows": rows,
-            "target": {"classes": act["classes"], "sectors": act["sectors"], "id": act["target_id"]} if act else None,
+            "target": tgt, "sleeve_target": sleeves.target_shares(con, cfg, tgt),
             "vol": volatilities(panel, day, int(cfg["baseline"]["vol_window"])), "gauge": fall_gauge(index, day, cfg["baseline"]),
             "breaker": cadence.breaker(con), "cfg": cfg}

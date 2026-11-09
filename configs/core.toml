@@ -18,8 +18,33 @@ gauge_drawdown = 0.10         # the fall gauge fires when the Nifty 500 is this 
 gauge_below_ma = 200          # ... and below its moving average of this many sessions
 gauge_cut = 0.25              # ... then the equity class is cut by this share, moved to cash, until the gauge clears
 
+[baseline_v2]
+# S81 (A48): the baseline of the close loop: core ETFs (index, gold, international) plus the held longterm names. THE SYSTEM'S STARTING TARGET (his to change); the strategist's
+# adopted allocation replaces it (A49). Core + longterm + swing = 100; gold and international are part of the core, as percent of the whole book.
+version = "v2"                # "v1" = the S80 baseline (trades only names already held): the safe fallback
+core_pct = 60.0
+longterm_pct = 35.0
+swing_pct = 5.0               # held back for the swing sleeve (cash until it trades)
+gold_pct = 10.0
+international_pct = 10.0
+index_etfs = ["MONIFTY500", "NIFTYBEES"]     # Nifty 500 and Nifty 50 index ETFs (the store knows both; each at most the 35% ETF rail)
+gold_etfs = ["GOLDBEES"]
+international_etfs = ["MON100"]              # Nasdaq 100 listed in India; subject to a premium-to-NAV rail (B8)
+swing_reserve = true
+
+[probation]
+# S81 (A50): a variant that clears the history screen and the once-only 2018-2021 check trades a satellite slice of this share of the book at once; the slice grows while its
+# live record is not worse than the champion's over the sessions below, and is withdrawn when it is worse.
+start_share = 0.05
+steps = [0.05, 0.10, 0.20]
+sessions_to_grow = [20, 40]
+max_total_share = 0.20
+tolerance = 0.002             # a live record this far behind the champion's stand-in still counts as "not worse"
+min_sessions_to_judge = 10
+
 [strategist]
 on = true                     # the weekly and triggered lab sessions (Opus); needs the app, a key and room in the cap
+throttle_after = "2026-12-09" # A55: the budget-halving rules below are recorded but NOT applied before this date (release 2026-11-10 plus 28 days)
 session_rupees = 300.0        # one session's most (the doc's 70% of the cap is about Rs 1,750 a month); halved after a session that ran no lab run, until one does
 min_session_rupees = 40.0     # under this the session does not start
 weekly_days = 7

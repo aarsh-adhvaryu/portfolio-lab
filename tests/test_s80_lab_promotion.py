@@ -12,7 +12,9 @@ from tests.test_s80_lab import MOMENTUM, make_data
 
 NOW = datetime(2026, 11, 9, 1, 0)
 GOOD = {"cagr": 0.16, "bench_cagr": 0.12, "excess_cagr": 0.04, "max_drawdown": -0.22, "recovery_days": 300.0, "turnover_per_year": 2.0, "tax_paid": 1000.0, "charges": 500.0, "sharpe": 0.8,
-        "sharpe_daily": 0.05, "n_obs": 3000.0, "skew": 0.0, "kurt": 3.0, "dsr": 0.97}
+        "sharpe_daily": 0.05, "n_obs": 3000.0, "skew": 0.0, "kurt": 3.0, "dsr": 0.97,
+        # S81 (A50): the after-tax figures of both sides (the policy sold out on the last day; the index held as an ETF): lag -3.5 points a year, worst fall equal to the index's
+        "cagr_liq": 0.15, "bench_cagr_liq": 0.115, "bench_max_drawdown_net": -0.22, "index_etf_cost": 0.002, "index_tax_at_end": 20000.0, "index_charges": 600.0, "policy_tax_at_end": 30000.0}
 BASE = {**GOOD, "cagr": 0.11, "max_drawdown": -0.20, "dsr": 0.5}
 
 
@@ -76,19 +78,18 @@ def test_the_shadow_record_compares_with_the_champions_standin_on_common_session
     assert rec["sessions"] == 25 and rec["excess"] > 0 and rec["against"] == "baseline_lab"
 
 
-def test_promotion_needs_history_shadow_and_the_final_check_all_three(con, tmp_path, monkeypatch):
+def test_promotion_needs_history_and_the_final_check_and_shadow_no_longer_blocks_acting(con, tmp_path, monkeypatch):
+    """S81 (A50): the live shadow record is not a gate any more (it decides how the probation slice grows); history (screen and index rule) and the once-only final check are."""
     _challenger(con, tmp_path)
     _run(con, "baseline_lab", "history", BASE)
     monkeypatch.setattr(promotion, "final_run", lambda *a, **k: {"score": {"cagr": 0.14, "max_drawdown": -0.20}, "baseline": {"cagr": 0.12, "worst_fall": -0.19}})
     v = promotion.check(con, tmp_path, None, NOW, "momentum_a", data={})
-    assert not v["ready"] and any("shadow sessions" in r for r in v["reasons"])                 # history is fine, no live record yet
-    _shadow_days(con, "momentum_a", 25)
-    v = promotion.check(con, tmp_path, None, NOW, "momentum_a", data={})
-    assert v["ready"], v["reasons"]
+    assert v["ready"], v["reasons"]                                           # no shadow session at all, and it is ready: shadow does not block acting
     monkeypatch.setattr(promotion, "final_run", lambda *a, **k: {"score": {"cagr": 0.05, "max_drawdown": -0.20}, "baseline": {"cagr": 0.12, "worst_fall": -0.19}})
     assert "final check" in " ".join(promotion.check(con, tmp_path, None, NOW, "momentum_a", data={})["reasons"])
-    _shadow_days(con, "momentum_a", 25, ret_c=0.0, ret_s=0.001)                                # worse than the champion in shadow
-    assert any("did worse" in r for r in promotion.check(con, tmp_path, None, NOW, "momentum_a", data={})["reasons"])
+    badfinal = {"cagr": 0.14, "max_drawdown": -0.30, "cagr_liq": 0.10, "bench_cagr_liq": 0.12, "bench_max_drawdown_net": -0.20}      # beats the baseline but fails the index rule on the final window
+    monkeypatch.setattr(promotion, "final_run", lambda *a, **k: {"score": badfinal, "baseline": {"cagr": 0.12, "worst_fall": -0.29}})
+    assert any(r.startswith("final check 2018-2021: ") for r in promotion.check(con, tmp_path, None, NOW, "momentum_a", data={})["reasons"])
 
 
 def test_a_variant_that_fails_the_history_screen_is_never_promoted(con, tmp_path):
@@ -105,14 +106,26 @@ def test_a_variant_that_fails_the_history_screen_is_never_promoted(con, tmp_path
 def test_promotion_logs_the_diff_and_keeps_the_old_champion_for_rollback(con, tmp_path, monkeypatch):
     _challenger(con, tmp_path)
     _run(con, "baseline_lab", "history", BASE)
-    _shadow_days(con, "momentum_a", 25)
     monkeypatch.setattr(promotion, "final_run", lambda *a, **k: {"score": {"cagr": 0.14, "max_drawdown": -0.20}, "baseline": {"cagr": 0.12, "worst_fall": -0.19}})
-    out = promotion.promote_ready(con, tmp_path, None, NOW, data={})
-    assert out[0]["ready"] and out[0]["promoted"]["champion"] == "momentum_a"
+    v = promotion.check(con, tmp_path, None, NOW, "momentum_a", data={})
+    out = promotion.promote(con, tmp_path, NOW, "momentum_a", v)                                # replacing the champion outright is kept (promote_ready now grants slices)
+    assert out["ok"] and out["champion"] == "momentum_a"
     assert shadow.champion_row(con)["policy_id"] == "momentum_a"
     assert con.execute("SELECT status FROM core_policies_s80 WHERE policy_id='baseline_v1'").fetchone()[0] == "previous"
     kind, frm, to, diff = con.execute("SELECT kind, from_policy, to_policy, diff FROM core_promotions_s80").fetchone()
     assert (kind, frm, to) == ("promote", "baseline_v1", "momentum_a") and "momentum" in diff
+
+
+def test_promote_ready_grants_a_probation_slice_not_the_championship(con, tmp_path, monkeypatch):
+    _challenger(con, tmp_path)
+    _run(con, "baseline_lab", "history", BASE)
+    monkeypatch.setattr(promotion, "final_run", lambda *a, **k: {"score": {"cagr": 0.14, "max_drawdown": -0.20}, "baseline": {"cagr": 0.12, "worst_fall": -0.19}})
+    out = promotion.promote_ready(con, tmp_path, None, NOW, data={})
+    assert out[0]["ready"] and out[0]["probation"]["granted"] and out[0]["probation"]["share"] == 0.05
+    assert shadow.champion_row(con)["policy_id"] == "baseline_v1"                         # the champion is unchanged
+    from pflab.lab import probation
+    assert probation.slices(con, NOW.date()) == [{"policy_id": "momentum_a", "share": 0.05, "since": NOW.date()}]
+    assert promotion.promote_ready(con, tmp_path, None, NOW, data={}) == []                # it is not granted a second time
 
 
 def test_a_champion_below_its_own_history_range_is_rolled_back_automatically(con, tmp_path):
@@ -139,17 +152,16 @@ def test_a_healthy_champion_is_not_rolled_back(con, tmp_path):
     assert promotion.rollback_check(con, NOW) is None
 
 
-def test_a_variant_that_trails_the_index_by_more_than_the_limit_is_held_back_by_that_alone(con, tmp_path):
-    """His rule (2026-11-09): promotion also needs the history to trail the Nifty 500 by no more than 2 points a year. The progress measure (the screen against the plain baseline) is untouched."""
-    service.add_variant(con, tmp_path, NOW, "lags_index", MOMENTUM, "beats the plain baseline but trails the Nifty 500 in the history")
-    laggard = {**GOOD, "cagr": 0.13, "bench_cagr": 0.16, "excess_cagr": -0.03}                  # beats the baseline's 11%, trails the index by 3 points
+def test_a_variant_that_fails_the_index_rule_is_held_back_by_that_alone(con, tmp_path):
+    """His rule A50 (2026-11-09): promotion needs the two-dimension index rule, after tax and charges on both sides. The progress measure (the screen against the plain baseline) is untouched."""
+    service.add_variant(con, tmp_path, NOW, "lags_index", MOMENTUM, "beats the plain baseline but trails the index after tax in the history")
+    laggard = {**GOOD, "cagr": 0.13, "cagr_liq": 0.125, "bench_cagr_liq": 0.155}                  # beats the baseline's 11%, trails the index by 3 points with the same worst fall
     _run(con, "lags_index", "history", laggard, params={"n": 5})
     _run(con, "baseline_lab", "history", BASE)
     service.make_challenger(con, NOW, "lags_index", {"n": 5})
-    _shadow_days(con, "lags_index", 30)
     assert service.screen(laggard, {"beats_real_frac": 0.05}, BASE)["ok"]                          # it still counts as beating the baseline (the strategist's progress measure)
     v = promotion.check(con, tmp_path, None, NOW, "lags_index", data={})
     assert not v["ready"] and v["held_back_only_by_index"] is True
-    assert any("trails the Nifty 500 by 3.0%" in r and "limit is 2%" in r for r in v["reasons"])
-    ok = {**laggard, "cagr": 0.14, "excess_cagr": -0.015}                                          # inside the limit: no reason from it
-    assert service.index_clause(ok)["ok"] and not service.index_clause({"cagr": 0.1})["ok"]       # (a run with no index comparison cannot pass)
+    assert any("trails the index by 3.0% a year" in r for r in v["reasons"])
+    ok = {**laggard, "cagr_liq": 0.14}                                                             # 1.5 points behind with a fall no deeper: inside branch A
+    assert service.index_rule(ok)["ok"] and not service.index_rule({"cagr": 0.1})["ok"]           # (a run with no after-tax index figures cannot pass)
