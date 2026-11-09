@@ -144,7 +144,7 @@ def test_market_in_rails_are_unchanged_when_nothing_is_international(con):
     assert a["orders"] == b["orders"] and a["skipped"] == b["skipped"] and a["clipped"] == b["clipped"]
     assert st["premium"] == {}                                           # attach() found nothing to look up
     assert "premium" not in core.settings() and "us" not in core.settings()      # the shared settings table is untouched
-    assert us.on() is False and premium.settings()["unknown"] == "skip"
+    assert us.on({"on": False}) is False and premium.settings()["unknown"] == "skip"
 
 
 # ---------------------------------------------------------------- phase B: the US calendar in IST
@@ -421,10 +421,11 @@ def _synthetic_us(root, days, spy0=100.0, qqq0=200.0):
 CFG = {"on": True, "universe": ["SPY", "QQQ"], "invested_share": 0.95, "slippage_bps": 5.0, "min_trade_usd": 10.0}
 
 
-def test_close_us_is_off_by_default_and_touches_nothing(con):
-    assert adapter.close_us(con, NOW) == {"off": True}
+def test_close_us_touches_nothing_while_it_is_switched_off(con):
+    """(S81 coordinator: the release switches the sub-book ON in configs/core.toml; this test pins what the OFF switch does.)"""
+    off = {"on": False}
+    assert adapter.close_us(con, NOW, cfg=off) == {"off": True}
     assert con.execute("SELECT count(*) FROM us_account_s81").fetchone()[0] == 0 and con.execute("SELECT count(*) FROM us_runs_s81").fetchone()[0] == 0
-    assert adapter.state_us(con, date(2026, 11, 9)) == {"open": False, "on": False}
 
 
 def test_close_us_runs_two_sessions_end_to_end(con, tmp_path):
