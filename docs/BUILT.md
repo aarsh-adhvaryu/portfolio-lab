@@ -91,7 +91,7 @@ It never trades, moves money or changes targets and limits. Spend is governed by
 leave the PC is decided by `hq/egress.py`.
 
 ## Agents and models (generated from `hq/roster.py` and the slider `hq/models.py`; the Settings slider can change any model below)
-**23 agents on the board** (`hq/roster.py`; ask any by name on the AI centre, in Telegram as `/name`, or let the receptionist route). The dashboard's AI centre also lists
+**22 agents on the board** (`hq/roster.py`; ask any by name on the AI centre, in Telegram as `/name`, or let the receptionist route). The dashboard's AI centre also lists
 the 17 job-level agents (collector, filings monitor, portfolio keeper, risk manager, simulator, forecaster, researcher, watch list, analyst, knowledge graph, trade check,
 conductor, workshop, outbox, backup, learner, security) with their last runs; under both sit the code modules in `agents/`, `plan/`, `quant/`.
 | agent | model (measured default) | does |
@@ -104,7 +104,6 @@ conductor, workshop, outbox, backup, learner, security) with their last runs; un
 | calculation | reviewed measures first; Sonnet 5.5 writes code, Opus 5.5 writes it again independently; both must agree | new calculations, run in the Docker sandbox |
 | simulation, quant, memory, cleanup, graph, messenger, watcher | code | Monte Carlo and stress; pre-registered studies; decisions and scoring; graph tidying; reminders; the drop folder |
 | portfolio | code; the local model words it | the portfolio today |
-| readers | Haiku 5.5 | read every public document: materiality, figures, summary. An email-kind document goes only with the mail reader's clearance (a hash of the text it checked), redacted and passing the full identity check again at send time (never by kind alone); one that carries his own details stays on the PC and is recorded as withheld |
 | cited-page reader | Sonnet 5.5 + web fetch | reads a page the system already cites |
 | brain | Opus 5.5 with tools (Sonnet 5.5 as its journal-only rival) | looks, decides what matters, asks and tells him; never trades |
 | learner | local qwen3 8B reads (Haiku 5.5 if its reply does not parse); Sonnet 5.5 words proposals | papers and blogs to tested claims |

@@ -148,9 +148,9 @@ def test_agent_hq_is_part_of_the_world_not_a_second_screen():
     tabs = app_js.split("const NAV = [", 1)[1].split("];", 1)[0]                                   # (S68: the screens are NAV)
     assert "'hq'" not in tabs and "Agent HQ" not in tabs and "OLD_SCREENS = ['world'" in app_js           # (S78: the World is reached by address, not listed in the bar)
     assert "renderHQ" not in app_js and "officeSVG" not in app_js and "screen === 'hq'" not in app_js
-    for part in ("orderP", "boardP", "brainP", "sugP", "agentsP", "spendP", "remP"):             # every panel it had is built and shown under the map
+    for part in ("orderP", "boardP", "brainP", "agentsP", "spendP", "remP"):             # every panel it had is built and shown under the map
         assert part in world_js or f"p.{part}" in world_js, part
-    for handler in ("/api/hq/order", "data-hqbrain", "hqThink", "data-hqmark", "data-hqsug", "data-hqrem"):   # and wired
+    for handler in ("/api/hq/order", "data-hqbrain", "hqThink", "data-hqmark", "data-hqrem"):   # and wired
         assert handler in app_js, handler
 
 

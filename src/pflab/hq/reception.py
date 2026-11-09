@@ -16,7 +16,7 @@ COMMANDS = {"calc": "calc", "calculate": "calc", "sim": "sim", "simulate": "sim"
             "deep": "research", "analyse": "analysis", "analyze": "analysis", "analysis": "analysis", "quant": "quant",
             "memory": "memory", "journal": "memory", "graph": "graph", "clean": "cleanup", "cleanup": "cleanup",
             "remind": "messenger", "reminders": "messenger", "brain": "brain", "portfolio": "portfolio",
-            "read": "reader", "watch": "watcher", "ask": "ask", "learn": "learner", "learner": "learner",
+            "read": "analysis", "watch": "watcher", "ask": "ask", "learn": "learner", "learner": "learner",
             "security": "security"}
 
 RULES = [

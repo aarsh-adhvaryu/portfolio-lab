@@ -596,32 +596,6 @@ def create_app(rt) -> FastAPI:
         per = [scorecard.proposal_view(con, pid) for (pid,) in con.execute("SELECT DISTINCT proposal_id FROM hq_claims ORDER BY proposal_id DESC LIMIT 40").fetchall()]
         return json.loads(json.dumps({"table": scorecard.table(con), "proposals": per}, default=str))
 
-    @app.get("/api/proposals")
-    def proposals_list(status: str = "", case_id: int = 0):
-        """The recommendations on record: buy, add, hold, reduce, sell, diversify, wait, each with its status, review and what is missing."""
-        from pflab.hq import proposals
-        con = rt.cursor()
-        rows = proposals.listing(con, status or None, case_id or None, 60)
-        for p in rows:
-            p["stale"] = proposals.stale_reason(con, p, rt.pm_dir)
-        return json.loads(json.dumps({"proposals": rows, "strategy_version": proposals.strategy_version(con)}, default=str))
-
-    @app.post("/api/proposals/{pid}/{decision}")
-    def proposal_decide(pid: int, decision: str, note: str = Body("", embed=True)):
-        """discuss | accept | reject | withdraw. Accepting is his decision to act himself: nothing is ordered."""
-        from pflab.hq import proposals
-        con = rt.cursor()
-        out = proposals.discuss(con, rt.clock(), pid, note, by="the investor (dashboard)") if decision == "discuss" \
-            else proposals.decide(con, rt.clock(), pid, decision, by="the investor (dashboard)", note=note)
-        rt.bump("hq")
-        return out
-
-    @app.get("/api/routing")
-    def routing_log(limit: int = 20):
-        """What the local model decided about new files (which investigation, what effect, how: its answer, a retry, the rule, or escalation)."""
-        from pflab.hq import arrivals
-        return {"decisions": arrivals.recent(rt.cursor(), limit)}
-
     @app.get("/api/investigations")
     def investigations(limit: int = 20):
         """S68: every mission's card (goal, owner, current action, outputs, blocker, last useful progress, next trigger)."""
@@ -993,7 +967,7 @@ def create_app(rt) -> FastAPI:
         from pflab.hq import board, roster
         if agent not in roster.ROSTER:
             raise HTTPException(400, f"no agent {agent}")
-        if not text.strip() and agent not in ("watcher", "reader", "brain", "cleanup", "messenger", "portfolio", "sim"):
+        if not text.strip() and agent not in ("watcher", "brain", "cleanup", "messenger", "portfolio", "sim"):
             raise HTTPException(400, "write what you want the agent to do")
         tid = board.post(rt.cursor(), agent, text.strip(), rt.clock(), body={"approved": approved} if approved else None)
         rt.wake_hq()
@@ -1005,17 +979,6 @@ def create_app(rt) -> FastAPI:
         """The investor marks a brain pass (the shadow protocol's usefulness measure); his latest mark stands."""
         from pflab.hq import brain
         brain.mark(rt.cursor(), pid, mattered, rt.clock())
-        rt.bump("hq")
-        return {"ok": True}
-
-    @app.post("/api/hq/suggestions/{sid}/answer")
-    def hq_answer_suggestion(sid: int, answer: str = Body(..., embed=True)):
-        """S60: The investor's answer to a suggestion (taken / declined / none); every one is scored either way."""
-        from pflab.hq import suggestions as sg
-        try:
-            sg.answer(rt.cursor(), sid, answer, rt.clock())
-        except (ValueError, LookupError) as e:
-            raise HTTPException(400, str(e))
         rt.bump("hq")
         return {"ok": True}
 

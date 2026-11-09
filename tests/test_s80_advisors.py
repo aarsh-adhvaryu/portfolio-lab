@@ -8,21 +8,18 @@ from pflab.hq import missions, service
 from tests.test_s68_autonomy import con, rt  # noqa: F401  (the fixtures)
 
 
-@pytest.fixture
-def calls(monkeypatch):
-    seen = []
-    monkeypatch.setattr(missions, "scan", lambda r: seen.append("scan") or {"started": []})
-    monkeypatch.setattr(service, "read_now", lambda r, limit=40: seen.append("readers") or {})
-    monkeypatch.setattr(service, "brain_wake", lambda r: seen.append("brain") or {})
-    from pflab.hq import arrivals, triggers
-    monkeypatch.setattr(arrivals, "scan", lambda r: seen.append("arrivals") or [])
-    monkeypatch.setattr(triggers, "check", lambda r: seen.append("triggers") or [])
-    return seen
-
-
 def _set(monkeypatch, advisors_off: bool, on: bool = True):
     real = core.settings
     monkeypatch.setattr(core, "settings", lambda: {**real(), "core": {"on": on, "retire_missions": True, "advisors_off": advisors_off}})
+
+
+@pytest.fixture
+def calls(monkeypatch):
+    seen = []
+    monkeypatch.setattr(service, "_last", {})                        # the round's own rate limits are keyed by object id: start clean
+    monkeypatch.setattr(missions, "scan", lambda r: seen.append("scan") or {})
+    monkeypatch.setattr(service, "brain_wake", lambda r: seen.append("brain") or {"pass": None})
+    return seen
 
 
 def test_with_the_switch_on_the_round_runs_no_advisor_layer(rt, calls, monkeypatch):
@@ -35,12 +32,12 @@ def test_with_the_switch_on_the_round_runs_no_advisor_layer(rt, calls, monkeypat
 def test_with_the_switch_off_or_the_loop_off_the_advisors_run_as_before(rt, calls, monkeypatch):
     _set(monkeypatch, False)
     service.round_(rt)
-    assert {"scan", "triggers", "arrivals", "readers", "brain"} <= set(calls)
+    assert {"scan", "brain"} <= set(calls)
     calls.clear()
     _set(monkeypatch, True, on=False)                               # the loop off brings v1 back whole
     rt.settings["scheduler"] = True
     service.round_(rt)
-    assert "scan" in calls and "triggers" in calls and "arrivals" in calls      # (the readers and the brain are rate-limited: they ran in the first round)
+    assert "scan" in calls                                           # (the brain is rate-limited: it ran in the first round)
 
 
 def test_the_review_and_companion_jobs_skip_while_the_switch_holds(monkeypatch, tmp_path):

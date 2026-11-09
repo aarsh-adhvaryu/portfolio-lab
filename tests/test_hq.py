@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from pflab.agents import analyst as an
-from pflab.hq import board, brain, egress, governor as gv, keeper, llm, messenger, readers, reception
+from pflab.hq import board, brain, egress, governor as gv, keeper, llm, messenger, reception
 from pflab.hq.board import Reply
 from pflab.hq.desk import Desk
 from pflab.pm import store
@@ -262,74 +262,6 @@ def test_drop_folder_files_reach_the_inbox_once_settled(con, tmp_path, monkeypat
 
 # --- readers --------------------------------------------------------------------------------------------------------------
 
-def test_figures_kept_only_when_found_in_the_document():
-    text = "Revenue from operations rose to Rs 1,234.5 crore in Q2 FY27, up from 1,100 crore."
-    figs = [{"name": "revenue", "value": "1,234.5", "unit": "crore", "period": "Q2", "quote": "rose to Rs 1,234.5 crore"},
-            {"name": "profit", "value": "99", "unit": "crore", "period": "Q2", "quote": "profit 99"},
-            {"name": "prior", "value": "1100", "unit": "crore", "period": "Q2 FY26", "quote": "up from 1,100 crore"},
-            {"name": "wrong quote", "value": "1,100", "unit": "crore", "period": "", "quote": "rose to Rs 1,234.5 crore"}]
-    keep, dropped = readers.check_figures(figs, text)
-    assert [f["name"] for f in keep] == ["revenue", "prior"] and dropped == 2
-
-
-def test_figures_checked_on_the_page_they_name():
-    text = "[page 1]\nNotice of the board meeting.\n[page 2]\nRevenue rose to Rs 1,234.5 crore."
-    figs = [{"name": "rev", "value": "Rs 1,234.5 crore", "page": "page 2", "quote": "rose to Rs 1,234.5 crore"},
-            {"name": "page said wrong", "value": "1,234.5", "page": "1", "quote": "Rs 1,234.5 crore"},
-            {"name": "no quote", "value": "1,234.5", "page": "2", "quote": ""},
-            {"name": "number not in its quote", "value": "99", "page": "2", "quote": "rose to Rs 1,234.5 crore"}]
-    keep, gone = readers.split_figures(figs, text)
-    assert [(f["name"], f["page"]) for f in keep] == [("rev", "2"), ("page said wrong", "2")]   # the page is code's
-    assert [f["name"] for f in gone] == ["no quote", "number not in its quote"]
-
-
-def test_filing_attachment_read_by_page(con, tmp_path, monkeypatch):
-    import pypdf
-    from pflab.kg import graph as g
-    d = g.doc(con, "filing", "f1", NOW, "AAA: Outcome of board meeting", url="https://www.bseindia.com/x/a.pdf", source="BSE",
-              attrs={"category": "Result", "subcategory": "Financial Results"})
-    g.edge(con, d, "about", f"company:{AAA}", NOW, "test")
-    pages = [SimpleNamespace(extract_text=lambda: "Board approved results."),
-             SimpleNamespace(extract_text=lambda: "Revenue Rs 1,234.5 crore for the quarter.")]
-    monkeypatch.setattr(pypdf, "PdfReader", lambda f: SimpleNamespace(pages=pages))
-    row = readers.pending(con, NOW.date(), [AAA], [], stock_list=[])[0]
-    text = readers.fetch_filing_text(con, row, tmp_path / "text", get=lambda u: SimpleNamespace(status_code=200, content=b"%PDF"))
-    assert text.startswith("[page 1]") and "[page 2]\nRevenue" in text
-    assert con.execute("SELECT text_status FROM kg_docs WHERE doc_id=?", [d]).fetchone()[0] == "ok"
-    body = readers.doc_text(row)
-    assert "BSE category: Result / Financial Results" in body and "[page 2]" in body
-    assert readers.fetch_filing_text(con, {"doc_id": d, "url": "https://b/y.html"}, tmp_path) is None   # not a PDF
-    assert readers.fetch_filing_text(con, {"doc_id": d, "url": "https://b/x.pdf"}, tmp_path,
-                                     get=lambda u: SimpleNamespace(status_code=404, content=b"")) is None
-    assert con.execute("SELECT text_status FROM kg_docs WHERE doc_id=?", [d]).fetchone()[0] == "fetch_error"
-
-
-def test_readers_read_held_first_and_keep_readings(con, tmp_path, monkeypatch):
-    from pflab.kg import graph as g
-    (tmp_path / "api_budget.toml").write_text("[api]\nmonthly_cap_rupees = 2500\ndev_monthly_cap_rupees = 100\nask_above_rupees = 50\nadopted = true\n",
-                                              encoding="utf-8")
-    monkeypatch.setattr(store, "pm_dir", lambda: tmp_path)          # its own budget, not the workshop's store folder
-    for k, (isin, kind, title) in enumerate([(BBB, "filing", "BBB: trading window closure"),
-                                             (AAA, "filing", "AAA wins order worth Rs 500 crore"),
-                                             (AAA, "article", "Weather today")]):
-        d = g.doc(con, kind, f"k{k}", NOW - timedelta(hours=k + 1), title, source="BSE")
-        g.edge(con, d, "about", f"company:{isin}", NOW, "test")
-    rows = readers.pending(con, NOW.date(), [AAA], [BBB], stock_list=[])
-    assert [r["title"] for r in rows] == ["AAA wins order worth Rs 500 crore", "BBB: trading window closure"]
-    c = Fake([{"material": "yes", "why": "a large order", "summary": "AAA won an order.",
-               "figures": [{"name": "order", "value": "500", "unit": "crore", "period": "", "quote": "worth Rs 500 crore"},
-                           {"name": "made up", "value": "42", "unit": "", "period": "", "quote": ""}]},
-              {"material": "no", "why": "routine", "summary": "Trading window.", "figures": []}])
-    rep = readers.run(con, NOW.date(), c, egress.Gate(), NOW, "economy", [AAA], [BBB], stock_list=[])
-    assert rep["read"] == 2 and rep["material"] == 1 and len(rep["material_held"]) == 1, rep
-    sent = c.messages.sent[0]
-    assert sent["model"] == gv.HAIKU and sent["output_config"]["format"]["type"] == "json_schema"
-    r = readers.recent(con, NOW - timedelta(days=1))
-    assert len(r) == 1 and r[0]["isins"] == [AAA] and [f["name"] for f in r[0]["figures"]] == ["order"]
-    assert con.execute("SELECT count(*) FROM kg_docs WHERE kind='reading'").fetchone()[0] == 2
-    assert readers.pending(con, NOW.date(), [AAA], [BBB], stock_list=[]) == []          # read once
-
-
 # --- brain ------------------------------------------------------------------------------------------------------------
 
 @pytest.fixture
@@ -452,20 +384,6 @@ def test_filings_reach_the_analyst_through_a_flood_of_news():
     assert kinds.count("filing") == 6 and kinds.count("result") == 1 and kinds.count("article") == 5
     assert len({an.same_story(r[2]) for r in out if r[0] == "article"}) == 5          # one per story
     assert [r[1] for r in out] == sorted((r[1] for r in out), reverse=True)
-
-
-def test_readers_skip_bare_headlines_and_stories_already_read(con, tmp_path):
-    from pflab.kg import graph as g
-    con.execute("UPDATE instruments SET name='AAA Limited' WHERE isin=?", [AAA])
-    p = tmp_path / "t.txt"
-    p.write_text("AAA wins a big order.", encoding="utf-8")
-    for k, title in enumerate(["AAA wins big order", "aaa wins big order!", "AAA bare headline only"]):
-        d = g.doc(con, "article", f"a{k}", NOW - timedelta(hours=k + 1), title, url=f"https://x.in/{k}")
-        g.edge(con, d, "about", f"company:{AAA}", NOW, "test")
-        if k < 2:
-            con.execute("UPDATE kg_docs SET text_path=?, text_status='ok' WHERE doc_id=?", [str(p), d])
-    rows = readers.pending(con, NOW.date(), [AAA], [], stock_list=[{"symbol": "AAA", "isin": AAA, "aliases": ["aaa"]}])
-    assert [r["title"] for r in rows] == ["AAA wins big order"]                      # the copy and the bare one skipped
 
 
 def test_web_answers_keep_dates_but_not_uncited_figures():

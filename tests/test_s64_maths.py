@@ -153,7 +153,7 @@ def test_moves_with_reads_the_weekly_table(tmp_path):
 
 
 def test_the_comovement_tool_keeps_its_place_and_stock_facts_takes_capm_and_process():
-    assert list(tl.TOOLS)[31] == "comovement" and tl.TOOLS["comovement"].kind == "read"      # later tools are appended after it
+    assert list(tl.TOOLS)[29] == "comovement" and tl.TOOLS["comovement"].kind == "read"      # later tools are appended after it (29 since S80 phase 4 cut two tools before it)
     enum = tl.TOOLS["stock_facts"].params["parts"]["items"]["enum"]
     assert {"capm", "process"} <= set(enum)
 

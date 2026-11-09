@@ -79,48 +79,27 @@ SYSTEMS = {
 
 from pflab.hq import tools as _tools_loaded  # noqa: E402,F401  (the tools module first: it collects the S79 tools itself)
 from pflab.hq import tools_s79 as _t79  # noqa: E402
-READ_TOOLS = ("picture", "portfolio", "stocks_overview", "stock_facts", "readings", "graph_timeline", "notes", "memory_recall", "journal", "research_flags",
+READ_TOOLS = ("picture", "portfolio", "stocks_overview", "stock_facts", "graph_timeline", "notes", "memory_recall", "journal", "research_flags",
               "price_history", "market_context", "who_is_buying", "growth", "findings", "comovement", "themes", "system_status", "cases", "experiments",
               "hypotheses", "tax_plan", "forecasts", "ipo_plan", "ready_plans", "recall", "rules", "envelope", "paper_book", "chart_view", "watchlist", "files", "read_file", "file_figures", "read_document") + _t79.names()
 TOOLS = {
-    "coordinator": READ_TOOLS + ("plan_mission", "submit_answer", "frame_objective", "case_evidence", "propose_software_change", "proposals", "paper_decide", "watch_add", "watch_remove"),
-    "research": READ_TOOLS + ("web_search", "fetch_cited", "case_evidence", "request_report", "request_artifact", "frame_objective", "proposals"),
+    "coordinator": READ_TOOLS + ("plan_mission", "submit_answer", "frame_objective", "case_evidence", "propose_software_change", "paper_decide", "watch_add", "watch_remove"),
+    "research": READ_TOOLS + ("web_search", "fetch_cited", "case_evidence", "request_report", "request_artifact", "frame_objective"),
     "quant": READ_TOOLS + ("measure", "quant", "simulation", "scenario", "policy_scenarios", "exposure_shock", "ipo_policy_study", "case_calculate", "register_experiment",
-                           "case_evidence", "request_artifact", "reproduce_calc", "frame_objective", "make_proposal", "proposals", "paper_decide", "watch_add", "watch_remove"),
-    "review": READ_TOOLS + ("reproduce_calc", "submit_review", "case_evidence", "proposals"),
+                           "case_evidence", "request_artifact", "reproduce_calc", "frame_objective", "paper_decide", "watch_add", "watch_remove"),
+    "review": READ_TOOLS + ("reproduce_calc", "submit_review", "case_evidence"),
 }
 # role -> (governor key, model, effort). S70 (measured: docs/protocols/s70_roles_protocol.md, STUDIES.md): Sonnet holds the reviewer's seat and the coordinator's
 # PLANNING step; Opus keeps the coordinator's final answer and the review of work that ends in a proposal of real money (`seat_model`).
 SPECS = {"coordinator": ("w_coord", gv.OPUS, "medium"), "research": ("w_research", gv.SONNET, "medium"), "quant": ("w_quant", gv.SONNET, "medium"),
          "review": ("w_review", gv.SONNET, "medium")}
-REVIEW_OPUS_ABOVE = 25_000.0                # rupees: a proposal this large or larger has its review by Opus ([policy] review_opus_above_rupees)
-
-
-def high_stakes(con, cid: int) -> bool:
-    """True when a live proposal of this investigation is for REVIEW_OPUS_ABOVE rupees or more (its size, from the record; none if the record cannot size it)."""
-    from pflab.agents import analyst as an
-    from pflab.hq import proposals
-    try:
-        limit = float(((an.config().get("policy") or {}).get("review_opus_above_rupees")) or REVIEW_OPUS_ABOVE)
-    except Exception:
-        limit = REVIEW_OPUS_ABOVE
-    for p in proposals.listing(con, case_id=cid, limit=20):
-        if p["status"] in ("withdrawn", "rejected"):
-            continue
-        size = (p.get("payload") or {}).get("size") or {}
-        if float(size.get("notional") or 0.0) >= limit:
-            return True
-    return False
 
 
 def seat_model(con, role: str, body: dict, cid: int) -> str:
-    """The model for this task: the role's default, except that the coordinator PLANS with Sonnet (its final answer stays with Opus) and the reviewer is Opus
-    when the work ends in a proposal of REVIEW_OPUS_ABOVE rupees or more."""
+    """The model for this task: the role's default, except that the coordinator PLANS with Sonnet (its final answer stays with Opus)."""
     model = SPECS[role][1]
     if role == "coordinator" and body.get("step") == "plan":
         return gv.SONNET
-    if role == "review" and high_stakes(con, cid):
-        return gv.OPUS
     return model
 
 
@@ -247,7 +226,7 @@ def _dossier(con, cid: int, task: dict, now: datetime, role: Optional[str] = Non
     slim = role in ("coordinator", "research", "quant")
     from pflab.hq import cases, missions
     m = missions.mission_of(con, cid)
-    from pflab.hq import plans, proposals, triggers
+    from pflab.hq import plans
     lines = [f"MISSION #{m['id']} (snapshot {m['snapshot']}): {m['goal']}", f"STATE: {m['state']}, review round {m['round']}"]
     if m.get("origin") == "paper":                           # S76: the paper portfolio the system runs by itself: its book, rails, record and what he asked
         from pflab.paper import manager as paper
@@ -299,12 +278,6 @@ def _dossier(con, cid: int, task: dict, now: datetime, role: Optional[str] = Non
     for (eid, st, why, hyp) in con.execute("SELECT DISTINCT e.exp_id, e.status, coalesce(e.decision_why, ''), e.hypothesis FROM hq_artifacts a JOIN learn_experiments e "
                                            "ON e.exp_id = cast(a.ref AS INTEGER) WHERE a.case_id=? AND a.kind='experiment' ORDER BY 1", [cid]).fetchall():
         lines.append(f"EXPERIMENT #{eid} [{st}]: {hyp[:160]} -> {why[:300]}")
-    for p in proposals.listing(con, case_id=cid, limit=6):
-        z = p["payload"]
-        lines.append(f"PROPOSAL #{p['proposal_id']} {p['action']} {p['symbol'] or ''} [{p['status']}, review {p['review_status']}, v{p['version']}, snapshot {p['snapshot_id']}]: "
-                     f"{z.get('reason', '')[:240]} | size {z.get('size')} | tax {(z.get('tax_effect') or {}).get('status')} | missing: {'; '.join(p['missing'])[:240]}")
-    for t in triggers.active(con, cid):
-        lines.append(f"TRIGGER #{t['id']} [{t['status']}]: {t['describe']}")
     if task["body"].get("asked_by"):
         lines.append(f"(this task was asked for by task #{task['body']['asked_by']}: its result goes back to that task)")
     return "\n".join(lines)

@@ -208,12 +208,12 @@ MIN_PASSES = 5
 
 
 def record_text(con, model: str, now: datetime) -> str:
-    from pflab.hq import brain, keeper, suggestions as sg
+    from pflab.hq import brain, keeper
     notes = [p for p in brain.journal(con, 40) if p["model"] == model and p["status"] == "done"][:10]
     errs = con.execute("SELECT tool, count(*) FROM hq_tool_calls WHERE status='error' AND called_at >= ? GROUP BY tool",
                        [now - timedelta(days=30)]).fetchall()
     m = brain.marks(con)
-    return "\n".join([keeper.scorecard_text(con, model), sg.lessons_text(con, model),
+    return "\n".join([keeper.scorecard_text(con, model),
                       f"MARKS by the investor: {sum(m.values())} mattered, {len(m) - sum(m.values())} did not",
                       "TOOL ERRORS (30 days): " + (", ".join(f"{t} {n}" for t, n in errs) or "none"),
                       live.brain_text(con), "RECENT NOTES:"] + [f"- {str(p['at'])[:10]} {p['trigger']}: {(p['note'] or '')[:300]}"

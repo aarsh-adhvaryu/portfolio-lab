@@ -289,7 +289,7 @@ function wBench() {
   const p = hqParts(hq), b = W.bench;
   const body = b === 'board' ? `<div class="stack">${p.orderP}${p.boardP}</div>`
     : b === 'brain' ? `<div class="stack">${p.brainP}${p.predsP}</div>`
-    : b === 'advice' ? `<div class="stack">${p.sugP}${p.followP}${p.readersP}</div>`
+    : b === 'advice' ? `<div class="stack">${p.followP}</div>`
     : b === 'agents' ? `<div class="stack">${p.agentsP}${p.spendP}</div>` : `<div class="stack">${p.remP}</div>`;
   wset('wbench', body, (el) => hqWire(el, () => fetchHq(true)));
 }

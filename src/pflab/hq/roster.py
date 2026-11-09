@@ -248,14 +248,6 @@ def _portfolio(rt, t: dict) -> Reply:
         return Reply(a.text, ["portfolio today (ledger + Kite)", f"facts (no checked wording: {type(e).__name__})"])
 
 
-def _reader(rt, t: dict) -> Reply:
-    from pflab.hq import service
-    rep = service.read_now(rt, limit=10)
-    return Reply(f"Readers: {rep['read']} read, {rep['material']} material"
-                 + (f"; stopped: {rep['stopped']}" if rep.get("stopped") else "") + f" (~Rs {rep['cost_inr']:.2f})",
-                 ["Haiku 5.5 readers"], {"report": rep}, rep["cost_inr"])
-
-
 def _brain(rt, t: dict) -> Reply:
     from pflab.hq import service
     res = service.brain_now(rt, question=t["text"] or None)
@@ -335,8 +327,6 @@ ROSTER: Dict[str, Agent] = {a.name: a for a in [
           _watcher),
     Agent("portfolio", "Portfolio", "code; local model words it", "the portfolio today (statements, then Kite)",
           "the ledger, Kite snapshots", "nothing", _portfolio),
-    Agent("reader", "Readers", "{materiality}", "read every public document: materiality, figures, summary",
-          "filings, results, news, exports", "readings in the graph", _reader),
     Agent("fetch", "Cited-page reader", "{fetch} + web fetch", "reads a page or filing the system already cites",
           "one cited URL", "a note in the graph", _fetch),
     Agent("brain", "Brain", "{brain} with tools ({brain_rival} as its journal-only rival)", "looks with tools, decides what matters and "
@@ -375,8 +365,8 @@ ROLES = [
      "does": "calculations (written twice, run in the sandbox), scenarios, simulations and pre-registered strategy experiments"},
     {"id": "reviewer", "title": "Reviewer", "members": ["w_review"], "order_to": None,
      "does": "independently reproduces and checks an investigation's work; approves it or asks for specific fixes"},
-    {"id": "readers", "title": "Readers", "members": ["reader", "analysis", "watcher"], "order_to": "analysis",
-     "does": "reads every public document and every file you drop: materiality, figures, summary"},
+    {"id": "readers", "title": "Readers", "members": ["analysis", "watcher"], "order_to": "analysis",
+     "does": "reads every file you drop: materiality, figures, summary"},
     {"id": "learner", "title": "Learner", "members": ["learner"], "order_to": "learner"},
     {"id": "memory", "title": "Memory and graph", "members": ["memory", "graph", "cleanup"], "order_to": "graph",
      "does": "keeps decisions and notes, follows them up, and keeps the knowledge graph tidy"},

@@ -508,8 +508,6 @@ def test_the_scheduled_hq_job_runs_a_whole_investigation_with_nobody_asking(con,
         _note("Opened a case on AAA and asked for the flows report.")])
     monkeypatch.setattr(service, "client", lambda rt_: fake)
     monkeypatch.setattr(service, "names", lambda rt_: ([AAA], [BBB]))
-    monkeypatch.setattr(service, "read_now", lambda rt_, limit=40: {"read": 0})
-    monkeypatch.setattr(service, "texts_now", lambda rt_: {"kept": 0})
     monkeypatch.setattr(phone, "poll_once", lambda rt_, timeout=0: 0)
     monkeypatch.setattr("pflab.hq.security.egress", lambda rt_: {})
     monkeypatch.setattr(service, "paid_allowed", lambda rt_: True)

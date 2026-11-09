@@ -327,19 +327,6 @@ def forecasts(ctx: Ctx, a: dict) -> dict:
             "source": "quant/forecast.py (calibrated statistics: block bootstrap with the CAPM centre; baselines for turnover and results)"}
 
 
-def readings(ctx: Ctx, a: dict) -> dict:
-    from pflab.hq import readers
-    isin = _isin(ctx, a["symbol"])
-    since = ctx.now - timedelta(days=int(a.get("days", 30)))
-    rows = [r for r in readers.recent(ctx.con, since, material_only=False) if isin in r["isins"]][:10]
-    from pflab.hq import recency
-    return {"readings": recency.stamp([{"kind": r["kind"], "published": str(r["published"])[:10], "material": r.get("material"),
-                                        "summary": (r["summary"] or "")[:400], "figures": r["figures"][:4]} for r in rows],
-                                      None, ctx.asof),
-            "source": "hq/readers.py (Haiku readings; figures kept only when found in the document); stale = older than "
-                      "the policy (news 3 days, filings 30, results 100)"}
-
-
 def graph_timeline(ctx: Ctx, a: dict) -> dict:
     from pflab.kg import graph as g
     isin = _isin(ctx, a["symbol"])
@@ -504,12 +491,12 @@ def memory_recall(ctx: Ctx, a: dict) -> dict:
 
 
 def journal(ctx: Ctx, a: dict) -> dict:
-    from pflab.hq import brain, keeper, suggestions as sg
+    from pflab.hq import brain, keeper
     mine = [p for p in brain.journal(ctx.con, 30) if p["model"] == ctx.model and p["status"] == "done"][:6]
     return {"passes": [{"id": p["id"], "at": str(p["at"])[:16], "trigger": p["trigger"], "note": (p["note"] or "")[:300],
                         "actions": [f"{d['action']}: {d.get('subject', '')}"[:120] for d in p["decisions"]]} for p in mine],
-            "scorecard": keeper.scorecard_text(ctx.con, ctx.model), "suggestions": sg.lessons_text(ctx.con, ctx.model),
-            "source": "hq_passes, hq_predictions, hq_suggestions"}
+            "scorecard": keeper.scorecard_text(ctx.con, ctx.model),
+            "source": "hq_passes, hq_predictions"}
 
 
 def ready_plans(ctx: Ctx, a: dict) -> dict:
@@ -618,42 +605,6 @@ def record_prediction(ctx: Ctx, a: dict) -> dict:
         raise ValueError(f"no close on record for {pr['symbol']}: not kept")
     ctx.predictions.append(pid)
     return {"kept": pid, "scored": "on the close at its due date, against the stock's own base rate"}
-
-
-def record_suggestion(ctx: Ctx, a: dict) -> dict:
-    from pflab.agents import analyst as an
-    from pflab.hq import keeper, stocks, suggestions as sg
-    sym = (a.get("symbol") or "").strip().upper()
-    isin = facts = ref = qty = None
-    if sym:
-        if sym not in ctx.syms:
-            raise ValueError(f"{sym} is neither held nor on the stock list")
-        isin = ctx.syms[sym]
-        bk = ctx.book()
-        facts = stocks.facts(ctx.con, ctx.rt.data_root, bk, sym, ("drift", "valuation"))
-        s = keeper.closes(ctx.con, isin, ctx.asof, days=15)
-        ref = (s.index[-1].date(), float(s.iloc[-1])) if len(s) else None
-        qty = float(bk.qtys.get(isin, 0.0))
-    text, d1 = an.only_sourced_numbers(a["text"], an.Request(ctx.source, "brain"))
-    why, d2 = an.only_sourced_numbers(a["reasoning"], an.Request(ctx.source, "brain"))
-    if d1 or d2:
-        ctx.problems.append(f"suggestion on {sym or 'the portfolio'}: {d1 + d2} sentence(s) dropped (numbers not read)")
-    data = {"rested_on": {n: ctx.results.get(n, "(not called this pass)")[:1500] for n in a.get("rested_on", [])},
-            "facts_at_the_time": facts}
-    sid = sg.record(ctx.con, pass_id=ctx.pass_id, model=ctx.model, kind=a["kind"], isin=isin, symbol=sym or None,
-                    text=text.split("\n\n(")[0], reasoning=why.split("\n\n(")[0], data=data,
-                    horizon_days=int(a["horizon_days"]), now=ctx.now, shadow=ctx.shadow, ref=ref, ref_qty=qty, facts=facts,
-                    root=ctx.rt.data_root, amount=stocks.order_size(bk, isin) if isin and a["kind"] == "add" else None)
-    ctx.suggestions.append(sid)
-    q = ctx.con.execute("SELECT quality, quality_why, price_low, price_high, max_buy, amount, wrong_if, watch_id "
-                        "FROM hq_suggestions WHERE sug_id=?", [sid]).fetchone()
-    st = ctx.con.execute("SELECT stats_json FROM hq_suggestions WHERE sug_id=?", [sid]).fetchone()[0]
-    nudges_ = (json.loads(st).get("nudges") if st else None) or []
-    return {"kept": sid, "quality_at_the_time": q[0], "why": q[1],
-            "nudges": [n["text"] for n in nudges_] or "none apply (tips from unregistered sources cannot be checked)",
-            "numbers_by_code": {"price_low": q[2], "price_high": q[3], "highest_buy": q[4], "amount_rs": q[5],
-                                "wrong_if": q[6], "price_watch": q[7]},
-            "scored": f"in {a['horizon_days']} days against the Nifty 500, taken or not"}
 
 
 def save_state(ctx: Ctx, a: dict) -> dict:
@@ -1170,8 +1121,6 @@ def submit_review(ctx: Ctx, a: dict) -> dict:
                      {"approve": "approved", "revise": "revise", "reject": "rejected"}[a["verdict"]], note])
     cases.log(ctx.con, c["id"], ctx.now, "independent review", f"{a['verdict']}: {note[:300]}")
     note_artifact(ctx, c["id"], "review", rid, a["verdict"])
-    from pflab.hq import proposals
-    proposals.review_case(ctx.con, ctx.now, c["id"], a["verdict"], note)
     return {"stored": True, "review_id": rid, "verdict": a["verdict"]}
 
 
@@ -1273,44 +1222,6 @@ def decide_plan(ctx: Ctx, a: dict) -> dict:
     return out
 
 
-def make_proposal(ctx: Ctx, a: dict) -> dict:
-    """A buy, add, hold, reduce, sell, diversify or wait recommendation. You give the direction, the company and the reasons; the system computes every number
-    (price and date, cash, size, charges, weights, tax from the lots) from the record, and says what is missing. Never an order."""
-    from pflab.hq import proposals
-    if ctx.shadow:
-        return _SHADOW_CASE
-    from pflab.hq import cases as _cases
-    cid = int(a["case_id"]) if a.get("case_id") else None
-    if cid and _cases.get(ctx.con, cid) is None:               # a recommendation may be linked to a finished investigation (it is a link, not new evidence in it)
-        return {"stored": False, "problem": f"no case #{cid}"}
-    from pflab.paper import manager as _pm
-    if _pm.is_paper(ctx.con, cid):                              # S76: a paper mission decides for the paper portfolio, never for his money
-        return {"stored": False, "problem": "this mission manages the paper portfolio: record the decision with paper_decide"}
-    inputs = {k: a.get(k) for k in ("action", "symbol", "isin", "qty", "amount_rupees", "full_exit", "assumptions", "review_condition")}
-    inputs["reason"] = _checked(ctx, a.get("reason", ""))
-    inputs["alternatives"] = _checked(ctx, a.get("alternatives", ""))
-    try:
-        inputs["evidence_ids"] = json.loads(a.get("evidence_ids_json") or "[]")
-    except ValueError:
-        inputs["evidence_ids"] = []
-    if a.get("proposal_id"):
-        old = proposals.get(ctx.con, int(a["proposal_id"]))
-        if not old or old["status"] != "proposed":
-            return {"stored": False, "problem": "only a proposal that is still open can be amended"}
-        b = proposals.build(ctx.con, ctx.now, {**inputs, "isin": old["isin"]})
-        if "problem" in b:
-            return {"stored": False, "problem": b["problem"]}
-        from pflab.hq import missions
-        snap = missions.snapshot_id(ctx.con, ctx.rt.pm_dir)
-        b["payload"]["portfolio"] = {**(b["payload"].get("portfolio") or {}), "snapshot": snap}
-        out = proposals.amend_stored(ctx.con, ctx.now, int(a["proposal_id"]), b, snap, f"{ctx.role or 'assistant'}", why=inputs["reason"][:160])
-    else:
-        out = proposals.create(ctx.con, ctx.now, inputs, pm_dir=ctx.rt.pm_dir, case_id=cid, by=ctx.role or "assistant")
-    if out.get("stored") and cid:
-        note_artifact(ctx, cid, "proposal", out["proposal_id"], f"{str(a['action']).upper()} v{out['version']}")
-    return out
-
-
 def paper_book_tool(ctx: Ctx, a: dict) -> dict:
     """S76: the paper portfolio the system runs by itself: holdings, cash, rails, open orders, recent decisions, its record and the gate to his money."""
     from pflab.paper import book, manager
@@ -1399,36 +1310,6 @@ def watch_remove(ctx: Ctx, a: dict) -> dict:
     if ctx.shadow:
         return _SHADOW_CASE
     return watch.remove(ctx.con, ctx.now, a.get("watch"), a.get("why", ""))
-
-
-def proposals_tool(ctx: Ctx, a: dict) -> dict:
-    from pflab.hq import proposals
-    from pflab.paper import manager as _pm
-    cid = int(a["case_id"]) if a.get("case_id") else (ctx.con.execute("SELECT case_id FROM hq_tasks WHERE task_id=?", [ctx.task_id]).fetchone() or [None])[0] if ctx.task_id else None
-    if _pm.is_paper(ctx.con, cid):                              # S76: a paper mission's decisions are paper decisions, not proposals for his money
-        return {"paper_decisions": _pm.decisions_of(ctx.con, int(cid)), "note": "these are the paper portfolio's decisions for this mission; they are executed on paper only if the review approves"}
-    if a.get("proposal_id"):
-        p = proposals.get(ctx.con, int(a["proposal_id"]))
-        return {"proposal": p, "stale": proposals.stale_reason(ctx.con, p, ctx.rt.pm_dir) if p else None} if p else {"error": "no such proposal"}
-    rows = proposals.listing(ctx.con, status=a.get("status"), case_id=int(a["case_id"]) if a.get("case_id") else None, limit=12)
-    return {"proposals": [{"id": p["proposal_id"], "action": p["action"], "symbol": p["symbol"], "status": p["status"], "review": p["review_status"], "version": p["version"],
-                           "snapshot": p["snapshot_id"], "strategy": p["strategy_version"], "case": p["case_id"], "missing": p["missing"][:3],
-                           "size": (p["payload"].get("size") or {}).get("qty"), "made": p["created_at"][:10]} for p in rows]}
-
-
-def decide_proposal(ctx: Ctx, a: dict) -> dict:
-    """Discuss, accept, reject or withdraw a proposal. Accept and reject are his decisions: they need his own words in this message. Accepting records that HE
-    will act; it places no order."""
-    from pflab.hq import proposals
-    pid = int(a["proposal_id"])
-    d = a["decision"]
-    if d == "discuss":
-        return proposals.discuss(ctx.con, ctx.now, pid, _checked(ctx, a.get("note", ""))[:500], by="the investor (chat)")
-    if d == "accept" and not _said_yes(ctx):
-        return {"ok": False, "why": "his message does not clearly accept; ask him to say 'accept' (nothing is ordered either way)"}
-    if d in ("reject", "withdraw") and not _said_no(ctx):
-        return {"ok": False, "why": "his message does not clearly reject or withdraw it"}
-    return proposals.decide(ctx.con, ctx.now, pid, d, by="the investor (chat)", note=_his_message(ctx)[:160])
 
 
 def policy_scenarios(ctx: Ctx, a: dict) -> dict:
@@ -1711,8 +1592,6 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
          "35% fall, the one-year fan, the worst dated stress episodes.", {"years": _i("years", 1, 5)}, (), simulation),
     Tool("forecasts", "read", "The latest kept forecasts (turnover, results ranges) with the model serving each.",
          {"symbol": SYMBOL}, (), forecasts),
-    Tool("readings", "read", "What the Haiku readers made of a stock's recent public documents (materiality, summary, "
-         "checked figures).", {"symbol": SYMBOL, "days": DAYS}, ("symbol",), readings),
     Tool("graph_timeline", "read", "A stock's documents in the knowledge graph (filings, results, articles, notes) with "
          "their URLs.", {"symbol": SYMBOL, "days": DAYS}, ("symbol",), graph_timeline),
     Tool("notes", "read", "The analyst's newest cited note on a company.", {"symbol": SYMBOL}, ("symbol",), notes),
@@ -1734,13 +1613,6 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
          {"symbol": SYMBOL, "kind": _s("kind", enum=["return_above", "return_below"]), "level": _n("percent", -90, 500),
           "due": _s("YYYY-MM-DD", 10), "confidence": _n("probability", 0, 1), "claim": _s("the claim in words", 300)},
          ("symbol", "kind", "level", "due", "confidence", "claim"), record_prediction),
-    Tool("record_suggestion", "journal", "Keep a suggestion for the investor in the suggestion ledger, scored at its "
-         "horizon taken or not. Name the tools it rests on.",
-         {"kind": _s("kind", enum=["add", "trim", "hold", "wait", "rebalance", "review", "other"]), "symbol": SYMBOL,
-          "text": _s("the suggestion in one or two sentences", 600), "reasoning": _s("why, from the facts read", 1500),
-          "horizon_days": _i("days until it is scored", 5, 180),
-          "rested_on": {"type": "array", "items": {"type": "string", "enum": []}, "description": "tool names"}},
-         ("kind", "text", "reasoning", "horizon_days", "rested_on"), record_suggestion),
     Tool("save_state", "journal", "Save your working state (what you found, what is left to do) to memory; the next "
          "context and the next pass start from it.", {"state": _s("the working state", 3000)}, ("state",), save_state),
     Tool("ask_investor", "action", "Ask the investor something only he can answer.",
@@ -1899,23 +1771,6 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
           "financial_policy": {"type": "boolean", "description": "touches an amount, rule or limit of his money"}}, ("case_id", "instruction"), amend_investigation),
     Tool("decide_plan", "action", "His yes or no to a plan that waits for approval. Use it only when his message in this turn says so; the system checks his words.",
          {"case_id": _i("the investigation", 1, 10 ** 9), "decision": _s("his decision", enum=["approve", "decline"])}, ("case_id", "decision"), decide_plan),
-    Tool("make_proposal", "journal", "A buy, add, hold, reduce, sell, diversify or wait recommendation for the investor, with the evidence and the alternatives. You choose the "
-         "direction and give the reasons; the system computes every number from his record (price and date, cash, size, charges, weights, tax from the lots) and lists what is "
-         "missing. HOLD, WAIT and DIVERSIFY need a concrete condition for looking again. It is advice, never an order. To change an open proposal pass its proposal_id.",
-         {"action": _s("the decision", enum=["BUY", "ADD", "HOLD", "REDUCE", "SELL", "DIVERSIFY", "WAIT"]), "symbol": _s("the company's symbol", 20),
-          "reason": _s("the evidence and reason in plain words", 1200), "alternatives": _s("what else was considered: waiting, holding, doing less, and why not", 800),
-          "review_condition": _s("for HOLD, WAIT, DIVERSIFY: the concrete condition (a price, date, document or cash) that reopens it", 300),
-          "qty": _n("shares, for BUY/ADD/REDUCE", 1, 10 ** 7), "amount_rupees": _n("an amount instead of shares", 1, 10 ** 9),
-          "full_exit": {"type": "boolean", "description": "SELL the whole holding"}, "assumptions": _s("assumptions made", 500),
-          "evidence_ids_json": _s("JSON list of the case's evidence ids it rests on", 200), "case_id": _i("the investigation", 1, 10 ** 9),
-          "proposal_id": _i("amend this open proposal", 1, 10 ** 9)}, ("action", "reason", "alternatives"), make_proposal),
-    Tool("proposals", "read", "The recommendations on record (buy, add, hold, reduce, sell, diversify, wait): status, review, the snapshot and strategy version they used, "
-         "what is missing. With proposal_id: all of one, with its log.", {"proposal_id": _i("one proposal", 1, 10 ** 9), "status": _s("filter", enum=["proposed", "accepted",
-         "rejected", "withdrawn", "executed", "partly_executed", "superseded"]), "case_id": _i("one investigation", 1, 10 ** 9)}, (), proposals_tool),
-    Tool("decide_proposal", "action", "Discuss a proposal with him, or record his accept, reject or withdraw (his own words in this message are required for those). "
-         "Accepting places no order: he enters any trade himself.",
-         {"proposal_id": _i("the proposal", 1, 10 ** 9), "decision": _s("what", enum=["discuss", "accept", "reject", "withdraw"]), "note": _s("his comment, if discussing", 400)},
-         ("proposal_id", "decision"), decide_proposal),
     Tool("policy_scenarios", "journal", "A HYPOTHETICAL SCENARIO study of how to put a waiting sum into shares: all-in now, his current equal monthly tranches, phased buying "
          "under explicit rules (a reserve bought on a fall) and cash held until a fall, across a sharp fall, a prolonged decline, a fall and recovery, and no crash. You state "
          "the assumptions (the sum, the size of the fall, the horizon, rates); they are shown with the results and nothing is a forecast. Kept as a reproducible calculation.",
@@ -2024,7 +1879,6 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
 ]}
 from pflab.hq import tools_s79 as _t79  # noqa: E402  (S79: new tools live one module per item)
 TOOLS.update({t.name: t for t in _t79.collect()})
-TOOLS["record_suggestion"].params["rested_on"]["items"]["enum"] = [n for n, t in TOOLS.items() if t.kind == "read"]
 
 
 MAX_STRICT = 20
@@ -2032,7 +1886,7 @@ MAX_OPTIONAL = 24                                  # optional parameters across 
 
 
 WORKER_ONLY = ("reproduce_calc", "submit_review", "request_artifact", "plan_mission", "submit_answer", "start_investigation", "open_workspace", "work_status",
-               "remember_fact", "amend_investigation", "decide_plan", "make_proposal", "proposals", "decide_proposal",
+               "remember_fact", "amend_investigation", "decide_plan",
                "add_rule", "undo_rule", "decide_rule", "answer_question", "paper_decide", "paper_ask", "watch_add", "watch_remove", "propose_allocation")      # S68: the workers' tools; the brain's list is unchanged
 
 

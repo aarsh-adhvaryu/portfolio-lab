@@ -7,7 +7,7 @@ const NAV = [['today', 'Today', '◉'], ['account', 'Account', '▤'], ['watchli
 const OLD_SCREENS = ['world', 'portfolio'];            // S78: reachable by address only; the redesign's bar does not list them
 const SUBS = {
   portfolio: [['overview', 'Overview'], ['holdings', 'Holdings and lots'], ['paper', 'Paper portfolio'], ['watch', 'Watch list']],
-  research: [['overview', 'Overview'], ['work', 'Investigations'], ['recs', 'Recommendations'], ['memory', 'Memory'], ['rules', 'Rules and money'], ['plans', 'Plans and ideas'], ['sims', 'Simulations'], ['graph', 'Knowledge graph']],
+  research: [['overview', 'Overview'], ['work', 'Investigations'], ['memory', 'Memory'], ['rules', 'Rules and money'], ['plans', 'Plans and ideas'], ['sims', 'Simulations'], ['graph', 'Knowledge graph']],
   system: [['checks', 'Does it work'], ['now', 'Now'], ['limits', 'Limits and spend'], ['schedule', 'Schedule']],
 };
 const TITLES = { today: 'Today', account: 'Account', watchlist: 'Watchlist', assistant: 'Assistant', world: 'The world', portfolio: 'Portfolio', research: 'Research', inbox: 'Inbox and files', system: 'System', settings: 'Settings', setup: 'Setup' };
@@ -668,31 +668,16 @@ function hqParts(d) {
         <div class="stack" style="gap:8px">${journal || '<span class="small muted">No pass yet.</span>'}</div>
       </div>`;
   const predsP = d.predictions.length ? `<div class="panel"><span class="lbl">Predictions</span><div class="scroll"><table><thead><tr><th>Claim</th><th>By</th><th>Conf.</th><th>Base</th><th>Due</th><th>Outcome</th></tr></thead><tbody>${preds}</tbody></table></div></div>` : '';
-  const rec = d.suggestion_record || { kinds: {}, luck: {}, open: 0 };
-  const sugs = (d.suggestions || []).map((x) => `<div style="border-top:1px solid var(--line);padding-top:6px;display:flex;flex-direction:column;gap:4px">
-    <div class="row" style="justify-content:space-between"><span class="small"><b>${esc(x.kind)}</b> ${esc(x.symbol || '')} <span class="tiny muted">${esc(x.model.replace('claude-', ''))} · ${esc(String(x.at).slice(5, 16))} · scored in ${x.horizon} days</span></span>
-      <span class="tiny ${x.quality === 'sound' ? 'up' : 'warn'}" title="${esc(x.quality_why || '')}">${esc(x.quality || '')}</span></div>
-    <span class="small">${esc(priv(x.text))}</span>${x.reasoning ? `<details><summary class="tiny muted">why</summary><span class="small soft">${esc(priv(x.reasoning))}</span></details>` : ''}
-    <div class="row wrapr" style="gap:6px">${x.outcome ? `<span class="small ${x.outcome === 'good' ? 'up' : x.outcome === 'bad' ? 'down' : 'muted'}">${esc(x.outcome)}</span>${x.outcome_json && x.outcome_json.excess_pct !== undefined ? ` <span class="tiny muted">${x.outcome_json.stock_pct >= 0 ? '+' : ''}${x.outcome_json.stock_pct}% vs Nifty 500 ${x.outcome_json.nifty500_pct >= 0 ? '+' : ''}${x.outcome_json.nifty500_pct}%</span>` : ''}` : ''}
-      ${[['taken', 'Taken'], ['declined', 'Declined']].map(([v, n]) => `<button class="btn ${x.answer === v ? 'primary' : ''}" style="min-height:24px;padding:2px 8px;font-size:12px" data-hqsug="${x.id}" data-v="${v}">${n}</button>`).join('')}
-      ${x.answer_source === 'portfolio' ? '<span class="tiny muted">seen in your portfolio</span>' : ''}</div></div>`).join('');
-  const sugP = `<div class="panel" style="display:flex;flex-direction:column;gap:6px"><span class="lbl">Suggestions</span>
-        <span class="tiny muted">Every suggestion is scored at its horizon on what the stock did against the Nifty 500, taken or declined (declined ones on paper). Under 20 a count, not a rate.</span>
-        ${Object.keys(rec.kinds).length ? Object.entries(rec.kinds).map(([k, v]) => `<div class="small">${esc(k)}: ${esc(v.rate)} good <span class="tiny muted">(${v.good} of ${v.n})</span></div>`).join('') + `<span class="tiny muted">sound but went badly: ${rec.luck.sound_bad || 0} · weak or unsound but went well: ${(rec.luck.unsound_good || 0) + (rec.luck.weak_good || 0)} · open ${rec.open}</span>` : `<span class="small muted">Nothing scored yet${rec.open ? ` (${rec.open} open)` : ''}.</span>`}
-        ${sugs || '<span class="small muted">No suggestion yet.</span>'}</div>`;
   const followP = `<div class="panel" style="display:flex;flex-direction:column;gap:6px"><span class="lbl">Since your decisions</span>
         ${d.followups.length ? d.followups.map((f) => `<div class="small"><b>${esc(f.subject || '—')}</b> <span class="tiny muted">${esc(f.at)}</span>: ${esc(f.text.slice(0, 140))} <span class="${f.since.change_pct >= 0 ? 'up' : 'down'}">${f.since.change_pct >= 0 ? '+' : ''}${f.since.change_pct.toFixed(1)}%</span> <span class="tiny muted">to ${esc(f.since.to)}</span></div>`).join('') : '<span class="small muted">No decision about a company in the last 120 days (/decide SYMBOL: text on Telegram).</span>'}
         ${d.other_decisions ? `<span class="tiny muted">${d.other_decisions} other decision(s) kept (not about a company).</span>` : ''}
-      </div>`;
-  const readersP = `<div class="panel" style="display:flex;flex-direction:column;gap:6px"><span class="lbl">Readers (latest)</span>
-        ${d.readings.length ? d.readings.map((r) => `<div class="small"><span class="${r.material === 'yes' ? 'warn' : 'muted'}">${esc(r.material)}</span> ${esc(r.kind)}: ${esc((r.summary || r.title || '').slice(0, 200))}${r.dropped ? ` <span class="tiny muted">${r.dropped} figure(s) dropped</span>` : ''} <span class="tiny muted">· ${esc(r.where || '')}</span></div>`).join('') : '<span class="small muted">Nothing read yet.</span>'}
       </div>`;
   const remP = `<div class="panel" style="display:flex;flex-direction:column;gap:6px"><span class="lbl">Reminders and the drop folder</span>
         ${d.reminders.length ? d.reminders.map((r) => `<div class="small row" style="justify-content:space-between"><span>${esc(r.due.slice(5))} · ${esc(r.text)}</span><button class="btn" style="min-height:26px;padding:2px 8px" data-hqrem="${r.id}">Cancel</button></div>`).join('') : '<span class="small muted">No reminder (say "remind me to … tomorrow at 9").</span>'}
         <span class="tiny muted">Drop folder: ${esc(d.drop.folder)} · ${d.drop.on ? 'watched' : 'not watched (Settings)'}</span>
       </div>`;
   const running = d.tasks.filter((t) => t.status === 'running').length, waiting = d.tasks.filter((t) => t.status === 'queued').length;
-  return { orderP, boardP, agentsP, spendP, brainP, predsP, sugP, followP, readersP, remP, running, waiting };
+  return { orderP, boardP, agentsP, spendP, brainP, predsP, followP, remP, running, waiting };
 }
 /* The buttons inside the agents' panels. `again` re-reads /api/hq and redraws whatever shows them. */
 function hqWire(root, again) {
@@ -707,7 +692,6 @@ function hqWire(root, again) {
     if (a) { a.value = S.hqAgent; root.querySelector('#hqT').focus(); } }; });
   root.querySelectorAll('[data-hqbrain]').forEach((x) => { x.onclick = async () => { S.settings = await post('/api/settings', { brain: x.dataset.hqbrain }); again(); }; });
   root.querySelectorAll('[data-hqmark]').forEach((x) => { x.onclick = async () => { await post(`/api/hq/passes/${x.dataset.hqmark}/mark`, { mattered: x.dataset.v === 'true' }); again(); }; });
-  root.querySelectorAll('[data-hqsug]').forEach((x) => { x.onclick = async () => { await post(`/api/hq/suggestions/${x.dataset.hqsug}/answer`, { answer: x.dataset.v }); again(); }; });
   root.querySelectorAll('[data-hqrem]').forEach((x) => { x.onclick = async () => { await post(`/api/hq/reminders/${x.dataset.hqrem}/cancel`); again(); }; });
   on('hqThink', 'onclick', async () => { try { await post('/api/hq/order', { agent: 'brain', text: '' }); } catch (e) { S.hqMsg = e.message; } again(); });
 }
@@ -1442,7 +1426,6 @@ async function load(force = false) {
     else if (screen === 'portfolio' && sub === 'watch') { const d = await api('/api/watch'); if (fresh()) keepInputs(() => renderWatch(d)); }
     else if (screen === 'world') { const d = await api('/api/world'); if (fresh()) renderWorld(d); }
     else if (screen === 'research' && sub === 'work') { const d = await api('/api/investigations'); if (fresh()) keepInputs(() => { $('screen').innerHTML = ''; renderInvestigations(d); }); }
-    else if (screen === 'research' && sub === 'recs') { const [d, r] = await Promise.all([api('/api/proposals'), api('/api/routing').catch(() => ({ decisions: [] }))]); if (fresh()) keepInputs(() => { $('screen').innerHTML = ''; renderProposals(d, r); }); }
     else if (screen === 'research' && sub === 'memory') { const d = await api('/api/recall?' + new URLSearchParams({ about: S.memAbout || '' })); if (fresh()) keepInputs(() => { $('screen').innerHTML = ''; renderMemory(d); }); }
     else if (screen === 'research' && sub === 'rules') { const [rl, env, sc] = await Promise.all([api('/api/rules'), api('/api/envelope'), api('/api/scorecard')]); if (fresh()) keepInputs(() => { $('screen').innerHTML = ''; renderRules(rl, env, sc); }); }
     else if (screen === 'research' && sub === 'plans') { const d = await api('/api/research' + (S.rsel ? '?isin=' + encodeURIComponent(S.rsel) : '')); if (fresh()) keepInputs(() => renderResearch(d)); }

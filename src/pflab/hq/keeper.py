@@ -183,15 +183,7 @@ def write_outcomes(con, now: datetime, fu: Optional[List[dict]] = None) -> int:
 
 
 def run(con, now: datetime, root=None) -> dict:
-    from pflab.hq import suggestions as sg
     fu = followups(con, now.date())
-    index = None
-    if root is not None:
-        try:
-            from pflab.hq import stocks
-            index = stocks.index_series(root)
-        except Exception:                                    # no index file: suggestions wait (void after 10 days)
-            index = None
     from pflab.kg import hypotheses as hy
     try:
         hyp = hy.check_due(con, root, now) if root is not None else {}
@@ -199,6 +191,6 @@ def run(con, now: datetime, root=None) -> dict:
         hyp = {"error": f"{type(e).__name__}: {str(e)[:100]}"}
     from pflab.hq import board, cases
     return {"held_expired": board.expire_held(con, now), "case_outcomes": cases.link_outcomes(con, now),
-            "hypotheses": hyp, "scored": score_due(con, now), "suggestions_scored": sg.score_due(con, now, index),
+            "hypotheses": hyp, "scored": score_due(con, now),
             "notes_ended": tidy_notes(con, now), "outcomes_written": write_outcomes(con, now, fu),
             "decisions_followed": sum(1 for f in fu if f["since"]), "unknown_subjects": sum(1 for f in fu if f.get("unknown_subject"))}

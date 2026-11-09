@@ -10,7 +10,7 @@ from datetime import date, datetime, timedelta
 import pytest
 
 from pflab.agents import analyst as an
-from pflab.hq import arrivals, board, cases, governor as gv, missions, plans, roster, service, triggers
+from pflab.hq import board, cases, governor as gv, missions, plans, roster, service
 from pflab.hq import tools as tl
 from tests.test_s68_missions import (CFG, NOW, PLAN, Model, _fake_calc, _happy_scripts, _run, _say, _use, con, rt)  # noqa: F401
 
@@ -285,33 +285,6 @@ def test_an_experiment_in_a_running_mission_is_driven_without_waiting_for_the_ni
 
 # --- executable monitoring -----------------------------------------------------------------------------------------------------------------
 
-def test_a_monitoring_sentence_is_not_a_monitor_but_a_supported_trigger_is_saved_and_fires(rt, con, monkeypatch):
-    _fake_calc(monkeypatch)
-    from tests.test_s58b_today import AAA
-    con.execute("INSERT INTO instruments (isin, key_kind, asset_class, tax_class, listed, symbol, name, source, built_at) VALUES (?, 'isin', 'equity', 'EQUITY', TRUE, 'AAA', 'AAA Ltd', 's', now())", [AAA])
-    con.execute("INSERT INTO prices VALUES (?, DATE '2026-10-30', 120.0, 'EQ', 's', now())", [AAA])
-    sc = _happy_scripts()
-    trig = [{"kind": "price_below", "symbol": "AAA", "value": 100}, {"kind": "move_pct", "symbol": "AAA", "pct": -10}, {"kind": "watch_the_vibes", "symbol": "AAA"},
-            {"kind": "review_on", "date": "2026-11-20"}, {"kind": "price_above", "symbol": "NOSUCH", "value": 5}]
-    sc["coordinator"][2] = _use(("submit_answer", {"case_id": 1, "answer": "Hold; calc 1 gives -18.0.", "limitations": "Assumptions.", "monitor_next": "Watch AAA below 100.",
-                                                   "triggers_json": json.dumps(trig), "change": "first"}), model=gv.OPUS)
-    _run(rt, monkeypatch, sc)
-    service.drive_missions(rt)
-    res = missions.mission_of(con, 1)["result"]
-    assert res["monitor_executable"] is True and len(res["triggers"]) == 3 and len(res["monitor_unsupported"]) == 2
-    assert any("not one the system can check" in u for u in res["monitor_unsupported"]) and any("NOSUCH" in u or "name a held" in u for u in res["monitor_unsupported"])
-    card = missions.card(con, 1)
-    assert [t["kind"] for t in card["triggers"]] == ["price_below", "move_pct", "review_on"] and card["triggers"][0]["describe"].endswith("Rs 100.00")
-    assert triggers.check(rt) == []                                                   # 120 is neither below 100 nor -10% from 120
-    con.execute("INSERT INTO prices VALUES (?, DATE '2026-11-02', 95.0, 'EQ', 's', now())", [AAA])
-    rt2 = type("R", (), {"cursor": lambda self: con.cursor(), "clock": lambda self: datetime(2026, 11, 2, 18, 0)})()
-    fired = triggers.check(rt2)
-    assert len(fired) == 2                                                            # below 100, and a move of -20.8% from 120
-    assert triggers.check(rt2) == []                                                  # each fires once
-    assert missions.mission_of(con, 1)["state"] == "planning"                         # the finished investigation is looked at again, by itself
-    assert any(e[0] == "trigger fired" for e in con.execute("SELECT event FROM hq_case_log WHERE case_id=1").fetchall())
-
-
 def test_an_answer_with_no_trigger_says_there_is_no_executable_monitor(rt, con, monkeypatch):
     _fake_calc(monkeypatch)
     _run(rt, monkeypatch, _happy_scripts())
@@ -355,126 +328,15 @@ DOC = ("Analyst note on the AI sell-off: spending on AI chips by the largest buy
        "and the note says Indian AI-linked holdings may fall again if the downturn continues over the next quarter. " * 2)
 
 
-def test_a_new_file_finds_its_investigation_through_the_local_model_and_reopens_it(rt, con, monkeypatch):
-    cid = _finished_mission(rt, con, monkeypatch)
-    _drop(con, "ai_downturn_note.txt", DOC)
-    asked = []
-
-    def local(item, cands, err):
-        asked.append((item["name"], [c["case_id"] for c in cands], err))
-        return {"raw": json.dumps({"case_id": cid, "effect": "new_information", "confidence": 0.8, "why": "it reports a further cut in AI chip spending"}), "model": "qwen3:8b-q8_0"}
-    out = arrivals.scan(rt, ask=local)
-    assert asked == [("ai_downturn_note.txt", [cid], "")] and out["routed"] == 1 and out["reopened"] == 1
-    assert missions.mission_of(con, cid)["state"] == "planning" and plans.versions(con, cid)[-1]["source"] == "review"          # the same investigation, a new version, no prompt
-    ev = cases.evidence(con, cid)
-    assert any(e["source_id"] == "inbox:1" and "ai_downturn_note.txt" in e["text"] for e in ev)
-    d = arrivals.recent(con)[0]
-    assert d["outcome"] == "local" and d["tries"] == 1 and d["model"] == "qwen3:8b-q8_0" and d["chosen"]["case_id"] == cid and "reopened" in d["note"]
-    assert arrivals.scan(rt, ask=local)["routed"] == 0 and len(asked) == 1           # a file is routed once
-
-
-def test_unusable_local_output_is_retried_once_and_then_the_plain_rule_decides(rt, con, monkeypatch):
-    cid = _finished_mission(rt, con, monkeypatch)
-    _drop(con, "ai_downturn_note.txt", DOC)
-    replies = iter(["I think it is about case 1.", json.dumps({"case_id": 999, "effect": "new_information", "confidence": 0.9, "why": "x"})])
-    errors = []
-
-    def local(item, cands, err):
-        errors.append(err)
-        return {"raw": next(replies), "model": "qwen3:8b-q8_0"}
-    out = arrivals.scan(rt, ask=local)
-    assert errors[0] == "" and "not a JSON" in errors[1] or "not a JSON object" in errors[1]            # the second ask names what was wrong with the first
-    d = arrivals.recent(con)[0]
-    assert d["outcome"] == "rule" and d["tries"] == 2 and out["routed"] == 1                           # still a safe, recorded outcome: a plain rule on shared words
-    assert missions.mission_of(con, cid)["state"] == "planning"
-
-
-def test_when_the_local_model_is_unavailable_a_clear_match_still_routes_and_an_unclear_one_goes_to_the_coordinator(rt, con, monkeypatch):
-    cid = _finished_mission(rt, con, monkeypatch)
-    _drop(con, "ai_downturn_note.txt", DOC)
-
-    def down(item, cands, err):
-        raise ConnectionError("ollama is not running")
-    arrivals.scan(rt, ask=down)
-    assert arrivals.recent(con)[0]["outcome"] == "rule" and missions.mission_of(con, cid)["state"] == "planning"
-    # two equally good fits: it is handed to the coordinator, and says so
-    _, b = _run(rt, monkeypatch, _happy_scripts(), goal="Investigate the AI downturn and what it does to my AI-linked holdings, second look")
-    c2 = missions.create(con, NOW, "A second look at the AI downturn: what does a downturn do to AI-linked holdings in my portfolio", pm_dir=rt.pm_dir)["case_id"]
-    cands = arrivals.candidates(con, "ai downturn holdings sell-off ai-linked stocks")
-    assert len(cands) >= 2
-    _drop(con, "second.txt", DOC, iid=2)
-    arrivals.scan(rt, ask=down)
-    assert arrivals.recent(con)[0]["outcome"] in ("escalated", "rule")
-
-
-def test_a_file_that_concerns_nothing_open_is_recorded_and_changes_nothing(rt, con, monkeypatch):
-    cid = _finished_mission(rt, con, monkeypatch)
-    _drop(con, "recipe.txt", "A long recipe for lentil soup with onions and cumin, simmered for an hour and served with rice and a squeeze of lemon on top. " * 3)
-    out = arrivals.scan(rt, ask=lambda *a: (_ for _ in ()).throw(AssertionError("the model must not be asked")))
-    assert out["unrelated"] == 1 and missions.mission_of(con, cid)["state"] == "done"
-    assert arrivals.recent(con)[0]["outcome"] == "code"
-
-
-def test_the_same_file_again_is_merged_not_reopened(rt, con, monkeypatch):
-    cid = _finished_mission(rt, con, monkeypatch)
-    cases.add_evidence(con, cid, NOW, "File 'ai_downturn_note.txt' arrived", stance="neutral", kind="dataset", source_id="inbox:1", source_kind="dataset")
-    _drop(con, "ai_downturn_note.txt", DOC)
-    out = arrivals.scan(rt, ask=lambda *a: (_ for _ in ()).throw(AssertionError("the model must not be asked")))
-    assert out["merged"] == 1 and missions.mission_of(con, cid)["state"] == "done"
-
-
-def test_a_duplicate_verdict_is_noted_and_nothing_is_reopened(rt, con, monkeypatch):
-    cid = _finished_mission(rt, con, monkeypatch)
-    _drop(con, "ai_downturn_note.txt", DOC)
-    arrivals.scan(rt, ask=lambda item, cands, err: {"raw": json.dumps({"case_id": cid, "effect": "duplicate", "confidence": 0.9, "why": "says what is known"}), "model": "m"})
-    assert missions.mission_of(con, cid)["state"] == "done"
-    assert any(e[0] == "arrival" for e in con.execute("SELECT event FROM hq_case_log WHERE case_id=?", [cid]).fetchall())
-
-
-def test_new_material_during_a_running_investigation_gives_the_research_a_task(rt, con, monkeypatch):
-    _fake_calc(monkeypatch)
-    _, out = _run(rt, monkeypatch, _happy_scripts(), goal="Investigate the AI sell-off and what a downturn does to my AI-linked holdings")
-    board.run_one(rt, roster.runners())                                               # planned: working
-    _drop(con, "ai_downturn_note.txt", DOC)
-    arrivals.scan(rt, ask=lambda item, cands, err: {"raw": json.dumps({"case_id": 1, "effect": "contradicts", "confidence": 0.7, "why": "reports the opposite"}), "model": "m"})
-    tasks = con.execute("SELECT text FROM hq_tasks WHERE role='research' ORDER BY task_id").fetchall()
-    assert any("New material arrived" in t[0] for t in tasks)
-    assert [e["stance"] for e in cases.evidence(con, 1) if e["source_id"] == "inbox:1"] == ["against"]
-
-
 def test_routing_is_visible_on_the_screen_api(tmp_path):
     from fastapi.testclient import TestClient
     assert True
-
-
-def test_a_read_file_whose_content_lives_in_the_graph_is_still_routed_from_the_stored_file(rt, con, monkeypatch, tmp_path):
-    """Found in the rehearsal: a dropped note is 'in the graph' with no text on its inbox row, so nothing was ever routed."""
-    cid = _finished_mission(rt, con, monkeypatch)
-    f = tmp_path / "note.txt"
-    f.write_text(DOC, encoding="utf-8")
-    con.execute("INSERT INTO inbox_items (item_id, name, kind, path, sha, status, created_at, updated_at) VALUES (1,'note.txt','other',?,?,'in the graph',?,?)", [str(f), "sha1", NOW, NOW])
-    assert arrivals.file_text(str(f)).startswith("Analyst note")
-    out = arrivals.scan(rt, ask=lambda item, cands, err: {"raw": json.dumps({"case_id": cid, "effect": "new_information", "confidence": 0.9, "why": "further cuts"}), "model": "m"})
-    assert out["routed"] == 1 and missions.mission_of(con, cid)["state"] == "planning"
-    assert arrivals.file_text(str(tmp_path / "missing.pdf")) == "" and arrivals.file_text(str(tmp_path / "x.bin")) == ""
 
 
 def test_the_deployment_study_tool_takes_a_trading_charge_so_an_amendment_about_costs_can_be_carried_out():
     tool = tl.TOOLS["policy_scenarios"]
     assert tl.validate(tool, {"case_id": 1, "why": "costs", "cost_bps": 50}) is None
     assert tl.validate(tool, {"case_id": 1, "why": "costs", "cost_bps": 5000}) is not None
-
-
-def test_the_assistant_can_make_a_recommendation_linked_to_a_finished_investigation(rt, con, monkeypatch):
-    """Found in the rehearsal: make_proposal refused a case that had already been concluded."""
-    cid = _finished_mission(rt, con, monkeypatch)
-    con.execute("INSERT INTO instruments (isin, key_kind, asset_class, tax_class, listed, symbol, name, source, built_at) VALUES ('INE000A01011', 'isin', 'equity', 'EQUITY', TRUE, 'AAA', 'AAA Ltd', 's', now())")
-    con.execute("INSERT INTO prices VALUES ('INE000A01011', DATE '2026-10-30', 120.0, 'EQ', 's', now())")
-    ctx = tl.Ctx(rt, 1, "m", False, {}, None, NOW, role="assistant", allowed=frozenset({"make_proposal"}), his_text="propose a wait")
-    out = tl.make_proposal(ctx, {"action": "WAIT", "symbol": "AAA", "case_id": cid, "reason": "The evidence is mixed and nothing in the case argues for acting now.",
-                                 "alternatives": "Buying or holding were compared and are not stronger.", "review_condition": "AAA closes below Rs 100"})
-    assert out["stored"] and out["proposal_id"] == 1
-    assert tl.make_proposal(ctx, {"action": "WAIT", "symbol": "AAA", "case_id": 999, "reason": "x" * 30, "alternatives": "y" * 20, "review_condition": "z" * 10})["stored"] is False
 
 
 def test_the_everyday_word_address_does_not_stop_a_worker_but_his_own_address_still_does():

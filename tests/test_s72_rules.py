@@ -8,7 +8,7 @@ from datetime import datetime
 import pytest
 
 from pflab.app import assistant
-from pflab.hq import egress, proposals, rules, tools as tl
+from pflab.hq import egress, rules, tools as tl
 from tests.test_s68_autonomy import AAA, NOW, con, rt  # noqa: F401  (fixtures)
 
 
@@ -97,33 +97,6 @@ def test_a_sector_exclusion_stops_new_buying_there_and_nothing_else(con, sectors
 def test_whole_words_only_so_it_does_not_catch_a_word_inside_another(con, sectors):
     rules.propose(con, NOW, "sector_exclusion", "No new IT", {"terms": ["it"]}, name="no_it")
     assert rules.violation(con, "BUY", "INE000B01012") is None                                   # 'Capital Goods' contains no whole word 'it'
-
-
-def _fake_build(monkeypatch, isin, action="BUY", weight_after=0.12, notional=80000.0):
-    monkeypatch.setattr(proposals, "build", lambda con_, now, inputs: {"payload": {"action": action, "reason": "x", "portfolio_effect": {"weight_after": weight_after},
-                                                                                "size": {"notional": notional}}, "missing": [], "isin": isin, "symbol": "AAA"})
-
-
-def test_a_proposal_in_an_excluded_sector_is_refused_with_the_rule_named(rt, con, sectors, monkeypatch):
-    _fake_build(monkeypatch, AAA)
-    rules.propose(con, NOW, "sector_exclusion", "No new tech until I say", {"terms": ["software"]}, name="no_new_tech")
-    out = proposals.create(con, NOW, {})
-    assert out["stored"] is False and "no_new_tech" in out["problem"] and "WAIT or HOLD" in out["problem"]
-    _fake_build(monkeypatch, AAA, action="WAIT")
-    assert proposals.create(con, NOW, {}).get("stored") is True                                  # a WAIT in the same sector is still possible
-
-
-def test_a_ceiling_and_the_envelope_are_noted_on_a_buy(rt, con, sectors, monkeypatch):
-    _fake_build(monkeypatch, "INE000B01012", weight_after=0.12, notional=80000.0)
-    a = rules.propose(con, NOW, "max_position", "No holding above 8% of the portfolio", {"max_weight_pct": 8})
-    b = rules.propose(con, NOW, "monthly_envelope", "I invest Rs 50,000 a month", {"amount_rupees": 50000})
-    assert proposals.create(con, NOW, {}).get("missing") == []                                   # both wait for his yes: neither binds yet
-    rules.decide(con, NOW, a["rule_id"], True)
-    rules.decide(con, NOW, b["rule_id"], True)
-    _fake_build(monkeypatch, "INE000B01012", weight_after=0.12, notional=80000.0)
-    out = proposals.create(con, NOW, {"y": 2})
-    missing = " | ".join(out["missing"])
-    assert "above the 8% ceiling" in missing and "above the Rs 50,000 available now" in missing
 
 
 # --- the tools ------------------------------------------------------------------------------------------------------------------

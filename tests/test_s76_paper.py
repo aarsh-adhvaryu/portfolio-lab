@@ -116,18 +116,6 @@ def test_a_rejection_adopts_nothing(con, rt):
     assert manager.execute(con, datetime(2026, 11, 2, 12, 0), cid) == {"orders": 0, "adopted": 0, "not_approved": 1}
 
 
-def test_the_proposals_tool_shows_a_paper_mission_its_own_decisions(con, rt):
-    from pflab.hq import tools as tl
-    _seed(con)
-    rt.cursor = lambda: con
-    cid = _mission(con, rt)
-    manager.decide(con, datetime(2026, 11, 2, 10, 0), cid, {"action": "WAIT", "reason": "valuations are high and no candidate has the evidence to buy",
-                                                              "alternatives": "buy the index now", "review_condition": "a 10% fall in the Nifty 500"})
-    ctx = tl.Ctx(rt, None, "m", False, {}, None, datetime(2026, 11, 2, 10, 5), role="review")
-    out = tl.proposals_tool(ctx, {"case_id": cid})
-    assert out["paper_decisions"][0]["action"] == "WAIT" and "paper" in out["note"]
-
-
 def test_nothing_runs_until_the_review_approves_and_a_rejected_mission_trades_nothing(con, rt):
     _seed(con)
     cid = _mission(con, rt)
@@ -243,8 +231,6 @@ def test_a_paper_mission_cannot_make_a_real_proposal_and_paper_order_needs_a_pap
     other = missions.create(con, datetime(2026, 11, 2, 9, 30), "Is AAA a buy for my real money?", pm_dir=rt.pm_dir, origin="investor")["case_id"]
     rt.cursor = lambda: con
     ctx = tl.Ctx(rt, None, "m", False, {}, None, datetime(2026, 11, 2, 10, 0), role="quant")
-    r = tl.make_proposal(ctx, {"action": "ADD", "symbol": "AAA", "reason": "x" * 30, "alternatives": "y" * 20, "case_id": cid})
-    assert not r["stored"] and "paper_decide" in r["problem"]
     r2 = tl.paper_decide(ctx, {"action": "ADD", "symbol": "AAA", "reason": "x" * 30, "alternatives": "y" * 20, "amount_rupees": 1000, "case_id": other})
     assert not r2["stored"]
 

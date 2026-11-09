@@ -65,22 +65,23 @@ def register_missing(con, now: datetime, index: Optional[pd.Series] = None) -> i
 
 def score_due(con, now: datetime, index: Optional[pd.Series]) -> int:
     """Score every claim past its horizon: outcomes after the day it was made, never before. A claim with no close or index near its horizon for 10 days is void."""
-    from pflab.hq import stocks, suggestions as sg
+    from pflab.hq import stocks
+    from pflab.quant import marks
     n = 0
     for cid, isin, kind, ref_date, ref_close, due in con.execute(
             "SELECT claim_id, isin, kind, ref_date, ref_close, due_on FROM hq_claims WHERE scored_at IS NULL AND due_on <= ?", [now.date()]).fetchall():
-        end = sg._close_on(con, isin, due)
-        i0 = sg._index_on(index, ref_date) if index is not None else None
-        i1 = sg._index_on(index, due) if index is not None else None
+        end = marks.close_on(con, isin, due)
+        i0 = marks.index_on(index, ref_date) if index is not None else None
+        i1 = marks.index_on(index, due) if index is not None else None
         if end is None or end[0] <= ref_date or i0 is None or i1 is None:
             if (now.date() - due).days > 10:
                 con.execute("UPDATE hq_claims SET outcome = 'void', outcome_json = ?, scored_at = ? WHERE claim_id = ?", [json.dumps({"why": "no close or index level near the horizon"}), now, cid])
                 n += 1
             continue
         sp, ip = (end[1] / ref_close - 1) * 100, (i1 / i0 - 1) * 100
-        beta = sg.beta_at(isin, ref_date)
+        beta = marks.beta_at(isin, ref_date)
         adj = sp - (beta if beta is not None else 1.0) * ip
-        out = sg.judge(kind, sp, adj, stocks.round_trip_pct(stocks.DEFAULT_ORDER))
+        out = marks.judge(kind, sp, adj, stocks.round_trip_pct(stocks.DEFAULT_ORDER))
         con.execute("UPDATE hq_claims SET outcome = ?, outcome_json = ?, scored_at = ? WHERE claim_id = ?",
                     [out, json.dumps({"to": str(end[0]), "stock_pct": round(sp, 2), "nifty500_pct": round(ip, 2), "market_adjusted_pct": round(adj, 2),
                                        "beta": None if beta is None else round(beta, 2)}), now, cid])

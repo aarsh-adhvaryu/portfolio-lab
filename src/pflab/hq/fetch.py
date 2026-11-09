@@ -120,14 +120,11 @@ def fetch_error(message) -> Optional[str]:
 
 
 def local_text(con, url: str, text_dir: Optional[Path]) -> Optional[str]:
-    """The readers' kept text of a filing at `url`; fetched now (BSE's own headers) when it has none yet."""
+    """The kept text of a filing at `url`, when this PC has it."""
     r = con.execute("SELECT doc_id, url, text_path FROM kg_docs WHERE url = ? AND kind IN ('filing', 'result') LIMIT 1",
                     [url]).fetchone()
     if not r:
         return None
     if r[2] and Path(r[2]).exists():
         return Path(r[2]).read_text(encoding="utf-8", errors="replace")
-    if text_dir is None:
-        return None
-    from pflab.hq import readers
-    return readers.fetch_filing_text(con, {"doc_id": r[0], "url": r[1]}, text_dir)
+    return None                                            # (the on-demand download went with the readers, S80 phase 4)

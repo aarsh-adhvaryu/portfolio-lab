@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 
 from pflab.app import assistant, chat
-from pflab.hq import brain, daily, proposals, rules, scorecard
+from pflab.hq import brain, daily, rules, scorecard
 from pflab.plan import envelope
 from pflab.service import jobs
 from tests.test_s68_autonomy import AAA, NOW, con, rt  # noqa: F401  (fixtures)
@@ -199,21 +199,6 @@ def test_a_quiet_day_says_so(rt, con, tmp_path):
     assert "Nothing needs you today" in msg and out["lines"] == 0
 
 
-def test_a_conclusion_with_new_evidence_is_named_and_a_quick_recheck_is_queued_once(rt, con, tmp_path):
-    from pflab.hq import cases
-    at = NOW - timedelta(days=20)
-    cid, _ = cases.open_case(con, at, "Is AAA Limited exposed to a software sell-off?", origin="investor", isin=AAA, key="k1")
-    cases.conclude(con, cid, at, "watch", "modest exposure", next_review_at=at + timedelta(days=60))
-    con.execute("INSERT INTO hq_readings (doc_id, read_at, model, material, summary, isins_json) VALUES ('doc:guidance', ?, 'm', 'yes', 'AAA cut its guidance', ?)", [NOW - timedelta(days=1), json.dumps([AAA])])
-    daily.review(_rt(rt, tmp_path), NOW)
-    msg = con.execute("SELECT text FROM chat_messages WHERE mode LIKE 'note:review:%'").fetchone()[0]
-    assert f"Conclusion of investigation #{cid}" in msg and "AAA cut its guidance" in msg and "a quick re-check is queued" in msg
-    queued = con.execute("SELECT question, subject_key, status FROM hq_cases WHERE subject_key LIKE 'discover:reading:daily:%'").fetchall()
-    assert len(queued) == 1 and "Re-check the earlier conclusion" in queued[0][0] and queued[0][2] == "queued"
-    daily.review(rt, NOW + timedelta(days=1))                                                                 # the same document is not flagged again
-    assert con.execute("SELECT count(*) FROM hq_cases WHERE subject_key LIKE 'discover:reading:daily:%'").fetchone()[0] == 1
-
-
 def test_one_part_failing_is_said_and_never_stops_the_rest(rt, con, tmp_path, monkeypatch):
     _envelope(con)
     monkeypatch.setattr(daily, "_scans", lambda r: (_ for _ in ()).throw(RuntimeError("boom")))
@@ -244,12 +229,3 @@ def test_the_paid_morning_pass_is_off_unless_the_policy_brings_it_back(con, monk
     monkeypatch.setattr(brain, "morning_pass_on", lambda: True)
     assert brain.due_scheduled(con, monday_nine) == "morning"
 
-
-def test_a_trade_that_arrives_tells_him_what_is_left_of_the_envelope(rt, con, tmp_path, monkeypatch):
-    _envelope(con)
-    _buy(con, date(2026, 11, 10), 100, 300.0, 1)
-    monkeypatch.setattr(proposals, "reconcile", lambda c, n: [{"proposal_id": 7, "status": "executed", "qty": 100, "avg_price": 300.0, "trades": []}])
-    rt.clock = lambda: datetime(2026, 11, 20, 21, 20)
-    assert daily.reconcile_and_tell(_rt(rt, tmp_path)) == 1
-    msg = con.execute("SELECT text FROM chat_messages WHERE mode LIKE 'note:envelope-after:%'").fetchone()[0]
-    assert "After that trade: Envelope: Rs 50,000 a month" in msg and "you bought Rs 30,000 of shares" in msg and "Available now: Rs 20,000" in msg

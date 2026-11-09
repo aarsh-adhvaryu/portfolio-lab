@@ -276,7 +276,6 @@ def execute(con, now: datetime, cid: int, root=None) -> dict:
     r = con.execute("SELECT outcome, note FROM hq_case_reviews WHERE case_id=? AND outcome IS NOT NULL ORDER BY review_id DESC LIMIT 1", [cid]).fetchone()
     verdict = missions.verdict_of(r[0]) if r else "none"
     n, adopted, refused = 0, 0, 0
-    gate_open = gate(con, root)["open"] if verdict == "approve" else False
     for did, action, isin, amount, fraction in todo:
         stays = action in ("HOLD", "WAIT")
         if verdict == "approve" or (stays and verdict == "revise"):
@@ -296,8 +295,6 @@ def execute(con, now: datetime, cid: int, root=None) -> dict:
                 _w.handled(con, now, isin, action, did)               # S78: the look the watchlist asked for happened: a buy closes the item, a wait or hold re-arms it
             except Exception:
                 pass                                                  # the watchlist never stops a decision from being recorded
-            if gate_open:
-                _to_real(con, now, cid, did)
         else:
             con.execute("UPDATE paper_decisions SET status='not_approved', decided_at=?, note=coalesce(note,'') || ? WHERE decision_id=?",
                         [now, f" | the review did not approve ({verdict}): not executed (still scored, to see whether refusing was right)", did])
@@ -325,32 +322,6 @@ def sweep_stays(con, now: datetime) -> int:
     return n
 
 
-def _to_real(con, now: datetime, cid: int, did: int) -> None:
-    """Past the gate: the same decision as a proposal for his real money (sized by `hq/proposals` from HIS record; it waits for his yes)."""
-    from pflab.hq import proposals
-    from pflab.paper import book
-    action, isin, sym, amount, fraction, reason, alts, cond = con.execute(
-        "SELECT action, isin, symbol, amount, fraction, reason, alternatives, review_condition FROM paper_decisions WHERE decision_id=?", [did]).fetchone()
-    inputs = {"action": action, "isin": isin, "symbol": sym, "reason": f"(from the paper portfolio, decision #{did}, past its gate) {reason}", "alternatives": alts,
-              "review_condition": cond}
-    try:
-        if action in ("BUY", "ADD") and amount:
-            from pflab.app import views
-            real = float(views.holdings(con, now.date())["investable"] or 0.0)
-            paper = book.holdings(con, now.date())["value"]
-            if real > 0 and paper > 0:
-                inputs["amount_rupees"] = round(amount / paper * real, -2)
-        elif action == "REDUCE" and fraction:
-            from pflab.app import views
-            row = next((r for r in views.holdings(con, now.date())["rows"] if r["isin"] == isin), None)
-            if row is None:
-                return
-            inputs["qty"] = max(1.0, float(int(row["qty"] * fraction)))
-        proposals.create(con, now, inputs, case_id=cid, by="the paper portfolio")
-    except Exception:
-        pass
-
-
 # --- scoring ------------------------------------------------------------------------------------------------------------------------
 
 def register(con, did: int) -> int:
@@ -370,13 +341,14 @@ def register(con, did: int) -> int:
 
 
 def score_due(con, now: datetime, index: Optional[pd.Series]) -> int:
-    from pflab.hq import stocks, suggestions as sg
+    from pflab.hq import stocks
+    from pflab.quant import marks
     n = 0
     for clid, isin, kind, ref_date, ref_close, due in con.execute(
             "SELECT claim_id, isin, kind, ref_date, ref_close, due_on FROM paper_claims WHERE scored_at IS NULL AND due_on <= ?", [now.date()]).fetchall():
-        i0 = sg._index_on(index, ref_date) if index is not None else None
-        i1 = sg._index_on(index, due) if index is not None else None
-        end = (due, i1) if isin == "CASH" else sg._close_on(con, isin, due)
+        i0 = marks.index_on(index, ref_date) if index is not None else None
+        i1 = marks.index_on(index, due) if index is not None else None
+        end = (due, i1) if isin == "CASH" else marks.close_on(con, isin, due)
         if end is None or end[1] is None or i0 is None or i1 is None or (isin != "CASH" and end[0] <= ref_date):
             if (now.date() - due).days > 10:
                 con.execute("UPDATE paper_claims SET outcome='void', outcome_json=?, scored_at=? WHERE claim_id=?", [json.dumps({"why": "no close or index level near the horizon"}), now, clid])
@@ -389,9 +361,9 @@ def score_due(con, now: datetime, index: Optional[pd.Series]) -> int:
             detail = {"nifty500_pct": round(ip, 2), "cash_pct": round(cash_pct, 2)}
         else:
             sp = (end[1] / ref_close - 1) * 100
-            beta = sg.beta_at(isin, ref_date)
+            beta = marks.beta_at(isin, ref_date)
             adj = sp - (beta if beta is not None else 1.0) * ip
-            out = sg.judge(kind, sp, adj, stocks.round_trip_pct(stocks.DEFAULT_ORDER))
+            out = marks.judge(kind, sp, adj, stocks.round_trip_pct(stocks.DEFAULT_ORDER))
             detail = {"to": str(end[0]), "stock_pct": round(sp, 2), "nifty500_pct": round(ip, 2), "market_adjusted_pct": round(adj, 2), "beta": None if beta is None else round(beta, 2)}
         con.execute("UPDATE paper_claims SET outcome=?, outcome_json=?, scored_at=? WHERE claim_id=?", [out, json.dumps(detail), now, clid])
         n += 1

@@ -4,14 +4,12 @@ job) when the window is closed. One round:
     board      the investor's orders and the agents' hand-ons, one task at a time; answers back to where they came from
     watcher    the drop folder -> the inbox (Settings: drop_watch)
     reminders  due ones sent
-    texts      every filing of a held or listed company keeps its attachment's text here (free, S60), every READ_EVERY
-    readers    unread public documents on held and listed names (Haiku), every READ_EVERY
     brain      wakes only on something new and material (gatekeeper first) or its morning review / weekly reflection
-    keeper     predictions and suggestions scored, decisions followed up (outcomes written back), notes kept tidy,
+    keeper     predictions scored, decisions followed up (outcomes written back), notes kept tidy,
                every KEEP_EVERY
     security   S62: every request that left the PC since the last round re-checked against the egress list (code)
 
-Under the preset 'light' the paid agents (readers, brain) do not run on their own; under 'off' only the investor's own
+Under the preset 'light' the paid agents (the brain) do not run on their own; under 'off' only the investor's own
 orders, reminders and the drop folder run.
 """
 from __future__ import annotations
@@ -19,7 +17,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
 
-READ_EVERY = timedelta(minutes=15)
 BRAIN_EVERY = timedelta(minutes=15)
 KEEP_EVERY = timedelta(hours=1)
 _last: dict = {}
@@ -61,7 +58,7 @@ def gate(rt):
 
 
 def paused(rt) -> bool:
-    """Pause (World screen) holds every autonomous start: jobs, readers, the brain, the keeper, agents' hand-offs (audit 2026-10-30).
+    """Pause (World screen) holds every autonomous start: jobs, the brain, the keeper, agents' hand-offs (audit 2026-10-30).
     What is already running finishes; what he orders himself still runs."""
     return not rt.settings.get("scheduler", True)
 
@@ -70,21 +67,6 @@ def paid_allowed(rt) -> bool:
     from pflab.agents import analyst as an
     cfg = an.config()
     return not paused(rt) and rt.settings.get("preset", "full") in ("full", "marathon") and (cfg["cap"] > 0 or an.acceptance(cfg, rt.clock()) is not None)
-
-
-def read_now(rt, limit: int = 40) -> dict:
-    from pflab.hq import readers
-    from pflab.plan import guards as gd
-    held, listed = names(rt)
-    return readers.run(rt.cursor(), rt.clock().date(), client(rt), gate(rt), rt.clock(), rt.settings.get("brain", "economy"),
-                       held, listed, limit=limit, stock_list=gd.stock_list(), text_dir=rt.data_root / "kg" / "text")
-
-
-def texts_now(rt) -> dict:
-    """Free: the attachments of held and listed companies' filings kept as text on this PC (S60)."""
-    from pflab.hq import readers
-    held, listed = names(rt)
-    return readers.keep_texts(rt.cursor(), held, listed, rt.data_root / "kg" / "text", rt.clock())
 
 
 def brain_wake(rt) -> dict:
@@ -233,14 +215,11 @@ def round_(rt, stop=None, attended: bool = True) -> dict:
         return inbox.retry_blocked(rt)
     part("blocked_files", blocked_files)
     part("cases", lambda: len(cases.sweep(rt.cursor(), rt.clock())))     # S67: what a waiting investigation needed may have arrived (free, code only)
-    part("proposals", lambda: __import__("pflab.hq.daily", fromlist=["reconcile_and_tell"]).reconcile_and_tell(rt))   # S69/S73: a trade he made is matched to the proposal he accepted, the graph and his envelope follow
     from pflab import core
     advisors = not core.advisors_off()                           # S80: the advisor layers are off while the close loop is on (configs/core.toml); the paper tick still runs
     if preset != "off" and paid_allowed(rt):                     # S68: the system chooses work itself (signals, due reviews); paid work only where paid work is allowed
         if advisors:
             part("autonomy", lambda: __import__("pflab.hq.missions", fromlist=["scan"]).scan(rt))
-            part("triggers", lambda: len(__import__("pflab.hq.triggers", fromlist=["check"]).check(rt)))        # S69: executable monitors fire by code
-            part("arrivals", lambda: __import__("pflab.hq.arrivals", fromlist=["scan"]).scan(rt))               # S69: a file he dropped finds its investigation
         part("paper", lambda: __import__("pflab.paper.manager", fromlist=["tick"]).tick(rt))                 # S76: the paper portfolio the system runs by itself
     part("missions", lambda: drive_missions(rt, stop, attended))     # S68: each mission moves on from what its tasks have produced
     if rt.settings.get("drop_watch", True):
@@ -251,13 +230,8 @@ def round_(rt, stop=None, attended: bool = True) -> dict:
         part("drop", drop)
     part("reminders", lambda: messenger.due(rt))
     part("security", lambda: security.egress(rt))               # S62: what left the PC re-checked at once (code)
-    if preset != "off" and _due(rt, "texts", READ_EVERY):
-        part("texts", lambda: texts_now(rt))                    # free, before the readers: they read the kept text
-    if preset != "off" and paid_allowed(rt) and advisors:
-        if _due(rt, "read", READ_EVERY):
-            part("readers", lambda: read_now(rt))
-        if _due(rt, "brain", BRAIN_EVERY):
-            part("brain", lambda: brain_wake(rt))
+    if preset != "off" and paid_allowed(rt) and advisors and _due(rt, "brain", BRAIN_EVERY):
+        part("brain", lambda: brain_wake(rt))
     if _due(rt, "keep", KEEP_EVERY):
         part("keeper", lambda: keeper.run(rt.cursor(), rt.clock(), rt.data_root))
     return out

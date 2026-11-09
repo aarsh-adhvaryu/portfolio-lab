@@ -119,20 +119,6 @@ def test_pot_ideas_need_an_applied_limit_and_stay_inside_it(con, monkeypatch):
     assert iid == 1
 
 
-def test_a_pot_idea_is_scored_at_its_horizon(con, monkeypatch):
-    from pflab.hq import suggestions as sg
-    con.execute("INSERT INTO pot_ideas (idea_id, made_at, isin, symbol, ref_close, amount, horizon_days, status) "
-                "VALUES (1, ?, 'INE000A01011', 'AAA', 100.0, 10000, 30, 'open')", [NOW])
-    monkeypatch.setattr(sg, "_close_on", lambda con, isin, day: (day, 130.0))
-    monkeypatch.setattr(sg, "beta_at", lambda isin, day: 1.0)
-    idx = pd.bdate_range(ASOF - timedelta(days=5), ASOF + timedelta(days=40))
-    index = pd.Series(np.linspace(100, 110, len(idx)), index=idx)
-    assert pot.score_due(con, NOW + timedelta(days=10), None, index) == 0                  # not due
-    assert pot.score_due(con, NOW + timedelta(days=31), None, index) == 1
-    ret, vs, st = con.execute("SELECT ret, ret_vs_market, status FROM pot_ideas").fetchone()
-    assert ret == pytest.approx(0.30) and st == "closed" and 0.2 < vs < 0.3
-
-
 def test_pit_proxy_history_includes_names_that_later_died_and_ignores_names_not_yet_members():
     idx = pd.bdate_range("2020-01-01", "2020-06-30")
     n = len(idx)

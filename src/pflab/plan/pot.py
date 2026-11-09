@@ -23,6 +23,30 @@ IPO_WINDOW_DAYS = 180
 HORIZON_DEFAULT = 180
 
 
+def zone_numbers(con, root, isin: str, asof: date, guard: str = "ok") -> dict:
+    """The price numbers of an idea, all by code: price_low / price_high = the buy zone (20th-40th percentile of the year's closes); max_buy = the lower of the
+    zone's top and the 21-session middle of the price range; wrong_price = the 63-session 10th percentile. Missing history or no stored range leaves the
+    field None; nothing is guessed. (Moved here from the cut `hq/suggestions.py`.)"""
+    from pflab.app import research
+    from pflab.plan import buyzone
+    from pflab.quant import forecast as fc
+    c = research.closes(con, root, isin, asof, years=4).dropna()
+    z = buyzone.zone(c, asof, guard=guard, paths=5_000)
+    out: dict = {"price_low": None, "price_high": None, "max_buy": None, "wrong_price": None, "wrong_if": None}
+    if "bottom" not in z:
+        return out
+    out["price_low"], out["price_high"] = float(z["bottom"]), float(z["top"])
+    method, label = fc.serving_method(root)
+    q = {h: con.execute("SELECT q10, q50, q90 FROM forecasts WHERE use=? AND subject=? AND model=? ORDER BY as_of DESC LIMIT 1",
+                        [f"price{h}", isin, method]).fetchone() for h in (21, 63)}
+    out["max_buy"] = min(out["price_high"], float(q[21][1])) if q[21] else out["price_high"]
+    if q[63]:
+        out["wrong_price"] = float(q[63][0])
+        out["wrong_if"] = (f"it closes below {q[63][0]:,.0f}, the 10th percentile of its 3-month price range "
+                           f"(80% range, an estimate: {label})")
+    return out
+
+
 def limit_amount(equity_value: float, room_to_target: float) -> float:
     """5% of equity, never more than the room the equity targets leave (rupees)."""
     return max(0.0, min(SHARE_OF_EQUITY * equity_value, room_to_target))
@@ -72,9 +96,8 @@ def numbers(con, root, isin: str, asof: date) -> dict:
     if len(c) < 250:
         n = young_numbers(c)
     else:
-        from pflab.hq import suggestions as sg
         from pflab.quant import forecast as fc
-        s = sg.numbers(con, root, isin, asof)
+        s = zone_numbers(con, root, isin, asof)
         method, _label = fc.serving_method(root)
         q252 = con.execute("SELECT q90 FROM forecasts WHERE use='price252' AND subject=? AND model=? ORDER BY as_of DESC LIMIT 1",
                            [isin, method]).fetchone()
@@ -127,21 +150,21 @@ def ipo_candidates(con, root, asof: date) -> List[tuple]:
 def score_due(con, now: datetime, root=None, index: Optional[pd.Series] = None) -> int:
     """Close each open idea past its horizon: return since the idea (paper, from the reference close) and its excess over the
     market through the CAPM beta at the time of the idea."""
-    from pflab.hq import suggestions as sg
+    from pflab.quant import marks
     n = 0
     for iid, isin, made, ref, h in con.execute("SELECT idea_id, isin, made_at, ref_close, horizon_days FROM pot_ideas "
                                                "WHERE status='open'").fetchall():
         due = made.date() + timedelta(days=int(h))
         if now.date() < due or not ref:
             continue
-        end = sg._close_on(con, isin, due)
+        end = marks.close_on(con, isin, due)
         if end is None:
             continue
         ret = end[1] / ref - 1.0
         vs = None
         if index is not None:
-            a, b = sg._index_on(index, made.date()), sg._index_on(index, due)
-            beta = sg.beta_at(isin, made.date())
+            a, b = marks.index_on(index, made.date()), marks.index_on(index, due)
+            beta = marks.beta_at(isin, made.date())
             if a and b and beta is not None:
                 vs = ret - beta * (b / a - 1.0)
         con.execute("UPDATE pot_ideas SET status='closed', closed_at=?, ret=?, ret_vs_market=? WHERE idea_id=?", [now, ret, vs, iid])

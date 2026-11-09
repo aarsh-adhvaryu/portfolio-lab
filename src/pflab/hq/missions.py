@@ -222,16 +222,13 @@ def set_answer(con, now: datetime, cid: int, answer: str, limits: str, monitor: 
     The verdict it carries is the review's actual one (read from the store, not from the coordinator's words). `triggers` are the executable monitors
     (hq/triggers.py): supported ones are persisted; the unsupported are named in the answer record, so the text 'I will watch' is never taken for a monitor.
     `change` is whether the conclusion moved on a review or an update: changed | unchanged | first."""
-    from pflab.hq import cases, plans, triggers as trg
+    from pflab.hq import cases, plans
     m = mission_of(con, cid)
     if m is None or m["state"] != "synthesising":
         return {"stored": False, "problem": "the answer is written after the independent review"}
     r = con.execute("SELECT outcome, reviewed_at FROM hq_case_reviews WHERE case_id=? AND outcome IS NOT NULL ORDER BY review_id DESC LIMIT 1", [cid]).fetchone()
     verdict = verdict_of(r[0]) if r else "none"
-    tr = trg.add(con, now, cid, triggers or [], text=monitor) if triggers else {"stored": [], "unsupported": []}
-    if not tr["stored"]:
-        for (tid,) in con.execute("SELECT trigger_id FROM hq_triggers WHERE case_id=? AND status='active'", [cid]).fetchall():
-            tr["stored"].append(tid)                       # triggers kept from an earlier answer are still the investigation's monitors
+    tr = {"stored": [], "unsupported": [str(t)[:120] for t in (triggers or [])]}      # S80: the executable monitors (hq/triggers.py) are cut; a sentence is only a sentence
     res = {"answer": answer, "limitations": limits, "monitor_next": monitor, "at": str(now), "review_verdict": verdict,
            "plan_version": plans.active_number(con, cid), "change": change or ("first" if not m["result"] else "unchanged"),
            "triggers": tr["stored"], "monitor_unsupported": tr["unsupported"],
@@ -769,7 +766,7 @@ def card(con, cid: int) -> Optional[dict]:
     """Goal, owner, current action, completed outputs, blocker, last useful progress and next trigger of a mission, from the store. S69: the approved plan and
     its versions, every task with its owner, dependencies, the instruction version it ran under and its outputs, the executable triggers, the experiments it
     waits for, and the proposals made for it."""
-    from pflab.hq import plans, triggers as trg
+    from pflab.hq import plans
     m = mission_of(con, cid)
     if m is None:
         return None
@@ -805,7 +802,7 @@ def card(con, cid: int) -> Optional[dict]:
                                "at": str(v["created_at"])[:16], "decided_by": v["decided_by"], "steps": [{"key": x["key"], "role": x["role"], "goal": x["goal"][:160]} for x in v["plan"] or []]}
                               for v in vers],
             "instruction_version": plans.active_number(con, cid), "awaiting_approval": plans.waiting(con, cid) is not None,
-            "triggers": trg.active(con, cid), "experiments_pending": exps, "proposals": props,
+            "triggers": [], "experiments_pending": exps, "proposals": props,
             "budget": {"spent": round(mission_cost(con, cid), 2), "cap": cap_of(con, cid), "class": budget_class(con, cid)}}
 
 

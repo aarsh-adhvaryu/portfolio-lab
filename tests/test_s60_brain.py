@@ -12,7 +12,7 @@ import pandas as pd
 import pytest
 
 from pflab.agents import analyst as an, memory as mem
-from pflab.hq import brain, egress, fetch, governor as gv, keeper, redact, stocks, suggestions as sg, tools as tl
+from pflab.hq import brain, egress, fetch, governor as gv, keeper, redact, stocks, tools as tl
 from pflab.hq.desk import Desk
 from pflab.pm import store
 
@@ -107,7 +107,7 @@ def test_every_tool_has_a_strict_schema_and_bounds_are_checked_here():
     defs = tl.definitions()
     assert len(defs) == len(tl.TOOLS) - len(tl.WORKER_ONLY) and all(d["input_schema"]["additionalProperties"] is False for d in defs)
     strict = [d["name"] for d in defs if d.get("strict")]
-    assert len(strict) <= 20 and "record_suggestion" in strict and "portfolio" not in strict   # the API's limit: 20
+    assert len(strict) <= 20 and "portfolio" not in strict   # the API's limit: 20
     assert not any(k in p for d in defs for p in d["input_schema"]["properties"].values()
                    for k in ("minimum", "maximum", "maxLength"))                  # moved into descriptions for the API
     assert {t.kind for t in tl.TOOLS.values()} == set(tl.KINDS)
@@ -119,8 +119,6 @@ def test_every_tool_has_a_strict_schema_and_bounds_are_checked_here():
     assert "one of" in tl.validate(rp, {**good, "kind": "up"})
     assert "between" in tl.validate(rp, {**good, "confidence": 1.5})
     assert "must be number" in tl.validate(rp, {**good, "level": True})
-    rs = tl.TOOLS["record_suggestion"]
-    assert "stocks_overview" in rs.params["rested_on"]["items"]["enum"] and "ask_investor" not in rs.params["rested_on"]["items"]["enum"]
 
 
 def test_tool_results_are_redacted_logged_and_identity_withheld(con, tmp_path):
@@ -192,43 +190,6 @@ def test_edge_is_excess_over_the_index_after_costs_with_independent_n():
 
 
 # --- the loop -------------------------------------------------------------------------------------------------------------
-
-def test_a_pass_looks_with_tools_records_in_shadow_and_checks_the_note(con, tmp_path, quiet_input, monkeypatch):
-    monkeypatch.setattr(brain, "SHADOW", True)
-    rt = _desk(con, tmp_path)
-    _prices(con, AAA, _walk(900, 1))
-    replies = [_tool_msg(("memory_recall", {"words": "anything"}), ("research_flags", {"days": 7})),
-               _tool_msg(("order_research", {"symbol": "AAA", "question": "What did the results say?"}),
-                         ("record_prediction", {"symbol": "AAA", "kind": "return_above", "level": 3, "due": "2026-11-25",
-                                                "confidence": 0.55, "claim": "AAA up 3% by 25 Nov"}),
-                         ("record_suggestion", {"kind": "hold", "symbol": "AAA", "text": "Keep AAA.",
-                                                "reasoning": "Nothing against holding.", "horizon_days": 30,
-                                                "rested_on": ["research_flags"]})),
-               _note_msg("AAA is 9.0% of the portfolio. It will rise 37% soon. Research ordered.")]
-    c = Fake(replies)
-    pid = brain.think(rt, "asked", [], c, egress.Gate(), cfg=CFG)
-    j = brain.journal(con)[0]
-    assert j["id"] == pid and j["status"] == "done" and "9.0%" in j["note"] and "37%" not in j["note"]
-    assert [d["action"] for d in j["decisions"]] == ["investigate"] and j["decisions"][0]["shadow"]
-    assert con.execute("SELECT count(*) FROM hq_tasks").fetchone()[0] == 0           # shadow: nothing carried out
-    assert [t["tool"] for t in j["tools"]] == ["memory_recall", "research_flags", "order_research", "record_prediction",
-                                              "record_suggestion"]
-    assert [t["status"] for t in j["tools"]][2] == "shadow"
-    assert con.execute("SELECT pass_id, model FROM hq_predictions").fetchall() == [(pid, gv.OPUS)]
-    s = sg.recent(con)[0]
-    assert s["pass"] == pid and s["kind"] == "hold" and s["quality"] == "sound" and s["shadow"]
-    calls = con.execute("SELECT agent, turn, status FROM api_calls ORDER BY call_id").fetchall()
-    assert calls == [("brain", 1, "done"), ("brain", 2, "done"), ("brain", 3, "done")]
-    assert con.execute("SELECT count(*) FROM api_calls WHERE agent='brain' AND turn=1").fetchone()[0] == 1   # one pass, three turns
-    assert gv.calls_today(con, "brain", NOW) == 0     # S68: his question ("asked") is not counted against the system's passes a day
-    sent = c.messages.sent
-    assert all(m["tools"] and m["system"][0]["cache_control"] for m in sent)
-    assert all(m["cache_control"] == {"type": "ephemeral"} for m in sent)            # S70: the growing history is cached on every turn
-    assert all(json.dumps(m).count('"cache_control"') <= 4 for m in sent)             # the API allows 4 breakpoints (system, first message, the automatic one)
-    assert sent[0]["messages"][0]["content"][0]["cache_control"] == {"type": "ephemeral"}
-    assert sent[1]["messages"][1]["content"][0]["type"] == "thinking"             # thinking blocks passed back
-    assert [b["type"] for b in sent[1]["messages"][2]["content"]] == ["tool_result", "tool_result"]   # one message
-
 
 def test_actions_are_carried_out_once_the_shadow_ends(con, tmp_path, quiet_input, monkeypatch):
     monkeypatch.setattr(brain, "SHADOW", False)
@@ -318,44 +279,6 @@ def test_governor_counts_passes_not_turns(con):
 
 # --- the suggestion ledger --------------------------------------------------------------------------------------------------
 
-def test_quality_is_judged_from_the_facts_at_the_time():
-    ok = {"guard": "ok", "drift": {"share_rule": "equal share of ...", "gap_pct": -2.0, "over_cap": False, "held": True}}
-    assert sg.quality("add", ok)[0] == "sound"
-    assert sg.quality("add", {**ok, "guard": "fail"})[0] == "unsound"
-    assert sg.quality("add", {"guard": "ok", "drift": {**ok["drift"], "gap_pct": 1.0}})[0] == "weak"
-    assert sg.quality("trim", {"guard": "ok", "drift": {**ok["drift"], "held": False}})[0] == "unsound"
-    assert sg.quality("wait", ok)[0] == "weak" and "PLAN A12" in sg.quality("wait", ok)[1]
-
-
-def test_suggestions_scored_against_the_index_taken_or_declined(con):
-    idx = _prices(con, CCC, np.full(60, 100.0), end=date(2026, 12, 31))           # a flat index (its own series here)
-    index = pd.Series(idx.values, index=idx.index)
-    s = _prices(con, AAA, np.r_[np.full(30, 100.0), np.full(30, 110.0)], end=date(2026, 12, 31))
-    ref = (s.index[10].date(), 100.0)
-    made = datetime.combine(s.index[10].date(), datetime.min.time()) + timedelta(hours=10)
-    kw = dict(pass_id=1, model=gv.OPUS, isin=AAA, symbol="AAA", reasoning="r", data={}, horizon_days=30, now=made,
-              shadow=True, ref=ref, ref_qty=10.0)
-    a = sg.record(con, kind="add", text="Add AAA.", facts={"guard": "ok", "drift": {"share_rule": "equal share", "gap_pct": -1}}, **kw)
-    t = sg.record(con, kind="trim", text="Trim AAA.", **kw)
-    w = sg.record(con, kind="wait", text="Wait on AAA.", **kw)
-    r = sg.record(con, kind="review", text="Review the mix.", **{**kw, "isin": None, "symbol": None})
-    sg.answer(con, t, "declined", made)
-    with pytest.raises(ValueError):
-        sg.answer(con, a, "maybe", made)
-    later = made + timedelta(days=31)
-    assert sg.score_due(con, made + timedelta(days=5), index, qty_fn=lambda i: 10.0) == 0     # not yet due
-    assert sg.score_due(con, later, index, qty_fn=lambda i: 15.0) == 4
-    got = {x["id"]: x for x in sg.recent(con)}
-    assert got[a]["outcome"] == "good" and got[a]["answer"] == "taken" and got[a]["answer_source"] == "portfolio"
-    assert got[t]["outcome"] == "bad" and got[t]["answer"] == "declined"           # scored on paper
-    assert got[w]["outcome"] == "bad" and got[r]["outcome"] == "n/a"
-    assert got[a]["outcome_json"]["excess_pct"] == pytest.approx(10.0) and got[a]["outcome_json"]["nifty500_pct"] == 0
-    rec = sg.record_table(con)
-    assert rec["kinds"]["add"]["rate"] == "1 of 1" and rec["luck"]["sound_good"] == 1 and rec["luck"]["weak_bad"] == 1
-    text = sg.lessons_text(con, gv.OPUS)
-    assert "1 of 1" in text and "never retire" in text and "add AAA: good" in text
-
-
 # --- memory that updates ----------------------------------------------------------------------------------------------------
 
 def test_a_correction_keeps_the_old_row_and_the_reason(con):
@@ -430,26 +353,6 @@ def test_his_address_words_come_from_his_statements_not_from_common_words(tmp_pa
     text = p.read_text(encoding="utf-8")
     assert text.count("address = ") == 1 and "cap = 2500" in text and 'names = ["testname kumar"]' in text
     assert egress.names(p, "address", 3) == ["banyan", "sunrise"]
-
-
-def test_filing_texts_are_kept_for_my_names_newest_first(con, monkeypatch, tmp_path):
-    from pflab.hq import readers
-    from pflab.kg import graph as g
-    for k, (isin, days) in enumerate([(AAA, 1), (AAA, 30), (BBB, 2), (CCC, 1), (AAA, 200)]):
-        d = g.doc(con, "filing", f"f{k}", NOW - timedelta(days=days), f"filing {k}", url=f"https://www.bseindia.com/{k}.pdf",
-                  now=NOW)
-        g.edge(con, d, "about", f"company:{isin}", NOW, "test")
-    got = []
-
-    def fake(con_, row, out_dir, get=None):
-        got.append(row["url"])
-        con_.execute("UPDATE kg_docs SET text_status='ok' WHERE doc_id=?", [row["doc_id"]])
-        return "text"
-    monkeypatch.setattr(readers, "fetch_filing_text", fake)
-    rep = readers.keep_texts(con, [AAA], [BBB], tmp_path, NOW, limit=2, pause=0)
-    assert got == ["https://www.bseindia.com/0.pdf", "https://www.bseindia.com/2.pdf"] and rep == {"kept": 2, "failed": 0, "left": 1}
-    readers.keep_texts(con, [AAA], [BBB], tmp_path, NOW, pause=0)
-    assert got[-1] == "https://www.bseindia.com/1.pdf" and len(got) == 3        # CCC not mine; 200 days too old
 
 
 # --- cited-page fetch ---------------------------------------------------------------------------------------------------------

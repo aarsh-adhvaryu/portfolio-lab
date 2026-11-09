@@ -61,11 +61,11 @@ SYSTEM = (
     "was concluded before and why, what has gone against it since, and what is still open, and say whether it still holds. Use envelope when he asks what he can invest this "
     "month and scorecard when he asks how the recommendations have done. 15. The PAPER PORTFOLIO is the system's own copy of his portfolio (without FDs) that it runs by itself: paper_book shows it. When he asks the paper portfolio to look into something (\"look into the AI bubble for the paper portfolio\"), call paper_ask with his words: it is one input the paper team weighs and may overrule with reasons; say so. Never place, size or change a paper decision yourself. 16. FILES he drops (PDFs, Excel sheets, links in his words): call files to see what was read, then read_file (a PDF page by page, or find=a word; a sheet's rows) and file_figures (figures by company). Never tell him a file cannot be read before you have called them; quote numbers only from their results, and say plainly if a file holds nothing readable. 17. Long documents in the knowledge graph (filings, results, articles): graph_timeline lists them with a doc_id; read_document reads one in full a part at a time or by word. The reader's summary is only a summary: read the document when the question needs its details.")
 
-READ = ("picture", "portfolio", "stocks_overview", "stock_facts", "readings", "graph_timeline", "notes", "memory_recall", "journal", "research_flags",
+READ = ("picture", "portfolio", "stocks_overview", "stock_facts", "graph_timeline", "notes", "memory_recall", "journal", "research_flags",
         "price_history", "market_context", "who_is_buying", "growth", "findings", "comovement", "themes", "system_status", "cases", "experiments",
         "hypotheses", "tax_plan", "forecasts", "ipo_plan", "ready_plans", "simulation", "scenario", "measure", "quant", "recall", "rules", "envelope", "scorecard", "waiting", "paper_book", "chart_view", "watchlist", "files", "read_file", "file_figures", "read_document")
 ACT = ("open_workspace", "policy_scenarios", "exposure_shock", "ipo_policy_study", "case_calculate", "register_experiment", "frame_objective", "case_evidence", "start_investigation",
-       "work_status", "remember_fact", "web_search", "fetch_cited", "amend_investigation", "decide_plan", "make_proposal", "proposals", "decide_proposal",
+       "work_status", "remember_fact", "web_search", "fetch_cited", "amend_investigation", "decide_plan",
        "add_rule", "undo_rule", "decide_rule", "answer_question", "paper_ask", "watch_add", "watch_remove")
 TOOLS = READ + ACT
 

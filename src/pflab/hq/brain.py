@@ -194,17 +194,8 @@ def seen_keys(con, since: datetime) -> set:
 
 def events(con, since: datetime, now: datetime, held: Sequence[str], listed: Sequence[str]) -> List[dict]:
     """What happened since `since`, each with a key (seen once) and one line of text. Code only, free."""
-    from pflab.hq import readers
-    names = {i: s for i, s in con.execute("SELECT isin, symbol FROM instruments WHERE symbol IS NOT NULL").fetchall()}
     mine = set(held) | set(listed)
     out: List[dict] = []
-    for r in readers.recent(con, since):
-        who = ", ".join(names.get(i, i) for i in r["isins"] if i in mine)
-        if who:
-            out.append({"key": f"reading:{r['doc_id']}", "kind": "material document",
-                        "text": f"{who} ({r['kind']} {r['published']:%Y-%m-%d}): {r['summary']}"
-                                + (" Figures: " + "; ".join(f"{f['name']} {f['value']} {f['unit']} ({f['period']})"
-                                                            for f in r["figures"][:5]) if r["figures"] else "")})
     for fid, isin, sym, kind, detail in con.execute(
             "SELECT flag_id, isin, symbol, kind, detail FROM research_flags WHERE detected_at >= ? ORDER BY flag_id",
             [since]).fetchall():
@@ -345,12 +336,11 @@ def gatekeeper(con, evs: List[dict], client, gate, now: datetime, mode: str, cfg
 def build_input(con, asof: date, trigger: str, evs: List[dict], model: str, withheld: int = 0,
                 case_ids: Sequence[int] = (), now: Optional[datetime] = None) -> Tuple[str, str, dict]:
     """(stable part, changing part, symbol -> isin of the names it may predict on)."""
-    from pflab.hq import keeper, suggestions as sg
+    from pflab.hq import keeper
     from pflab.learner import live
     pv, held = portfolio_view(con, asof)
     wv, listed = watch_view(con)
-    stable = "\n\n".join([pv, wv, theses_view(con), keeper.scorecard_text(con, model), sg.lessons_text(con, model),
-                          live.brain_text(con)])
+    stable = "\n\n".join([pv, wv, theses_view(con), keeper.scorecard_text(con, model), live.brain_text(con)])
     change = [f"PASS: {trigger} on {asof:%Y-%m-%d} ({asof:%A})", open_predictions(con, model)]
     st = last_state(con, model, asof)
     if st:

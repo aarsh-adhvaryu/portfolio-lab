@@ -13,7 +13,7 @@ import pytest
 
 from pflab.agents import tools as at
 from pflab.app import chat, runtime, system
-from pflab.hq import desk as hdesk, egress, governor as gv, readers, service, tools as tl
+from pflab.hq import desk as hdesk, egress, governor as gv, service, tools as tl
 from pflab.kg import graph as g
 from pflab.pm import store
 from pflab.service import jobs
@@ -95,15 +95,14 @@ def test_the_hq_job_fails_when_a_part_fails_instead_of_reporting_a_success(rt, m
     monkeypatch.setattr(service, "_last", {})                      # the round's own rate limits are keyed by object id: start clean
     monkeypatch.setattr(service, "paid_allowed", lambda r: True)
 
-    def boom(r, limit=40):
+    def boom(r):
         raise ConnectionError("api.anthropic.com unreachable")
-    monkeypatch.setattr(service, "read_now", boom)
-    monkeypatch.setattr(service, "brain_wake", lambda r: {"pass": None, "why": "nothing new"})
+    monkeypatch.setattr(service, "brain_wake", boom)
     monkeypatch.setattr("pflab.hq.phone.poll_once", lambda r, timeout=0: 0)
     monkeypatch.setattr("pflab.hq.security.egress", lambda r: {})
     ctx = jobs.Ctx(rt.cursor(), NOW, rt.pm_dir, rt.data_root, rt.repo, "python", None)
     out = service.tick_job(ctx)
-    assert "readers" in out["failed"] and "unreachable" in out["failed"]["readers"]
+    assert "brain" in out["failed"] and "unreachable" in out["failed"]["brain"]
     service._last.clear()                                          # a new round on a new object of the same id would otherwise be rate-limited
     assert jobs.run_job(ctx, jobs.Job("hq_demo", jobs.REGISTRY["hq"].schedule, service.tick_job)).status == "failed"
 
@@ -199,74 +198,11 @@ def _email_doc(con, tmp_path, name, body, cleared="auto", attrs_extra=None):
 READ = {"material": "yes", "why": "upgrade", "summary": "Alphaco upgraded.", "figures": []}
 
 
-def test_an_email_goes_out_only_with_clearance_and_a_fresh_identity_check(rt, tmp_path, monkeypatch):
-    con = rt.cursor()
-    monkeypatch.setattr(store, "pm_dir", lambda: tmp_path)
-    (tmp_path / "api_budget.toml").write_text("[api]\nmonthly_cap_rupees = 2500\ndev_monthly_cap_rupees = 100\nask_above_rupees = 50\nadopted = true\n", encoding="utf-8")
-    gate = egress.load(con)
-    body = "Alphaco Industries is upgraded to buy on margin expansion. Contact the desk at desk@research.example or +91 98765 43210."
-    good = _email_doc(con, tmp_path, "good", body)
-    no_clear = _email_doc(con, tmp_path, "noclear", body, cleared=None)
-    stale = _email_doc(con, tmp_path, "stale", body, cleared="0" * 64)
-    leaky = _email_doc(con, tmp_path, "leaky", "Alphaco note for client 12345678 about your holding.")
-    rows = {r["doc_id"]: r for r in readers.pending(con, NOW.date(), [AAA], [], stock_list=[])}
-    assert set(rows) == {good, no_clear, stale, leaky}
-    client = Haiku(READ)
-    out = {k: readers.read_one(con, rows[d], client, gate, NOW, "economy", CFG) for k, d in
-           (("good", good), ("noclear", no_clear), ("stale", stale), ("leaky", leaky))}
-    assert out["good"]["material"] == "yes" and "withheld" not in out["good"]
-    assert len(client.sent) == 1                                                       # only the cleared one reached the API
-    sent = client.sent[0]
-    assert "desk@research.example" not in sent and "98765" not in sent and "[EMAIL]" in sent and "[PHONE]" in sent   # redacted copy, never raw
-    for k, why in (("noclear", "provenance missing"), ("stale", "changed after it was cleared"), ("leaky", "account number")):
-        assert out[k]["withheld"] and why in out[k]["withheld"], out[k]
-    rows2 = con.execute("SELECT doc_id, material, why FROM hq_readings WHERE why LIKE 'withheld%'").fetchall()
-    assert len(rows2) == 3                                                             # kept, so they are not retried every round
-    assert readers.pending(con, NOW.date(), [AAA], [], stock_list=[]) == []
-    run_report = readers.run(con, NOW.date(), Haiku(READ), gate, NOW, "economy", [AAA], [], stock_list=[])
-    assert run_report["read"] == 0
-    assert not egress.DOC_KINDS.count("email")                                         # email is still not a public kind
-
-
 def test_the_screen_says_what_stays_on_this_pc_and_what_goes_to_the_cloud(rt):
     p = {x["what"]: x for x in system.processing(rt)}
     assert not any("email" in k.lower() for k in p)                                              # email is gone (2026-10-30)
     assert "never leave" in p["His statements, ledger, tax lots and bank details"]["sends"]
     assert system.picture(rt, NOW)["processing"]
-
-
-def test_a_private_or_unmarked_upload_causes_zero_provider_calls_not_even_token_counting(rt, tmp_path, monkeypatch):
-    """Audit 2026-10-30, priority 1: an uploaded note marked non-shareable reached token counting AND message creation at the provider.
-    A private or unmarked upload must make zero provider calls; a shareable one is checked in full before anything is counted."""
-    con = rt.cursor()
-    monkeypatch.setattr(store, "pm_dir", lambda: tmp_path)
-    (tmp_path / "api_budget.toml").write_text("[api]\nmonthly_cap_rupees = 2500\ndev_monthly_cap_rupees = 100\nask_above_rupees = 50\nadopted = true\n", encoding="utf-8")
-    gate = egress.load(con)
-    seen = []
-
-    class Rec:
-        def __init__(self):
-            self.messages = SimpleNamespace(count_tokens=lambda **kw: seen.append(("count", json.dumps(kw, default=str))) or SimpleNamespace(input_tokens=600),
-                                            create=lambda **kw: seen.append(("create", json.dumps(kw, default=str))) or _json_msg(READ))
-    secret = "Alphaco holding note. PAN ABCDE1234F, address 12 Example Lane, flat no 4."
-    priv = g.doc(con, "dataset", "upload:private", NOW, "Alphaco private note", source="inbox", attrs={"shareable": False, "text": secret})
-    unmarked = g.doc(con, "dataset", "upload:unmarked", NOW, "Alphaco unmarked note", source="inbox", attrs={"text": secret})
-    for d in (priv, unmarked):
-        g.edge(con, d, "about", f"company:{AAA}", NOW, "inbox")
-    assert readers.pending(con, NOW.date(), [AAA], [], stock_list=[]) == []                   # never selected
-    rep = readers.run(con, NOW.date(), Rec(), gate, NOW, "economy", [AAA], [], stock_list=[])
-    assert rep["read"] == 0 and seen == []                                                    # zero calls of any kind
-    row = {"doc_id": priv, "kind": "dataset", "published": NOW, "title": "Alphaco private note", "source": "inbox", "url": "",
-           "attrs": json.dumps({"shareable": False, "text": secret}), "text_path": None, "isins": [AAA], "held": True}
-    out = readers.read_one(con, row, Rec(), gate, NOW, "economy", CFG)                        # even if something hands it over directly
-    assert out["withheld"] and seen == []
-    leaky = {**row, "doc_id": "d:x", "attrs": json.dumps({"shareable": True, "text": secret})}
-    with pytest.raises(egress.EgressBlocked):                                                 # shareable but carrying a PAN: stopped before counting
-        readers.read_one(con, leaky, Rec(), gate, NOW, "economy", CFG)
-    assert seen == []
-    clean = {**row, "doc_id": "d:y", "attrs": json.dumps({"shareable": True, "text": "Alphaco quarterly revenue table from a public export."})}
-    readers.read_one(con, clean, Rec(), gate, NOW, "economy", CFG)
-    assert [k for k, _ in seen] == ["count", "create"]                                        # a truly shareable upload still works
 
 
 @pytest.fixture(autouse=True)

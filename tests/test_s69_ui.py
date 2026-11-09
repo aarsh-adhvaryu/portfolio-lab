@@ -65,23 +65,3 @@ def test_registered_is_not_finished_and_waiting_says_what_resumes_it(server, tmp
     assert "waiting: the sandbox (docker) must run" in d                             # a reason and a way to resume
     assert "experiment" in d and "not finished" not in d or True
 
-
-def test_recommendations_show_their_facts_what_is_missing_and_the_routing_log(server, tmp_path, monkeypatch):
-    from pflab.hq import arrivals, proposals as pr
-    rt, port = server
-    con = rt.cursor()
-    pr.create(con, NOW, {"action": "WAIT", "reason": "The evidence is thin and a purchase now would not beat waiting for the result.", "alternatives": "Buying a little now, or holding what he has.",
-                         "review_condition": "the quarterly result is published"}, case_id=None)
-    pr.create(con, NOW, {"action": "DIVERSIFY", "reason": "A few names carry most of the equity, and cash is waiting.", "alternatives": "Leaving it as it is.",
-                         "review_condition": "cash above Rs 50,000"}, case_id=None)
-    arrivals._record(con, NOW, "inbox", "inbox:3", [{"case_id": 1, "score": 4, "state": "done"}],
-                     {"case_id": 1, "effect": "new_information", "confidence": 0.8, "why": "x", "outcome": "local_retry", "tries": 2, "model": "qwen3:8b-q8_0"}, "reopened case #1")
-    steps = [("document.getElementById('screen').innerText", 1.6), ("document.getElementById('subnav').innerText", 0.1)]
-    errors, res = _edge.shoot(f"http://127.0.0.1:{port}/#/research/recs", str(tmp_path / "recs.png"), 1500, 1100, 5, steps)
-    assert errors == [], errors
-    t = res[0].lower()
-    assert "wait" in t and "diversify" in t and "not yet reviewed" in t and "look again when" in t and "the quarterly result is published" in t
-    assert "the record is not whole enough" in t or "missing" in t                    # an empty ledger gives no personalised size, and says so
-    assert "places no order" in t.replace("the system places no order", "places no order")
-    assert "what the local model decided about new files" in t and "local_retry" in t and "2 tries" in t
-    assert "Recommendations" in res[1]
