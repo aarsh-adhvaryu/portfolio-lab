@@ -27,10 +27,11 @@ longterm_pct = 35.0
 swing_pct = 5.0               # held back for the swing sleeve (cash until it trades)
 gold_pct = 10.0
 international_pct = 10.0
-index_etfs = ["MONIFTY500", "NIFTYBEES"]     # Nifty 500 and Nifty 50 index ETFs (the store knows both; each at most the 35% ETF rail)
+index_etfs = ["MONIFTY500", "NIFTYBEES", "JUNIORBEES"]   # Nifty 500, Nifty 50 and Nifty Next 50 index ETFs (the store knows all three; each at most the 35% ETF rail, so three let the whole book sit in the index)
 gold_etfs = ["GOLDBEES"]
 international_etfs = ["MON100"]              # Nasdaq 100 listed in India; subject to a premium-to-NAV rail (B8)
 swing_reserve = true
+index_fallback = true         # A50b: when the current allocation fails the index rule in the lab and holding the index passes, the system owns the index (set false to keep the starting split regardless)
 
 [probation]
 # S81 (A50): a variant that clears the history screen and the once-only 2018-2021 check trades a satellite slice of this share of the book at once; the slice grows while its

@@ -24,8 +24,8 @@ from pflab.core import sleeves
 from pflab.lab import promotion, service
 
 INDEX_HOLD, DEFAULT_ID = "index_hold", "alloc_default"
-IDX_SYMS = ("MONIFTY500", "NIFTYBEES")                       # the live baseline's index ETFs
-INDEX_ONLY_SYMS = ("MONIFTY500", "NIFTYBEES", "JUNIORBEES")  # three index ETFs so that the 35% ETF rail still lets the whole book sit in the index
+IDX_SYMS = ("MONIFTY500", "NIFTYBEES", "JUNIORBEES")         # the live baseline's index ETFs (configs/core.toml [baseline_v2] index_etfs): three, so the 35% ETF rail lets the whole book sit in the index
+INDEX_ONLY_SYMS = IDX_SYMS
 
 TEMPLATE = '''"""An allocation variant: a fixed split of the book (S81). Index ETFs, a gold ETF, an international ETF, risk-sized liquid stocks for the longterm sleeve, the swing share kept as cash;
 the fall gauge cuts equity; nothing is sold to reach the split (a position above its share is held), as the live baseline does."""
@@ -77,12 +77,16 @@ def render_code(params: dict) -> str:
 
 def default_params(cfg: Optional[dict] = None) -> dict:
     """The starting target of `configs/core.toml [baseline_v2]` as a variant's parameters (fractions of the book)."""
-    sh = sleeves.default_shares(cfg or core.settings())
-    return {"idx": round(sh["index"], 4), "gold": round(sh["gold"], 4), "intl": round(sh["international"], 4), "longterm": round(sh["longterm"], 4), "swing": round(sh["swing"], 4)}
+    cfg = cfg or core.settings()
+    sh = sleeves.default_shares(cfg)
+    b = cfg["baseline_v2"]
+    return {"idx": round(sh["index"], 4), "gold": round(sh["gold"], 4), "intl": round(sh["international"], 4), "longterm": round(sh["longterm"], 4), "swing": round(sh["swing"], 4),
+            "idx_syms": list(b["index_etfs"]), "gold_syms": list(b["gold_etfs"]), "intl_syms": list(b["international_etfs"])}
 
 
 def candidates(cfg: Optional[dict] = None) -> Dict[str, dict]:
-    return {INDEX_HOLD: {"params": {"idx": 0.98, "gold": 0.0, "intl": 0.0, "longterm": 0.0, "swing": 0.0, "idx_syms": list(INDEX_ONLY_SYMS)},
+    idx_syms = list((cfg or core.settings())["baseline_v2"]["index_etfs"])
+    return {INDEX_HOLD: {"params": {"idx": 0.98, "gold": 0.0, "intl": 0.0, "longterm": 0.0, "swing": 0.0, "idx_syms": idx_syms},
                          "hypothesis": "Hold the index ETFs only (Nifty 500, Nifty 50 and Next 50 index ETFs), nothing else: the A50 benchmark made a candidate, so when nothing beats the index the system owns it."},
             DEFAULT_ID: {"params": default_params(cfg),
                          "hypothesis": "The system's starting allocation (core 60 with gold 10 and international 10, longterm 35, swing 5 held as cash), as a variant the lab can score like any policy."}}
@@ -133,7 +137,7 @@ def propose(con, pm_dir: Path, now: datetime, classes: dict, sleeves_pct: dict, 
         return {"ok": True, "reaffirmed": True, "target_id": r["target_id"], "note": "the active target stands: this is its re-examination for the week (recorded with your reasons)"}
     tid = r["target_id"]
     pid = f"alloc_t{tid}"
-    code = render_code(proposal_params(r["classes"], chk["sleeves"]))
+    code = render_code({**default_params(), **proposal_params(r["classes"], chk["sleeves"])})
     v = service.add_variant(con, pm_dir, now, pid, code, ("allocation proposal #%d: " % tid) + " ".join(str(reasons).split())[:200])
     con.execute("INSERT OR REPLACE INTO allocation_sleeves_s81 VALUES (?,?,?,?,?)", [tid, market, json.dumps(chk["sleeves"], sort_keys=True), pid if v.get("ok") else None, now])
     return {"ok": True, "target_id": tid, "variant": pid if v.get("ok") else None, "classes": r["classes"], "sectors": r["sectors"], "sleeves": chk["sleeves"], "status": "proposed",
@@ -197,7 +201,8 @@ def tick(con, pm_dir: Path, root, now: datetime, data=None, box=None, run_final:
     if cur is not None:
         ir = service.index_rule(cur["score"])
         out["current_vs_index"] = {"ok": ir["ok"], "via": ir.get("via"), **ir.get("figures", {})}
-        if not ir["ok"] and idx is not None and cur_id != INDEX_HOLD and service.index_rule(idx["score"])["ok"]:
+        if (not ir["ok"] and idx is not None and cur_id != INDEX_HOLD and service.index_rule(idx["score"])["ok"]
+                and core.settings()["baseline_v2"].get("index_fallback", True)):
             why = (f"After tax and charges the current allocation ({cur_id}) fails the index rule over 2005-2017 ({'; '.join(ir['failed'])}) while holding the index ETFs passes it: "
                    "the system owns the index until a proposal beats it.")
             out["adopted_index_only"] = adopt_index_only(con, now, why)

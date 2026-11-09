@@ -99,7 +99,8 @@ def promote(con, pm_dir: Path, now: datetime, challenger_id: str, verdict: dict)
     if not verdict.get("ready"):
         return {"ok": False, "problem": "; ".join(verdict.get("reasons") or ["not ready"])}
     old = shadow.champion_row(con)
-    old_id = old["policy_id"] if old else "baseline_v1"
+    from pflab.core import policy as core_policy
+    old_id = old["policy_id"] if old else core_policy.active_id()
     d = diff(con, old_id, challenger_id)
     con.execute("INSERT INTO core_promotions_s80 VALUES (?,?,?,?,?,?,?,?)", [next_id(con, "core_promotions_s80", "promo_id"), now, "promote", old_id, challenger_id, d,
                                                                            json.dumps(verdict, default=str), "cleared history, shadow and the final check"])
@@ -148,7 +149,8 @@ def rollback_check(con, now: datetime) -> Optional[dict]:
     if not all(below[-ROLLBACK_SESSIONS:]):
         return None
     prev = con.execute("SELECT from_policy FROM core_promotions_s80 WHERE to_policy=? AND kind='promote' ORDER BY promo_id DESC LIMIT 1", [c["policy_id"]]).fetchone()
-    prev_id = prev[0] if prev else "baseline_v1"
+    from pflab.core import policy as core_policy
+    prev_id = prev[0] if prev else core_policy.active_id()
     con.execute("INSERT INTO core_promotions_s80 VALUES (?,?,?,?,?,?,?,?)", [next_id(con, "core_promotions_s80", "promo_id"), now, "rollback", c["policy_id"], prev_id, diff(con, c["policy_id"], prev_id),
                                                                            json.dumps({"floor": floor, "sessions": ROLLBACK_SESSIONS}), f"below its own history range (worst-fall 5th percentile {floor:.1%}) for {ROLLBACK_SESSIONS} sessions"])
     con.execute("UPDATE core_policies_s80 SET status='retired', note='rolled back: below its own history range' WHERE policy_id=?", [c["policy_id"]])

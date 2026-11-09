@@ -404,7 +404,7 @@ def score(run: dict, data: dict, cfg: dict) -> dict:
 def monte_carlo(v: pd.Series, n: int = 1000, horizon: int = 252, block: int = 21, seed: int = 80) -> dict:
     """Block-bootstrap the replay's own daily returns into `n` one-year paths: the spread of what this policy's returns could have produced (not a forecast)."""
     r = v.pct_change().dropna().to_numpy()
-    if len(r) < horizon // 2:
+    if n <= 0 or len(r) < horizon // 2:                    # n = 0 is the final check's setting (no Monte Carlo): it used to raise on empty arrays, so the once-only check could never run for real
         return {}
     rng = np.random.default_rng(seed)
     nb = int(math.ceil(horizon / block))

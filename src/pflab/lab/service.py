@@ -80,7 +80,7 @@ def add_variant(con, pm_dir: Path, now: datetime, policy_id: str, code: str, hyp
     """Validate and store a policy (status 'draft'). A new id each time: an edit is a new variant with `parent` set, so the lineage and the trial count stay honest."""
     if not ID_RE.match(policy_id or ""):
         return {"ok": False, "problem": "policy_id must be lowercase letters, digits and underscores, 3-41 characters, starting with a letter"}
-    if policy_id in (BASELINE_ID, "baseline_v1") or get(con, policy_id):
+    if policy_id in (BASELINE_ID, "baseline_v1", "baseline_v2") or get(con, policy_id):
         return {"ok": False, "problem": f"{policy_id} already exists: give an edit a new id and name its parent"}
     if len(" ".join((hypothesis or "").split())) < 15:
         return {"ok": False, "problem": "state the hypothesis in one line (what this variant leans on and why)"}

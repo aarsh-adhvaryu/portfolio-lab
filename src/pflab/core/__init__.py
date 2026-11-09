@@ -19,7 +19,8 @@ DEFAULTS = {
                    "throttle_after": "2026-12-09"},
     # S81 (A48): the baseline for the close loop. "v2" holds the core ETFs and buys them from the first close; "v1" is the old one (the safe fallback).
     "baseline_v2": {"version": "v2", "core_pct": 60.0, "longterm_pct": 35.0, "swing_pct": 5.0, "gold_pct": 10.0, "international_pct": 10.0,
-                    "index_etfs": ["MONIFTY500", "NIFTYBEES"], "gold_etfs": ["GOLDBEES"], "international_etfs": ["MON100"], "swing_reserve": True},
+                    "index_etfs": ["MONIFTY500", "NIFTYBEES", "JUNIORBEES"], "gold_etfs": ["GOLDBEES"], "international_etfs": ["MON100"], "swing_reserve": True,
+                    "index_fallback": True},
     # S81 (A50): the satellite slices of lab variants on probation.
     "probation": {"start_share": 0.05, "steps": [0.05, 0.10, 0.20], "sessions_to_grow": [20, 40], "max_total_share": 0.20, "tolerance": 0.002, "min_sessions_to_judge": 10},
     "checker": {"on": True, "big_trade_share": 0.05, "model": "claude-sonnet-5-5"},

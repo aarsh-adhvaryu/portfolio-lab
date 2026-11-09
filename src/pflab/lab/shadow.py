@@ -51,7 +51,7 @@ def champion_row(con) -> Optional[dict]:
 def standin(con) -> str:
     """The lab policy that stands for the champion: itself if it is a lab policy, else the baseline reference."""
     c = champion_row(con)
-    return c["policy_id"] if c and c["policy_id"] not in ("baseline_v1",) and c["code"] else service.BASELINE_ID
+    return c["policy_id"] if c and c["policy_id"] not in ("baseline_v1", "baseline_v2") and c["code"] else service.BASELINE_ID
 
 
 def members(con) -> List[dict]:

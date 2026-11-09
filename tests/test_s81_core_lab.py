@@ -468,3 +468,34 @@ def test_the_migrations_create_the_s81_tables(con):
     assert {"sleeves_s81", "probation_s81", "allocation_sleeves_s81", "alloc_verdicts_s81"} <= names
     versions = {r[0] for r in con.execute("SELECT version FROM schema_migrations").fetchall()}
     assert {108, 109, 110, 111, 112} <= versions
+
+
+# --- the replay's modelled ETFs and the once-only final check -------------------------------------------------------------------------------------
+
+def test_a_core_etf_without_history_is_modelled_as_its_index_less_a_stated_yearly_cost(tmp_path):
+    from pflab.lab import runner
+    (tmp_path / "indices").mkdir()
+    (tmp_path / "global").mkdir()
+    idx = pd.bdate_range("2010-01-04", periods=2600)
+    lvl = pd.Series(1000.0 * 1.0004 ** pd.Series(range(len(idx))).to_numpy(), index=idx)
+    pd.DataFrame({"date": idx, "close": lvl.to_numpy()}).to_parquet(tmp_path / "indices" / "NIFTY500_TRI.parquet")
+    for k, mult in (("US_NASDAQ", 1.0003), ("FX_USDINR", 1.0001)):
+        pd.DataFrame({"date": idx, "adj_close": 100.0 * mult ** pd.Series(range(len(idx))).to_numpy()}).to_parquet(tmp_path / "global" / f"{k}.parquet")
+    out = runner.core_synth_series(tmp_path, idx)
+    assert set(out) == {"ETF:MONIFTY500", "ETF:MON100"}
+    s, why = out["ETF:MONIFTY500"]
+    years = (idx[-1] - idx[0]).days / 365.25
+    assert s.iloc[-1] / s.iloc[0] == pytest.approx((lvl.iloc[-1] / lvl.iloc[0]) * (1 - 0.0020) ** years, rel=1e-6)      # the index total-return less 0.20% a year
+    assert "estimate" in why and "no price history" in why and runner.CORE_SYNTH["ETF:MON100"]["cost"] == 0.0060
+    assert out["ETF:MON100"][0].iloc[-1] > 0
+
+
+def test_the_final_check_setting_of_no_monte_carlo_no_longer_raises():
+    """The once-only 2018-2021 check runs `evaluate` with n_shuffles=0 and n_mc=0; the Monte Carlo used to raise on empty arrays, so the check could never run for real."""
+    data = make_data()
+
+    def hold(state, f, s, sl, params=None):
+        return {"ETF:NIFTYBEES": 0.5}
+    res = engine.evaluate(hold, [{}], data, "2011-01-03", "2014-12-31", None, n_shuffles=0, n_mc=0)
+    assert res["runs"][0]["mc"] == {} and res["runs"][0]["score"]["cagr_liq"] is not None
+    assert engine.monte_carlo(data["px"]["ETF:NIFTYBEES"], 0) == {}
