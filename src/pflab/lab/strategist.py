@@ -88,6 +88,11 @@ def due(con, now: datetime) -> List[str]:
     """Reasons for a session now (never a bare timer with nothing to work on, but the weekly one is the doc's own first trigger)."""
     st = settings()
     out = []
+    try:                                                                    # S81 B6: what he asked in the chat comes first, then the S81 triggers
+        from pflab.lab import ondemand, triggers_s81
+        out += ondemand.reasons(con) + triggers_s81.reasons(con, now)
+    except Exception:
+        pass
     last = con.execute("SELECT max(started_at) FROM core_sessions_s80").fetchone()[0]
     if last is None or (now - last) >= timedelta(days=int(st["weekly_days"])):
         out.append("the weekly session (re-examine the allocation)")
@@ -162,6 +167,13 @@ def run_session(con, pm_dir: Path, root, now: datetime, reason: str, *, client, 
     sid = next_id(con, "core_sessions_s80", "session_id")
     con.execute("INSERT INTO core_sessions_s80 (session_id, started_at, reason, status, model, budget_inr, cost_inr, lab_runs, variants, challengers) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 [sid, now, reason[:300], "running", st["model"], budget, 0.0, 0, 0, 0])
+    req_ids: list = []
+    try:
+        from pflab.lab import ondemand
+        if ondemand.PREFIX in reason:
+            req_ids = ondemand.take(con, now, sid)
+    except Exception:
+        pass
     ctx = tools.make_ctx(con, pm_dir, root, now, sid, data=data, box=box)
     first = _first_message(con, reason, budget)
     messages = [{"role": "user", "content": [{"type": "text", "text": first}]}]
@@ -204,6 +216,12 @@ def run_session(con, pm_dir: Path, root, now: datetime, reason: str, *, client, 
     final = status if status in ("failed",) else ("wasted" if ctx.stats["lab_runs"] == 0 else ("budget" if status == "budget" else "done"))
     con.execute("UPDATE core_sessions_s80 SET finished_at=?, status=?, cost_inr=?, lab_runs=?, variants=?, challengers=?, note=?, transcript_json=? WHERE session_id=?",
                 [now, final, spent, ctx.stats["lab_runs"], ctx.stats["variants"], ctx.stats["challengers"], (err or ctx.finished or "")[:600], json.dumps(log)[:60000], sid])
+    if req_ids:
+        try:
+            from pflab.lab import ondemand
+            ondemand.finish(con, now, req_ids, final, (err or ctx.finished or "no note was written")[:800])
+        except Exception:
+            pass
     out = {"session_id": sid, "status": final, "cost_inr": round(spent, 2), "budget_inr": budget, "turns": len([x for x in log if "tool" in x or "says" in x]), **ctx.stats}
     if final == "wasted":
         out["note"] = ("no lab run: logged as wasted, the next session gets half the budget until one succeeds" if core.throttle_active(now)

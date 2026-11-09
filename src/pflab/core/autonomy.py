@@ -50,13 +50,20 @@ def _strategist(con, since: datetime, until: datetime) -> dict:
 
 
 def _probation(con, since: datetime, until: datetime) -> dict:
-    rows = _q(con, "SELECT kind, count(*) FROM probation_changes_s81 WHERE changed_at >= ? AND changed_at <= ? GROUP BY 1", [since, until])
+    rows = _q(con, "SELECT kind, count(*) FROM probation_s81 WHERE changed_on >= ? AND changed_on <= ? GROUP BY 1", [since.date(), until.date()])
     return {k: int(n) for k, n in rows}
 
 
 def _exits(con, since: datetime, until: datetime) -> dict:
-    rows = _q(con, "SELECT kind, count(*), sum(CASE WHEN diff_after_tax > 0 THEN 1 ELSE 0 END), sum(diff_after_tax) FROM exit_scores_s81 WHERE sold_at >= ? AND sold_at <= ? GROUP BY 1", [since, until])
-    return {k: {"n": int(n), "better_than_holding": int(b or 0), "after_tax_difference": round(float(d or 0), 2)} for k, n, b, d in rows}
+    """Exit-manager actions by kind (orders emitted and filled in the period), each kind with its after-tax scores against holding (scores made in the period)."""
+    acts = _q(con, "SELECT kind, count(*) FROM exit_events_s81 WHERE emitted_at >= ? AND emitted_at <= ? AND status IN ('emitted','filled') GROUP BY 1", [since, until])
+    scored = {k: (int(n), int(b or 0), float(d or 0)) for k, n, b, d in _q(
+        con, "SELECT kind, count(*), sum(CASE WHEN diff > 0 THEN 1 ELSE 0 END), sum(diff) FROM exit_scores_s81 WHERE scored_on >= ? AND scored_on <= ? GROUP BY 1", [since.date(), until.date()])}
+    out = {}
+    for k, n in acts:
+        sc = scored.get(k, (0, 0, 0.0))
+        out[k] = {"n": int(n), "scored": sc[0], "better_than_holding": sc[1], "after_tax_difference": round(sc[2], 2)}
+    return out
 
 
 def _storylines(con, start: date, end: date) -> dict:

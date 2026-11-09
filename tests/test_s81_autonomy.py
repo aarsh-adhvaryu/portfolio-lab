@@ -49,6 +49,7 @@ def test_a_session_on_its_own_trigger_counts_and_one_he_asked_for_does_not(con):
 
 def test_a_traded_close_is_activity_and_a_part_that_cannot_be_read_is_named(con):
     _run(con, date(2026, 11, 11), "traded")
+    con.execute("DROP TABLE exit_scores_s81")                                          # a store that has not got the S81 exit tables yet
     rep = autonomy.report(con, NOW)
     assert rep["verdict"]["autonomous"] is True
     assert any(x.startswith("exits") for x in rep["left_out"])                      # the exit tables of S81 do not exist in this store: named, never guessed
@@ -88,3 +89,15 @@ def test_a_slow_close_fails_the_phase_one_gate_in_the_message(con):
     con.execute("UPDATE core_runs_s80 SET seconds = 12.0")
     con.execute("UPDATE core_runs_s80 SET seconds = 150.0 WHERE day = ?", [date(2026, 11, 13)])
     assert "NOT passed" in job.gate_text(con)
+
+
+def test_exit_actions_probation_changes_and_their_after_tax_scores_are_counted(con):
+    con.execute("INSERT INTO exit_events_s81 (event_id, market, isin, side, kind, day, emitted_at, status) VALUES (1,'IN','INE1','sell','stop',?,?,'filled')", [date(2026, 11, 12), datetime(2026, 11, 12, 15, 40)])
+    con.execute("INSERT INTO exit_events_s81 (event_id, market, isin, side, kind, day, emitted_at, status) VALUES (2,'IN','INE2','sell','harvest',?,?,'void')", [date(2026, 11, 12), datetime(2026, 11, 12, 15, 40)])
+    con.execute("INSERT INTO exit_scores_s81 (score_id, event_id, market, isin, kind, trade_id, sold_on, horizon_sessions, scored_on, diff) VALUES (1,1,'IN','INE1','stop',1,?,20,?,500.0)",
+                [date(2026, 11, 12), date(2026, 11, 14)])
+    con.execute("INSERT INTO probation_s81 (change_id, policy_id, changed_on, kind, share, reason, made_at) VALUES (1,'p1',?,'grant',0.05,'cleared the screen',?)", [date(2026, 11, 13), datetime(2026, 11, 13, 9, 0)])
+    rep = autonomy.report(con, NOW)
+    assert rep["exits"] == {"stop": {"n": 1, "scored": 1, "better_than_holding": 1, "after_tax_difference": 500.0}}         # the void harvest is not an action
+    assert rep["probation"] == {"grant": 1} and rep["verdict"]["autonomous"] is True
+    assert rep["left_out"] == [] or not any(x.startswith(("exits", "probation")) for x in rep["left_out"])

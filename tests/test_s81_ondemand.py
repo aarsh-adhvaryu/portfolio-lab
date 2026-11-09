@@ -43,3 +43,15 @@ def test_the_chat_tool_is_registered_for_the_assistant_only_and_writes_the_reque
     from pflab.app import assistant
     assert "ask_strategist" in assistant.TOOLS and tl.TOOLS["ask_strategist"].kind == "action" and "ask_strategist" in tl.WORKER_ONLY
     assert tl.validate(tl.TOOLS["ask_strategist"], {"question": "Is there an AI bubble in the Indian market?"}) is None
+
+
+def test_the_strategist_reads_a_chat_request_as_a_reason_and_the_new_triggers_by_code(con):
+    from pflab.lab import strategist, triggers_s81
+    ondemand.request(con, NOW, "Is there an AI bubble and should the book hold less of it?")
+    why = strategist.due(con, NOW)
+    assert any(w.startswith(ondemand.PREFIX) for w in why)
+    con.execute("INSERT INTO core_sessions_s80 (session_id, started_at, reason, status) VALUES (1, ?, 'weekly', 'done')", [NOW - timedelta(days=1)])
+    con.execute("INSERT INTO exit_events_s81 (event_id, market, isin, side, kind, day, emitted_at, status) VALUES (1,'IN','INE1','sell','thesis',?,?,'emitted')", [NOW.date(), NOW - timedelta(hours=3)])
+    con.execute("INSERT INTO probation_s81 (change_id, policy_id, changed_on, kind, share, reason, made_at) VALUES (1,'p1',?,'withdraw',0.0,'worse than the champion',?)", [NOW.date(), NOW - timedelta(hours=2)])
+    r = triggers_s81.reasons(con, NOW)
+    assert any("thesis-break exit" in x for x in r) and any("probation slice of p1: withdraw" in x for x in r)
