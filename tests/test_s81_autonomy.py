@@ -63,3 +63,28 @@ def test_allocation_and_promotions_are_counted(con):
     rep = autonomy.report(con, NOW)
     assert rep["allocation"] == {"proposed": 1, "adopted": 1, "by_status": {"active": 1}}
     assert rep["strategist"]["promotions"] == {"promote": 1} and rep["verdict"]["autonomous"] is True
+
+
+def test_the_telegram_check_waits_for_the_fifth_close_then_sends_once_and_then_weekly(con):
+    from pflab.service import tasks_s79_autonomy as job
+    for i in range(4):
+        _run(con, date(2026, 11, 11) + __import__("datetime").timedelta(days=i), "held")
+    assert "4 of 5" in job.run_once(con, NOW)["waiting"]
+    _run(con, date(2026, 11, 15), "traded")
+    con.execute("UPDATE core_runs_s80 SET seconds = 12.0")
+    out = job.run_once(con, NOW)
+    assert out["sent"] == "after the fifth close"
+    msg = con.execute("SELECT text FROM outbox WHERE dedup_key='autonomy:fifth-close'").fetchone()[0]
+    assert "Phase 1 gate: 5 real closes" in msg and "PASSED" in msg and "Autonomy check" in msg
+    assert job.run_once(con, datetime(2026, 11, 17, 16, 0))["sent"] is None                # once, not again on a Tuesday
+    monday = datetime(2026, 11, 23, 10, 0)
+    assert job.run_once(con, monday)["sent"] == "weekly"
+
+
+def test_a_slow_close_fails_the_phase_one_gate_in_the_message(con):
+    from pflab.service import tasks_s79_autonomy as job
+    for i in range(5):
+        _run(con, date(2026, 11, 11) + __import__("datetime").timedelta(days=i), "held")
+    con.execute("UPDATE core_runs_s80 SET seconds = 12.0")
+    con.execute("UPDATE core_runs_s80 SET seconds = 150.0 WHERE day = ?", [date(2026, 11, 13)])
+    assert "NOT passed" in job.gate_text(con)
