@@ -942,6 +942,36 @@ def _src_has(mod: str, *words: str) -> bool:
     return bool(s) and all(w in s for w in words)
 
 
+def step_tactical_view(env: "Env", c: Check, phase: str) -> None:
+    """The tactical lane (v2, already in the tree): a view issued on the second session's afternoon is executed at the NEXT close through the rails, and scored against the Nifty 500 at
+    its horizon (3 sessions)."""
+    from pflab import markets
+    from pflab.core import views
+    m = markets.get("IN")
+    fri = m.next_session(env.start)
+    name, isin = STOCKS[4][0], STOCKS[4][1]                          # SYNBANK1: in the store, not in the book
+    if phase == "tick":
+        if getattr(env, "view_id", None) or env.clock.t < dt(fri, 16):
+            return
+        r = views.issue(env.cur(), env.clock.t, fri, direction=1, names=[name], share_of_budget=0.5, horizon_sessions=3, stop_pct=25.0,
+                        reason="drill: a story says the banks lead the next leg up, so buy a little of the one the book does not hold")
+        env.view_issue = r
+        env.view_id = r.get("view_id") or -1
+        return
+    if phase != "check":
+        return
+    cur = env.cur()
+    c.ok(getattr(env, "view_id", -1) > 0, f"the view was issued: {str(getattr(env, 'view_issue', ''))[:200]}", "core/views.py issue")
+    nxt = m.next_session(fri)
+    note = cur.execute("SELECT note, orders_json FROM core_runs_s80 WHERE day=?", [nxt]).fetchone()
+    c.ok(note is not None and "tactical views merged" in (note[0] or ""), f"at the next close ({nxt}) the view was merged into the targets: {str(note[0])[:140] if note else None}", "core/loop.py, core/views.py merge")
+    buys = cur.execute("SELECT count(*) FROM paper_decisions WHERE isin=? AND action IN ('BUY','ADD')", [isin]).fetchone()[0]
+    filled = cur.execute("SELECT count(*) FROM paper_trades WHERE isin=? AND side='buy'", [isin]).fetchone()[0]
+    c.ok(buys >= 1 and filled >= 1, f"{name} was bought through the rails for the view ({buys} decision(s), {filled} fill(s))", "core/loop.py, core/rails.py")
+    v = cur.execute("SELECT status, outcome, scored_at, due_on FROM core_views_s80 WHERE view_id=?", [env.view_id]).fetchone()
+    c.ok(v is not None and v[1] in ("good", "bad") and v[2] is not None, f"at its horizon ({v[3] if v else None}) the view was scored against the Nifty 500: {v[1] if v else None}", "core/views.py score_due")
+
+
 def step_allocation(env: "Env", c: Check, phase: str) -> None:
     """Allocation proposed (by the lab tool) and adopted by the promotion rule: the active target changes with its reasons stored."""
     if phase == "setup":
@@ -1086,6 +1116,7 @@ def step_thesis_break(env: "Env", c: Check, phase: str) -> None:
     c.ok(n >= 1, f"the sale decision names the thesis break and its source ({n} decision(s); reason: {e[0][3][:120] if e else ''})", "core/exits.py")
     c.ok(e and "guidance" in e[0][3].lower(), "the reason (written by code) names the event's kind and its date", "core/exits.py")
 step_thesis_break.ticks = True
+step_tactical_view.ticks = True
 
 
 def step_us_book(env: "Env", c: Check, phase: str) -> None:
@@ -1203,6 +1234,7 @@ def step_session_replay(env: "Env", c: Check, phase: str) -> None:
 
 ACCELERATED_STEPS: List[Tuple[str, Callable, Callable]] = [
     ("standing", step_main_assertions, lambda env=None: (True, "")),
+    ("tactical_view_issued_executed_scored", step_tactical_view, needs("pflab.core.views", why="the tactical lane")),
     ("allocation_proposed_and_adopted", step_allocation,
      lambda env=None: (True, "") if "propose_allocation" in source_of("pflab.lab.tools") else (False, "waiting for the lab tool propose_allocation in pflab.lab.tools (B2)")),
     ("core_etfs_bought", step_core_etf_bought, needs("pflab.core.sleeves", "pflab.core.baseline_v2", why="B1 baseline_v2 + the sleeves contract")),
@@ -1291,8 +1323,11 @@ def drill_accelerated_long(env: "Env", c: Check) -> None:
     c.ok(n28 >= 1, f"claims with a 28-day horizon were scored inside the run ({n28})", "paper/manager.py score_due")
     week = cur.execute("SELECT count(*) FROM job_runs WHERE job='strategist'").fetchone()[0]
     c.note(f"the strategist job ran {week} time(s) (each says why it did not start: no cloud client in the workshop)")
-    wk = cur.execute("SELECT count(*) FROM job_runs WHERE job='week_check'").fetchone()[0]
-    c.note(f"week_check job runs: {wk}")
+    wk = cur.execute("SELECT verdict, sent, details_json FROM week_check_s79 ORDER BY check_id DESC LIMIT 1").fetchone()
+    crit = {} if not wk or not wk[2] else {x["name"]: x["status"] for x in json.loads(wk[2]).get("criteria", [])}
+    c.ok(wk is not None and wk[0] != "fail", f"the app's check of its own first week after six weeks: {wk[0] if wk else 'not armed'} {crit} (it never ran with a gap, so the catch-up criterion is not tested)", "service/week_check.py")
+    n_msg = cur.execute("SELECT count(*) FROM outbox WHERE dedup_key LIKE 'week_check:%'").fetchone()[0]
+    c.ok(n_msg <= 1, f"the first-week verdict was queued for Telegram at most once ({n_msg})", "service/week_check.py")
 
 
 @drill("kill_switch", 20)
@@ -1699,7 +1734,14 @@ def drill_kite_logged_out(env: "Env", c: Check) -> None:
         c.says(f"bars_1m: {r.detail[:80]}")
     sess = importlib.util.find_spec("pflab.core.session") is not None
     if sess:
-        c.note("pflab.core.session is in this tree: its logged-out behaviour (says so once, only post-close work) is asserted by the session step of the accelerated run and its own tests")
+        from pflab.core import session
+        n_fills0 = cur.execute("SELECT count(*) FROM session_fills_s81").fetchone()[0]
+        r1 = session.run_once(cur, dt(fri, 11), data_root=env.data)            # in session hours, no quotes injected, no Kite client: the live path without a login
+        r2 = session.run_once(cur, dt(fri, 11, 5), data_root=env.data)
+        said = cur.execute("SELECT count(*), max(text) FROM session_said_s81 WHERE day=? AND key='kite'", [fri]).fetchone()
+        c.ok(r1.get("degraded") and r2.get("degraded") and said[0] == 1 and "login" in str(said[1]).lower() and "post-close" in str(said[1]).lower(),
+             f"the session loop says once that there is no Kite login and that only the post-close work runs ({said[0]} message: {str(said[1])[:150]})", "core/session.py say_once")
+        c.ok(cur.execute("SELECT count(*) FROM session_fills_s81").fetchone()[0] == n_fills0, "and it made no fill without a quote", "core/session.py")
     else:
         c.note("OFF (part): pflab.core.session is not in this tree: the session loop's 'Kite is logged out, only post-close work runs' line waits for module pflab.core.session (B6b)")
     # Part B: a login on Saturday lapses on Sunday 06:00; one question a day, on Telegram at most once; the real job
@@ -2217,7 +2259,7 @@ def report(results: list, a) -> None:
     lines = ["## Drills and accelerated run (tools/drills_s81.py, %s)" % datetime.now().strftime("%Y-%m-%d %H:%M"), "",
              "| drill | result | seconds | evidence |", "|---|---|---|---|"]
     for r in results:
-        why = next((e[:110] for e in r["evidence"] if e.startswith("OFF")), "") if r["status"] == "OFF" else f"{sum(1 for e in r['evidence'] if e.startswith('ok:'))} checks ok"
+        why = next((e[:110] for e in r["evidence"] if e.startswith("OFF")), "") if r["status"] == "OFF" else f"{sum(1 for e in r['evidence'] if e.startswith('ok:') or '] ok:' in e[:70])} checks ok"
         lines.append(f"| {r['name']} | {r['status']} | {r['seconds']} | {why.replace('|', '/')} |")
     steps = [(r["name"], s) for r in results for s in r.get("steps", [])]
     if steps:
