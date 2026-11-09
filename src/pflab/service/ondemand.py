@@ -12,12 +12,12 @@ from typing import Dict, Optional, Tuple
 
 AFTER: Dict[str, Tuple[str, ...]] = {
     "guards": ("prices",), "plans": ("prices", "nav"), "forecast": ("prices",), "twin": ("prices",), "scans": ("prices",), "review": ("prices",),
-    "paper": ("prices",), "core_loop": ("paper", "prices"), "lab_close": ("core_loop",), "story_daily": ("prices", "global", "flows", "macro_attribution", "wave_scan"), "strategist": ("core_loop", "lab_close"), "companion": ("prices",), "comove": ("prices",), "kg": ("filings", "collect"), "research": ("kg",),
+    "paper": ("prices",), "kg2_nightly": ("filings", "collect"), "us_close": ("global",), "core_loop": ("paper", "prices"), "lab_close": ("core_loop",), "story_daily": ("prices", "global", "flows", "macro_attribution", "wave_scan", "kg2_nightly"), "strategist": ("core_loop", "lab_close"), "companion": ("prices",), "comove": ("prices",), "kg": ("filings", "collect"), "research": ("kg",),
     "catch_up": ("prices", "global"), "bars_1m": ("prices",), "forecast_loop": ("prices", "global"), "benchmark_attr": ("paper", "prices"),
     "macro_attribution": ("prices", "global", "flows"), "wave_scan": ("prices",),
     "sentiment": ("prices", "global"),
 }
-MAX_AGE_H: Dict[str, float] = {"selfcheck": 24, "sandbox": 24, "learner": 24, "paper_daily": 20, "backup": 26, "catch_up": 12, "voice": 1, "data_s79b": 20, "week_check": 20}
+MAX_AGE_H: Dict[str, float] = {"kg2_nightly": 26, "news_s81_topup": 26, "selfcheck": 24, "sandbox": 24, "learner": 24, "paper_daily": 20, "backup": 26, "catch_up": 12, "voice": 1, "data_s79b": 20, "week_check": 20}
 STALE_SLOT_H: Dict[str, float] = {"summary_morning": 6, "summary_evening": 6}
 
 

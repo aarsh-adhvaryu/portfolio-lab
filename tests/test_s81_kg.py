@@ -436,8 +436,7 @@ def test_position_layer_reads_the_book(con):
 def test_position_layer_shows_the_exit_plan_and_events_when_they_exist(con):
     day = date(2026, 6, 30)
     con.execute("INSERT INTO paper_lots VALUES (1, ?, 'ALPHA', ?, 10, 100.0, 'EQUITY', 'test')", [A, date(2025, 1, 10)])
-    con.execute("CREATE TABLE exit_plans_s81 (plan_id INTEGER, isin VARCHAR, status VARCHAR, stop DOUBLE, opened DATE)")
-    con.execute("INSERT INTO exit_plans_s81 VALUES (1, ?, 'open', 90.0, ?)", [A, date(2025, 1, 10)])
+    con.execute("INSERT INTO exit_plans_s81 (plan_id, market, isin, sleeve, opened_on, stop, status) VALUES (1, 'IN', ?, 'longterm', ?, 90.0, 'open')", [A, date(2025, 1, 10)])      # the exit manager's real table
     con.execute("INSERT INTO kg2_event VALUES ('e1', ?, 'bse_announcement', 'r', ?, ?, 'regulatory_action', 'high', 'Show cause notice', 'filing:scrip_isin_on_dissem_date', 'p', 'k')",
                 [A, datetime(2026, 6, 20, 10), date(2026, 6, 20)])
     h = position.positions(con, day)["holdings"][0]
@@ -592,3 +591,22 @@ def test_generic_filing_headlines_get_rule_kinds_and_the_rest_stays_other():
     assert classify.rule_kind("Investor Presentation")[0] == "routine" and classify.rule_kind("New Order Received")[0] == "order_win"
     assert classify.rule_kind("Change in Senior Management")[0] == "management_change"
     assert classify.rule_kind("The Exchange has received the disclosure under Regulation 30 (1)")[0] == "other"
+
+
+def test_the_story_adapter_brings_graph_events_with_their_source_and_nothing_dated_after_the_day(tmp_path, monkeypatch):
+    """S81 integration: material events on held or storyline-exposed names become evidence items of source_kind kg2_event; with the graph off there are none."""
+    from datetime import date, datetime
+    from pflab.kg import events as kev
+    from pflab.pm import store
+    from pflab.story import adapters
+    con = store.connect(tmp_path / "l.duckdb")
+    con.execute("INSERT INTO instruments (isin, key_kind, asset_class, tax_class, listed, symbol, name, source, built_at) VALUES ('INE000A01011','isin','equity','EQUITY',TRUE,'AAA','AAA Ltd','s',now())")
+    con.execute("INSERT INTO storylines_s80 (storyline_id, market, claim, direction, subject, opened_on, status, prior) VALUES (1,'IN','x'||repeat('y',30),1,'NIFTY500_TRI',?, 'open', 0.5)", [date(2026, 11, 1)])
+    con.execute("INSERT INTO storyline_exposure_s80 VALUES (1,'INE000A01011',1.0,'rule',?)", [date(2026, 11, 1)])
+    asof = date(2026, 11, 12)
+    assert adapters.kg_items(con, asof) == []
+    ev = [{"isin": "INE000A01011", "kind": "results_miss", "severity": "high", "ts": datetime(2026, 11, 11, 18, 5), "source": "bse_announcement", "ref": "R1", "text": "Q2 profit fell 30%"},
+          {"isin": "INE000A01011", "kind": "guidance_cut", "severity": "high", "ts": datetime(2026, 11, 13, 9, 0), "source": "bse_announcement", "ref": "R2", "text": "dated after the day"}]
+    monkeypatch.setattr(kev, "material_events", lambda c, isins, since: ev)
+    items = adapters.kg_items(con, asof)
+    assert [i["source_ref"] for i in items] == ["bse_announcement:R1"] and items[0]["source_kind"] == "kg2_event" and "AAA" in items[0]["text"] and items[0]["date"] == date(2026, 11, 11)

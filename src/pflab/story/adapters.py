@@ -56,10 +56,33 @@ def wave_items(con, asof: date) -> List[dict]:
             for sess, kind, direction, salience, definition in rows]
 
 
-ADAPTERS = ("flows", "attribution", "waves")
+def kg_items(con, asof: date) -> List[dict]:
+    """Material events (S81 B7) on the names the book holds or an open storyline is exposed to, from the rebuilt graph: a filing or a news item attached to a company by a confident
+    rule, with its dissemination time. Evidence of `source_kind` "kg2_event" with the event id as its source: this is what the registered "graph earns its place" study counts.
+    With the graph OFF, or not loaded, there are no items."""
+    try:
+        from pflab.kg import events as kev
+        from pflab.paper import book
+        isins = set(book.positions(con).keys())
+        isins |= {r[0] for r in con.execute("SELECT DISTINCT e.isin FROM storyline_exposure_s80 e JOIN storylines_s80 s ON s.storyline_id = e.storyline_id WHERE s.status = 'open'").fetchall()}
+        names = {i: (sym or i) for i, sym in con.execute("SELECT isin, symbol FROM instruments WHERE isin IN (SELECT unnest(?::VARCHAR[]))", [sorted(isins)]).fetchall()} if isins else {}
+        evs = kev.material_events(con, isins, datetime.combine(asof - timedelta(days=5), datetime.min.time()))
+    except Exception:
+        return []
+    out = []
+    for e in evs:
+        ts = e["ts"]
+        if ts is None or ts.date() > asof:                                      # point in time: nothing dated after the day it is used
+            continue
+        out.append({"key": f"kg2:{e['ref']}:{e['isin']}", "date": ts.date(), "source_kind": "kg2_event", "source_ref": f"{e['source']}:{e['ref']}",
+                    "text": f"{names.get(e['isin'], e['isin'])} ({e['source'].replace('_', ' ')}, {ts:%Y-%m-%d %H:%M}, {e['kind'].replace('_', ' ')}, {e['severity']}): {e['text'][:200]}"})
+    return out
+
+
+ADAPTERS = ("flows", "attribution", "waves", "kg2_events")
 
 
 def collect(con, root, asof: date) -> List[dict]:
     """Every item of the last few sessions, oldest first; the caller skips what the reader has already read (`storyline_reader_s80`)."""
-    items = flows_items(root, asof) + attribution_items(con, asof) + wave_items(con, asof)
+    items = flows_items(root, asof) + attribution_items(con, asof) + wave_items(con, asof) + kg_items(con, asof)
     return sorted(items, key=lambda i: (i["date"], i["key"]))

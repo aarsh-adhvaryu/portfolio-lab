@@ -249,8 +249,9 @@ def tick(con, pm_dir: Path, root, now: datetime, client_fn, data=None, box=None)
     if rb:
         out["rollback"] = rb
     try:                                                                    # S81 (A49-A50): the allocation candidates are replayed and a proposal is adopted by the index rule (code, free)
-        from pflab.lab import alloc_lab
+        from pflab.lab import alloc_lab, swing_study
         out["allocation"] = alloc_lab.tick(con, pm_dir, root, now, data=data, box=box)
+        out["swing_candidates"] = swing_study.seed_variants(con, pm_dir, now)             # S81 B5: the three registered swing variants are lab candidates only (they failed their study)
     except Exception as e:
         out["allocation"] = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
     reasons = due(con, now)

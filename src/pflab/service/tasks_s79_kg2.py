@@ -1,0 +1,59 @@
+"""S81 B7 jobs for the rebuilt knowledge graph (`pflab/kg2`), both code only and free:
+
+`kg2_nightly`    classify new events with the local model (bounded), build the graph from the raw files, audit it, and load the store ONLY when the audit passes and the switch
+                 (`configs/kg2.toml` [kg] on) is on; otherwise nothing from the graph is readable. Due when filings or collectors have brought new input (service/ondemand.py) or once a day.
+`news_s81_topup` the daily top-up of the news collection (the last three days, article text inside the cap), run as the collector tool in its own process so the app's loops are not
+                 held; skipped while another collection is running. Bounded to 30 minutes.
+"""
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
+
+from pflab.service.jobs import Job, register
+from pflab.service.schedule import Interval
+
+
+def _enabled(ctx):
+    from pflab.kg2 import switch
+    return (True, "") if switch.on() else (False, "the graph is OFF (configs/kg2.toml [kg] on = false)")
+
+
+def _nightly(ctx) -> dict:
+    from pflab import markets
+    from pflab.kg2 import job
+    day = markets.get("IN").session_closed_by(ctx.now)
+    return job.run(ctx.con, ctx.data_root, day, classify_limit=40, now=ctx.now)
+
+
+def _topup(ctx) -> dict:
+    root = Path(ctx.data_root)
+    tool = Path(__file__).resolve().parents[3] / "tools" / "news_s81_run.py"
+    pid_file = root / "news_s81" / "run.pid"
+    if pid_file.exists():
+        try:
+            os.kill(int(pid_file.read_text().strip()), 0)
+            return {"skipped": "a news collection is already running"}
+        except (ValueError, OSError):
+            pass
+    if not tool.exists():
+        return {"skipped": "tools/news_s81_run.py is not in this install"}
+    until = (ctx.now + timedelta(minutes=30)).strftime("%H:%M")
+    try:
+        r = subprocess.run([sys.executable, str(tool), "--root", str(root), "--days", "3", "--until", until], capture_output=True, text=True, timeout=45 * 60)
+    except subprocess.TimeoutExpired:
+        return {"failed": {"news": "the collection did not end in 45 minutes"}}
+    tail = (r.stdout or "").strip().splitlines()[-1:] or [""]
+    out = {"returncode": r.returncode, "last": tail[0][:300]}
+    if r.returncode not in (0, 2):
+        out["failed"] = {"news": f"exit code {r.returncode}"}
+    return out
+
+
+register(Job("kg2_nightly", Interval(360, weekdays_only=False), _nightly, "the rebuilt knowledge graph: classify, build, audit, load only when the audit passes (S81; code, local model)",
+             cooldown_minutes=120, enabled_fn=_enabled))
+register(Job("news_s81_topup", Interval(720, weekdays_only=False), _topup, "the daily news top-up (last 3 days, article text inside the cap) as its own process (S81)", cooldown_minutes=180,
+             enabled_fn=_enabled))
