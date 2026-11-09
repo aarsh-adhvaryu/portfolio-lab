@@ -131,6 +131,28 @@ def run(con, now: datetime, root=None, index: Optional[pd.Series] = None, live_d
             cadence.act(con, now, "core_loop", f"champion {champ['policy_id']} failed ({type(e).__name__}: {str(e)[:200]}): the baseline decides this close", False)
     if dec is None:
         dec = policy.decide_active(s)
+    try:                                                                   # S81 A50: policies on probation trade their slice of the book; the champion keeps the rest (`lab/probation.py`)
+        from pflab.lab import live as _live, probation, service as _svc
+        sl = probation.slices(con, day)
+        if sl:
+            held_w = {r["isin"]: r["weight"] for r in s["rows"] if r["weight"] > 0}
+            sw = {}
+            for x in sl:
+                lp = _svc.get(con, x["policy_id"])
+                if lp and lp.get("code"):
+                    try:
+                        sw[x["policy_id"]] = _live.decide(con, root, day, lp, held_w, data=live_data)
+                    except Exception as e:                                 # a failing slice policy leaves its share to the champion for this close
+                        cadence.act(con, now, "core_loop", f"probation policy {x['policy_id']} failed ({type(e).__name__}: {str(e)[:160]}): its share stays with the champion", False)
+            if sw:
+                blended = probation.blend(dec["weights"], sw, sl)
+                extra = [i for i in blended if i not in {r["isin"] for r in s["rows"]}]
+                if extra:
+                    s = st.build(con, day, root, index, cfg, extra_isins=extra)
+                names = ", ".join(f"{x['policy_id']} {x['share']:.0%}" for x in sl if x["policy_id"] in sw)
+                dec = {**dec, "weights": blended, "notes": list(dec["notes"]) + [f"probation slice(s) trade their share: {names}"]}
+    except Exception as e:
+        cadence.act(con, now, "core_loop", f"the probation slices could not be applied: {type(e).__name__}: {str(e)[:160]}", False)
     views_note = None
     if cfg["tactical"]["on"]:                                              # the tactical lane: active views adjust the target weights BEFORE the rails (every cap and limit still applies)
         try:
