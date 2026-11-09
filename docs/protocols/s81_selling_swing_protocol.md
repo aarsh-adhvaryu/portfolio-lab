@@ -140,6 +140,18 @@ shown to add after-tax return in the replay" and the exit manager keeps its tax 
 * Counting: the four registrations above are four tests in the learner's counter (the bar for every later test rises). Every variant and every parameter set the strategist later tries
   is a trial in the lab's deflated Sharpe (`lab_runs_s80`); the three variants and the index control are scored through the same table.
 
+## 7a. Amendment A1 (2026-11-09 night, before any code that runs this study was committed and before any registration or run)
+
+Two things the first text left open, fixed here: (1) **the CAGR in condition 3 of section 6 is the liquidation CAGR `L`** for the real run and for every shuffled run (so that tax
+deferral cannot make a shuffled run look better or worse than it is). (2) **The final check's rule** (it is run only for a variant that passed section 6, once, by code): the variant's
+`L` over 2018-01-01 to 2021-11-30 is not below the index arm's `L` over the same days, AND its worst fall is not more than 5 points deeper than the index arm's, AND it made at
+least 20 trades. The strategist is told only "cleared" or "did not clear". The A50 promotion rule (B3) stays the rule for any live action; this study's final check only decides
+whether the study's claim A stays "supported".
+
+```json rule
+{"final_pass": {"min_excess_L_cagr_vs_index": 0.0, "max_extra_drawdown_vs_index": 0.05, "min_trades": 20}, "shuffled_cagr_is": "liquidation_cagr", "min_trades_forwarded": 40}
+```
+
 ## 8. One run, and the limits stated before it
 
 `lab/swing_study.run` is run ONCE for the record; its result goes to `lab_runs_s80` and `docs/STUDIES.md`. A rerun with changed parameters is a new registered study. Limits: adjusted
