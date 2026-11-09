@@ -126,3 +126,27 @@ fallback_stop_pct = 8.0               # the fallback exit plan (used only while 
 fallback_target_pct = 15.0
 fallback_time_sessions = 20
 report_at = "15:45"                   # the self-report on Telegram after the close
+# S81 B8 phase A (A53): the premium-to-NAV rail on India-listed international ETFs (core/premium.py). No NEW buying of such an ETF while it trades above its AMFI NAV by more than
+# the limit (the overseas-investment limits stop unit creation, so the price floats above NAV: docs/US_LEG_S81.md section 5). Selling is never blocked. A judgement, not a measured
+# optimum (his to change): the best-behaved ETF of the set ran 2-5% over NAV in Sep-Oct 2026, the rest 15% to 235%; NAV timing alone gives about +/-1%.
+[premium]
+on = true
+max_premium_pct = 2.0         # no new buying at or above this premium
+taper_from_pct = 1.0          # between this and the limit the purchase is scaled down linearly to zero
+max_nav_age_days = 5          # a NAV older than this is "unknown"
+unknown = "skip"              # skip: no buying while the premium is unknown; allow: buy as the policy says
+classes = ["international"]   # the policy classes held to the limit; add "gold" to hold gold ETFs to it too (they ran 5-12% over NAV in Oct 2025 and Jan 2026: secondary sources)
+
+# S81 B8 phase B (A53): the paper US sub-book (src/pflab/us/), USD, on the US close processed in the IST morning. OFF until the coordinator's loop and his yes: nothing else depends on it.
+[us]
+on = false
+start_share = 0.05            # the sub-book starts as this share of the system's book (rupees at the start FX rate); it is paper money (his to change)
+start_inr_fallback = 100000.0 # when the system's book is not readable (rupees)
+universe = ["SPY", "QQQ", "XLC", "XLY", "XLP", "XLE", "XLF", "XLV", "XLI", "XLB", "XLRE", "XLK", "XLU"]   # the ETFs data/us already collects
+invested_share = 0.95         # the baseline holds this share of the sub-book in the universe (equal weights), the rest in cash
+deploy_turnover_day = 1.0     # while less than half of invested_share is invested (a fresh account) the day's turnover cap is this share of the sub-book, and the monthly cap is not applied
+settle_minutes = 30           # a session counts as closed this long after its close (the daily bar is final)
+slippage_bps = 5.0            # ESTIMATE: a buy fills this much above the next open, a sell this much below
+min_trade_usd = 25.0
+band_pts = 1.5                # rebalance a name only when it is this many points of the sub-book from its target
+w8ben = true                  # a valid W-8BEN is on file: US dividend withholding 25% (the treaty rate for an individual); false: 30%

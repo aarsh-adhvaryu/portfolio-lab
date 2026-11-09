@@ -1,0 +1,207 @@
+# Tax and cost rows of the paper US sub-book (S81 B8 phase B), each with its source, the financial year it applies to and how it was checked.
+# Kept in its own folder (not configs/tax/) so the tax engine's tests, which read every row of configs/tax/, are unchanged. Research and quotes: docs/US_LEG_S81.md.
+#
+#   verification = primary    the official text (Gazette, treaty, regulator, exchange) was opened and read on verified_on
+#                  secondary   a broker, fund house, tax firm or news page, or an official page seen only in a search result
+#                  estimate    my judgement or an unverified figure; `verify` says what would check it. A figure that uses it carries the word ESTIMATE.
+# fy: "2026-27" = April 2026 to March 2027 (Income-tax Act 2025, "tax year"); "2025-26" and earlier = Income-tax Act 1961.
+
+# ---- Indian tax on foreign shares and ETFs held directly by a resident -----------------------------------------------------------------------------------------------------
+[[fact]]
+id = "cg_foreign_long_term_months"
+value = 24
+unit = "months: a share of a foreign company is long-term only if held MORE than this (the 12-month line is for securities listed on a recognised exchange in India)"
+fy = "2026-27 (Act 2025 s.2(101)); the same 24 months applies to transfers from 2024-07-23 under the 1961 Act (secondary)"
+source_url = "https://egazette.gov.in/WriteReadData/2025/265620.pdf"
+source_title = "Income-tax Act, 2025, s.2(101)(a),(b)"
+verification = "primary"
+verified_on = 2026-11-09
+
+[[fact]]
+id = "cg_foreign_ltcg_rate"
+value = 0.125
+unit = "long-term capital gains on foreign shares and unlisted securities, no indexation; excludes surcharge and cess"
+fy = "2026-27 (Act 2025 s.197(1)(b)); transfers from 2024-07-23 in FY 2024-25 and 2025-26 (secondary)"
+source_url = "https://egazette.gov.in/WriteReadData/2025/265620.pdf"
+source_title = "Income-tax Act, 2025, s.197(1)(b) and (6)(b),(c) (listed securities means listed on a recognised exchange in India; the rest are unlisted)"
+verification = "primary"
+verified_on = 2026-11-09
+
+[[fact]]
+id = "cg_foreign_stcg_rate"
+value = "slab"
+unit = "short-term gains on foreign shares are taxed at the investor's slab rate; the 20% rate of s.196 and the Rs 1.25 lakh exemption of s.198 need an equity share or equity-oriented-fund unit sold with STT paid"
+fy = "2026-27"
+source_url = "https://egazette.gov.in/WriteReadData/2025/265620.pdf"
+source_title = "Income-tax Act, 2025, s.196(1)(a),(b) and s.198(1)(b),(c)"
+verification = "primary"
+verified_on = 2026-11-09
+verify = "the IFSC wording of s.196(3) and s.198(4) (STT condition lifted for a sale ON an IFSC exchange in foreign currency) is NOT used: his route trades on a US exchange; a CA to confirm before real money"
+
+[[fact]]
+id = "surcharge_cap_dividend_and_gains"
+value = 0.15
+unit = "surcharge on the dividend and capital-gains parts of income is capped at 15%; the sub-book's tax figures EXCLUDE surcharge (it depends on his whole income)"
+fy = "2025-26 and 2026-27"
+source_url = "https://egazette.gov.in/WriteReadData/2026/271439.pdf"
+source_title = "Finance Act 2026, surcharge table clause (vi)"
+verification = "primary"
+verified_on = 2026-11-09
+
+[[fact]]
+id = "cess"
+value = 0.04
+unit = "health and education cess on tax plus surcharge; the sub-book's tax figures EXCLUDE it (as the rupee paper book's do)"
+fy = "2025-26 and 2026-27"
+source_url = "https://egazette.gov.in/WriteReadData/2026/271439.pdf"
+source_title = "Finance Act 2026 s.2(6) and s.3(6)"
+verification = "primary"
+verified_on = 2026-10-06
+note = "read by the S2 session (configs/tax/general.toml cess_2026); re-seen 2026-11-09"
+
+[[fact]]
+id = "fx_conversion_rule"
+value = "SBI telegraphic-transfer buying rate on the last day of the month BEFORE the month of the transfer (capital gains) or of the dividend; cost at the month before the purchase, proceeds at the month before the sale (the two-date reading)"
+fy = "Rule 115 up to FY 2025-26; Rule 206 (rate defined in rule 207) from FY 2026-27 (Income-tax Rules 2026, G.S.R. 198(E) of 2026-03-20)"
+source_url = "https://taxguru.in/income-tax/draft-income-tax-rule-206-rate-exchange-conversion-rupees-income-expressed-foreign-currency.html"
+source_title = "taxguru: draft Rule 206 table (capital gains: last day of the month before the transfer); the Department's own pages answer HTTP 403"
+verification = "secondary"
+verified_on = 2026-11-09
+verify = "the final text of rule 206 and 207 on incometaxindia.gov.in; and whether cost is converted at the purchase date or the gain at one date (both readings appear in practice)"
+
+[[fact]]
+id = "fx_ttbr_stand_in"
+value = "the SBI TT buying rate is not in our data: the market USD/INR close (or the FBIL reference rate, if entered) stands in; the SBI rate is usually below mid-market by a fraction of a percent"
+fy = "all"
+source_url = "https://rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx?prid=44393"
+source_title = "RBI press release 2018-07-04: FBIL computes the USD/INR reference rate from 2018-07-10"
+verification = "estimate"
+verified_on = 2026-11-09
+verify = "compare SBI's published TTBR with the stand-in for a sample of month-ends"
+
+# ---- US dividends: withholding and its credit -----------------------------------------------------------------------------------------------------------------------------
+[[fact]]
+id = "dtaa_dividend_withholding_individual"
+value = 0.25
+unit = "US tax on a dividend to an Indian-resident INDIVIDUAL (15% only for a company owning 10% or more of the voting stock; a US fund (RIC) always 25%); needs a valid Form W-8BEN"
+fy = "all (treaty in force)"
+source_url = "https://www.irs.gov/pub/irs-trty/india.pdf"
+source_title = "US-India income tax treaty, Article 10(2)(a),(b); IRS Table 1 (Rev. May 2023) India row; Embassy of India, Washington, Indo-US DTAA TDS rates"
+verification = "primary"
+verified_on = 2026-11-09
+
+[[fact]]
+id = "us_dividend_withholding_no_w8ben"
+value = 0.30
+unit = "US statutory rate on a dividend to a non-resident alien with no valid treaty form"
+fy = "all"
+source_url = "https://support.zerodha.com/category/trading-and-markets/general-kite/global-investing/articles/global-investing-guide"
+source_title = "Zerodha: Investing in US stocks (guide), read 2026-10-27"
+verification = "secondary"
+verified_on = 2026-10-27
+verify = "IRS instructions for Form W-8BEN / IRC s.1441"
+
+[[fact]]
+id = "dividend_india_taxed_at_slab"
+value = "slab"
+unit = "a foreign dividend is 'income from other sources' taxed at the slab rate (no special rate); the sub-book uses the same slab as the rupee paper book (paper/book.py SLAB, 30%)"
+fy = "2026-27 (Act 2025); 2025-26 the same under s.56(2)(i) of the 1961 Act (secondary)"
+source_url = "https://egazette.gov.in/WriteReadData/2025/265620.pdf"
+source_title = "Income-tax Act, 2025, s.92(2)(a): any dividend is chargeable under 'Income from other sources'; the special-rate table of s.194 has no dividend row, so the slab rate applies"
+verification = "primary"
+verified_on = 2026-11-09
+note = "Winvesta and taxguru say the same (secondary). Surcharge on the dividend part is capped at 15% (Finance Act 2026)."
+
+[[fact]]
+id = "foreign_tax_credit_rule"
+value = "credit = the LOWER of the US tax withheld (converted at the SBI TTBR of the last day of the month before it was withheld) and the Indian tax on that income; claimed with Form 67 (income to FY 2025-26) or Form 44 (from FY 2026-27), filed with the return"
+fy = "credit principle: all (treaty Art. 25(2)(a)); Form 67 / Form 44: 2025-26 / 2026-27"
+source_url = "https://www.irs.gov/pub/irs-trty/india.pdf"
+source_title = "Treaty Article 25(2)(a); Income-tax Act 2025 s.159(4) (the Act applies where more beneficial)"
+verification = "primary"
+verified_on = 2026-11-09
+verify = "the form numbers, the CA certificate at Rs 1 lakh of foreign tax and the due dates are secondary (taxguru, paasa): read the final Form 44 and rule 76"
+
+# ---- costs of the GIFT City route (USD) -----------------------------------------------------------------------------------------------------------------------------------
+[[fact]]
+id = "cost_brokerage_pct"
+value = 0.001
+unit = "brokerage 0.10% of the trade value each way, minimum USD 0.01, maximum USD 10; plus IGST 18% on the brokerage"
+fy = "2026 (the broker's schedule of 2026-10-27)"
+source_url = "https://support.zerodha.com/category/trading-and-markets/general-kite/global-investing/articles/global-investing-guide"
+source_title = "Zerodha: Investing in US stocks through Zerodha, charges"
+verification = "secondary"
+verified_on = 2026-10-27
+verify = "the live schedule of whichever broker he opens the account with"
+
+[[fact]]
+id = "cost_ifsca_turnover_pct"
+value = 0.00005
+unit = "IFSCA turnover fee 0.005% on both sides"
+fy = "2026"
+source_url = "https://support.zerodha.com/category/trading-and-markets/general-kite/global-investing/articles/global-investing-guide"
+source_title = "Zerodha: Investing in US stocks through Zerodha, charges"
+verification = "secondary"
+verified_on = 2026-10-27
+
+[[fact]]
+id = "cost_sec_fee_per_million"
+value = 20.60
+unit = "SEC Section 31 fee, USD per million dollars of covered sales, sells only; 0.00 before 2026-04-04 (0.00 from 2025-05-14)"
+fy = "from 2026-04-04, until 60 days after the FY 2027 appropriation"
+source_url = "https://www.sec.gov/rules-regulations/fee-rate-advisories/2026-2"
+source_title = "SEC fee rate advisory 2026-2, issued 2026-02-27"
+verification = "primary"
+verified_on = 2026-11-09
+
+[[fact]]
+id = "cost_finra_taf_per_share"
+value = 0.000195
+unit = "FINRA Trading Activity Fee, USD per share sold, at most USD 9.79 a trade, sells only; paused (0.00) for trades from 2026-10-01 to 2026-12-31"
+fy = "2026"
+source_url = "https://www.finra.org/rules-guidance/rule-filings/sr-finra-2024-019/fee-adjustment-schedule"
+source_title = "FINRA fee adjustment schedule: 2026 USD 0.000195, max USD 9.79 (primary); the Oct-Dec 2026 pause is from FINRA's billing FAQ seen in a search result (secondary)"
+verification = "primary"
+verified_on = 2026-11-09
+
+[[fact]]
+id = "cost_fx_markup_funding_pct"
+value = 0.004
+unit = "currency conversion markup when the account is funded, 0.4% (the range is 0.4% to 1.4% above the RBI reference rate); applied once to the start funding of the sub-book"
+fy = "2026"
+source_url = "https://support.zerodha.com/category/trading-and-markets/general-kite/global-investing/articles/global-investing-guide"
+source_title = "Zerodha: Investing in US stocks through Zerodha, charges"
+verification = "estimate"
+verified_on = 2026-10-27
+verify = "the bank's actual markup on his first remittance; the low end of the range is used"
+
+[[fact]]
+id = "cost_slippage_bps"
+value = 5.0
+unit = "a buy fills this many basis points above the next session's open, a sell this many below (liquid US ETFs)"
+fy = "2026"
+source_url = ""
+source_title = "no source: my judgement for the most liquid US ETFs at the open"
+verification = "estimate"
+verified_on = 2026-11-09
+verify = "compare a sample of fills with the quote once Phase C trades for real"
+
+[[fact]]
+id = "lrs_limit_usd"
+value = 250000
+unit = "USD per financial year per resident individual, all permissible transactions together; unspent funds back within 180 days (not modelled in the paper book)"
+fy = "2026-27"
+source_url = "https://www.rbi.org.in/commonman/english/Scripts/FAQs.aspx?Id=1834"
+source_title = "RBI FAQ: Liberalised Remittance Scheme"
+verification = "primary"
+verified_on = 2026-11-09
+
+[[fact]]
+id = "tcs_lrs_rate_investment"
+value = 0.20
+unit = "TCS on the part of LRS remittances above Rs 10 lakh a financial year for investing abroad; a credit against his tax, a cash cost until then (not charged in the paper book)"
+fy = "2026-27"
+source_url = "https://www.bookmyforex.com/blog/new-tcs-rate-on-foreign-remittances"
+source_title = "bookmyforex, vestedfinance, 1finance, businesstoday on Budget 2026 (no change for investment)"
+verification = "secondary"
+verified_on = 2026-11-09
