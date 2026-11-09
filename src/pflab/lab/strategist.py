@@ -223,7 +223,12 @@ def tick(con, pm_dir: Path, root, now: datetime, client_fn, data=None, box=None)
     if not reasons:
         return {**out, "nothing_due": True}
     out["reasons"] = reasons
-    out["session"] = run_session(con, pm_dir, root, now, "; ".join(reasons)[:280], client=client_fn(), data=data, box=box)
+    try:                                                                    # no client (the workshop's paid-call guard, no key, a bad key): the session waits and says why; the job does not fail
+        client = client_fn()
+    except Exception as e:
+        out["skipped"] = f"no cloud client, so no session now ({type(e).__name__}: {str(e)[:200]})"
+        return out
+    out["session"] = run_session(con, pm_dir, root, now, "; ".join(reasons)[:280], client=client, data=data, box=box)
     return out
 
 

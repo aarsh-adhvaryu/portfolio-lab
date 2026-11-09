@@ -1,4 +1,5 @@
-"""S79 phase 2 drills and the accelerated run, on a SYNTHETIC profile with an injectable clock (development only; never the investor's record).
+"""SUPERSEDED by tools/drills_s81.py (S81): this harness needs pflab.agenda, situation, missions, workers and the brain, which S80 deleted, and no longer runs.
+S79 phase 2 drills and the accelerated run, on a SYNTHETIC profile with an injectable clock (development only; never the investor's record).
 
     python tools/drills_s79.py run [--only kill9,net_down] [--out D:\\s79_scratch\\drills\\report.json] [--findings F.md] [--start 2026-10-08]
     python tools/drills_s79.py list

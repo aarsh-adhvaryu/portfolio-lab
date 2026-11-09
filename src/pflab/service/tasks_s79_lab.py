@@ -8,6 +8,8 @@ Both skip when `[core] on = false` or the kill switch is set (configs/core.toml)
 """
 from __future__ import annotations
 
+from datetime import timedelta
+
 from pflab.service.jobs import Job, register
 from pflab.service.schedule import Interval
 
@@ -35,7 +37,11 @@ def _lab_close(ctx) -> dict:
     day = markets.get("IN").session_closed_by(ctx.now)
     if not con.execute("SELECT 1 FROM core_runs_s80 WHERE day=?", [day]).fetchone():
         return {"waiting": f"the close loop has not run for {day}"}
-    out = shadow.run_shadow(con, ctx.pm_dir, ctx.data_root, ctx.now, day)
+    from pflab.agents import sandbox as sb
+    try:
+        out = shadow.run_shadow(con, ctx.pm_dir, ctx.data_root, ctx.now, day)
+    except sb.SandboxUnavailable as e:             # drill docker_down (S81): Docker not running is a state to wait in, not a failure that alerts him at every cooldown; the champion decides all the same
+        return {"skipped": f"the sandbox is not available, so the challengers wait ({str(e)[:160]})", "waiting": True}
     if not out.get("error"):
         out["promotion"] = promotion.promote_ready(con, ctx.pm_dir, ctx.data_root, ctx.now)
     return out
@@ -43,6 +49,9 @@ def _lab_close(ctx) -> dict:
 
 def _lab_close_redo(ctx):
     try:
+        last = ctx.con.execute("SELECT max(started_at) FROM job_runs WHERE job='lab_close'").fetchone()[0]
+        if last is not None and ctx.now - last < timedelta(minutes=15):          # a run that waited (the sandbox is down) is not started again every tick
+            return None
         from pflab import markets
         day = markets.get("IN").session_closed_by(ctx.now)
         ran = ctx.con.execute("SELECT 1 FROM core_runs_s80 WHERE day=?", [day]).fetchone()

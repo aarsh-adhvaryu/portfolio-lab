@@ -120,17 +120,19 @@ def run(con, now: datetime, root=None, index: Optional[pd.Series] = None, live_d
     except Exception as e:
         cadence.act(con, now, "core_loop", f"the big-trade check failed ({type(e).__name__}: {str(e)[:160]}): the trades stand", False)
     placed = []
-    for o in chk["orders"]:
-        did = _decision(con, now, o, index, day, pid)
-        oid = book.place(con, now, did, o["isin"], o["side"], qty=o["qty"], amount=o["amount"], note=f"{pid} decision #{did}")
-        manager.register(con, did)
-        placed.append({"decision_id": did, "order_id": oid, "symbol": o["symbol"], "side": o["side"], "rupees": round(o["value"], 2)})
-    status = "traded" if placed else "held"
     brief = {"value": round(s["value"], 2), "gauge": s["gauge"], "breaker": s["breaker"], "target_id": (s["target"] or {}).get("id"), "classes_wanted": dec["classes"]}
     note = "; ".join(dec["notes"])
-    con.execute("INSERT INTO core_runs_s80 VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                [day, now, pid, status, round(time.time() - t0, 3), json.dumps(brief, default=str), json.dumps({k: round(v, 5) for k, v in dec["weights"].items()}),
-                 json.dumps(chk["clipped"], default=str), json.dumps(placed), json.dumps(chk["skipped"], default=str), note[:400]])
+    from pflab.pm import store
+    with store.transaction(con):                  # drill kill9 (S81): the decisions, their orders, their claims and the day's run row are ONE step. A process killed between two orders used to leave
+        for o in chk["orders"]:                   # some decisions and orders with no run row: the restart then waited on orders of a half-made close. Now it leaves none of them and decides the day again.
+            did = _decision(con, now, o, index, day, pid)
+            oid = book.place(con, now, did, o["isin"], o["side"], qty=o["qty"], amount=o["amount"], note=f"{pid} decision #{did}")
+            manager.register(con, did)
+            placed.append({"decision_id": did, "order_id": oid, "symbol": o["symbol"], "side": o["side"], "rupees": round(o["value"], 2)})
+        status = "traded" if placed else "held"
+        con.execute("INSERT INTO core_runs_s80 VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    [day, now, pid, status, round(time.time() - t0, 3), json.dumps(brief, default=str), json.dumps({k: round(v, 5) for k, v in dec["weights"].items()}),
+                     json.dumps(chk["clipped"], default=str), json.dumps(placed), json.dumps(chk["skipped"], default=str), note[:400]])
     card_tokens = None
     try:                                                                  # the book card for the strategist: never allowed to fail the loop
         from pflab.core import card
