@@ -86,9 +86,9 @@ def clip_weights(state: dict, targets: Dict[str, float]) -> Dict[str, dict]:
     return out
 
 
-def check(con, state: dict, decision: dict, skip=()) -> dict:
+def check(con, state: dict, decision: dict, skip=(), used: float = 0.0) -> dict:
     """The policy's targets -> the orders that may be placed, and what was clipped or skipped, each with its reason. `skip`: isins the exit manager already ordered this close (S81)
-    (the rebalance must not trade the same names twice)."""
+    (the rebalance must not trade the same names twice). `used`: rupees of discretionary HARVESTING the exit manager already trades this close; the turnover caps are net of it (it is never cut by them, the rebalance is; stops, targets, thesis breaks and rail trims are risk exits: exempt and not counted)."""
     cfg = state["cfg"]["rails"]
     band = float(state["cfg"]["baseline"]["band_pts"]) / 100.0
     total, day = float(state["value"]), state["day"]
@@ -135,7 +135,7 @@ def check(con, state: dict, decision: dict, skip=()) -> dict:
             skipped.append({"isin": o["isin"], "symbol": o["symbol"], "why": f"charges and tax Rs {o['charges'] + o['tax']:,.0f} are {(o['charges'] + o['tax']) / o['value']:.1%} of the trade"})
             continue
         keep.append(o)
-    cap = min(float(cfg["turnover_day"]) * total, max(0.0, float(cfg["turnover_month"]) * total - month_traded(con, day)))
+    cap = max(0.0, min(float(cfg["turnover_day"]) * total, max(0.0, float(cfg["turnover_month"]) * total - month_traded(con, day))) - float(used))
     traded = sum(o["value"] for o in keep)
     if keep and traded > cap + 1e-9:                                     # the turnover caps: every order is scaled down together
         f = cap / traded if traded > 0 else 0.0

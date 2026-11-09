@@ -354,7 +354,7 @@ def fill(con, upto: date, now: datetime, live: Optional[Dict[str, float]] = None
             after = dict(before)
             for k, v in gains.items():
                 after[k] = after.get(k, 0.0) + v
-            tax = round(tax_of(after) - tax_of(before), 2)
+            tax = round(max(0.0, tax_of(after) - tax_of(before)), 2)       # drill (S81): a sale at a loss after gains booked this year ADDS a negative tax (a set-off); the ledger's charge cannot be negative and the sale used to fail the whole `paper` job. No refund is booked: the estimate stays cautious
             _apply_sell(con, d, oid, isin, meta, q, px, fee, tax, now)
             tid = _trade(con, d, oid, did, isin, meta["symbol"], "sell", q, px, fee, round(sum(gains.values()), 2), tax,
                          {"gains": {k: round(v, 2) for k, v in gains.items()}, "tax_label": "estimate: FIFO lots, cess and surcharge not added", **_basis(live_px, now)})

@@ -173,7 +173,7 @@ def run(con, now: datetime, root=None, index: Optional[pd.Series] = None, live_d
         exit_orders = _exit_orders(con, now, day, s)
     except Exception as e:
         cadence.act(con, now, "core_loop", f"the exit manager failed ({type(e).__name__}: {str(e)[:160]}): the policy's orders stand", False)
-    chk = rails.check(con, s, dec, skip={o["isin"] for o in exit_orders})
+    chk = rails.check(con, s, dec, skip={o["isin"] for o in exit_orders}, used=sum(float(o["value"]) for o in exit_orders if o.get("kind") == "harvest"))    # harvesting is discretionary tax planning: it takes room off the rebalance; stops, targets, thesis breaks and rail trims are risk exits and never wait for it
     if exit_orders:
         chk = {**chk, "orders": exit_orders + chk["orders"]}
     checked = {"checked": 0, "vetoed": [], "unchecked": None}

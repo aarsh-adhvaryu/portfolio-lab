@@ -134,3 +134,32 @@ Not fixed (his or the coordinator's decision, or another agent's module):
    `with store.transaction(con):` if they place orders), `src/pflab/lab/strategist.py` (tick), `src/pflab/service/tasks_s79_lab.py` (`_lab_close`, `_lab_close_redo`). No migration, no table.
 4. Tests added: `tests/test_s81_drills_fixes.py` (3), `tests/test_s81_drills_harness.py` (7, fast). `tests/test_s79_drills.py` (the old harness's building blocks) still passes unchanged.
 
+
+## Merged tree (run name `merged2`, 2026-11-10 night): harness changes and real bugs
+
+The coordinator's first run on the merged tree (`merged`) failed 8 drills. Classified: HARNESS (assumptions of the pre-merge tree): the baseline's name (`baseline_v2` now; `BASELINES`), the seeded
+swing variants in `lab_runs_s80`, the withdrawn slice's date (the drill now runs the app up to the close after the withdrawal), the allocation step (the strategist's tool is called by the step and the
+history scores the A50 rule reads are written by the drill: the lab's replay needs Docker and the real panel), the thesis victim (SYNCAPG1: SYNIT1 is the harvest's), the swing name (SYNAUTO1: SYNBANK1 is
+the tactical view's), the replay's positions (topped up when the earlier steps sold what they were for), the "toward the target" and rail measures (a target adopted mid-run and the exit manager's sales move the mix
+on purpose; a rail is judged on a day the name was bought), a data folder with the US ETF bars, FX and the lab panel (rebuilt from the store's prices), `news_s81_topup` and `us_prices_daily` faked outside net_down.
+REAL BUGS (each fixed minimally, each with a test in `tests/test_s81_drills_fixes.py`):
+
+1. **`paper` job failed on a sale at a loss after gains** (`EventError: charge amount is positive`): `book.fill` booked the incremental tax as a ledger `charge`, which is negative when a loss sets off an earlier
+   taxed gain; the fill raised, the day was never marked and the loop stalled (4 closes in a simulated fortnight instead of 11). Tax floored at 0 (no refund booked; cautious).
+2. **`kg2_nightly` and `news_s81_topup` failed on a data folder without the graph's raw inputs** (`FileNotFoundError name_map.parquet`) and alerted at every cooldown: they skip with the reason.
+   (`us_close` already waits for its bars; `us_prices_daily` with no network is `offline`: both asserted, in net_down and in a test.)
+3. **A swing trigger's stop and target were ignored by the exit manager**: `core/session.py` passed `stop_price`/`target_price`, the override keys of `exits.open_plan` are `stop`/`target`: the plan
+   carried the defaults. Both names are passed now.
+4. **The exit manager's harvesting ignored the turnover caps** (a close traded 15% of the book against 10% a day, 73% in a month against 40%): `rails.check(used=...)` takes the caps net of what harvesting trades
+   (sales and buy-backs); stops, targets, thesis breaks and rail trims are risk exits and stay exempt. `core/loop.py` passes it (outside the transaction block's contents: only the call changed).
+
+Not a bug, noted: the same-day exit of a swing entry is not even ordered by the exit manager on the day of entry (it waits for the next session, A54), so `session_queue_s81` stays empty; the drill asserts
+"no sale on the day of entry, the exit carried out at the next session's start". `probation.slices()` excludes a withdrawn slice from the withdrawal's date on (asserted; the first failure was the drill running
+the loop on days before that date). `lab_close` and the strategist job skip softly (fixed earlier).
+
+The kill9 drill's reopening retries for 20 s (a killed process's file handle can outlive the kill on Windows) and kills the process tree.
+
+Result on the merged tree (`merged2`; accelerated re-run alone as `merged2a` after the last harness edit): smoke, accelerated (all ten steps PASS: standing, tactical view, allocation proposed and adopted,
+core ETF bought, exit plan fires, harvest sale and buy-back, thesis-break sale from a graph event, US sub-book close, session replay, swing opened/closed), accelerated_long, kill_switch, off_fri_mon,
+off_10_days, net_down, ollama_down, docker_down, kite_logged_out, budget_exhausted, failing_champion, probation_withdrawn, kill9: PASS. Nothing OFF, nothing failing. Tests: 328 passed across the
+core, paper, exits, session, swing, US, kg, probation, strategist and drill files.
