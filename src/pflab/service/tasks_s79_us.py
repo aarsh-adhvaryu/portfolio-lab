@@ -19,3 +19,17 @@ def _run(ctx) -> dict:
 
 
 register(Job("us_close", Interval(120, weekdays_only=False), _run, "the paper US sub-book's close on the latest US session (S81; code, free; OFF until switched on)", cooldown_minutes=60, enabled_fn=_enabled))
+
+
+def _prices(ctx) -> dict:
+    """The 13 US ETFs the sub-book holds: their last 10 days appended to `data/us/raw` (network; a failure is reported, never fatal)."""
+    from pflab.data import us_prices
+    out = us_prices.collect(sorted(us_prices.ETFS), ctx.data_root, recent_days=10)
+    bad = {k: v for k, v in out.items() if isinstance(v, str)}
+    res = {"symbols": len(out), "problems": len(bad)}
+    if len(bad) == len(out):
+        res["failed"] = {"us_prices": "no symbol could be refreshed: " + next(iter(bad.values()))[:160]}
+    return res
+
+
+register(Job("us_prices_daily", Interval(360, weekdays_only=False), _prices, "the US sub-book's ETF prices, last days appended (S81; network)", cooldown_minutes=120, enabled_fn=_enabled))

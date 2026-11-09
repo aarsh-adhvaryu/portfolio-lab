@@ -165,7 +165,7 @@ classes = ["international"]   # the policy classes held to the limit; add "gold"
 
 # S81 B8 phase B (A53): the paper US sub-book (src/pflab/us/), USD, on the US close processed in the IST morning. OFF until the coordinator's loop and his yes: nothing else depends on it.
 [us]
-on = false
+on = true
 start_share = 0.05            # the sub-book starts as this share of the system's book (rupees at the start FX rate); it is paper money (his to change)
 start_inr_fallback = 100000.0 # when the system's book is not readable (rupees)
 universe = ["SPY", "QQQ", "XLC", "XLY", "XLP", "XLE", "XLF", "XLV", "XLI", "XLB", "XLRE", "XLK", "XLU"]   # the ETFs data/us already collects
