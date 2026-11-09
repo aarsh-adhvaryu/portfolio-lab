@@ -109,6 +109,14 @@ def test_rail_ignores_other_classes_and_can_be_switched_off():
     assert premium.settings()["max_premium_pct"] == 2.0 and premium.settings()["taper_from_pct"] == 1.0       # the shipped defaults (configs/core.toml [premium])
 
 
+def test_the_rail_can_be_extended_to_gold_by_a_setting():
+    gold = _state({INTL: {"known": True, "premium_pct": 8.0, "as_of": date(2026, 11, 4)}}, klass="gold")
+    out, notes = premium.premium_rail(gold, {INTL: 0.10})
+    assert out[INTL] == 0.10 and notes == []                              # by default only the international class is held to the limit
+    out, notes = premium.premium_rail(gold, {INTL: 0.10}, {"premium": {"classes": ["international", "gold"]}})
+    assert out[INTL] == 0.0 and "8.0% above its NAV" in notes[0]
+
+
 def test_rails_check_places_no_buy_of_a_dear_international_etf_and_records_the_reason(con):
     _prices(con, INTL, date(2026, 11, 2), [100.0, 100.0, 100.0, 100.0])
     _navs(con, INTL, date(2026, 11, 2), [80.0, 80.0, 80.0, 80.0])       # 25% over NAV
@@ -171,6 +179,21 @@ def test_the_holiday_file_matches_the_nyse_page_read_on_2026_11_09():
               date(2027, 9, 6), date(2027, 11, 25), date(2027, 12, 24)):
         assert not cal.is_trading_day(d), d
     assert set(cal.early) >= {date(2026, 11, 27), date(2026, 12, 24), date(2027, 11, 26)}
+
+
+def test_market_in_through_the_same_functions_is_the_indian_market_unchanged(con):
+    from pflab import markets
+    d = date(2026, 11, 9)                                                  # a Monday: NSE 09:15 - 15:30, on the same IST day
+    assert clock.window_ist(d, market="IN") == (datetime(2026, 11, 9, 9, 15), datetime(2026, 11, 9, 15, 30)) == markets.get("IN").window_ist(d)
+    assert clock.handling_day(d, market="IN") == d and clock.is_session(date(2026, 11, 8), market="IN") is False
+    assert clock.session_closed_by(datetime(2026, 11, 9, 16, 30), 30, market="IN") == markets.get("IN").session_closed_by(datetime(2026, 11, 9, 16, 0)) == d
+    assert clock.mode(datetime(2026, 11, 9, 10, 0), market="IN") == "session" == markets.get("IN").mode(datetime(2026, 11, 9, 10, 0))
+    # keys are looked up per market: a US symbol is not found as an Indian one
+    uins.ensure(con, "SPY", etf=True, now=NOW)
+    assert uins.key_for(con, "SPY", market="IN") == "US:SPY"               # nothing registered for SPY in market IN: the symbol key, no join to the US row
+    uins.ensure(con, "NIFTYBEES", name="Nifty BeES", isins={"NIFTYBEES": "INF204KB14I2"}, now=NOW, market="IN")
+    assert con.execute("SELECT market, currency FROM instruments WHERE isin='INF204KB14I2'").fetchone() == ("IN", "INR")
+    assert uins.key_for(con, "NIFTYBEES", market="US") == "US:NIFTYBEES"
 
 
 # ---------------------------------------------------------------- phase B: FX at the stated rate

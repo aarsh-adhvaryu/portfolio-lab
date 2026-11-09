@@ -30,6 +30,7 @@ DEFAULTS = {
     "taper_from_pct": 1.0,           # between this and the limit the purchase is scaled down linearly to zero
     "max_nav_age_days": 5,           # a NAV older than this (calendar days before `day`) is unknown
     "unknown": "skip",               # 'skip': no buying while the premium is unknown; 'allow': buy as the policy says
+    "classes": ["international"],    # the policy classes the rail looks at; add "gold" to hold gold ETFs to the same limit (gold ETFs ran 5-12% over NAV in Oct 2025 and Jan 2026: secondary)
 }
 INTERNATIONAL = "international"
 
@@ -82,9 +83,9 @@ def premium_at(con, isin: str, day: date, max_age_days: int = 5) -> dict:
     return {"known": True, "premium_pct": float(r["premium_pct"]), "as_of": d, "age_days": age, "close": float(r["close"]), "nav": float(r["nav"]), "why": ""}
 
 
-def is_candidate(row: dict) -> bool:
-    """A holding the rail looks at: a buyable ETF in the international class."""
-    return bool(row.get("buyable")) and (row.get("klass") or "") == INTERNATIONAL and (row.get("asset_class") or "") == "etf"
+def is_candidate(row: dict, classes=(INTERNATIONAL,)) -> bool:
+    """A holding the rail looks at: a buyable ETF in one of the rail's classes (international by default)."""
+    return bool(row.get("buyable")) and (row.get("klass") or "") in tuple(classes) and (row.get("asset_class") or "") == "etf"
 
 
 def attach(con, state: dict, cfg: Optional[dict] = None) -> dict:
@@ -94,7 +95,7 @@ def attach(con, state: dict, cfg: Optional[dict] = None) -> dict:
     if not s["on"]:
         return state
     for r in state.get("rows", []):
-        if is_candidate(r) and r["isin"] not in state["premium"]:
+        if is_candidate(r, s["classes"]) and r["isin"] not in state["premium"]:
             state["premium"][r["isin"]] = premium_at(con, r["isin"], state["day"], int(s["max_nav_age_days"]))
     return state
 
@@ -124,7 +125,7 @@ def rail_reasons(state: dict, targets: Dict[str, float], cfg: Optional[dict] = N
     limit, taper = float(s["max_premium_pct"]), float(s["taper_from_pct"])
     for r in state.get("rows", []):
         k = r["isin"]
-        if k not in targets or not is_candidate(r):
+        if k not in targets or not is_candidate(r, s["classes"]):
             continue
         cur = float(r["value"]) / total
         want = float(targets[k])

@@ -48,6 +48,7 @@ max_premium_pct = 2.0         # no new buying at or above this premium
 taper_from_pct = 1.0          # between this and the limit the purchase is scaled down linearly to zero
 max_nav_age_days = 5          # a NAV older than this is "unknown"
 unknown = "skip"              # skip: no buying while the premium is unknown; allow: buy as the policy says
+classes = ["international"]   # the policy classes held to the limit; add "gold" to hold gold ETFs to it too (they ran 5-12% over NAV in Oct 2025 and Jan 2026: secondary sources)
 
 # S81 B8 phase B (A53): the paper US sub-book (src/pflab/us/), USD, on the US close processed in the IST morning. OFF until the coordinator's loop and his yes: nothing else depends on it.
 [us]

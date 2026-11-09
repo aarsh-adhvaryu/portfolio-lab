@@ -44,10 +44,10 @@ def refresh_ciks(root=None, get=None) -> int:
     return len(ciks)
 
 
-def key_for(con, symbol: str, ciks: Optional[Dict[str, int]] = None, isins: Optional[Dict[str, str]] = None) -> str:
+def key_for(con, symbol: str, ciks: Optional[Dict[str, int]] = None, isins: Optional[Dict[str, str]] = None, market: str = "US") -> str:
     """The key to use for `symbol`: the one already registered for it, else a real ISIN given, else ZZ+CIK, else the symbol key."""
     sym = symbol.upper()
-    r = con.execute("SELECT isin FROM instruments WHERE symbol=? AND market='US' ORDER BY built_at LIMIT 1", [sym]).fetchone()
+    r = con.execute("SELECT isin FROM instruments WHERE symbol=? AND market=? ORDER BY built_at LIMIT 1", [sym, market]).fetchone()
     if r:
         return r[0]
     if isins and sym in isins:
@@ -58,11 +58,11 @@ def key_for(con, symbol: str, ciks: Optional[Dict[str, int]] = None, isins: Opti
 
 
 def ensure(con, symbol: str, name: str = "", etf: bool = False, ciks: Optional[Dict[str, int]] = None, isins: Optional[Dict[str, str]] = None,
-           now: Optional[datetime] = None, since: Optional[date] = None) -> str:
+           now: Optional[datetime] = None, since: Optional[date] = None, market: str = "US") -> str:
     """Register the instrument (market US, currency USD) under its key and return the key. A real ISIN given for a symbol already keyed by its pseudo-ISIN becomes an alias from `since`."""
     sym = symbol.upper()
-    key = key_for(con, sym, ciks, isins)
-    lf.register_instrument(con, sym, key, name or sym, etf=etf, now=now)
+    key = key_for(con, sym, ciks, isins, market)
+    lf.register_instrument(con, sym, key, name or sym, market=market, currency="USD" if market == "US" else "INR", etf=etf, now=now)
     real = (isins or {}).get(sym)
     if real and real != key and lf.is_pseudo(key):
         lf.add_alias(con, key, real, since or (now or datetime.now()).date())

@@ -105,11 +105,12 @@ verify = "IRS instructions for Form W-8BEN / IRC s.1441"
 id = "dividend_india_taxed_at_slab"
 value = "slab"
 unit = "a foreign dividend is 'income from other sources' taxed at the slab rate (no special rate); the sub-book uses the same slab as the rupee paper book (paper/book.py SLAB, 30%)"
-fy = "2025-26 and 2026-27"
-source_url = "https://www.winvesta.in/blog/investors/complete-guide-to-tax-on-us-stocks-for-indian-investors-2026"
-source_title = "Winvesta: complete guide to tax on US stocks for Indian investors (2026); taxguru"
-verification = "secondary"
+fy = "2026-27 (Act 2025); 2025-26 the same under s.56(2)(i) of the 1961 Act (secondary)"
+source_url = "https://egazette.gov.in/WriteReadData/2025/265620.pdf"
+source_title = "Income-tax Act, 2025, s.92(2)(a): any dividend is chargeable under 'Income from other sources'; the special-rate table of s.194 has no dividend row, so the slab rate applies"
+verification = "primary"
 verified_on = 2026-11-09
+note = "Winvesta and taxguru say the same (secondary). Surcharge on the dividend part is capped at 15% (Finance Act 2026)."
 
 [[fact]]
 id = "foreign_tax_credit_rule"

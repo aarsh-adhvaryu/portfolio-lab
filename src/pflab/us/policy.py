@@ -31,7 +31,7 @@ def _breaker(con, value: float) -> bool:
     return peak > 0 and value <= peak * (1 - BREAKER_DRAWDOWN)
 
 
-def build(con, day: date, bars: Dict[str, object], cfg: Optional[dict] = None, root=None, now=None) -> dict:
+def build(con, day: date, bars: Dict[str, object], cfg: Optional[dict] = None, root=None, now=None, market: str = "US") -> dict:
     s = us.settings(cfg)
     universe = [x.upper() for x in s["universe"]]
     pos = book.positions(con, day)
@@ -58,7 +58,7 @@ def build(con, day: date, bars: Dict[str, object], cfg: Optional[dict] = None, r
     for r in rows:
         r["weight"] = r["value"] / value if value > 0 else 0.0
     cc = core.settings()
-    return {"day": day, "market": "US", "currency": "USD", "value": value, "cash": cash, "bank": 0.0, "rows": rows, "target": None, "vol": {},
+    return {"day": day, "market": market, "currency": "USD" if market == "US" else "INR", "value": value, "cash": cash, "bank": 0.0, "rows": rows, "target": None, "vol": {},
             "gauge": {"fired": False, "why": "no fall gauge for the US sub-book"}, "breaker": {"on": _breaker(con, value)},
             "cfg": {"rails": cc["rails"], "baseline": {**cc["baseline"], "band_pts": float(s["band_pts"])}}, "settings": s}
 
