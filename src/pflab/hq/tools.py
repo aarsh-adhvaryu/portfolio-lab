@@ -1120,6 +1120,15 @@ def watchlist_tool(ctx: Ctx, a: dict) -> dict:
     return {"watchlist": watch.listing(ctx.con, ctx.now), "how": "each item is checked every round; TRIGGERED means the price reached its point and the team should look again; nothing is bought by itself"}
 
 
+def ask_strategist(ctx: Ctx, a: dict) -> dict:
+    """The chat asks the strategist (Opus, with the lab) to look into something: a request is written now; the strategist job takes it inside its session budget and its note
+    comes back into this conversation (`lab/ondemand.py`). Free to ask; the session is priced and governed like any other."""
+    from pflab.lab import ondemand
+    if ctx.shadow:
+        return _SHADOW_CASE
+    return ondemand.request(ctx.con, ctx.now, _checked(ctx, a["question"]), made_by="chat")
+
+
 def watch_add(ctx: Ctx, a: dict) -> dict:
     """S78: put an idea on the watchlist. The team names the calculation its numbers come from (checked by code); he may give his own numbers in the chat."""
     from pflab.paper import manager, watch
@@ -1595,6 +1604,9 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
          {"symbol": _s("the symbol", 20), "timeframe": _s("candle size", enum=["daily", "weekly", "60min", "15min"]), "bars": _i("how many candles", 20, 250)}, ("symbol",), chart_view),
     Tool("watchlist", "read", "The system's watchlist: ideas it likes but waits on, each with the point its own calculation set (a price zone, a fall from the year's high, or a market fall), its "
          "price now, its gap and its status (waiting, near, triggered).", {}, (), watchlist_tool),
+    Tool("ask_strategist", "action", "Ask the strategist to look into something that needs real work: a risk, a theme, a strategy, a stock, how the book should be allocated. Use it for a question that "
+         "needs the lab's tests and the market's record, not for a quick fact. It runs by itself in the background inside its own budget and its note comes back into this conversation; say so in two sentences and do not wait.",
+         {"question": _s("what to look into, in his words and one or two sentences", 500)}, ("question",), ask_strategist),
     Tool("watch_add", "action", "Put an idea on the watchlist to wait for the right time. kind zone: zone_high (and zone_low) in rupees; fall_from_high: fall_pct from the year's high; market_fall: "
          "fall_pct of the Nifty 500 from its high (to spend cash in tranches). The numbers must come from a stored calculation: name it with calc_id (code checks the number is in its result). "
          "When the price reaches the point the team looks again; nothing is bought by itself.",
@@ -1630,7 +1642,7 @@ MAX_STRICT = 20
 MAX_OPTIONAL = 24                                  # optional parameters across the strict tools of one request
 
 
-WORKER_ONLY = ("open_workspace", "remember_fact", "add_rule", "undo_rule", "decide_rule", "answer_question", "watch_add", "watch_remove")      # S68: the workers' tools; the brain's list is unchanged
+WORKER_ONLY = ("open_workspace", "ask_strategist", "remember_fact", "add_rule", "undo_rule", "decide_rule", "answer_question", "watch_add", "watch_remove")      # S68: the workers' tools; the brain's list is unchanged
 
 
 def definitions(names=None) -> List[dict]:
