@@ -223,9 +223,6 @@ def test_exemption_harvest_books_at_most_the_exemption_and_buys_back_next_sessio
     assert gain <= room + 1.0                                                              # never more than the room
     assert h[0]["est_tax"] == 0.0                                                          # inside the exemption: no tax
     # the sale fills at the next close; the buy-back is emitted only at the close after the sale filled, and fills a LATER session
-    nxt = DAY + timedelta(days=3)
-    for k in range(2):
-        con.execute("INSERT INTO prices VALUES (?, ?, 100.0, 'EQ', 'nse_bhavcopy', now())", [WIN, nxt + timedelta(days=k)]) if False else None
     assert [x for x in o if x["side"] == "buy" and x["isin"] == WIN] == []                 # no buy in the same close as the sale (no same-day round trip)
 
 
