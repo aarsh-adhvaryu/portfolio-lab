@@ -119,7 +119,7 @@ def test_the_loop_runs_baseline_v2_buys_the_core_etfs_and_tags_their_sleeve(con)
     assert con.execute("SELECT status FROM core_policies_s80 WHERE policy_id='baseline_v2'").fetchone()[0] == "champion"
     assert con.execute("SELECT status FROM core_policies_s80 WHERE policy_id='baseline_v1'").fetchone()[0] == "previous"
     tagged = {i: sl for i, sl in con.execute("SELECT isin, sleeve FROM sleeves_s81").fetchall()}
-    assert tagged and set(tagged.values()) == {"core"}
+    assert tagged and "core" in set(tagged.values()) and set(tagged.values()) <= {"core", "longterm"}      # the bought ETFs are core; a name the exit manager trimmed keeps its longterm tag
     why = con.execute("SELECT reason FROM paper_decisions WHERE action IN ('BUY','ADD') ORDER BY decision_id DESC LIMIT 1").fetchone()[0]
     assert why.startswith("baseline_v2:")
 
