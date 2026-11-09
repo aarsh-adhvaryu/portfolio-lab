@@ -6,7 +6,7 @@ from datetime import datetime
 import pytest
 
 from pflab.agents import analyst as an
-from pflab.hq import governor as gv, missions
+from pflab.hq import governor as gv
 from pflab.pm import store
 
 NOW = datetime(2026, 11, 20, 12, 0)
@@ -41,14 +41,3 @@ def test_spend_before_the_moment_stays_in_the_record_but_stops_counting(con, mon
     assert an.month_spend_inr(con, NOW) == 40.0
     assert con.execute("SELECT count(*), sum(cost_inr) FROM api_calls").fetchone() == (2, 340.0)                  # nothing was deleted
 
-
-def test_the_layer_share_and_the_system_share_follow_the_same_start(con, monkeypatch):
-    _call(con, 1, datetime(2026, 11, 3), 500.0)                              # a workers-layer call early in the month: over the layer's share on its own
-    cfg = {**CFG, "cap": 600.0}                                               # the workers' share is 55% of 600 = Rs 330
-    monkeypatch.setattr(an, "config", lambda: cfg)
-    with pytest.raises(gv.BudgetRefused, match="share"):
-        gv.check(con, "w_research", 5.0, 100, 100, NOW, "normal", cfg, his_order=True)
-    cfg2 = {**cfg, "counted_since": datetime(2026, 11, 12)}
-    monkeypatch.setattr(an, "config", lambda: cfg2)
-    assert gv.check(con, "w_research", 5.0, 100, 100, NOW, "normal", cfg2, his_order=True) == []                   # the early call no longer counts
-    assert gv.spend(con, NOW)["month"] == 0.0 and missions.system_spend_month(con, NOW) == 0.0

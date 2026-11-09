@@ -138,9 +138,6 @@ class Runtime:
             t = threading.Thread(target=self._guard(fn), name=name, daemon=True)
             t.start()
             self.threads.append(t)
-        if not os.environ.get("PFLAB_NO_POOL"):               # S69: independent worker tasks run on their own threads
-            from pflab.hq import pool
-            self.threads.extend(pool.start(self))
 
     def shutdown(self, wait_s: float = 30.0, others_s: float = 3.0) -> None:
         """A running job gets `wait_s` to finish (it writes the store); the screen's own computations (watch list,

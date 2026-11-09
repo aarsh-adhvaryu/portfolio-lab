@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import pytest
 
-from pflab.hq import board, cases, missions, playbooks, roster, rules
+from pflab.hq import board, cases, roster, rules
 from pflab.kg import memory
 from pflab.quant import trusted
 from tests.test_s68_autonomy import AAA, NOW, con, rt  # noqa: F401  (fixtures)
@@ -120,44 +120,3 @@ def test_the_case_is_linked_into_the_graph_once(world):
 
 
 # --- effects: did memory change the work? ---------------------------------------------------------------------------------------
-
-def test_a_second_investigation_is_offered_the_first_and_what_it_used_is_recorded(rt, con, world, monkeypatch):
-    monkeypatch.setattr(playbooks, "enabled", lambda: True)
-    first = _past_case(con)
-    out = missions.create(con, NOW, "Is AAA exposed to a sell-off in software stocks again this week?", pm_dir=rt.pm_dir)
-    rt._hq_client = None
-    board.run_one(rt, roster.runners())                                                               # the playbook plans it, with memory
-    plan = missions.mission_of(con, out["case_id"])["plan"]
-    goals = " ".join(s["goal"] for s in plan)
-    assert f"investigation #{first}" in goals and "still holds" in goals                              # the earlier conclusion is to be checked, not redone
-    assert "re-run it on today's record" in goals and "exposure_shock" in goals                       # the checked calculation is re-run
-    assert "Brokerage note warns" in goals                                                            # the evidence against must be taken up
-    offered = json.loads(con.execute("SELECT detail FROM hq_memory_effects WHERE case_id=? AND kind='offered'", [out["case_id"]]).fetchone()[0])
-    assert offered["conclusions"] == [first] and offered["methods"][0]["tool"] == "exposure_shock"
-    # the work runs: the new investigation re-runs the same reviewed tool, cites the earlier conclusion and takes up the evidence
-    new = out["case_id"]
-    trusted.record(con, new, NOW, "exposure_shock", "worst fall now", {"falls_json": "[20, 35]"}, {"x": pd.DataFrame({"a": [2.0]})}, {"v": 2})
-    cases.add_evidence(con, new, NOW, "The brokerage note (doc:note-1) is dated before the guidance cut and still stands", stance="against")
-    con.execute("UPDATE hq_missions SET result_json = ? WHERE case_id = ?", [json.dumps({"answer": f"Compared with investigation #{first}: still holds.", "change": "unchanged"}), new])
-    kinds = memory.observe(con, NOW, new)
-    assert set(kinds) == {"method_reused", "conclusion_cited", "contradiction_addressed"}
-    assert memory.observe(con, NOW, new) == []                                                        # recorded once
-    s = memory.effects_summary(con, 30, NOW)
-    assert s["investigations_offered_memory"] == 1 and s["investigations_that_used_it"] == 1 and s["by_kind"]["method_reused"] == 1
-
-
-def test_an_investigation_that_ignored_what_memory_offered_shows_no_effect(rt, con, world, monkeypatch):
-    monkeypatch.setattr(playbooks, "enabled", lambda: True)
-    _past_case(con)
-    out = missions.create(con, NOW, "Is AAA exposed to a sell-off in software stocks again this week?", pm_dir=rt.pm_dir)
-    rt._hq_client = None
-    board.run_one(rt, roster.runners())
-    con.execute("UPDATE hq_missions SET result_json = ? WHERE case_id = ?", [json.dumps({"answer": "Nothing to add."}), out["case_id"]])
-    assert memory.observe(con, NOW, out["case_id"]) == []
-    s = memory.effects_summary(con, 30, NOW)
-    assert s["investigations_offered_memory"] == 1 and s["investigations_that_used_it"] == 0           # offered, not used: the honest number
-
-
-def test_nothing_is_offered_when_there_is_nothing_earlier(rt, con, world):
-    out = missions.create(con, NOW, "Is AAA exposed to a sell-off in software stocks?", pm_dir=rt.pm_dir)
-    assert memory.offer(con, NOW, out["case_id"], memory.recall(con, "AAA", NOW, exclude_case=out["case_id"])) == 0

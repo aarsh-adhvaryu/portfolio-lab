@@ -183,16 +183,3 @@ def test_a_call_a_killed_process_left_sending_is_closed_at_the_next_start_and_st
     assert st == "refused" and "interrupted" in err
     assert an.month_spend_inr(con, NOW) == 7.0                                      # the estimate still counts against the cap
 
-
-def test_a_reset_of_the_budget_also_resets_the_day_limit_and_a_day_parked_task_is_not_woken_by_the_cap(con):
-    """S78 (live 2026-11-02): he reset the budget at 19:00 but the team's day limit still counted the morning's spend, parked the first review until midnight, and the monthly room
-    woke it again ~200 times a minute (each wake priced a call and was refused)."""
-    from pflab.hq import missions
-    now = datetime(2026, 11, 2, 19, 30)
-    _spend(con, "brain", 112.6, at=datetime(2026, 11, 2, 9, 0))
-    cfg = {**CFG, "counted_since": datetime(2026, 11, 2, 19, 0)}
-    with pytest.raises(gv.BudgetRefused, match="a day"):
-        gv.check(con, "brain", 17.2, 5000, 4000, now, "normal", CFG)                      # without the reset the day is spent
-    gv.check(con, "brain", 17.2, 5000, 4000, now, "normal", cfg)                          # counted from the reset: it may begin
-    con.execute("INSERT INTO hq_tasks (task_id, created_at, from_agent, to_agent, text, status, hops, role, wait_kind, next_review_at) VALUES (1, ?, 'x', 'research', 't', 'retry', 0, 'research', 'budget', ?)", [now, datetime(2026, 11, 3, 0, 5)])
-    assert missions.wake_budget_waits(con, now) == 0                                      # parked by a day limit: it waits for tomorrow

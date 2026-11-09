@@ -123,10 +123,3 @@ def test_a_money_rule_needs_his_yes_in_his_own_words(rt, con):
     yes = json.loads(tl.run(_ctx(rt, "yes, go ahead"), "decide_rule", {"rule_id": res["rule_id"], "decision": "approve"}, 1)[0])
     assert yes["decided"] is True and len(rules.active(con)) == 1
 
-
-def test_the_rules_reach_the_agents(rt, con):
-    rules.propose(con, NOW, "method", "Always include a 0.5% charge in cost tests", name="costs")
-    from pflab.hq import missions, workers
-    out = missions.create(con, NOW, "Compare phased buying with holding cash", pm_dir=rt.pm_dir)
-    assert "[costs] Always include a 0.5% charge in cost tests" in workers._dossier(con, out["case_id"], {"body": {}, "id": 1}, NOW, "quant")
-    assert "recall" in assistant.TOOLS and "add_rule" in assistant.TOOLS and "recall" in workers.TOOLS["research"] and "add_rule" not in workers.TOOLS["quant"]

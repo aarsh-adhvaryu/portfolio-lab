@@ -141,15 +141,6 @@ def test_an_unknown_symbol_or_intraday_without_kite_is_an_honest_problem_not_a_p
     assert err2 and "no instrument" in text2
 
 
-def test_chart_view_is_a_read_tool_of_every_worker_role_and_the_assistant_and_is_capped_per_task():
-    from pflab.app import assistant
-    from pflab.hq import workers
-    assert tl.TOOLS["chart_view"].kind == "read" and "chart_view" in assistant.TOOLS
-    for role in ("coordinator", "research", "quant", "review"):
-        assert "chart_view" in workers.TOOLS[role]
-    assert tl.TASK_CAPS["chart_view"] >= 4
-
-
 def test_the_request_the_model_receives_holds_the_picture_and_its_facts_and_the_log_does_not_keep_the_bytes(rt, con):
     m = Model(_use(("chart_view", {"symbol": "AAA", "timeframe": "daily", "bars": 60})), _say("It trades above its 50-bar average on rising volume: see the facts."))
     out = _ask(rt, con, "Look at the chart of AAA", m)

@@ -442,7 +442,7 @@ function renderPaper(d) {
         <div style="font-size:26px;font-weight:600;margin:4px 0">${rs(d.value)}</div>
         <div class="small">${r.twr != null ? `Return since the start ${pct(r.twr, 1, true)} (money added taken out), worst fall ${pct(r.worst_fall, 1)}, ${r.sessions} session(s).` : 'No session since the start yet.'} Cash ${rs(d.cash)}.</div>
         ${d.days && d.days.length > 1 ? `<div style="margin-top:6px">${spark(d.days.map((x) => x.value), 320, 40)}</div>` : ''}
-        <div class="tiny muted" style="margin-top:6px">A copy of your portfolio without FDs (the US sleeve comes later). The system decides, the independent review judges, code executes at the close with charges and tax. Nothing reaches a broker.</div></div>
+        <div class="tiny muted" style="margin-top:6px">A copy of your portfolio without FDs (the US sleeve comes later). The promoted policy decides at every close, code sizes and fills at the close with charges and tax. Nothing reaches a broker.</div></div>
       <div class="card"><span class="lbl">Holdings</span>${hold.length ? `<table class="tbl"><thead><tr><th>Name</th><th>Qty</th><th>Value</th><th>Weight</th><th>Gain</th></tr></thead><tbody>${hold.join('')}</tbody></table>` : '<div class="small muted">All in cash.</div>'}
         ${(d.over_rails || []).length ? `<div class="small warn" style="margin-top:6px">${d.over_rails.map(esc).join('<br>')}</div>` : ''}
         <div class="tiny muted" style="margin-top:6px">Rails: ${Object.entries(d.rails || {}).map(([k, v]) => esc(k + ': ' + v)).join(' · ')}</div></div>
@@ -451,17 +451,11 @@ function renderPaper(d) {
       <div class="card"><span class="lbl">Trades on paper</span>${trades.length ? `<table class="tbl"><thead><tr><th>Day</th><th>Side</th><th>Name</th><th>Qty</th><th>Price</th><th>Charges</th><th>Tax</th></tr></thead><tbody>${trades.join('')}</tbody></table>` : '<div class="small muted">None yet.</div>'}
         <div class="tiny muted" style="margin-top:6px">Tax is an estimate from the lots (first in, first out), taken from the cash at each sale; cess and surcharge are not added.</div></div></section>
     <section class="stack" style="flex:1 1 400px">
-      <div class="card"><span class="lbl">Ask it to look into something</span>
-        <div class="row" style="gap:6px;margin-top:6px"><input id="paperAsk" placeholder="for example: is there an AI bubble, should it invest in AI names and how much" style="flex:1"><button class="btn primary" id="paperGo">Send</button></div>
-        <div class="tiny muted" style="margin-top:4px">One input it weighs. It decides, and says so when it goes against you.</div>${inputs.join('')}</div>
       <div class="card"><span class="lbl">Is its judgement holding up?</span><div class="small" style="margin-top:4px">${esc((d.record || {}).summary || '')}</div>
         ${recRows.length ? `<table class="tbl"><thead><tr><th>Decision</th><th>Scored</th><th>Held</th><th>Rate</th><th>Skeptical</th></tr></thead><tbody>${recRows.join('')}</tbody></table>` : ''}
         <div class="tiny muted" style="margin-top:6px">Each decision is checked after 7, 28, 84 and 182 days against the Nifty 500 (keeping cash: against what cash earned).</div></div>
       <div class="card"><span class="lbl">Gate to your real money</span><div class="small" style="margin-top:4px">${esc(g.status || '')}</div>
         ${g.paper_return != null ? `<dl class="facts"><dt>Paper</dt><dd>${pct(g.paper_return, 1, true)} · worst ${pct(g.paper_worst_fall, 1)}</dd><dt>Nifty 500</dt><dd>${pct(g.nifty500_return, 1, true)} · worst ${pct(g.nifty500_worst_fall, 1)}</dd></dl>` : ''}
-        <div class="tiny muted" style="margin-top:4px">Past the gate, its decisions also come to you as proposals for your real money, each waiting for your yes.</div></div>
-      <div class="card"><span class="lbl">Its money</span><div class="small" style="margin-top:4px">${rs(m.this_month)} of ${rs(m.monthly)} this month on the team's work.</div></div></section></div>`);
-  const go = async () => { const t = $('paperAsk').value.trim(); if (!t) return; try { await post('/api/paper/ask', { text: t }); $('paperAsk').value = ''; } catch (x) { alert(x.message); } load(true); };
-  $('paperGo').onclick = go;
-  $('paperAsk').onkeydown = (ev) => { if (ev.key === 'Enter') go(); };
+        <div class="tiny muted" style="margin-top:4px">The system's book is its own: nothing here is an order for your real money.</div></div>
+      <div class="card"><span class="lbl">Its money</span><div class="small" style="margin-top:4px">${rs(m.this_month)} of ${rs(m.monthly)} this month on the strategist and the checks.</div></div></section></div>`);
 }

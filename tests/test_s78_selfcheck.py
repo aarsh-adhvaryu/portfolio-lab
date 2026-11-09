@@ -42,7 +42,7 @@ def test_every_read_tool_is_probed_and_the_run_is_kept_and_grouped(rt, con):
 
 def test_the_known_answer_checks_give_their_known_answers(rt, con):
     rows = {r["name"]: r for r in sc.run_all(rt, NOW, quick=True)["rows"]}
-    for name in ("Tax maths (known answer)", "Chart facts (known answer)", "No-trading guard", "No order tool", "Number guard", "Plan by code", "Definitions", "Worker loop path"):
+    for name in ("Tax maths (known answer)", "Chart facts (known answer)", "No-trading guard", "No order tool", "Number guard", "Definitions", "Worker loop path"):
         assert rows[name]["status"] == sc.OK, (name, rows[name])
 
 
@@ -51,7 +51,6 @@ def test_checks_that_cannot_run_are_warnings_never_failures_and_a_crash_is_a_fai
     monkeypatch.setattr(rtm, "token_valid", lambda now: False)
     rows = {r["name"]: r for r in sc.run_all(rt, NOW, quick=True)["rows"]}
     assert rows["Calculation sandbox"]["status"] == sc.WARN and rows["Kite live quotes"]["status"] == sc.WARN
-    assert rows["Coordinator"]["status"] == sc.WARN                                                           # no task yet: nothing to test against
     r = sc.Run(con, NOW)
     r.check("Tools", "boom", lambda: (_ for _ in ()).throw(RuntimeError("it broke")))
     assert r.rows[0]["status"] == sc.BAD and "it broke" in r.rows[0]["note"]

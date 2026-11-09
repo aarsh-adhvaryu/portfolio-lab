@@ -220,24 +220,6 @@ def test_a_stale_or_after_hours_quote_is_not_used_for_a_fill(con, tmp_path, monk
     assert book.live_prices(con, datetime(2026, 11, 2, 9, 45), [AAA]) == {AAA: 104.0}
 
 
-def test_a_live_move_of_three_percent_is_a_reason_to_look(con, tmp_path, monkeypatch):
-    from pflab.hq import missions
-    from pflab.hq.desk import Desk
-    from pflab.paper import book, manager
-    days = _own_account(con, tmp_path, monkeypatch)
-    book.seed(con, days[4], NOW)
-    book.place(con, datetime(2026, 10, 30, 10, 0), None, AAA, "buy", amount=40_000.0)                 # a holding big enough to matter (weight >= 2%)
-    book.fill(con, date(2026, 10, 30), datetime(2026, 10, 30, 21, 0))
-    rt = Desk(con, tmp_path, tmp_path / "data", tmp_path / "repo", None, {}, clock=lambda: NOW)
-    (tmp_path / "app").mkdir(exist_ok=True)
-    missions.create(con, datetime(2026, 11, 2, 9, 0), "Paper portfolio: the first review", pm_dir=rt.pm_dir, origin="paper")
-    now = datetime(2026, 11, 2, 11, 0)
-    assert manager.reasons_to_look(con, now) == []
-    con.execute("INSERT INTO live_quotes VALUES (?, ?, ?, 'kite')", [AAA, datetime(2026, 11, 2, 10, 50), 94.0])              # 6% under the last close of 100
-    why = manager.reasons_to_look(con, now)
-    assert any("on the day at the live quote" in w for w in why)
-
-
 # --- the never-idle cadence ----------------------------------------------------------------------------------------------------------
 
 def _seeded(con, tmp_path, monkeypatch):
@@ -245,19 +227,6 @@ def _seeded(con, tmp_path, monkeypatch):
     days = _own_account(con, tmp_path, monkeypatch)
     book.seed(con, days[4], NOW)
     return days
-
-
-def test_the_daily_look_always_leaves_an_act_even_when_nothing_needs_doing(con, tmp_path, monkeypatch):
-    from pflab.hq import missions
-    from pflab.hq.desk import Desk
-    from pflab.paper import cadence
-    _seeded(con, tmp_path, monkeypatch)
-    rt = Desk(con, tmp_path, tmp_path / "data", tmp_path / "repo", None, {}, clock=lambda: datetime(2026, 11, 7, 21, 35))      # a Saturday
-    (tmp_path / "app").mkdir(exist_ok=True)
-    missions.create(con, datetime(2026, 11, 6, 9, 0), "Paper portfolio: review", pm_dir=rt.pm_dir, origin="paper")
-    out = cadence.run(rt)
-    assert "nothing needs the team today" in out["look"]
-    assert {a["loop"] for a in cadence.last_acts(con)} >= {"daily_look", "postmortem"}
 
 
 def test_a_postmortem_turns_scored_claims_into_lessons_and_judges_the_reviewer_too(con, tmp_path, monkeypatch):
@@ -272,25 +241,6 @@ def test_a_postmortem_turns_scored_claims_into_lessons_and_judges_the_reviewer_t
     assert "WAIT decisions in a pullback market (it executed): 1 of 2" in texts and "the review refused): 2 of 2" in texts
     assert "refused decisions whose claims then held 2 of 2 times" in texts and "too strict" in texts
     assert cadence.postmortem(con, NOW)["lessons_changed"] == 0                         # idempotent
-
-
-def test_the_circuit_breaker_refuses_new_buying_after_a_twelve_percent_fall_and_leaves_selling_open(con, tmp_path, monkeypatch):
-    from pflab.hq import missions
-    from pflab.hq.desk import Desk
-    from pflab.paper import cadence, manager
-    days = _seeded(con, tmp_path, monkeypatch)
-    rt = Desk(con, tmp_path, tmp_path / "data", tmp_path / "repo", None, {}, clock=lambda: NOW)
-    (tmp_path / "app").mkdir(exist_ok=True)
-    cid = missions.create(con, datetime(2026, 11, 2, 9, 0), "Paper portfolio: review", pm_dir=rt.pm_dir, origin="paper")["case_id"]
-    v0 = con.execute("SELECT value FROM paper_days ORDER BY day LIMIT 1").fetchone()[0]
-    con.execute("INSERT INTO paper_days VALUES (?, ?, ?, 0, 0, '{}')", [date(2026, 11, 9), v0 * 0.86, 0.0])
-    assert cadence.breaker(con)["on"] is True
-    buy = manager.decide(con, datetime(2026, 11, 9, 10, 0), cid, {"action": "BUY", "symbol": "BBB", "amount_rupees": 10_000, "reason": "a cheap name with growing earnings and a sound balance sheet",
-                                                                  "alternatives": "wait; buy the index"})
-    assert buy["stored"] is False and "circuit breaker" in buy["problem"]
-    sell = manager.decide(con, datetime(2026, 11, 9, 10, 0), cid, {"action": "REDUCE", "symbol": "AAA", "fraction": 0.5, "reason": "the position is larger than the thesis needs after the fall",
-                                                                   "alternatives": "hold it; sell all"})
-    assert sell["stored"] is True
 
 
 def test_a_top_up_is_not_a_gain_for_the_breaker(con, tmp_path, monkeypatch):
@@ -337,16 +287,6 @@ def test_a_broken_skill_is_ignored_not_fatal(tmp_path):
     (tmp_path / "wrongname").mkdir()
     (tmp_path / "wrongname" / "SKILL.md").write_text("---\nname: other\ndescription: x\n---\nbody", encoding="utf-8")
     assert skills.all_skills(tmp_path) == []
-
-
-def test_only_a_paper_mission_carries_skills_in_a_second_cached_system_block(con, tmp_path, monkeypatch):
-    from pflab.hq import missions, workers
-    from pflab.hq.desk import Desk
-    rt = Desk(con, tmp_path, tmp_path / "data", tmp_path / "repo", None, {}, clock=lambda: NOW)
-    (tmp_path / "app").mkdir(exist_ok=True)
-    paper = missions.create(con, NOW, "Paper portfolio: review", pm_dir=rt.pm_dir, origin="paper")["case_id"]
-    own = missions.create(con, NOW, "Is AAA a buy for my real money?", pm_dir=rt.pm_dir, origin="investor")["case_id"]
-    assert "Skill: position-sizing" in workers._skills_for(con, paper, "quant") and workers._skills_for(con, own, "quant") == ""
 
 
 # --- the assistant's context against drift ---------------------------------------------------------------------------------------------

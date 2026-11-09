@@ -91,7 +91,7 @@ It never trades, moves money or changes targets and limits. Spend is governed by
 leave the PC is decided by `hq/egress.py`.
 
 ## Agents and models (generated from `hq/roster.py` and the slider `hq/models.py`; the Settings slider can change any model below)
-**22 agents on the board** (`hq/roster.py`; ask any by name on the AI centre, in Telegram as `/name`, or let the receptionist route). The dashboard's AI centre also lists
+**18 agents on the board** (`hq/roster.py`; ask any by name on the AI centre, in Telegram as `/name`, or let the receptionist route). The dashboard's AI centre also lists
 the 17 job-level agents (collector, filings monitor, portfolio keeper, risk manager, simulator, forecaster, researcher, watch list, analyst, knowledge graph, trade check,
 conductor, workshop, outbox, backup, learner, security) with their last runs; under both sit the code modules in `agents/`, `plan/`, `quant/`.
 | agent | model (measured default) | does |
@@ -108,10 +108,6 @@ conductor, workshop, outbox, backup, learner, security) with their last runs; un
 | brain | Opus 5.5 with tools (Sonnet 5.5 as its journal-only rival) | looks, decides what matters, asks and tells him; never trades |
 | learner | local qwen3 8B reads (Haiku 5.5 if its reply does not parse); Sonnet 5.5 words proposals | papers and blogs to tested claims |
 | security | code; Sonnet 5.5 reviews new code weekly | what left the PC, flows, privacy, tests |
-| Coordinator (`w_coord`) | Opus 5.5 | plans a mission's steps and writes its final answer after the review |
-| Research worker (`w_research`) | Sonnet 5.5 with tools | gathers and weighs evidence for a mission step; looks for disconfirming evidence |
-| Quant worker (`w_quant`) | Sonnet 5.5 with tools; the sandbox | calculations, scenarios and strategy experiments for a mission step |
-| Reviewer (`w_review`) | Opus 5.5, its own context | independently reproduces and checks a mission's work; approves or asks for specific fixes |
 Other jobs on the slider: routing, materiality, extraction, gatekeeper (Haiku 5.5), notes (Sonnet 5.5, batched), brain_web (Sonnet 5.5), learner_proposals, review.
 
 **The local model** is `qwen3:8b-q8_0` through Ollama (`llm/registry.chosen("general")`, never deleted) and `nomic-embed-text` for embeddings. It is used, always with the guard
@@ -309,3 +305,5 @@ Tools added in S79 / S79b: `system_allocation`, `propose_allocation`, `debate`, 
 | week_check | daily 21:50 | the app checks its own first week (catch-ups after every gap, every mode reached, forecasts made and scored, no failure, cost within the cap) and tells him once on Telegram; a pass starts the 60-day feature freeze (A44) |
 
 **S80 phase 4, the screens (2026-11-09):** `core/screens.py` and `GET /api/core` feed three cards on Today: the policy that trades against the plain baseline (history 2005-2017 and the live score) with the challengers in shadow, the open storylines with their chance, influence and scored predictions, and the strategist's spend by use. Price/index/verdict helpers the scoring code shares live in `quant/marks.py`; the pot's buy-zone numbers in `plan/pot.py` (`zone_numbers`).
+
+**S80 phase 4, the chat rebuilt (2026-11-09):** the chat no longer runs on the brain, missions or workers. Its tool loop is `hq/converse.py`, the journal of its answers `hq/passes.py` (table `hq_passes` keeps its name and rows), Telegram's /brain and the AI centre's Auto road answer through `app/assistant.ask_once`. DELETED: `hq/brain.py`, `hq/replay.py`, `hq/missions.py`, `hq/plans.py`, `hq/playbooks.py`, `hq/pool.py`, `hq/workers.py`, the paper team's `decide`/`execute`/`tick`/`dossier_text` in `paper/manager.py`, the tools `start_investigation`, `amend_investigation`, `decide_plan`, `work_status`, `plan_mission`, `submit_answer`, `submit_review`, `request_artifact`, `reproduce_calc`, `paper_decide`, `paper_ask`, `propose_allocation`, `record_prediction`, `save_state`, `journal`, the mission routes and screens, the four `w_*` agents, the chat front's approve/decline/start/amend intents. The paper book is traded only by the close loop. STILL THERE (data and plain helpers the rest uses): `hq/cases.py` (the case notebook), `hq/board.py`, `hq/roster.py`, `hq/scorecard.py`, `hq/keeper.py`, `paper/provenance.py`, the knowledge-graph code (off), and every table.

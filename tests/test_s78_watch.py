@@ -128,16 +128,3 @@ def test_the_tools_add_list_and_remove_for_the_team_and_for_him(con, tmp_path):
     t4, _ = tl.run(him, "watch_remove", {"watch": "GOLDETF", "why": "he changed his mind"})
     assert json.loads(t4)["removed"] == 1
 
-
-def test_a_triggered_item_is_a_reason_for_the_team_to_look_and_is_in_its_dossier(con, tmp_path):
-    from pflab.hq import missions
-    from pflab.hq.desk import Desk
-    (tmp_path / "pm" / "app").mkdir(parents=True)
-    rt = Desk(con, tmp_path / "pm", tmp_path / "data", tmp_path / "repo", None, {}, clock=lambda: NOW)
-    cid = missions.create(con, NOW, "Paper portfolio: the first review", pm_dir=rt.pm_dir, origin="paper")["case_id"]
-    con.execute("INSERT INTO paper_days VALUES (?, 1000000, 1000000, 0, 0, '{}')", [date(2026, 11, 2)])
-    watch.add(con, NOW, symbol="AAA", kind="zone", reason="Wait for its fair range before buying any.", by="quant", zone_high=1500.0, zone_low=1420.0, calc_id=7)
-    _live(con, AAA, 1490.0)
-    watch.check(con, NOW)
-    assert any("watchlist: AAA reached its point" in w for w in manager.reasons_to_look(con, NOW))
-    assert "ITS WATCHLIST" in manager.dossier_text(con, cid, NOW) and "AAA TRIGGERED" in manager.dossier_text(con, cid, NOW)

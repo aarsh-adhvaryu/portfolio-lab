@@ -86,30 +86,6 @@ def test_the_plan_lists_only_what_the_book_held_after_its_start_and_never_twice(
             os.environ["PFLAB_DATA_DIR"] = old
 
 
-def test_a_deploy_reason_needs_an_active_target_a_new_top_up_and_cash_over_its_weight(tmp_path):
-    import os
-    from pflab.hq import missions
-    from pflab.paper import allocation, funds
-    old = os.environ.get("PFLAB_DATA_DIR")
-    try:
-        con, root, pm = vb.build(tmp_path / "dep")
-        os.environ["PFLAB_DATA_DIR"] = str(root)
-        (pm / "app").mkdir(exist_ok=True)
-        now = datetime(2026, 10, 30, 21, 0)
-        funds.topup(con, 10_000, "the investor", vb.DAYS[4], now)
-        assert allocation.deploy_reason(con, now) is None                                         # no active target: nothing to deploy under
-        t = allocation.propose_allocation(con, {"equity": 70, "gold": 10, "international": 5, "cash": 15}, "x" * 60, now)
-        allocation.review_target(con, t["target_id"], "approve", "ok", now)
-        assert "top-up of Rs 10,000" in allocation.deploy_reason(con, now + timedelta(minutes=1))
-        missions.create(con, now + timedelta(hours=1), "Paper portfolio: review", pm_dir=pm, origin="paper")
-        assert allocation.deploy_reason(con, now + timedelta(hours=2)) is None                    # the team has looked since: the reason is spent
-    finally:
-        if old is None:
-            os.environ.pop("PFLAB_DATA_DIR", None)
-        else:
-            os.environ["PFLAB_DATA_DIR"] = old
-
-
 def test_a_stale_feed_isin_is_restated_to_the_held_one_only_after_the_old_isin_stopped_trading(tmp_path):
     """Found on the real feed: Nestle India's bonus is listed under the ISIN that stopped trading in 2024."""
     import json

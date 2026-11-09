@@ -136,7 +136,7 @@ def lessons_text(con) -> str:
 
 def daily_look(con, now: datetime) -> dict:
     """Every evening, every day (code, free): where the account stands and whether anything needs the team. Always leaves an act; 'nothing needs action' is a result, not idleness."""
-    from pflab.paper import book, manager, rails
+    from pflab.paper import allocation, book, rails
     day = (con.execute("SELECT max(day) FROM paper_days").fetchone() or [None])[0]
     if day is None:
         return {"waiting": "not started"}
@@ -146,16 +146,16 @@ def daily_look(con, now: datetime) -> dict:
     chg = ((cur[0] - cur[1]) / prev[0] - 1) if prev and prev[0] and cur else None
     br = breaker(con)
     flags = rails.flags(con, day)
-    why = manager.reasons_to_look(con, now)
+    why = allocation.reasons(con, now)
     open_orders = con.execute("SELECT count(*) FROM paper_orders WHERE status='open'").fetchone()[0]
     waiting = con.execute("SELECT count(*) FROM paper_decisions WHERE status='proposed'").fetchone()[0]
     bits = [f"value Rs {h['value']:,.0f} as of {day}" + (f" ({chg:+.2%} on the day)" if chg is not None else ""),
             f"drawdown {br['drawdown']:.1%}" + (" (circuit breaker ON: no new buying)" if br["on"] else ""),
             f"{len(flags)} rail flag(s)", f"{open_orders} open order(s), {waiting} decision(s) awaiting the review"]
     if why:
-        bits.append("reasons for the team to look: " + "; ".join(why)[:200])
+        bits.append("reasons to look: " + "; ".join(why)[:200])
     else:
-        bits.append("nothing needs the team today (a decision to do nothing, with these facts)")
+        bits.append("nothing needs a look today")
     what = "daily look: " + "; ".join(bits)
     act(con, now, "daily_look", what, True, {"reasons": why, "flags": flags, "breaker": br})
     return {"look": what, "reasons": why}

@@ -140,13 +140,3 @@ def test_a_long_document_is_read_part_by_part_and_by_word(con, tmp_path):
     assert "does not appear" in tl.read_document(ctx, {"doc_id": "doc:filing:a1", "find": "zebra"})["found"][0]
     assert tl.read_document(ctx, {"doc_id": "nope"})["documents"] == []
 
-
-def test_he_can_say_run_it_now_and_the_day_limits_are_lifted_for_that_investigation_only(con):
-    from pflab.hq import cases, missions
-    con.execute("INSERT INTO hq_tasks (task_id, created_at, from_agent, to_agent, text, status, hops, role, wait_kind, next_review_at, case_id) VALUES (1, ?, 'x', 'research', 't', 'retry', 0, 'research', 'budget', ?, 5)",
-                [NOW, datetime(2026, 11, 4, 0, 5)])
-    out = missions.run_now(con, NOW, 5)
-    assert out == {"started": True, "woken": 1}
-    assert con.execute("SELECT next_review_at FROM hq_tasks WHERE task_id = 1").fetchone()[0] == NOW                  # it starts at once
-    assert con.execute("SELECT count(*) FROM hq_case_log WHERE case_id = 5 AND event = 'run now'").fetchone()[0] == 1   # and the workers read this as his order (day limits lifted for case 5 only)
-    assert con.execute("SELECT count(*) FROM hq_case_log WHERE case_id = 6 AND event = 'run now'").fetchone()[0] == 0

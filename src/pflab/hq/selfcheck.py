@@ -129,39 +129,8 @@ def _models(rt, con, r: Run, now: datetime, quick: bool) -> None:
         return (OK, "kept the sourced number, removed the invented one") if (dropped == 1 and "10.5" in txt and "37.25" not in txt) else (BAD, f"number guard misbehaved: kept {txt!r}, dropped {dropped}")
     r.check(G, "Number guard", numbers)
 
-    def plan():
-        from pflab.hq import missions, playbooks
-        steps, approach = playbooks.paper_steps("Paper portfolio: the weekly review")
-        keys = [x["key"] for x in steps]
-        bad = []
-        if not 2 <= len(steps) <= 6:
-            bad.append("number of steps")
-        if any(x["role"] not in missions.ROLES for x in steps):
-            bad.append("a role the system does not have")
-        if any(k not in missions.PROMISE_KINDS for x in steps for k in x["promise"]):
-            bad.append("a promise it cannot check")
-        if any(d not in keys[:i] for i, x in enumerate(steps) for d in x["depends_on"]):
-            bad.append("a dependency on a later step")
-        return (OK, f"the paper playbook builds a {len(steps)}-step plan the mission machinery accepts") if not bad else (BAD, f"plan failed: {', '.join(bad)}")
-    r.check(G, "Plan by code", plan)
-
-
 def _agents(rt, con, r: Run, now: datetime) -> None:
     G = "Agents"
-    for role, label in (("coordinator", "Coordinator"), ("research", "Research"), ("quant", "Quant"), ("review", "Reviewer")):
-        def f(role=role):
-            row = con.execute("SELECT status, max(coalesce(finished_at, started_at)) FROM hq_tasks WHERE role = ? GROUP BY status ORDER BY 2 DESC LIMIT 1", [role]).fetchone() \
-                if _has(con, "hq_tasks", "role") else None
-            done = con.execute("SELECT max(finished_at) FROM hq_tasks WHERE role=? AND status='done'", [role]).fetchone()[0] if _has(con, "hq_tasks", "role") else None
-            failed = con.execute("SELECT max(finished_at) FROM hq_tasks WHERE role=? AND status='failed'", [role]).fetchone()[0] if _has(con, "hq_tasks", "role") else None
-            if done is None and failed is None:
-                return WARN, "has not worked yet: nothing to test against until its first task"
-            if failed and (done is None or failed > done):
-                return BAD, f"its latest task failed ({str(failed)[:16]}) and none has succeeded since"
-            age = (now - done).days
-            return (OK, f"last task done {str(done)[:16]}") if age <= 14 else (WARN, f"no task for {age} days")
-        r.check(G, label, f)
-
     def assistant():
         n = con.execute("SELECT count(*) FROM chat_messages WHERE role='ai' AND status='done' AND created_at >= ?", [now - timedelta(days=14)]).fetchone()[0]
         return (OK, f"{n} answer(s) in the last 14 days") if n else (WARN, "no answer in the last 14 days")

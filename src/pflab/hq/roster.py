@@ -285,11 +285,6 @@ def _security(rt, t: dict) -> Reply:
                  + security.status(rt.cursor()), ["security agent (code)"])
 
 
-def _worker(rt, t: dict) -> Reply:
-    from pflab.hq import workers
-    return workers.run_task(rt, t)
-
-
 def _receptionist(rt, t: dict) -> Reply:
     from pflab.hq.reception import route
     agent, text = route(t["text"])
@@ -335,14 +330,6 @@ ROSTER: Dict[str, Agent] = {a.name: a for a in [
     Agent("learner", "Learner", "{learner_reading} reads (Haiku 5.5 when its reply does not parse); {learner_proposals} words proposals", "reads papers and blogs for testable "
           "claims, registers and tests them; reads the system's record and proposes changes", "arXiv, OpenAlex, blogs, "
           "drop\\learn, the record", "findings, lessons, proposals", _learner),
-    Agent("w_coord", "Coordinator", "Sonnet 5.5 plans; Opus 5.5 writes the final answer", "plans a mission's steps and writes its final answer after the review",
-          "the case, the portfolio", "a plan, an answer", _worker),
-    Agent("w_research", "Research worker", "Sonnet 5.5 with tools", "gathers and weighs evidence for a mission step; looks for disconfirming evidence",
-          "filings, news, the web, the graph", "evidence in the case", _worker),
-    Agent("w_quant", "Quant worker", "Sonnet 5.5 with tools; the sandbox", "calculations, scenarios and strategy experiments for a mission step",
-          "prices, the ledger snapshot", "calculations, experiments", _worker),
-    Agent("w_review", "Reviewer", "Sonnet 5.5 in its own context (Opus 5.5 when a proposal is over Rs 25,000)", "independently reproduces and checks a mission's work; approves or asks for specific fixes",
-          "the case dossier", "a review", _worker),
     Agent("security", "Security", "code; {review} reviews new code weekly", "re-checks what left the PC, data flows, the "
           "repo's privacy, the tests; never changes code or data", "requests sent, jobs, the repo", "Needs from you",
           _security),
@@ -356,15 +343,11 @@ ROSTER: Dict[str, Agent] = {a.name: a for a in [
 ROLES = [
     {"id": "brain", "title": "Brain", "members": ["brain"], "order_to": "brain"},
     {"id": "assistant", "title": "Assistant", "members": ["ask", "receptionist"], "order_to": "ask",
-     "does": "talks with you: answers from the record, runs calculations, starts investigations and reports their results"},
-    {"id": "coordinator", "title": "Coordinator", "members": ["w_coord"], "order_to": "investigation",
-     "does": "plans an investigation's steps, hands them to research and quant, and writes the answer after the review"},
-    {"id": "research", "title": "Research", "members": ["w_research", "research", "web", "fetch"], "order_to": "research",
+     "does": "talks with you: answers from the record, runs calculations, reads files and the public record"},
+    {"id": "research", "title": "Research", "members": ["research", "web", "fetch"], "order_to": "research",
      "does": "gathers and weighs evidence from filings, results, news and the web; cited pages only"},
-    {"id": "quant", "title": "Quant", "members": ["w_quant", "calc", "sim", "quant"], "order_to": "calc",
+    {"id": "quant", "title": "Quant", "members": ["calc", "sim", "quant"], "order_to": "calc",
      "does": "calculations (written twice, run in the sandbox), scenarios, simulations and pre-registered strategy experiments"},
-    {"id": "reviewer", "title": "Reviewer", "members": ["w_review"], "order_to": None,
-     "does": "independently reproduces and checks an investigation's work; approves it or asks for specific fixes"},
     {"id": "readers", "title": "Readers", "members": ["analysis", "watcher"], "order_to": "analysis",
      "does": "reads every file you drop: materiality, figures, summary"},
     {"id": "learner", "title": "Learner", "members": ["learner"], "order_to": "learner"},

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from pflab.hq import egress, governor as gv, llm, workers
+from pflab.hq import egress, governor as gv, llm
 
 NOW = datetime(2026, 11, 2, 12, 0)
 
@@ -12,28 +12,6 @@ NOW = datetime(2026, 11, 2, 12, 0)
 def _reply(text="done"):
     msg = SimpleNamespace(content=[SimpleNamespace(type="text", text=text)], stop_reason="end_turn")
     return SimpleNamespace(message=msg, cost_inr=0.0, call_id=1)
-
-
-def test_every_worker_turn_carries_the_automatic_cache_marker(monkeypatch):
-    sent = []
-
-    def fake_call(con, agent, params, client, **kw):
-        sent.append(params)
-        return _reply()
-    monkeypatch.setattr(llm, "call", fake_call)
-    rt = SimpleNamespace(clock=lambda: NOW)
-    for turns in (1, 3):
-        sent.clear()
-        workers.converse(rt, None, None, [{"role": "user", "content": [{"type": "text", "text": "go"}]}], system="S", tools=[],
-                         model=gv.SONNET, agent="w_research", effort="low", max_out=100, client=None, gate=egress.Gate(), cfg={},
-                         mode="economy", his=False, private_first="", question="q", max_turns=turns)
-        assert sent and all(p["cache_control"] == {"type": "ephemeral"} for p in sent)
-        assert all(str(p).count("cache_control") <= 4 for p in sent)          # system block + the automatic one: inside the API's four
-
-
-def test_the_role_parameters_carry_it_too():
-    p = workers._params("review", [], last=False)
-    assert p["cache_control"] == {"type": "ephemeral"} and p["system"][0]["cache_control"] == {"type": "ephemeral"}
 
 
 def test_a_cache_read_is_priced_per_model():

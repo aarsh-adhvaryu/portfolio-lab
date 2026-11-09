@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from pflab.app import assistant, chat, front
-from pflab.hq import board, missions, playbooks, roster
+from pflab.hq import board, roster
 from tests.test_s68_autonomy import NOW, con, rt  # noqa: F401  (fixtures)
 
 
@@ -43,26 +43,6 @@ def _thread(con, last_ai="Here is my plan. Say approve to start."):
 
 # --- classification --------------------------------------------------------------------------------------------------------------
 
-def test_plain_words_decide_without_the_model(rt, con, monkeypatch):
-    monkeypatch.setattr(front, "awaiting", lambda c: [{"case_id": 1, "goal": "g", "version": 1}])
-    boom = lambda *a, **k: (_ for _ in ()).throw(AssertionError("the model must not be asked"))
-    assert front.classify(con, "yes", "Here is my plan. Say approve.", boom)["intent"] == "approve"
-    assert front.classify(con, "Go ahead!", "Nothing runs until you say yes", boom)["intent"] == "approve"
-    assert front.classify(con, "no", "Here is my plan", boom)["intent"] == "decline"
-    assert front.classify(con, "what is running?", "", boom)["intent"] == "status"
-    assert front.classify(con, "what needs me", "", boom)["how"] == "words"
-
-
-def test_a_bare_yes_is_not_an_approval_unless_one_plan_waits_and_the_last_message_was_about_it(rt, con, monkeypatch):
-    ask = model("other")
-    monkeypatch.setattr(front, "awaiting", lambda c: [{"case_id": 1, "goal": "g", "version": 1}])
-    assert front.classify(con, "yes", "Do you also hold anything abroad?", ask)["intent"] == "other"          # he may be answering something else
-    monkeypatch.setattr(front, "awaiting", lambda c: [{"case_id": 1, "goal": "g", "version": 1}, {"case_id": 2, "goal": "h", "version": 1}])
-    assert front.classify(con, "yes", "Here is my plan", ask)["intent"] == "other"                            # two plans: which one?
-    monkeypatch.setattr(front, "awaiting", lambda c: [])
-    assert front.classify(con, "yes", "Here is my plan", ask)["intent"] == "other"                            # none waits
-
-
 def test_the_model_chooses_from_a_closed_list_and_an_invalid_choice_is_other(rt, con):
     assert front.classify(con, "How much have I got in cash?", "", model("portfolio", 0.9)) == {"intent": "portfolio", "confidence": 0.9, "how": "local model"}
     bad = lambda *a, **k: SimpleNamespace(text='{"intent": "launch_rockets", "confidence": 0.99}')
@@ -80,54 +60,9 @@ def test_numbers_come_from_his_words_only():
 
 # --- acting through the real tools -----------------------------------------------------------------------------------------------
 
-def test_a_bare_yes_approves_the_waiting_plan_with_no_model_and_no_cost(rt, con, monkeypatch):
-    monkeypatch.setattr(missions, "plan_approval_mode", lambda: "investor")
-    monkeypatch.setattr(playbooks, "enabled", lambda: True)
-    out = missions.create(con, NOW, "My IPO allotment lists next week: should I sell on listing day or hold?", pm_dir=rt.pm_dir)
-    board.run_one(rt, roster.runners())                                        # the playbook plans it; the plan waits for his yes
-    assert missions.mission_of(con, out["case_id"])["state"] == "awaiting_approval" and len(front.awaiting(con)) == 1
-    cid = assistant.thread(con, NOW)
-    aid = chat._add(con, cid, "ai", "assistant", "Working on it…", "working", NOW)
-    boom = lambda *a, **k: (_ for _ in ()).throw(AssertionError("no model for a bare yes"))
-    res = front.try_local(rt, con, cid, aid, "yes", chat=boom)
-    assert res and res["text"].startswith("Approved") and res["cost"] == 0.0 and "tool: decide_plan" in res["route"]
-    assert missions.mission_of(con, out["case_id"])["state"] == "working" and front.awaiting(con) == []
-    assert con.execute("SELECT count(*) FROM api_calls").fetchone()[0] == 0
-
-
-def test_a_message_that_does_not_clearly_approve_is_left_to_the_tool_and_the_cloud(rt, con, monkeypatch):
-    monkeypatch.setattr(missions, "plan_approval_mode", lambda: "investor")
-    monkeypatch.setattr(playbooks, "enabled", lambda: True)
-    out = missions.create(con, NOW, "My IPO allotment lists next week: should I sell on listing day or hold?", pm_dir=rt.pm_dir)
-    board.run_one(rt, roster.runners())
-    cid, aid = _thread(con)
-    assert front.try_local(rt, con, cid, aid, "hmm, maybe", chat=model("approve", 0.99)) is None       # the tool checks his words and refuses: the cloud agent answers
-    assert missions.mission_of(con, out["case_id"])["state"] == "awaiting_approval"                        # nothing was approved
-
-
-def test_a_new_task_is_started_through_the_same_tool(rt, con, all_intents):
-    cid, aid = _thread(con, "Hello.")
-    q = "Investigate whether the cloud software sell-off should change how I invest this month"
-    res = front.try_local(rt, con, cid, aid, q, chat=model("start", 0.95))
-    assert res and "I have started investigation #" in res["text"] and "tool: start_investigation" in res["route"]
-    assert con.execute("SELECT count(*) FROM hq_missions").fetchone()[0] == 1
-    again = front.try_local(rt, con, cid, aid, q, chat=model("start", 0.95))
-    assert again and "already being investigated" in again["text"] and con.execute("SELECT count(*) FROM hq_missions").fetchone()[0] == 1
-
-
 def test_a_short_message_is_never_started_as_an_investigation(rt, con, all_intents):
     cid, aid = _thread(con, "Hello.")
     assert front.try_local(rt, con, cid, aid, "look into it", chat=model("start", 0.99)) is None and con.execute("SELECT count(*) FROM hq_missions").fetchone()[0] == 0
-
-
-def test_an_amendment_goes_to_the_one_investigation_and_is_conservative_about_asking_again(rt, con, all_intents):
-    out = missions.create(con, NOW, "Compare phased buying with holding cash for my monthly money", pm_dir=rt.pm_dir)
-    cid, aid = _thread(con, "Hello.")
-    res = front.try_local(rt, con, cid, aid, "Also redo it with a 0.5% charge on every trade", chat=model("amend", 0.95))
-    assert res and f"investigation #{out['case_id']}" in res["text"] and "tool: amend_investigation" in res["route"]
-    assert any(e == "amendment" for (e,) in con.execute("SELECT event FROM hq_case_log WHERE case_id=?", [out["case_id"]]).fetchall())
-    nothing = front.try_local(rt, con, cid, aid, "Also redo it with a 0.5% charge on every trade", chat=model("amend", 0.95))
-    assert nothing is None or "already recorded" in nothing["text"]
 
 
 # --- the facts are rendered by code; the model only adds a paragraph that must pass the guard --------------------------------------
@@ -161,14 +96,6 @@ def test_a_fall_question_runs_the_shock_tool_with_his_numbers_and_the_facts_are_
     assert "If the index falls 20%: you lose about Rs 1,72,761, which is 3.6% of the portfolio." in res["text"]
     assert "If the index falls 35%: you lose about Rs 3,02,331, which is 6.4% of the portfolio." in res["text"] and "In plain words (written by the local model" in res["text"]
     assert ("exposure_shock", {"case_id": 7, "falls_json": "[20.0, 35.0]", "why": q}) in calls
-
-
-def test_the_portfolio_labels_stay_with_their_numbers():
-    from pflab.app import front_render as fr
-    text = fr.portfolio(PORT)
-    assert "LT: Rs 2,19,000, 4.62% of the portfolio, 3.4% gain" in text                       # the first real run said "of your equity": the label comes from code now
-    assert "cash Rs 38,72,000 (81.8% of the portfolio)" in text and "statements to 2024-01-05" in text
-    assert fr.portfolio(None) == "" and fr.status(None, None).startswith("Nothing is being investigated")
 
 
 def test_indian_grouping():
@@ -258,39 +185,9 @@ def test_the_assistant_uses_the_front_when_it_answers_and_the_cloud_agent_when_i
 
 # --- the measured defaults -----------------------------------------------------------------------------------------------------
 
-def test_by_default_the_model_may_not_start_amend_or_decline_those_go_to_the_cloud_agent(rt, con):
-    cid, aid = _thread(con, "Hello.")
-    q = "Investigate whether the cloud software sell-off should change how I invest this month"
-    assert front.try_local(rt, con, cid, aid, q, chat=model("start", 1.0)) is None and con.execute("SELECT count(*) FROM hq_missions").fetchone()[0] == 0
-    assert front.try_local(rt, con, cid, aid, "Also include gold in that analysis", chat=model("amend", 1.0)) is None
-    assert front.try_local(rt, con, cid, aid, "I would rather not run that, stop it", chat=model("decline", 1.0)) is None
-    assert set(front.ENABLED) == {"status", "portfolio", "approve", "fall", "deploy", "remember"}
-
-
-def test_the_code_checks_on_his_words_hold_whatever_the_model_says():
-    p = front.precheck
-    assert not p("Set my monthly limit for the AI to Rs 5000", "remember") and not p("Sell half my Tata Motors", "remember")
-    assert not p("Raise my equity target to 60%", "remember") and not p("What is a good hedge?", "remember") and not p("ok", "remember")
-    assert p("Remember that my daughter's fees are due in March", "remember") and p("My goal is to retire by 2040", "remember")
-    assert not p("What if the market falls a lot?", "fall") and p("What if it falls 20%?", "fall")
-    assert not p("Should I invest more?", "deploy") and p("I have Rs 3 lakh to invest", "deploy")
-    assert not p("Buy 20 shares of Infosys at market", "start") and not p("Cut my debt allocation to 20%", "amend") and p("Look into whether I am too exposed to banks", "start")
-
-
 def test_a_trade_or_a_target_change_is_never_kept_as_a_note_even_if_the_model_is_sure(rt, con):
     cid, aid = _thread(con, "Hello.")
     for q in ("Set my monthly limit for the AI to Rs 5000", "Sell half my Tata Motors today", "Raise my equity target to sixty percent"):
         assert front.try_local(rt, con, cid, aid, q, chat=model("remember", 1.0)) is None
     assert con.execute("SELECT count(*) FROM memory WHERE kind IN ('goal', 'note')").fetchone()[0] == 0
 
-
-def test_a_status_and_a_portfolio_are_the_exact_facts_with_no_model_paragraph(rt, con, monkeypatch):
-    calls = []
-    _stub_tools(monkeypatch, {"work_status": {"investigations": [], "needs_from_him": []}, "system_status": {"verdict": "all fine", "connectors": []}, "portfolio": PORT}, calls)
-    cid, aid = _thread(con, "Hello.")
-    log = []
-    res = front.try_local(rt, con, cid, aid, "what is running?", chat=model("other", 0.0, draft="MODEL WORDS", log=log))
-    assert res and "Nothing is being investigated" in res["text"] and "MODEL WORDS" not in res["text"] and "In plain words" not in res["text"] and log == []   # words decided, no model call at all
-    res = front.try_local(rt, con, cid, aid, "What does my portfolio look like today?", chat=model("portfolio", 1.0, draft="MODEL WORDS", log=log))
-    assert res and "LT: Rs 2,19,000, 4.62% of the portfolio" in res["text"] and "MODEL WORDS" not in res["text"]
-    assert log == ["front"]                                                                                                                              # only the sorting call

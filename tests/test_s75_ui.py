@@ -59,7 +59,7 @@ def test_rules_and_money_shows_rules_with_undo_a_money_rule_with_yes_and_no_and_
     assert "rs 50,000 a month" in res[3].lower() or "₹50,000 a month" in res[3].lower()
 
 
-def test_the_paper_portfolio_screen_shows_the_book_its_decisions_and_takes_a_question(server, tmp_path):
+def test_the_paper_portfolio_screen_shows_the_book_its_decisions(server, tmp_path):
     from datetime import date
     rt, port = server
     con = rt.cursor()
@@ -67,12 +67,9 @@ def test_the_paper_portfolio_screen_shows_the_book_its_decisions_and_takes_a_que
     con.execute("INSERT INTO paper_days VALUES (?, 50000, 50000, 0, 0, '{}')", [date(2026, 10, 30)])
     con.execute("INSERT INTO paper_decisions (decision_id, made_at, case_id, action, isin, symbol, amount, reason, alternatives, status) "
                 "VALUES (1, now(), 7, 'WAIT', NULL, NULL, NULL, 'valuations are high across the market; keep cash for now', 'buy the index', 'executed')")
-    steps = [("document.getElementById('screen').innerText", 1.5),
-             ("document.getElementById('paperAsk').value = 'look into the AI bubble'; document.getElementById('paperGo').click(); 1", 1.8),
-             ("document.getElementById('screen').innerText", 0.2)]
+    steps = [("document.getElementById('screen').innerText", 1.5)]
     errors, res = _edge.shoot(f"http://127.0.0.1:{port}/#/portfolio/paper", str(tmp_path / "p.png"), 1500, 1100, 5, steps)
     assert errors == [], errors
     t = res[0].lower()
     assert "paper portfolio" in t and "keep cash for now" in t and "gate to your real money" in t and "is its judgement holding up?" in t
-    assert con.execute("SELECT text, status FROM paper_inputs").fetchone() == ("look into the AI bubble", "new")
-    assert "look into the ai bubble" in res[2].lower()
+    assert "ask it to look into something" not in t

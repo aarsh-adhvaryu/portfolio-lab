@@ -377,25 +377,12 @@ def create_app(rt) -> FastAPI:
     @app.get("/api/cases/{cid}")
     def case_view(cid: int):
         """One investigation: evidence with its times, requests, calculations, why it changed (hq/cases.py); a mission's card with it (S68)."""
-        from pflab.hq import missions, views as hv
+        from pflab.hq import views as hv
         try:
             d = hv.case_detail(rt.cursor(), cid)
         except LookupError as e:
             raise HTTPException(404, str(e))
-        return json.loads(json.dumps({**d, "mission": missions.card(rt.cursor(), cid)}, default=str))
-
-    @app.post("/api/investigations")
-    def investigate(goal: str = Body(..., embed=True)):
-        """S68: one request becomes an investigation carried by a coordinator, research and quant workers and an independent reviewer. Returns the
-        case and mission ids at once; the work runs on its own (the HQ round), survives a restart and reports in its card."""
-        from pflab.hq import missions
-        try:
-            out = missions.create(rt.cursor(), rt.clock(), goal, pm_dir=rt.pm_dir)
-        except ValueError as e:
-            raise HTTPException(400, str(e))
-        rt.bump("hq", "chat")
-        rt.wake_hq()
-        return out
+        return json.loads(json.dumps({**d, "mission": None}, default=str))   # (S80 phase 4: missions are cut)
 
     @app.get("/api/assistant")
     def assistant_history():
@@ -432,73 +419,6 @@ def create_app(rt) -> FastAPI:
         except ValueError as e:
             raise HTTPException(400, str(e))
         rt.bump("chat")
-        return out
-
-    @app.post("/api/investigations/{cid}/drop")
-    def investigation_drop(cid: int):
-        """A stuck investigation he does not want to retry: closed for good (its failed steps stay on record; the next review can ask the question again)."""
-        from pflab.hq import missions
-        out = missions.drop(rt.cursor(), rt.clock(), cid)
-        rt.bump("hq")
-        return out
-
-    @app.post("/api/investigations/{cid}/retry")
-    def investigation_retry(cid: int):
-        """A blocked investigation: try its failed steps again (their checkpoints and what they already made are kept)."""
-        from pflab.hq import missions
-        out = missions.retry(rt.cursor(), rt.clock(), cid)
-        rt.bump("hq")
-        rt.wake_hq()
-        return out
-
-    @app.post("/api/investigations/{cid}/approve")
-    def investigation_approve(cid: int, note: str = Body("", embed=True)):
-        """His yes to the plan that waits (once): the workers start. It places no order and changes no target or limit."""
-        from pflab.hq import plans, pool
-        out = plans.approve(rt.cursor(), rt.clock(), cid, by="the investor (dashboard)", note=note)
-        pool.wake()
-        rt.bump("hq", "chat")
-        rt.wake_hq()
-        return out
-
-    @app.post("/api/investigations/{cid}/decline")
-    def investigation_decline(cid: int, note: str = Body("", embed=True)):
-        from pflab.hq import plans
-        out = plans.decline(rt.cursor(), rt.clock(), cid, by="the investor (dashboard)", note=note)
-        rt.bump("hq", "chat")
-        return out
-
-    @app.post("/api/investigations/{cid}/amend")
-    def investigation_amend(cid: int, instruction: str = Body(..., embed=True), scope_change: bool = Body(False, embed=True),
-                            financial_policy: bool = Body(False, embed=True)):
-        """A changed instruction: the next numbered version of the investigation; the workers replan what it changes. No release, no code."""
-        from pflab.hq import plans, pool
-        out = plans.amend(rt.cursor(), rt.clock(), cid, instruction, scope_change=scope_change, financial_policy=financial_policy, by="the investor (dashboard)")
-        if not out.get("amended") and not out.get("duplicate"):
-            raise HTTPException(400, out.get("why", "not amended"))
-        pool.wake()
-        rt.bump("hq", "chat")
-        rt.wake_hq()
-        return out
-
-    @app.post("/api/investigations/{cid}/run_now")
-    def investigation_run_now(cid: int):
-        """His word to run it now: the day limits are lifted for this investigation (the cap still holds)."""
-        from pflab.hq import missions, pool
-        out = missions.run_now(rt.cursor(), rt.clock(), cid)
-        pool.wake()
-        rt.bump("hq")
-        rt.wake_hq()
-        return out
-
-    @app.post("/api/investigations/{cid}/allow")
-    def investigation_allow(cid: int, rupees: float = Body(..., embed=True)):
-        """More money for one investigation whose own budget is spent: its parked work resumes. A global limit still holds."""
-        from pflab.hq import missions, pool
-        out = missions.allow_more(rt.cursor(), rt.clock(), cid, float(rupees), by="the investor (dashboard)")
-        pool.wake()
-        rt.bump("hq")
-        rt.wake_hq()
         return out
 
     # --- S72-S73: house rules, working memory, the envelope, the scorecard ----------------------------------------------------------
@@ -585,15 +505,6 @@ def create_app(rt) -> FastAPI:
         rt.bump("paper", "hq")
         return out
 
-    @app.post("/api/paper/ask")
-    def paper_ask(text: str = Body(..., embed=True)):
-        """He asks the paper portfolio to look into something: one input the paper team weighs (and may overrule, with reasons)."""
-        from pflab.paper import manager
-        out = manager.add_input(rt.cursor(), rt.clock(), text)
-        if not out.get("stored"):
-            raise HTTPException(400, out.get("problem", "not stored"))
-        return out
-
     @app.get("/api/scorecard")
     def scorecard_view():
         """How the recommendations turned out: claims, by decision and market state, with n; each proposal's verdict across its horizons."""
@@ -604,11 +515,9 @@ def create_app(rt) -> FastAPI:
 
     @app.get("/api/investigations")
     def investigations(limit: int = 20):
-        """S68: every mission's card (goal, owner, current action, outputs, blocker, last useful progress, next trigger)."""
-        from pflab.hq import missions
+        """The experiments and the calculations on record (S80 phase 4: missions are cut, so `investigations` is empty and kept only so the screens do not break)."""
         con = rt.cursor()
-        ids = [r[0] for r in con.execute("SELECT case_id FROM hq_missions ORDER BY mission_id DESC LIMIT ?", [limit]).fetchall()]
-        out = {"investigations": [missions.card(con, c) for c in ids]}
+        out = {"investigations": []}
         try:
             from pflab.learner import counter, experiments as ex
             out["experiments"] = [{**e, "contract": ex.contract_of(con, e["id"]) if e.get("id") else None} for e in ex.report(con)[-12:]]

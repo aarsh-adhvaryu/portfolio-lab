@@ -11,7 +11,7 @@ import pytest
 
 from pflab.agents import analyst as an
 from pflab.app import assistant, chat
-from pflab.hq import cases, egress, governor as gv, missions, service
+from pflab.hq import cases, egress, governor as gv, service
 from pflab.hq.desk import Desk
 from pflab.pm import store
 
@@ -78,30 +78,6 @@ def test_a_plain_question_is_answered_from_a_tool_and_numbers_not_read_are_remov
     assert out["status"] == "done" and "in sync" in out["text"] and "12345" not in out["text"]
     assert any(t["name"] == "system_status" for t in m.seen[0]["tools"])
     assert out["route"] == ["tool: system_status"] and "Sonnet" in out["meta"]
-
-
-def test_the_assistant_starts_an_investigation_that_reports_back_into_the_same_thread(rt, con):
-    m = Model(_use(("start_investigation", {"goal": "Investigate my concern that a China-related AI sell-off could spread to my investments"})),
-              _say("I have started it; the workers are on it and I will report back here."))
-    out = _ask(rt, con, "Investigate my China AI concern", m)
-    mid = con.execute("SELECT mission_id, case_id, state FROM hq_missions").fetchone()
-    assert mid and mid[2] == "planning" and "report back" in out["text"]
-    assert con.execute("SELECT count(*) FROM hq_tasks WHERE to_agent='w_coord'").fetchone()[0] == 1
-    # the mission's states reach the conversation once each
-    missions._set(con, mid[1], NOW, state="working")
-    missions._set(con, mid[1], NOW, state="working")
-    texts = [x["text"] for x in chat.messages(con, assistant.thread(con, NOW)) if x["mode"].startswith("note:")]
-    assert len(texts) == 1 and "planned the investigation" in texts[0]
-
-
-def test_a_finished_investigation_tells_the_answer_its_limits_and_what_is_watched(rt, con):
-    out = missions.create(con, NOW, "Compare phased buying with holding cash", pm_dir=rt.pm_dir)
-    cid = out["case_id"]
-    con.execute("UPDATE hq_missions SET state='synthesising', result_json=? WHERE case_id=?",
-                [json.dumps({"answer": "Phased buying fell less in the sharp-fall path.", "limitations": "Weights are assumptions.", "monitor_next": "The next results."}), cid])
-    missions._set(con, cid, NOW, state="done")
-    t = next(x["text"] for x in chat.messages(con, assistant.thread(con, NOW)) if x["mode"].startswith("note:"))
-    assert "Phased buying fell less" in t and "Weights are assumptions" in t and "The next results" in t
 
 
 def test_a_goal_he_states_is_remembered_and_changes_no_target(rt, con):

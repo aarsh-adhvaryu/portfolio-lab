@@ -1057,94 +1057,7 @@ def register_experiment(ctx: Ctx, a: dict) -> dict:
     return _act(ctx, _decision("investigate", "learner", "", a["hypothesis"], "a registered, bounded experiment"), do, "register_experiment")
 
 
-# --- S68: what the workers use to hand work on, judge it and finish (hq/workers.py, hq/missions.py) ---------------------------------------
-
-def reproduce_calc(ctx: Ctx, a: dict) -> dict:
-    """The reviewer's tool: run a kept calculation again on the data it originally ran on and list every difference."""
-    from pflab.agents import sandbox as sb
-    from pflab.hq import cases
-    try:
-        out = cases.reproduce(ctx.con, int(a["calc_id"]), basis="original")
-    except sb.SandboxUnavailable as e:
-        ctx.wait_for = "sandbox"
-        return {"waiting": True, "why": f"the sandbox (Docker) must run: {e}"}
-    except LookupError as e:
-        return {"error": str(e)}
-    return {k: out[k] for k in ("reproduced", "basis", "label", "same_as_kept", "differences", "problems") if k in out} \
-        | {"result": dict(list((out.get("result") or {}).items())[:12]), "kept": dict(list((out.get("kept") or {}).items())[:12])}
-
-
-def submit_review(ctx: Ctx, a: dict) -> dict:
-    """The independent reviewer's verdict on a mission's work: approve, or revise with specific requests (each names a role and what to fix).
-    Saved as a review artifact; a revision request becomes a new task for that role (hq/missions.py)."""
-    from pflab.hq import cases
-    from pflab.pm.store import next_id
-    c = _case(ctx, a)
-    reqs = []
-    try:
-        reqs = json.loads(a.get("revisions_json") or "[]")
-        if not isinstance(reqs, list):
-            raise ValueError("not a list")
-    except ValueError as e:
-        return {"stored": False, "problem": f"revisions_json must be a JSON list of {{role, what}} ({e})"}
-    if a["verdict"] == "revise" and not reqs:
-        return {"stored": False, "problem": "a revise verdict names at least one specific request {role, what}"}
-    rid = next_id(ctx.con, "hq_case_reviews", "review_id")
-    note = _checked(ctx, a["findings"])
-    ctx.con.execute("INSERT INTO hq_case_reviews VALUES (?,?,?,?,?,?)",
-                    [rid, c["id"], ctx.now, json.dumps({"independent": True, "model": ctx.model, "checks": a.get("checks", ""), "revisions": reqs[:6]}),
-                     {"approve": "approved", "revise": "revise", "reject": "rejected"}[a["verdict"]], note])
-    cases.log(ctx.con, c["id"], ctx.now, "independent review", f"{a['verdict']}: {note[:300]}")
-    note_artifact(ctx, c["id"], "review", rid, a["verdict"])
-    return {"stored": True, "review_id": rid, "verdict": a["verdict"]}
-
-
-def request_artifact(ctx: Ctx, a: dict) -> dict:
-    """A worker needs another worker's product (the quant needs the research's evidence; the research needs a number): a task for that role is
-    queued and THIS task parks until it is done; it resumes with the artifact in its dossier. Not a loop: bounded per mission."""
-    from pflab.hq import missions
-    if not ctx.task_id:
-        return {"queued": False, "problem": "only a worker task can wait for another's work"}
-    if ctx.role and a["role"] == ctx.role:                  # S76: the first paper rehearsal chained eight quant tasks, each asking the next for the same thing; do it yourself
-        return {"queued": False, "problem": f"you are the {ctx.role}: do this yourself, and ask another role only for what is theirs (evidence from research, a calculation from the quant)"}
-    out = missions.add_task(ctx.con, ctx.now, int(a["case_id"]), a["role"], _checked(ctx, a["what"]), promise=json.loads(a.get("promise_json") or "{}"),
-                            asked_by=ctx.task_id)
-    if not out.get("task_id"):
-        return {"queued": False, **out}
-    ctx.wait_for = f"task:{out['task_id']}"
-    return {"queued": True, "task_id": out["task_id"], "note": "finish this turn: your task parks until it is done, then resumes with its artifact in the dossier"}
-
-
-def plan_mission(ctx: Ctx, a: dict) -> dict:
-    """The coordinator's plan: the steps (role, goal, what each must produce, what it depends on). Code validates and creates the tasks."""
-    from pflab.hq import missions
-    try:
-        steps = json.loads(a["steps_json"])
-    except ValueError as e:
-        return {"stored": False, "problem": f"steps_json is not JSON ({e})"}
-    out = missions.set_plan(ctx.con, ctx.now, int(a["case_id"]), steps, _checked(ctx, a.get("approach", "")))
-    if out.get("stored"):
-        note_artifact(ctx, int(a["case_id"]), "plan", out["mission_id"], f"{len(steps)} steps")
-    return out
-
-
-def submit_answer(ctx: Ctx, a: dict) -> dict:
-    """The coordinator's final answer for the investor: plain words, only numbers that the case's artifacts hold; what ran, what could
-    invalidate it, what is monitored next. Closing the case with `case_close` follows."""
-    from pflab.hq import missions
-    c = _case(ctx, a)
-    try:
-        trig = json.loads(a.get("triggers_json") or "[]")
-        if not isinstance(trig, list):
-            raise ValueError("not a list")
-    except ValueError as e:
-        return {"stored": False, "problem": f"triggers_json must be a JSON list of trigger objects ({e})"}
-    out = missions.set_answer(ctx.con, ctx.now, c["id"], _checked(ctx, a["answer"]), _checked(ctx, a["limitations"]), _checked(ctx, a["monitor_next"]),
-                              triggers=trig, change=a.get("change", ""))
-    if out.get("stored"):
-        note_artifact(ctx, c["id"], "answer", out["mission_id"], "final")
-    return out
-
+# --- the paper book, the watchlist, scenarios and rules ---------------------------------------
 
 def _his_message(ctx: Ctx) -> str:
     """What he just typed, as the assistant received it. Approval is his word, not the model's, and not a tool result's."""
@@ -1165,38 +1078,6 @@ def _said_no(ctx: Ctx) -> bool:
     return bool(m) and bool(_NO.search(m))
 
 
-def amend_investigation(ctx: Ctx, a: dict) -> dict:
-    """He changes an instruction in conversation ("also look at X", "use a smaller amount", "ignore the first source"): it becomes the next numbered version of that
-    investigation and persists, without any release. The coordinator replans only what changes. A change of scope or a financial policy waits for his yes again."""
-    from pflab.hq import plans, pool
-    out = plans.amend(ctx.con, ctx.now, int(a["case_id"]), _checked(ctx, a["instruction"]), scope_change=bool(a.get("scope_change")),
-                      financial_policy=bool(a.get("financial_policy")), by="the investor (chat)")
-    if out.get("amended"):
-        pool.wake()
-        wake = getattr(ctx.rt, "wake_hq", None)
-        if wake:
-            wake()
-    return out
-
-
-def decide_plan(ctx: Ctx, a: dict) -> dict:
-    """His yes (or no) to the plan that waits. Only his own words in this message count: the tool checks them, the model's say-so is not enough."""
-    from pflab.hq import plans, pool
-    if a["decision"] == "approve":
-        if not _said_yes(ctx):
-            return {"approved": False, "why": "his message does not clearly approve; ask him to say 'approve' (or 'no' to decline)"}
-        out = plans.approve(ctx.con, ctx.now, int(a["case_id"]), by="the investor (chat)", note=_his_message(ctx)[:120])
-        pool.wake()
-    else:
-        if not _said_no(ctx):
-            return {"declined": False, "why": "his message does not clearly decline the plan"}
-        out = plans.decline(ctx.con, ctx.now, int(a["case_id"]), by="the investor (chat)", note=_his_message(ctx)[:120])
-    wake = getattr(ctx.rt, "wake_hq", None)
-    if wake:
-        wake()
-    return out
-
-
 def paper_book_tool(ctx: Ctx, a: dict) -> dict:
     """S76: the paper portfolio the system runs by itself: holdings, cash, rails, open orders, recent decisions, its record and the gate to his money."""
     from pflab.paper import book, manager
@@ -1205,34 +1086,6 @@ def paper_book_tool(ctx: Ctx, a: dict) -> dict:
     v = manager.book_view(ctx.con, ctx.now.date())
     v["gate"] = manager.gate(ctx.con, ctx.rt.data_root)
     return v
-
-
-def paper_decide(ctx: Ctx, a: dict) -> dict:
-    """S76: one decision for the paper portfolio (a paper mission only): code sizes it; it is executed at the close only if the review approves the mission."""
-    from pflab.paper import manager
-    if ctx.shadow:
-        return _SHADOW_CASE
-    cid = int(a["case_id"]) if a.get("case_id") else None
-    if cid is None:
-        r = ctx.con.execute("SELECT case_id FROM hq_tasks WHERE task_id=?", [ctx.task_id]).fetchone() if ctx.task_id else None
-        cid = int(r[0]) if r and r[0] else None
-    inputs = dict(a)
-    inputs["reason"] = _checked(ctx, a.get("reason", ""))
-    inputs["alternatives"] = _checked(ctx, a.get("alternatives", ""))
-    inputs["_prov"] = {"pass_id": ctx.pass_id, "task_id": ctx.task_id, "role": ctx.role, "model": ctx.model, "call_ref": ctx.call_ref,        # S79b 18C: who is deciding (provenance)
-                       "cited_text": f"{a.get('reason', '')} {a.get('alternatives', '')}"}
-    out = manager.decide(ctx.con, ctx.now, cid, inputs, manager._index(ctx.rt.data_root))
-    if out.get("stored"):
-        note_artifact(ctx, cid, "proposal", out["decision_id"], f"paper {out['action']}")
-    return out
-
-
-def paper_ask(ctx: Ctx, a: dict) -> dict:
-    """S76: he asks the paper portfolio to look into something (one input it may overrule)."""
-    from pflab.paper import manager
-    if ctx.shadow:
-        return _SHADOW_CASE
-    return manager.add_input(ctx.con, ctx.now, a.get("text", ""))
 
 
 def chart_view(ctx: Ctx, a: dict) -> dict:
@@ -1291,7 +1144,7 @@ def policy_scenarios(ctx: Ctx, a: dict) -> dict:
     """The deployment-policy scenario study (quant/policies.py): his current staged approach, phased buying under explicit rules, holding cash until a
     fall, and all-in-now, across a sharp fall, a prolonged decline, a fall and recovery, and no crash. Trusted code; the paths and the rest are
     assumptions you state. Kept as a reproducible calculation."""
-    from pflab.hq import missions
+    from pflab.hq import passes as missions
     from pflab.quant import policies, trusted
     keys = ("amount", "horizon_months", "fall_pct", "fall_months", "decline_pct", "decline_months", "recover_months", "drift_pa", "vol_pa", "cash_rate_pa",
             "cost_bps", "staged_months", "base_months", "reserve_share", "dip_trigger", "wait_trigger", "max_wait")
@@ -1313,7 +1166,7 @@ def policy_scenarios(ctx: Ctx, a: dict) -> dict:
 def exposure_shock_tool(ctx: Ctx, a: dict) -> dict:
     """What a stated equity fall would cost the portfolio as it stands now (hypothetical scenario, trusted code, reproducible): each holding falls by the
     stated fall times its beta (default 1). Use it instead of writing code for the arithmetic of a fall."""
-    from pflab.hq import missions
+    from pflab.hq import passes as missions
     from pflab.pm import today
     from pflab.quant import trusted
     t = today.build(ctx.con, ctx.asof)
@@ -1363,16 +1216,6 @@ def ipo_policy_study(ctx: Ctx, a: dict) -> dict:
             "verdict": res["verdict"], "limits": res["limits"], "tests_in_this_study": res["tests_in_this_study"]}
 
 
-def start_investigation(ctx: Ctx, a: dict) -> dict:
-    """The assistant starts a mission (research, quant and an independent review run in the background; results come back into the conversation)."""
-    from pflab.hq import missions
-    out = missions.create(ctx.con, ctx.now, _checked(ctx, a["goal"]), pm_dir=ctx.rt.pm_dir)
-    wake = getattr(ctx.rt, "wake_hq", None)
-    if wake:
-        wake()
-    return {**out, "note": "it runs by itself; its progress and result will appear in this conversation"}
-
-
 def open_workspace(ctx: Ctx, a: dict) -> dict:
     """A scratch case for a calculation or a scenario asked in conversation (the case tools need one). The brain's case pass never takes it."""
     from pflab.hq import cases
@@ -1382,21 +1225,6 @@ def open_workspace(ctx: Ctx, a: dict) -> dict:
     if cid not in ctx.case_ids:
         ctx.case_ids.append(cid)
     return {"case_id": cid, "new": new, "note": "use this case_id with the calculation and scenario tools"}
-
-
-def work_status(ctx: Ctx, a: dict) -> dict:
-    """What is being worked on and what waits for him, from the store."""
-    from pflab.hq import missions
-    con = ctx.con
-    ids = [r[0] for r in con.execute("SELECT case_id FROM hq_missions ORDER BY mission_id DESC LIMIT 8").fetchall()]
-    cards = []
-    for cid in ids:
-        c = missions.card(con, cid)
-        cards.append({k: c[k] for k in ("case_id", "goal", "state", "owner", "current_action", "blocker", "next_trigger", "last_useful_progress")}
-                     | {"outputs": len(c["outputs"]), "answer": (c["answer"] or {}).get("answer", "")[:400] if c["answer"] else None})
-    from pflab.agents import questions
-    needs = [{"q_id": q, "text": t[:200]} for q, _, t in questions.open_questions(con)][:6]
-    return {"investigations": cards, "needs_from_him": needs, "source": "hq_missions, the board and the questions"}
 
 
 def remember_fact(ctx: Ctx, a: dict) -> dict:
@@ -1705,38 +1533,6 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
          "contract": _s("the evaluation that judges it: index_timing (be in or out each month vs always invested) or deployment (how much of a waiting sum to put in each "
                         "month vs all at the start). A question of another kind is not an experiment: ask for a scenario or a calculation", enum=["index_timing", "deployment"])},
          ("hypothesis", "why_it_matters", "disproof", "source", "contract"), register_experiment),
-    Tool("reproduce_calc", "action", "Run a kept calculation again on the data it originally ran on (the kept snapshot) and list every difference from the kept result. "
-         "Use it to check a calculation before approving it.", {"calc_id": _i("the calculation", 1, 10 ** 9)}, ("calc_id",), reproduce_calc),
-    Tool("submit_review", "journal", "Your independent review of the mission's work, with its own context: verdict approve, revise (with specific requests, each for a role) or "
-         "reject. Check that every number in the evidence and calculations traces to a source or calc, that assumptions are labelled, that a baseline exists for any test, and that "
-         "conclusions do not outrun the evidence.",
-         {"case_id": _i("the case", 1, 10 ** 9), "verdict": _s("verdict", enum=["approve", "revise", "reject"]), "findings": _s("what you checked and found", 1500),
-          "checks": _s("the checks you ran (reproductions, recomputations)", 600),
-          "revisions_json": _s("JSON list of {role: research|quant, what: the specific fix} when revising", 1500)}, ("case_id", "verdict", "findings"), submit_review),
-    Tool("request_artifact", "action", "You need another worker's product to go on: name the role (research or quant) and exactly what you need; a task is queued and yours "
-         "parks until it is done, then resumes. Use it rather than guessing a number or evidence.",
-         {"case_id": _i("the case", 1, 10 ** 9), "role": _s("who", enum=["research", "quant"]), "what": _s("exactly what is needed", 500),
-          "promise_json": _s("what that task must produce, as JSON, for example {\"evidence\": 2} or {\"calc\": 1}", 200)}, ("case_id", "role", "what"), request_artifact),
-    Tool("plan_mission", "journal", "The coordinator's plan for a mission: a JSON list of steps [{key, role (research|quant), goal, promise {evidence|calc|scenario|experiment: n}, "
-         "depends_on [keys]}]. The review and the final answer are added by the system after them. Competing explanations, the baseline and what would change the view belong in the goals.",
-         {"case_id": _i("the case", 1, 10 ** 9), "steps_json": _s("the steps as a JSON list", 4000), "approach": _s("the approach in two sentences", 500)},
-         ("case_id", "steps_json"), plan_mission),
-    Tool("submit_answer", "journal", "The final answer for the investor, in plain words he can act on: what the evidence and calculations show with their ids, assumptions, what ran, "
-         "what could invalidate it, and what you will watch next. Only numbers that the case's artifacts hold.",
-         {"case_id": _i("the case", 1, 10 ** 9), "answer": _s("the answer", 3500), "limitations": _s("what could invalidate the conclusion", 800),
-          "monitor_next": _s("what will be monitored next and the trigger for looking again", 600),
-          "triggers_json": _s("the monitors the system will actually check, as a JSON list: {kind: price_below|price_above (symbol, value), move_pct (symbol, pct), "
-                              "new_document (symbol), review_on (date YYYY-MM-DD)}. A monitoring sentence with no trigger here is not a monitor", 800),
-          "change": _s("on a review or an update: did the conclusion change", enum=["first", "changed", "unchanged"])},
-         ("case_id", "answer", "limitations", "monitor_next"), submit_answer),
-    Tool("amend_investigation", "action", "He changed an instruction in conversation (also look at X, use a different amount, drop a source): record it as the next "
-         "numbered version of that investigation. It persists and the workers replan only what changes. Set scope_change when it changes the question or adds a "
-         "different kind of work, and financial_policy when it touches an amount, rule or limit of his money: those wait for his yes again.",
-         {"case_id": _i("the investigation", 1, 10 ** 9), "instruction": _s("the new instruction in his words", 900),
-          "scope_change": {"type": "boolean", "description": "changes the question or adds a different kind of work"},
-          "financial_policy": {"type": "boolean", "description": "touches an amount, rule or limit of his money"}}, ("case_id", "instruction"), amend_investigation),
-    Tool("decide_plan", "action", "His yes or no to a plan that waits for approval. Use it only when his message in this turn says so; the system checks his words.",
-         {"case_id": _i("the investigation", 1, 10 ** 9), "decision": _s("his decision", enum=["approve", "decline"])}, ("case_id", "decision"), decide_plan),
     Tool("policy_scenarios", "journal", "A HYPOTHETICAL SCENARIO study of how to put a waiting sum into shares: all-in now, his current equal monthly tranches, phased buying "
          "under explicit rules (a reserve bought on a fall) and cash held until a fall, across a sharp fall, a prolonged decline, a fall and recovery, and no crash. You state "
          "the assumptions (the sum, the size of the fall, the horizon, rates); they are shown with the results and nothing is a forecast. Kept as a reproducible calculation.",
@@ -1757,13 +1553,8 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
          "(development 2016-2019, validation 2020-2021, baseline: sell at the listing close; under 20 listings: no conclusion). History of other companies, not a forecast of this one. "
          "Kept as a reproducible calculation.", {"case_id": _i("the case", 1, 10 ** 9), "qty": _i("shares allotted, if known", 1, 10 ** 7), "issue": _n("issue price, if known", 1, 10 ** 6)},
          ("case_id",), ipo_policy_study),
-    Tool("start_investigation", "action", "Start an investigation for something that needs research and judgement (a headline risk, a strategy, an IPO decision): "
-         "a coordinator plans it, research and quant workers do it, an independent reviewer checks it; it runs in the background and reports back here. State his "
-         "goal in his own words. Once per question.", {"goal": _s("his goal in his words", 900)}, ("goal",), start_investigation),
     Tool("open_workspace", "journal", "A scratch case for a calculation or scenario he asked for in conversation (policy_scenarios, ipo_policy_study and case_calculate need a "
          "case_id).", {"topic": _s("what it is for", 200)}, ("topic",), open_workspace),
-    Tool("work_status", "read", "What is being worked on (each investigation's state, owner, current action, blocker, next trigger, answer if finished) and what waits "
-         "for him.", {}, (), work_status),
     Tool("remember_fact", "journal", "Keep what he told you so it survives restarts: kind goal, answer, hypothesis or note, in his words. It never changes a target or limit.",
          {"kind": _s("kind", enum=["goal", "answer", "hypothesis", "note"]), "text": _s("what to keep", 500)}, ("kind", "text"), remember_fact),
     Tool("propose_software_change", "journal", "A tool is missing or something is broken: keep a reproducible issue (and a patch as text, if you have one) for the development "
@@ -1815,18 +1606,6 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
          {"watch": _s("the watch id or the symbol", 20), "why": _s("why it comes off", 300)}, ("watch",), watch_remove),
     Tool("paper_book", "read", "The paper portfolio the system runs by itself (a copy of his portfolio without FDs): holdings with weights and gains, cash, the rails, "
          "holdings over a rail, open orders, recent decisions, its record (decisions scored later) and the gate to his real money.", {}, (), paper_book_tool),
-    Tool("paper_decide", "action", "A decision for the PAPER portfolio (paper missions only): BUY, ADD, REDUCE, SELL, HOLD or WAIT with the evidence, the alternatives and, for HOLD and WAIT, "
-         "the condition for looking again. You choose the direction; code sizes it against the cash and the rails and tells you the numbers. It is executed on paper at the close "
-         "only if the independent review approves the mission.",
-         {"action": _s("the decision", enum=["BUY", "ADD", "REDUCE", "SELL", "HOLD", "WAIT"]), "symbol": _s("the company or ETF symbol (none for WAIT in cash)", 20),
-          "reason": _s("the evidence and reason in plain words", 1200), "alternatives": _s("what else was considered and why not", 800),
-          "amount_rupees": _n("for BUY/ADD: rupees to put in", 1, 10 ** 9), "target_weight_pct": _n("for BUY/ADD: the weight to reach instead of an amount", 0.1, 35),
-          "fraction": _n("for REDUCE: the share of the holding to sell", 0.01, 1), "review_condition": _s("for HOLD and WAIT: what reopens it", 300),
-          "his_view": _s("if he asked about this: what he said and whether this follows or goes against it, and why", 400), "case_id": _i("the mission's investigation", 1, 10 ** 9)},
-         ("action", "reason", "alternatives"), paper_decide),
-    Tool("paper_ask", "action", "He asks the paper portfolio to look into something (for example 'is there an AI bubble, should it invest in AI names and how much'). It is one input: "
-         "the paper team decides, and may go against him with reasons. Use only when his message asks for the paper portfolio.",
-         {"text": _s("what he asked, in his words", 1000)}, ("text",), paper_ask),
     Tool("files", "read", "The files he has dropped and what was read from each: a PDF's pages and characters, a spreadsheet's sheets, rows and figures, and the companies each was "
          "linked to. Start here when he mentions a file, a sheet or a PDF he gave you.", {"about": _s("part of a file name", 60)}, (), files_tool),
     Tool("read_file", "read", "What a dropped file SAYS: a PDF page by page (page=N, or find=a word to see where it appears), a spreadsheet's rows (find=a row label such as 'Net Sales'). "
@@ -1851,9 +1630,7 @@ MAX_STRICT = 20
 MAX_OPTIONAL = 24                                  # optional parameters across the strict tools of one request
 
 
-WORKER_ONLY = ("reproduce_calc", "submit_review", "request_artifact", "plan_mission", "submit_answer", "start_investigation", "open_workspace", "work_status",
-               "remember_fact", "amend_investigation", "decide_plan",
-               "add_rule", "undo_rule", "decide_rule", "answer_question", "paper_decide", "paper_ask", "watch_add", "watch_remove", "propose_allocation")      # S68: the workers' tools; the brain's list is unchanged
+WORKER_ONLY = ("open_workspace", "remember_fact", "add_rule", "undo_rule", "decide_rule", "answer_question", "watch_add", "watch_remove")      # S68: the workers' tools; the brain's list is unchanged
 
 
 def definitions(names=None) -> List[dict]:

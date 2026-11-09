@@ -177,11 +177,3 @@ def test_the_tool_the_job_and_the_world_panel_read_the_same_record(con, monkeypa
     monkeypatch.setattr(benchmark, "settings", lambda table="benchmark": {**benchmark.DEFAULTS, "on": False})
     assert t_benchmark.benchmark(ctx, {}) == {"off": True} and job.enabled_fn(None)[0] is False
 
-
-def test_the_weekly_dossier_carries_the_result_block_and_survives_a_store_without_it(con):
-    from pflab.paper import manager
-    _busy_book(con)
-    benchmark.refresh(con, "IN", DAYS[-1], NOW, levels())
-    assert "RESULT VS ITS OWN BENCHMARK" in manager.dossier_text(con, 1, datetime.combine(DAYS[-1], datetime.min.time()) + timedelta(hours=21))
-    con.execute("DROP TABLE blended_benchmark_s79")
-    assert benchmark.dossier_text(con, DAYS[-1]) == ""

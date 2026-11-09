@@ -10,7 +10,7 @@ import pytest
 from pflab.app import settings as st
 from pflab.paper import watch
 from tests import _edge
-from tests.test_s68_ui import NOW, _mission, server  # noqa: F401  (the fixture)
+from tests.test_s68_ui import NOW, server  # noqa: F401  (the fixture)
 
 pytestmark = [pytest.mark.ui, pytest.mark.skipif(not os.path.exists(_edge.EDGE), reason="Microsoft Edge is not installed here")]
 
@@ -84,12 +84,11 @@ def test_watchlist_shows_an_item_with_its_zone_and_status_and_what_happens_next(
 
 def test_research_overview_says_why_research_exists_and_lists_the_investigations(server, tmp_path):
     rt, port = server
-    _mission(rt)
     steps = [("document.getElementById('screen').innerText", 1.8)]
     errors, res = _edge.shoot(f"http://127.0.0.1:{port}/#/research", str(tmp_path / "res.png"), 1500, 1000, 5, steps)
     assert errors == [], errors
     t = res[0].lower()
-    assert "why it researches" in t and "argues against itself" in t and "one look, start to finish" in t and "compare phased buying" in t
+    assert "why it researches" in t and "argues against itself" in t and "one look, start to finish" in t
 
 
 def test_system_checks_show_the_groups_and_what_failed_and_the_button_runs_them(server, tmp_path):

@@ -219,7 +219,6 @@ def _log(con, kind: str, ok: bool, res: dict) -> None:
 
 def run_topup(workdir: Path, log: bool = True) -> dict:
     import os
-    from pflab.hq import missions
     from pflab.paper import allocation, book, cadence, funds
     old_env = {k: os.environ.get(k) for k in ("PFLAB_PM_DIR", "PFLAB_DATA_DIR")}
     try:
@@ -228,7 +227,6 @@ def run_topup(workdir: Path, log: bool = True) -> dict:
         (pm / "app").mkdir(exist_ok=True)
         t = allocation.propose_allocation(con, {"equity": 70, "gold": 10, "international": 5, "cash": 15}, "x" * 60, datetime(2026, 10, 29, 9, 0))
         allocation.review_target(con, t["target_id"], "approve", "ok", datetime(2026, 10, 29, 9, 5))
-        missions.create(con, datetime(2026, 10, 29, 10, 0), "Paper portfolio: review", pm_dir=pm, origin="paper")
         day = DAYS[8]
         book.catch_up(con, DAYS[7], datetime.combine(DAYS[7], datetime.min.time()) + timedelta(hours=21))
         c: Dict[str, object] = {}
@@ -247,8 +245,6 @@ def run_topup(workdir: Path, log: bool = True) -> dict:
         d = allocation.drift(book.holdings(con, day), allocation.active_target(con))
         cash_line = next(x for x in d["classes"] if x["name"] == "cash")
         c["cash is above its target weight before deploying"] = cash_line["gap_pct"] < -allocation.BAND_PCT
-        missions.create(con, now + timedelta(minutes=5), "Paper portfolio: deploy the top-up", pm_dir=pm, origin="paper")
-        c["once the team has looked, the reason is spent"] = not any("top-up" in w for w in allocation.reasons(con, now + timedelta(hours=1)))
         # the deploy path: orders sized from the gap (as the manager's sizing does under the rails) move cash to the band
         gap = [x for x in allocation.trade_toward(book.holdings(con, day), allocation.active_target(con))["add"] if x["name"] == "equity"]
         if gap:                                                                    # the names with room under the 10% company rail (the manager's sizing would cut the rest)

@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta
 import duckdb
 import pytest
 
-from pflab.hq import missions, tools as tl
+from pflab.hq import tools as tl
 from pflab.ledger import events as ev, system
 from pflab.paper import allocation, book, funds, manager, rails, reseed
 from pflab.pm import store
@@ -216,10 +216,6 @@ def test_drift_and_the_gap_the_manager_works_from(con, tmp_path):
     assert allocation.trade_toward(h, same)["in_band"]
 
 
-def _mission(con, rt):
-    return missions.create(con, NOW, "Paper portfolio: the first review of the portfolio", pm_dir=rt.pm_dir, origin="paper", budget="standard")["case_id"]
-
-
 def _review(con, cid, outcome, at):
     con.execute("INSERT INTO hq_case_reviews VALUES (?,?,?,?,?,?)", [store.next_id(con, "hq_case_reviews", "review_id"), cid, at, "{}", outcome, "notes of the reviewer"])
 
@@ -231,106 +227,7 @@ def _ctx(rt, role="quant", tid=None):
 REASONS = "The book is mostly shares today. Gold has protected it in falls, a foreign index adds a different economy, and cash lets the team wait for prices it set from calculations."
 
 
-def test_the_target_is_proposed_by_the_team_and_active_only_after_the_independent_review(con, rt, tmp_path):
-    _reseed(con, tmp_path)
-    assert allocation.review_due(con, NOW)["due"] and allocation.review_due(con, NOW)["first"]                                      # the first review proposes the first target
-    assert allocation.reasons(con, NOW) and "no allocation target" in allocation.reasons(con, NOW)[0]
-    cid = _mission(con, rt)
-    args = {"equity_pct": 60, "gold_pct": 15, "international_pct": 15, "cash_pct": 10, "sectors": "IT:20, Banks:15", "reasons": REASONS, "case_id": cid}
-    out = tl.TOOLS["propose_allocation"].fn(_ctx(rt), args)
-    assert out["stored"] and out["status"] == "proposed" and allocation.active_target(con) is None
-    assert not allocation.review_due(con, NOW)["due"]                                                                                # in flight: waiting for the review
-    allocation.settle(con, NOW)
-    assert allocation.active_target(con) is None                                                                                      # the mission has not finished
-    _review(con, cid, "approve", NOW + timedelta(hours=1))
-    con.execute("UPDATE hq_missions SET state='done' WHERE case_id=?", [cid])
-    assert allocation.settle(con, NOW + timedelta(hours=2))[0]["status"] == "active"
-    act = allocation.active_target(con)
-    assert act["classes"] == {"equity": 60.0, "gold": 15.0, "international": 15.0, "cash": 10.0} and act["sectors"] == {"IT": 20.0, "Banks": 15.0}
-    assert act["review_due"] == (NOW + timedelta(hours=2)).date() + timedelta(days=7) and act["verdict"] == "approve"
-    assert allocation.settle(con, NOW + timedelta(hours=3)) == []                                                                    # idempotent
-    # the weekly review re-examines it
-    assert not allocation.review_due(con, NOW + timedelta(days=3))["due"] and allocation.review_due(con, NOW + timedelta(days=8))["due"]
-    again = allocation.propose_allocation(con, {"equity": 60, "gold": 15, "international": 15, "cash": 10}, REASONS + " Re-examined: nothing changed.", NOW + timedelta(days=8),
-                                          sectors={"IT": 20, "Banks": 15})
-    assert again["reaffirmed"] and allocation.active_target(con)["review_due"] == (NOW + timedelta(days=15)).date()
-
-
-def test_a_rejected_or_revised_target_never_becomes_active_and_a_new_one_supersedes_the_old(con, rt, tmp_path):
-    _reseed(con, tmp_path)
-    cid = _mission(con, rt)
-    a = allocation.propose_allocation(con, {"equity": 90, "gold": 0, "international": 0, "cash": 10}, REASONS, NOW, case_id=cid)
-    _review(con, cid, "reject", NOW + timedelta(hours=1))
-    con.execute("UPDATE hq_missions SET state='done' WHERE case_id=?", [cid])
-    assert allocation.settle(con, NOW + timedelta(hours=2))[0]["status"] == "reviewed"
-    assert allocation.active_target(con) is None and a["target_id"] == 1
-    cid2 = missions.create(con, NOW + timedelta(days=1), "Paper portfolio: weekly review of the allocation", pm_dir=rt.pm_dir, origin="paper", budget="standard")["case_id"]
-    b = allocation.propose_allocation(con, {"equity": 70, "gold": 10, "international": 10, "cash": 10}, REASONS, NOW + timedelta(days=1), case_id=cid2)
-    c = allocation.propose_allocation(con, {"equity": 65, "gold": 15, "international": 10, "cash": 10}, REASONS, NOW + timedelta(days=1), case_id=cid2)      # revised inside the mission
-    assert con.execute("SELECT status FROM system_allocation_s79 WHERE target_id=?", [b["target_id"]]).fetchone()[0] == "superseded"
-    _review(con, cid2, "approve", NOW + timedelta(days=1, hours=1))
-    con.execute("UPDATE hq_missions SET state='done' WHERE case_id=?", [cid2])
-    allocation.settle(con, NOW + timedelta(days=1, hours=2))
-    assert allocation.active_target(con)["target_id"] == c["target_id"]
-    d = allocation.propose_allocation(con, {"equity": 50, "gold": 20, "international": 20, "cash": 10}, REASONS, NOW + timedelta(days=9))
-    allocation.review_target(con, d["target_id"], "approved", "the reviewer agrees", NOW + timedelta(days=9))
-    assert allocation.active_target(con)["target_id"] == d["target_id"]
-    assert con.execute("SELECT status FROM system_allocation_s79 WHERE target_id=?", [c["target_id"]]).fetchone()[0] == "superseded"
-
-
-def test_only_the_paper_teams_quant_and_coordinator_may_propose_and_the_rails_refuse(con, rt, tmp_path):
-    _reseed(con, tmp_path)
-    cid = _mission(con, rt)
-    args = {"equity_pct": 60, "gold_pct": 15, "international_pct": 15, "cash_pct": 10, "reasons": REASONS, "case_id": cid}
-    assert "only the coordinator and the quant" in tl.TOOLS["propose_allocation"].fn(_ctx(rt, "review"), args)["problem"]
-    assert "only the coordinator and the quant" in tl.TOOLS["propose_allocation"].fn(_ctx(rt, "research"), args)["problem"]
-    assert "paper-portfolio mission" in tl.TOOLS["propose_allocation"].fn(_ctx(rt), {**args, "case_id": 999})["problem"]
-    over = tl.TOOLS["propose_allocation"].fn(_ctx(rt), {**args, "equity_pct": 80})
-    assert over["stored"] is False and "100%" in over["problem"]
-    sec = tl.TOOLS["propose_allocation"].fn(_ctx(rt), {**args, "sectors": "IT:30"})
-    assert sec["stored"] is False and "25%" in sec["problem"]
-    assert "propose_allocation" in tl.WORKER_ONLY and tl.validate(tl.TOOLS["propose_allocation"], {k: v for k, v in args.items() if k != "case_id"}) is None
-    assert con.execute("SELECT count(*) FROM system_allocation_s79").fetchone()[0] == 0
-
-
-def test_the_read_tool_answers_with_no_arguments_before_and_after_a_target(con, rt, tmp_path):
-    assert tl.TOOLS["system_allocation"].kind == "read" and "system_allocation" in tl.TOOLS
-    out = tl.TOOLS["system_allocation"].fn(_ctx(rt), {})                                                                              # before any re-seed: harmless, never raises
-    assert isinstance(out, dict) and out["active"] is None
-    _reseed(con, tmp_path)
-    out = tl.TOOLS["system_allocation"].fn(_ctx(rt), {})
-    assert out["active"] is None and "ALLOCATION" in out["playbook"] and out["review"]["due"]
-    t = allocation.propose_allocation(con, {"equity": 40, "gold": 10, "international": 5, "cash": 45}, REASONS, NOW, sectors={"IT": 10})
-    allocation.review_target(con, t["target_id"], "approve", "ok", NOW)
-    out = tl.TOOLS["system_allocation"].fn(_ctx(rt), {})
-    assert out["active"]["target_id"] == t["target_id"] and out["drift"]["classes"] and out["gaps"]["trim"][0]["name"] == "cash"
-    assert out["review"]["due_on"] == str(NOW.date() + timedelta(days=7)) and "not the investor" in out["how"]
-    text = allocation.dossier_text(con, SEED_DAY)
-    assert "ITS OWN ALLOCATION TARGET" in text and "TRIM cash" in text and "paper_decide" in text
-    assert "ITS OWN ALLOCATION TARGET" in manager.dossier_text(con, _mission(con, rt), NOW)                                           # the team reads it first
-    assert allocation.playbook_text().count("propose_allocation") >= 1
-
-
 # --- ETFs of any kind -------------------------------------------------------------------------------------------------------------------
-
-def test_gold_index_and_international_etfs_may_be_bought_inside_the_etf_rail(con, rt, tmp_path):
-    _reseed(con, tmp_path)
-    total = book.holdings(con, SEED_DAY)["value"]
-    for isin, held in ((GOLD, 200 * 58.0), (NDQ, 52 * 130.0)):
-        assert rails.buy_room(con, isin, SEED_DAY) == pytest.approx(rails.MAX_ETF * total - held, abs=0.01) and rails.buy_room(con, isin, SEED_DAY) > 0
-    assert rails.buy_room(con, SGB, SEED_DAY) == 0.0                                                                                  # an SGB cannot be bought (rail kept)
-    cid = _mission(con, rt)
-    r = manager.decide(con, NOW, cid, {"action": "BUY", "symbol": "NDQETF", "amount_rupees": 90_000, "reason": "a foreign index adds a different economy to a book of Indian shares",
-                                         "alternatives": "keep the cash; buy a gold ETF instead"})
-    assert r["stored"] and r["amount_rupees"] == pytest.approx(90_000)
-    big = manager.decide(con, NOW, cid, {"action": "BUY", "symbol": "GOLDETF", "amount_rupees": 400_000, "reason": "gold has protected the book in earlier falls, so more of it is wanted",
-                                           "alternatives": "keep the cash; buy the international ETF"})
-    assert big["stored"] and big["amount_rupees"] < 400_000 and "the rails" in big["sized"]                                          # cut to the 35% ETF rail
-    oid = book.place(con, NOW, r["decision_id"], NDQ, "buy", amount=90_000)
-    con.execute("UPDATE paper_orders SET placed_at=? WHERE order_id=?", [datetime(2026, 11, 6, 10), oid])
-    done = book.fill(con, date(2026, 11, 9), datetime(2026, 11, 9, 18))
-    assert len(done) == 1 and abs(book.positions(con)[NDQ] - (52 + 90_000 // 130)) < 1e-9 and funds.broker_cash(con) < 500_000
-
 
 def test_an_etf_not_in_the_master_or_without_a_close_still_cannot_be_bought(con, tmp_path):
     _reseed(con, tmp_path)

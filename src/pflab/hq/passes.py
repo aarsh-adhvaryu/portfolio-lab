@@ -83,3 +83,19 @@ def journal(con, limit: int = 30) -> List[dict]:
         d["tools"] = tool_calls(con, d["id"]) if d["role"] in ("brain", "rival") else []
         out.append(d)
     return out
+
+
+def snapshot_id(con, pm_dir) -> str:
+    """The identity of the figures an answer reads: the ledger build's fingerprint and the latest price date. Totals, scenarios and calculations carry it, so two
+    results can be seen to be from the same state of the record, or not. (Moved from the cut `hq/missions.py`.)"""
+    fp = "none"
+    try:
+        from pathlib import Path
+        fp = json.loads((Path(pm_dir) / "app" / "ledger_build.json").read_text(encoding="utf-8")).get("fingerprint", "none")[:8]
+    except Exception:
+        pass
+    try:
+        d = con.execute("SELECT max(date) FROM prices").fetchone()[0]
+    except Exception:
+        d = None
+    return f"{fp}_{d or 'no-prices'}"

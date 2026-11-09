@@ -32,33 +32,6 @@ class Clock:
 
 # --- 2. Pause ---------------------------------------------------------------------------------------------------------------------------------
 
-def test_pause_starts_no_reader_brain_keeper_or_agent_hand_off_but_his_own_order_still_runs(con, tmp_path, monkeypatch):
-    from pflab.agents import analyst as an
-    from pflab.hq import cases, keeper, roster, service
-    monkeypatch.setattr(an, "config", lambda: {"cap": 500.0})
-    calls = []
-    from pflab.hq import missions
-    monkeypatch.setattr(missions, "scan", lambda rt: calls.append("scan") or {})
-    monkeypatch.setattr(keeper, "run", lambda *a, **k: calls.append("keeper"))
-    monkeypatch.setattr(cases, "sweep", lambda *a, **k: calls.append("cases") or [])
-    ran = []
-    monkeypatch.setattr(roster, "runners", lambda: {"calc": lambda rt, t: ran.append(t["id"]) or board.Reply("done")})
-    clock = Clock(NOW)
-    rt = Desk(con, tmp_path / "pm", tmp_path / "data", tmp_path, None, {"preset": "full", "brain": "economy", "scheduler": False,
-                                                                        "drop_watch": False}, clock=clock)
-    mine = board.post(con, "calc", "what is 2 + 2", NOW)                                  # he asked
-    theirs = board.post(con, "calc", "the brain's own follow-up", NOW, frm="brain")       # autonomous
-    assert not service.paid_allowed(rt)
-    for h in range(3):                                                                     # time passes while paused
-        clock.t = NOW + timedelta(hours=h)
-        out = service.round_(rt)
-        assert out.get("paused") is True
-    assert calls == [] and ran == [mine] and board.get(con, theirs)["status"] == "queued"
-    rt.settings["scheduler"] = True                                                        # Resume: the held work starts
-    service.round_(rt)
-    assert theirs in ran and "scan" in calls
-
-
 def test_the_scheduled_tick_runs_nothing_while_paused(tmp_path, monkeypatch):
     from pflab.app import settings as st
     from pflab.hq import desk, service

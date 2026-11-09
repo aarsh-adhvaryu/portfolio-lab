@@ -39,13 +39,6 @@ def _pct(x, digits: int = 1) -> str:
 
 def status(work: Optional[dict], system: Optional[dict]) -> str:
     lines: List[str] = []
-    inv = (work or {}).get("investigations") or []
-    if not inv:
-        lines.append("Nothing is being investigated right now.")
-    for i in inv[:5]:
-        doing = i.get("current_action") or ("finished" if i.get("state") == "done" else "")
-        lines.append(f"Investigation #{i.get('case_id')} ({i.get('state')}): {str(i.get('goal', ''))[:110]}" + (f". {doing}" if doing else "")
-                     + (f". Stuck: {i['blocker']}" if i.get("blocker") else ""))
     need = (work or {}).get("needs_from_him") or []
     if need:
         lines.append("Waiting for you: " + "; ".join(str(n.get("text", n) if isinstance(n, dict) else n)[:120] for n in need[:4]))

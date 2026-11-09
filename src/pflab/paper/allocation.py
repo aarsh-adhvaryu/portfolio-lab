@@ -209,10 +209,14 @@ def propose_allocation(con, weights: dict, reasons: str, now: datetime, *, secto
             "next": "the independent review of this mission judges it; it becomes the active target only if the review approves"}
 
 
+def _verdict(outcome) -> str:
+    o = (outcome or "").strip().lower()
+    return {"approve": "approve", "approved": "approve", "revise": "revise", "revision": "revise", "revised": "revise", "reject": "reject", "rejected": "reject"}.get(o, o)
+
+
 def review_target(con, target_id: int, verdict: str, notes: str, now: datetime) -> dict:
     """Record the independent reviewer's verdict on a proposed target. approve -> active (the one before it is superseded); revise or reject -> 'reviewed', never active."""
-    from pflab.hq import missions
-    v = missions.verdict_of(verdict)
+    v = _verdict(verdict)
     r = _select(con, "target_id=?", [int(target_id)], limit=1)
     if not r or r[0]["status"] != "proposed":
         return {"done": False, "why": "no proposed target with that id"}
