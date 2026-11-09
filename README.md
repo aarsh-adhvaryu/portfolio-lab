@@ -7,7 +7,7 @@ portfolio on its own judgement. **It never places an order.**
 > Maths decides; models read, connect and explain.
 
 ![Python 3.13](https://img.shields.io/badge/python-3.13-3776ab)
-![tests](https://img.shields.io/badge/tests-2%2C736-2ea44f)
+![tests](https://img.shields.io/badge/tests-3%2C065-2ea44f)
 ![DuckDB](https://img.shields.io/badge/store-DuckDB-fff000)
 ![FastAPI](https://img.shields.io/badge/dashboard-FastAPI-009688)
 ![LLMs](https://img.shields.io/badge/LLMs-Claude%20%2B%20local%20Qwen3-d97757)
@@ -16,8 +16,8 @@ portfolio on its own judgement. **It never places an order.**
 | | |
 |---|---|
 | **Code** | ~70,000 lines of Python in 26 packages (`src/pflab`), ~35,000 lines of tests |
-| **Tests** | 2,736 synthetic tests (unit, migration, restart drills, headless-browser UI) |
-| **Releases** | 64 tagged releases, installed and self-updated with backup and rollback |
+| **Tests** | 3,065 synthetic tests (unit, migration, restart drills, headless-browser UI) |
+| **Releases** | 70 tagged releases, installed and self-updated with backup and rollback |
 | **Store** | one DuckDB file, schema v60, migrates itself |
 | **Runs** | 30+ scheduled jobs, 23 agents on one task board, a 15-minute tick that survives sleep and restarts |
 
@@ -183,7 +183,7 @@ src/pflab/
 configs/               tax tables, costs, calendars, models (all dated and sourced)
 docs/                  PLAN, BUILT, STUDIES, RUNNING, frozen protocols
 sandbox/  tools/       sandbox image; backfills, installers, verifier
-tests/                 2,736 synthetic tests
+tests/                 3,065 synthetic tests
 ```
 
 ## Quick start (development)
