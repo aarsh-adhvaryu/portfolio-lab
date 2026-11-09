@@ -125,11 +125,6 @@ def score_due(con, now: datetime, index: Optional[pd.Series]) -> int:
             detail = {"to": str(end[0]), "stock_pct": round(sp, 2), "nifty500_pct": round(ip, 2), "market_adjusted_pct": round(adj, 2), "beta": None if beta is None else round(beta, 2)}
         con.execute("UPDATE paper_claims SET outcome=?, outcome_json=?, scored_at=? WHERE claim_id=?", [out, json.dumps(detail), now, clid])
         n += 1
-    try:                                                        # S79b 18C: every source behind a scored decision is credited with the outcome (idempotent; never blocks scoring)
-        from pflab.paper import provenance as _pv
-        _pv.credit_scored(con, now)
-    except Exception:
-        pass
     return n
 
 

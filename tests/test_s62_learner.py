@@ -245,18 +245,6 @@ def test_wilson_interval():
     assert 0.08 < lo < 0.1 and 0.38 < hi < 0.41
 
 
-def test_small_numbers_no_lesson_then_lesson_applied(con):
-    _suggestions(con, "add", 3, 19)
-    assert record.suggestion_rules(con, "claude-opus-5-5") == []          # 19: a count, not a conclusion
-    _suggestions(con, "add", 0, 6)                                          # now 3 of 25
-    [p] = record.suggestion_rules(con, "claude-opus-5-5")
-    assert p["kind"] == "lesson" and p["passed"] and "3 of 25" in p["text"]
-    pid = record.keep(con, p, NOW)
-    assert con.execute("SELECT status FROM learn_proposals WHERE prop_id=?", [pid]).fetchone()[0] == "applied"
-    assert "3 of 25" in live.brain_text(con)
-    assert record.keep(con, p, NOW) is None                                 # the same lesson is not kept twice
-
-
 def test_proposal_to_investor_then_his_yes_applies(con):
     p = record._p("daily_cap", "tell_investor", "lower the messages to 2 a day", {"n": 25}, 25, "rule", True, "2", "investor")
     pid = record.keep(con, p, NOW)

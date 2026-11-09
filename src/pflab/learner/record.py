@@ -83,74 +83,6 @@ def _p(kind: str, target: str, text: str, evidence: dict, n: int, rule: str, pas
             "value": value, "to": to}
 
 
-def suggestion_rules(con, model: str) -> List[dict]:
-    out = []
-    rows = con.execute("SELECT kind, outcome, answer FROM hq_suggestions WHERE model=? AND outcome IN ('good','bad')",
-                       [model]).fetchall()
-    for kind in sorted({r[0] for r in rows}):
-        mine = [r for r in rows if r[0] == kind]
-        n, k = len(mine), sum(r[1] == "good" for r in mine)
-        if n < MIN_N:
-            continue
-        lo, hi = wilson(k, n)
-        ev = {"good": k, "n": n, "wilson95": [round(lo, 3), round(hi, 3)]}
-        if hi < 0.5:
-            out.append(_p("lesson", f"suggest:{kind}", f"Your '{kind}' suggestions went well in {k} of {n} (95% range "
-                          f"{lo:.0%}-{hi:.0%}, below even): make them only when the facts are strong, and say which.", ev, n,
-                          "Wilson 95% upper bound under 50%", True))
-        elif lo > 0.5:
-            out.append(_p("lesson", f"suggest:{kind}", f"Your '{kind}' suggestions went well in {k} of {n} (95% range "
-                          f"{lo:.0%}-{hi:.0%}, above even): the facts you used for them have worked so far.", ev, n,
-                          "Wilson 95% lower bound over 50%", True))
-    ans = con.execute("SELECT kind, answer FROM hq_suggestions WHERE model=? AND answer IN ('taken','declined')",
-                      [model]).fetchall()
-    for kind in sorted({r[0] for r in ans}):
-        mine = [r for r in ans if r[0] == kind]
-        n, d = len(mine), sum(r[1] == "declined" for r in mine)
-        if n >= MIN_N and d / n >= 0.7:
-            out.append(_p("lesson", f"declined:{kind}", f"The investor declined {d} of {n} of your '{kind}' suggestions: "
-                          "make one only when it clearly matters to his portfolio.", {"declined": d, "n": n}, n,
-                          "declined in at least 70% of 20 or more answers", True))
-    return out
-
-
-def prediction_rules(con, main: str, rival: str) -> List[dict]:
-    def arr(m):
-        r = con.execute("SELECT confidence, base_rate, outcome FROM hq_predictions WHERE model=? AND outcome IS NOT NULL "
-                        "AND base_rate IS NOT NULL ORDER BY pred_id", [m]).fetchall()
-        y = np.array([float(x[2]) for x in r])
-        return (np.array([x[0] for x in r]) - y) ** 2, (np.array([x[1] for x in r]) - y) ** 2
-    out = []
-    bm, bb = arr(main)
-    n = len(bm)
-    if n >= MIN_N:
-        pw = p_better(bb, bm)                                    # base rate's loss below the brain's
-        ev = {"brier_brain": round(float(bm.mean()), 4), "brier_base": round(float(bb.mean()), 4), "n": n,
-              "p_base_better": round(pw, 3)}
-        if pw >= P_SURE:
-            out.append(_p("lesson", "predictions", f"Your predictions scored worse than each stock's own base rate (Brier "
-                          f"{bm.mean():.3f} against {bb.mean():.3f}, n {n}): predict only with a reason the base rate "
-                          "does not already hold, and stay near it.", ev, n, "paired bootstrap P >= 0.9", True))
-        elif pw <= 1 - P_SURE:
-            out.append(_p("lesson", "predictions", f"Your predictions beat the base rate (Brier {bm.mean():.3f} against "
-                          f"{bb.mean():.3f}, n {n}).", ev, n, "paired bootstrap P >= 0.9", True))
-    rm, _ = arr(rival)
-    if n >= MIN_N and len(rm) >= MIN_N:
-        rng = np.random.default_rng(SEED)                        # different passes: an unpaired bootstrap
-        p = float(np.mean(rng.choice(rm, (BOOT, len(rm))).mean(axis=1) < rng.choice(bm, (BOOT, n)).mean(axis=1)))
-        if rm.mean() <= bm.mean() - 0.01 and p >= P_SURE:
-            from pflab.hq import governor as gv
-            cheaper = gv.PRICES.get(rival, (9, 9))[0] < gv.PRICES.get(main, (9, 9))[0]
-            short = {gv.OPUS: "opus", gv.SONNET: "sonnet"}.get(rival, rival)
-            out.append(_p("model", "brain", f"The brain's rival ({rival}) predicted better than the brain ({main}): Brier "
-                          f"{rm.mean():.3f} against {bm.mean():.3f} (n {len(rm)} and {n}, P {p:.2f}). Make it the brain.",
-                          {"brier_rival": round(float(rm.mean()), 4), "brier_brain": round(float(bm.mean()), 4),
-                           "n_rival": len(rm), "n_brain": n, "p": round(p, 3), "cheaper": cheaper}, min(n, len(rm)),
-                          "rival's Brier lower by 0.01 or more, bootstrap P >= 0.9, 20 or more each", True, short,
-                          "live" if cheaper else "investor"))
-    return out
-
-
 def tool_rules(con, now: datetime) -> List[dict]:
     out = []
     rows = con.execute("SELECT tool, count(*), sum(CASE WHEN status='error' THEN 1 ELSE 0 END) FROM hq_tool_calls WHERE "
@@ -287,7 +219,7 @@ def run(con, now: datetime, draft=None, why: str = "weekly") -> dict:
     from pflab.hq import passes
     from pflab.pm.store import next_id
     main, rival = passes.pair()
-    props = suggestion_rules(con, main) + prediction_rules(con, main, rival) + tool_rules(con, now) + limit_rules(con, now)
+    props = tool_rules(con, now) + limit_rules(con, now)                      # S81: the suggestion and prediction rules went with the brain's passes
     props = [p for p in props if not (p["kind"] == "model" and _settings_chose("brain"))]
     model_props: List[dict] = []                      # S80 phase 4: the brain's instructions are cut, so the model proposes none
     kept = [k for p in props if (k := keep(con, p, now)) is not None]

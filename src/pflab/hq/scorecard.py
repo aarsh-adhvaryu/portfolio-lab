@@ -32,63 +32,6 @@ def state_at(index: Optional[pd.Series], day: date) -> str:
     return "near_high" if d["below_high_pct"] < 5 else "pullback" if d["below_high_pct"] < 15 else "deep"
 
 
-def register(con, now: datetime, proposal_id: int, index: Optional[pd.Series] = None) -> int:
-    """State the claim of a proposal at each horizon (idempotent). Needs the price the proposal rested on; without one nothing is claimed."""
-    from pflab.pm.store import next_id
-    p = con.execute("SELECT created_at, case_id, action, isin, symbol, payload_json FROM hq_proposals WHERE proposal_id = ?", [proposal_id]).fetchone()
-    if p is None or p[2] not in KIND or not p[3]:
-        return 0
-    try:
-        pay = json.loads(p[5])
-    except ValueError:
-        return 0
-    px = pay.get("price") or {}
-    if not px.get("value") or not px.get("as_of"):
-        return 0
-    ref_date = date.fromisoformat(str(px["as_of"])[:10])
-    st = state_at(index, ref_date)
-    n = 0
-    for h in HORIZONS:
-        if con.execute("SELECT 1 FROM hq_claims WHERE proposal_id = ? AND horizon_days = ?", [proposal_id, h]).fetchone():
-            continue
-        con.execute("INSERT INTO hq_claims (claim_id, proposal_id, case_id, isin, symbol, action, kind, made_at, ref_date, ref_close, state, horizon_days, due_on) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    [next_id(con, "hq_claims", "claim_id"), proposal_id, p[1], p[3], p[4], p[2], KIND[p[2]], p[0], ref_date, float(px["value"]), st, h, ref_date + timedelta(days=h)])
-        n += 1
-    return n
-
-
-def register_missing(con, now: datetime, index: Optional[pd.Series] = None) -> int:
-    return sum(register(con, now, pid, index) for (pid,) in con.execute(
-        "SELECT proposal_id FROM hq_proposals WHERE status NOT IN ('withdrawn') AND proposal_id NOT IN (SELECT DISTINCT proposal_id FROM hq_claims)").fetchall())
-
-
-def score_due(con, now: datetime, index: Optional[pd.Series]) -> int:
-    """Score every claim past its horizon: outcomes after the day it was made, never before. A claim with no close or index near its horizon for 10 days is void."""
-    from pflab.hq import stocks
-    from pflab.quant import marks
-    n = 0
-    for cid, isin, kind, ref_date, ref_close, due in con.execute(
-            "SELECT claim_id, isin, kind, ref_date, ref_close, due_on FROM hq_claims WHERE scored_at IS NULL AND due_on <= ?", [now.date()]).fetchall():
-        end = marks.close_on(con, isin, due)
-        i0 = marks.index_on(index, ref_date) if index is not None else None
-        i1 = marks.index_on(index, due) if index is not None else None
-        if end is None or end[0] <= ref_date or i0 is None or i1 is None:
-            if (now.date() - due).days > 10:
-                con.execute("UPDATE hq_claims SET outcome = 'void', outcome_json = ?, scored_at = ? WHERE claim_id = ?", [json.dumps({"why": "no close or index level near the horizon"}), now, cid])
-                n += 1
-            continue
-        sp, ip = (end[1] / ref_close - 1) * 100, (i1 / i0 - 1) * 100
-        beta = marks.beta_at(isin, ref_date)
-        adj = sp - (beta if beta is not None else 1.0) * ip
-        out = marks.judge(kind, sp, adj, stocks.round_trip_pct(stocks.DEFAULT_ORDER))
-        con.execute("UPDATE hq_claims SET outcome = ?, outcome_json = ?, scored_at = ? WHERE claim_id = ?",
-                    [out, json.dumps({"to": str(end[0]), "stock_pct": round(sp, 2), "nifty500_pct": round(ip, 2), "market_adjusted_pct": round(adj, 2),
-                                       "beta": None if beta is None else round(beta, 2)}), now, cid])
-        n += 1
-    return n
-
-
 def verdict_of(outcomes: List[Optional[str]]) -> str:
     """One proposal across its scored horizons: held / did not hold / partly held / not yet."""
     got = [o for o in outcomes if o in ("good", "bad")]
@@ -132,15 +75,3 @@ def table(con) -> List[dict]:
         out.append(row)
     return out
 
-
-def sources(con, market: str = "IN") -> dict:
-    """S79b 18C: the source scorecard (which tools, forecasters, warnings, chains and agents stood behind decisions that held), next to the decision scorecard above.
-    Empty when decision provenance is off or nothing is credited yet; never raises."""
-    try:
-        from pflab.paper import provenance as pv
-        if not pv.on() or not pv._has(con, "source_scorecard_s79"):
-            return {"rows": [], "lines": []}
-        sc = pv.scorecard(con, market)
-        return {"rows": sc["rows"], "lines": pv.lines(con, market), "horizon_days": sc["horizon_days"], "min_n": sc["min_n"]}
-    except Exception:
-        return {"rows": [], "lines": []}

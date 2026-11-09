@@ -111,56 +111,6 @@ def _closes(con, start, series):
         con.execute("INSERT INTO prices VALUES (?, ?, ?, 'EQ', 'nse_bhavcopy', now())", [AAA, start + timedelta(days=i), float(v)])
 
 
-def test_a_proposal_states_its_claim_at_three_horizons_once(con):
-    made = datetime(2026, 9, 1)
-    _proposal(con, 1, "BUY", made)
-    idx = _index([119] * 3)
-    assert scorecard.register(con, NOW, 1, idx) == 3 and scorecard.register(con, NOW, 1, idx) == 0
-    assert [r[0] for r in con.execute("SELECT horizon_days FROM hq_claims ORDER BY horizon_days").fetchall()] == [7, 28, 84]
-    assert con.execute("SELECT kind, state FROM hq_claims LIMIT 1").fetchone() == ("add", "near_high")
-    _proposal(con, 2, "DIVERSIFY", made)
-    assert scorecard.register(con, NOW, 2, idx) == 0                                                          # no single price tells: not claimed
-    assert scorecard.register_missing(con, NOW, idx) == 0
-
-
-def test_a_claim_that_held_at_one_horizon_and_not_at_another_is_partly_held(con):
-    made = datetime(2026, 9, 1)
-    start = date(2026, 8, 25)
-    # the stock: 100 on 1 Sep, +10% by day 7, then falls to 90 by day 84; the index goes nowhere
-    path = {made.date() + timedelta(days=d): v for d, v in [(0, 100.0), (7, 110.0), (28, 95.0), (84, 90.0)]}
-    for d, v in path.items():
-        con.execute("INSERT INTO prices VALUES (?, ?, ?, 'EQ', 'nse_bhavcopy', now())", [AAA, d, v])
-    idx = pd.Series(100.0, index=pd.bdate_range("2026-08-01", "2026-12-31"))
-    _proposal(con, 1, "BUY", made)
-    scorecard.register(con, datetime(2026, 12, 20), 1, idx)
-    assert scorecard.score_due(con, datetime(2026, 12, 20), idx) == 3
-    v = scorecard.proposal_view(con, 1)
-    assert [h["outcome"] for h in v["horizons"]] == ["good", "bad", "bad"]
-    assert v["verdict"] == "partly held"                                                                        # right at 5 sessions, wrong at 20 and 60: said so, not rounded
-    assert scorecard.verdict_of(["good", "bad"]) == "partly held" and scorecard.verdict_of(["good", "pending"]) == "holding so far"
-    assert scorecard.verdict_of(["good", "good"]) == "held" and scorecard.verdict_of(["bad", "bad"]) == "did not hold" and scorecard.verdict_of([None]) == "not yet scored"
-
-
-def test_a_wait_is_good_if_the_price_was_lower_later_and_a_claim_with_no_price_goes_void(con):
-    made = datetime(2026, 9, 1)
-    for d, v in [(0, 100.0), (7, 96.0)]:
-        con.execute("INSERT INTO prices VALUES (?, ?, ?, 'EQ', 'nse_bhavcopy', now())", [AAA, made.date() + timedelta(days=d), v])
-    idx = pd.Series(100.0, index=pd.bdate_range("2026-08-01", "2026-12-31"))
-    _proposal(con, 1, "WAIT", made)
-    scorecard.register(con, datetime(2026, 12, 20), 1, idx)
-    scorecard.score_due(con, datetime(2026, 12, 20), idx)
-    rows = dict(con.execute("SELECT horizon_days, outcome FROM hq_claims").fetchall())
-    assert rows[7] == "good" and rows[28] == "void" and rows[84] == "void"                                    # nothing priced near 28 or 84 days: void, not guessed
-
-
-def test_a_future_claim_is_not_scored_early(con):
-    made = datetime(2026, 11, 15)
-    _proposal(con, 1, "BUY", made)
-    idx = pd.Series(100.0, index=pd.bdate_range("2026-08-01", "2026-12-31"))
-    scorecard.register(con, NOW, 1, idx)
-    assert scorecard.score_due(con, datetime(2026, 11, 16), idx) == 0
-
-
 def test_a_rate_is_shown_only_from_twenty_scored_claims(con):
     def add(n, good, bad, state="pullback", action="BUY"):
         for i in range(good + bad):
