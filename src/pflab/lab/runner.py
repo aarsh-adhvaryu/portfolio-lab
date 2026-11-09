@@ -35,15 +35,22 @@ def lab_dir(pm_dir: Path) -> Path:
     return p
 
 
-def build_panel(root: Optional[Path] = None, n_names: int = N_NAMES, start: date = PANEL_START, end: date = PANEL_END) -> dict:
-    """Read the market panel and return {px, turnover, meta, index, bench} (wide frames; keys are ISINs for stocks and 'ETF:<symbol>' for the four ETFs)."""
+INDEX_ETF_KEY = "ETF:NIFTY500_TRI"                            # S81 swing study: the Nifty 500 total-return index held as an ETF (the benchmark of "hold the index")
+INDEX_EXPENSE_RATIO = 0.002                                    # a year, deducted from the index series (assumption of the protocol, rounded up from Nifty 500 ETF costs)
+
+
+def build_panel(root: Optional[Path] = None, n_names: int = N_NAMES, start: date = PANEL_START, end: date = PANEL_END, extras: bool = False, index_etf: bool = False) -> dict:
+    """Read the market panel and return {px, turnover, meta, index, bench} (wide frames; keys are ISINs for stocks and 'ETF:<symbol>' for the four ETFs).
+    `extras` (S81, the daily replay): also `ohlc` (the day's open/high/low as ratios to the close, on the same grid) and `results` {key: [days the financial results became known]}.
+    `index_etf`: also the Nifty 500 total-return index as the held security `ETF:NIFTY500_TRI` (and `index_key`)."""
     from pflab import _duck
     from pflab.construct import compare
     from pflab.data import data_dir, indices
     root = Path(root) if root else data_dir()
     p = (root / "panel" / "prices.parquet").as_posix()
     etf = ",".join(repr(s) for s in ETFS)
-    df = _duck.sql(f"SELECT date, isin, symbol, instrument_type AS kind, adj_close, turnover FROM '{p}' WHERE date >= DATE '{start}' AND date <= DATE '{end}' AND adj_close > 0 "
+    rng_cols = ", open, high, low, close" if extras else ""
+    df = _duck.sql(f"SELECT date, isin, symbol, instrument_type AS kind, adj_close, turnover{rng_cols} FROM '{p}' WHERE date >= DATE '{start}' AND date <= DATE '{end}' AND adj_close > 0 "
                    f"AND ((instrument_type = 'STK' AND series = 'EQ') OR (instrument_type = 'ETF' AND symbol IN ({etf}))) ORDER BY date").df()
     df["date"] = pd.to_datetime(df["date"])
     df["key"] = np.where(df["kind"] == "ETF", "ETF:" + df["symbol"].astype(str), df["isin"].astype(str))
@@ -63,7 +70,78 @@ def build_panel(root: Optional[Path] = None, n_names: int = N_NAMES, start: date
     tri = indices.load("NIFTY500_TRI", root)
     s = tri.assign(date=pd.to_datetime(tri["date"])).set_index("date")["close"].sort_index()
     s = s[(s.index >= pd.Timestamp(start)) & (s.index <= pd.Timestamp(end))]
-    return {"px": px, "turnover": to, "meta": meta, "index": s, "bench": s}
+    out = {"px": px, "turnover": to, "meta": meta, "index": s, "bench": s}
+    if extras:
+        out["ohlc"] = _ohlc_ratios(df, px)
+    if index_etf:
+        _add_index_etf(out, s)
+    if extras:
+        out["results"] = build_results(root, list(out["px"].columns), out["px"].index, end)
+    return out
+
+
+def _ohlc_ratios(df: pd.DataFrame, px: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+    """The day's open, high and low as ratios to the day's close (raw rows, so they are free of the adjustment), on the cleaned price grid. A ratio that is not sane (an error row) is
+    dropped; the replay then uses the close itself."""
+    good = (df["close"] > 0) & df["open"].notna() & df["high"].notna() & df["low"].notna()
+    d = df[good]
+    out = {}
+    for name in ("open", "high", "low"):
+        r = (d[name] / d["close"]).where(lambda x: (x > 0.5) & (x < 1.5))
+        w = d.assign(r=r).pivot_table(index="date", columns="key", values="r", aggfunc="last").reindex(index=px.index, columns=px.columns)
+        out[name] = w.clip(upper=1.0) if name == "low" else (w.clip(lower=1.0) if name == "high" else w)
+    return out
+
+
+def _add_index_etf(data: dict, tri: pd.Series) -> None:
+    """The Nifty 500 total-return index as a held ETF: the index less the expense ratio (a year, daily), very liquid, taxed as equity (STT paid)."""
+    px = data["px"]
+    s = tri.reindex(px.index).ffill().dropna()
+    yrs = (s.index - s.index[0]).days / 365.25
+    px[INDEX_ETF_KEY] = (s * (1.0 - INDEX_EXPENSE_RATIO) ** yrs).reindex(px.index)
+    data["turnover"][INDEX_ETF_KEY] = 1e10
+    data["meta"][INDEX_ETF_KEY] = {"symbol": "NIFTY500_TRI_ETF", "etf": True, "sector": None, "tax": "EQUITY"}
+    data["index_key"] = INDEX_ETF_KEY
+    for df in (data.get("ohlc") or {}).values():
+        df[INDEX_ETF_KEY] = np.nan
+
+
+NEWS_CLOSE_HOUR = 15.5                                         # a result stamped after 15:30 is priced the next session
+
+
+def build_results(root: Path, keys: List[str], sessions: pd.DatetimeIndex, end: date, first_year: int = 2010) -> Dict[str, List[str]]:
+    """{key: [the session on whose close each 'Financial Results' announcement of the name is known]}, from the BSE announcements (category Result, subcategory Financial Results).
+    The time is the dissemination time where the file has one (from mid-2015), else the news time. A stamp after 15:30 is known at the next session's close. The scrip code is mapped
+    to the ISIN valid on that day. Nothing is built for years the files do not cover (the variant that reads it then holds cash)."""
+    import glob
+    base = Path(root) / "bse_announcements"
+    mp = pd.read_parquet(Path(root) / "bse_scrip_isin" / "map.parquet", columns=["scrip_code", "isin", "valid_from", "valid_to"])
+    mp = mp[mp["isin"].isin(keys)]
+    frames = []
+    for yr in range(first_year, end.year + 1):
+        for f in sorted(glob.glob(str(base / str(yr) / "*.parquet"))):
+            d = pd.read_parquet(f, columns=["scrip_code", "category", "subcategory", "news_dt", "dissem_dt"])
+            d = d[(d["category"] == "Result") & (d["subcategory"] == "Financial Results")]
+            if len(d):
+                frames.append(d)
+    if not frames:
+        return {}
+    a = pd.concat(frames, ignore_index=True)
+    ts = a["dissem_dt"].where(a["dissem_dt"].notna(), a["news_dt"])
+    a = a.assign(ts=ts).dropna(subset=["ts"])
+    hour = a["ts"].dt.hour + a["ts"].dt.minute / 60.0
+    day = a["ts"].dt.normalize() + pd.to_timedelta((hour > NEWS_CLOSE_HOUR).astype(int), unit="D")
+    a["day"] = day
+    a = a.merge(mp, on="scrip_code")
+    a = a[(a["day"] >= a["valid_from"]) & (a["day"] <= a["valid_to"]) & (a["day"] <= pd.Timestamp(end))]
+    sess = pd.DatetimeIndex(sessions)
+    pos = sess.searchsorted(a["day"].to_numpy())                 # the first session on or after the stamp's day
+    a = a[pos < len(sess)]
+    a["session"] = sess[pos[pos < len(sess)]]
+    out: Dict[str, List[str]] = {}
+    for k, g in a.groupby("isin"):
+        out[k] = [d.strftime("%Y-%m-%d") for d in sorted(set(g["session"]))]
+    return out
 
 
 def _sector(isin: str) -> Optional[str]:
@@ -74,13 +152,14 @@ def _sector(isin: str) -> Optional[str]:
         return None
 
 
-def panel_data(root: Optional[Path], pm_dir: Path, force: bool = False) -> dict:
-    """The panel, cached in <pm_dir>/lab/ (rebuilt on `force`)."""
+def panel_data(root: Optional[Path], pm_dir: Path, force: bool = False, swing_study: bool = False) -> dict:
+    """The panel, cached in <pm_dir>/lab/ (rebuilt on `force`). Since S81 it carries the day's range and the financial-results days (the daily replay reads them); a cache from before
+    is rebuilt once. `swing_study` is the registered study's own panel (it also holds the Nifty 500 index ETF), cached beside it."""
     d = lab_dir(pm_dir)
-    f = d / "panel"
-    if not force and (f / "px.parquet").exists():
+    f = d / ("panel_swing" if swing_study else "panel")
+    if not force and (f / "px.parquet").exists() and (f / "open_ratio.parquet").exists():
         return load_panel(f)
-    data = build_panel(root)
+    data = build_panel(root, extras=True, index_etf=swing_study)
     f.mkdir(exist_ok=True)
     save_panel(data, f)
     return data
@@ -93,6 +172,12 @@ def save_panel(data: dict, folder: Path) -> None:
     (folder / "meta.json").write_text(json.dumps(data["meta"]), encoding="utf-8")
     data["index"].rename("v").to_frame().to_parquet(folder / "index.parquet")
     data["bench"].rename("v").to_frame().to_parquet(folder / "bench.parquet")
+    for name, df in (data.get("ohlc") or {}).items():
+        df.to_parquet(folder / f"{name}_ratio.parquet")
+    if data.get("results") is not None:
+        (folder / "results.json").write_text(json.dumps(data["results"]), encoding="utf-8")
+    if data.get("index_key"):
+        (folder / "extra.json").write_text(json.dumps({"index_key": data["index_key"]}), encoding="utf-8")
 
 
 def load_panel(folder: Path) -> dict:
@@ -101,7 +186,17 @@ def load_panel(folder: Path) -> dict:
     idx = pd.read_parquet(folder / "index.parquet")["v"]
     bench = pd.read_parquet(folder / "bench.parquet")["v"]
     idx.index, bench.index = pd.to_datetime(idx.index), pd.to_datetime(bench.index)
-    return {"px": px, "turnover": to, "meta": json.loads((folder / "meta.json").read_text(encoding="utf-8")), "index": idx, "bench": bench}
+    out = {"px": px, "turnover": to, "meta": json.loads((folder / "meta.json").read_text(encoding="utf-8")), "index": idx, "bench": bench}
+    ohlc = {n: pd.read_parquet(folder / f"{n}_ratio.parquet") for n in ("open", "high", "low") if (folder / f"{n}_ratio.parquet").exists()}
+    for df in ohlc.values():
+        df.index = pd.to_datetime(df.index)
+    if ohlc:
+        out["ohlc"] = ohlc
+    if (folder / "results.json").exists():
+        out["results"] = json.loads((folder / "results.json").read_text(encoding="utf-8"))
+    if (folder / "extra.json").exists():
+        out.update(json.loads((folder / "extra.json").read_text(encoding="utf-8")))
+    return out
 
 
 def cost_config() -> dict:
@@ -113,7 +208,7 @@ def cost_config() -> dict:
 def write_job(work: Path, data: dict, policies: List[dict], window, grid: Dict[str, list], cfg: Optional[dict] = None, n_shuffles: int = 20, n_mc: int = 1000, seed: int = 80,
               now_spec: Optional[dict] = None) -> None:
     """`policies`: [{"id", "code"}]. The job folder holds everything the run needs and nothing else (it is mounted read-only)."""
-    for name in ("engine.py", "toolkit.py", "lab_runner.py"):
+    for name in ("engine.py", "toolkit.py", "lab_runner.py", "swing.py", "harvest_replay.py"):
         shutil.copy(LAB_DIR / name, work / name)
     save_panel(data, work)
     files = []

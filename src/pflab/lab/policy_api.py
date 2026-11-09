@@ -20,6 +20,12 @@ stands for every combination (the lab runs each and counts every one as a trial)
 `storylines` (live and shadow only; the 2005-2017 replay hands an empty dict, there is no storyline history before this layer): {"open": [{id, claim, direction, probability, influence,
 score, exposure}], "market_tilt": float in [-1, 1], "tilts": {key: float in [-1, 1]}}. A storyline-using policy must read it with `.get`, so it also runs where it is empty.
 `forecasts`, `sims` are dicts (empty until the ensemble and the simulator feed them).
+
+A policy may declare `CADENCE = "daily"` (S81, the swing sleeve): it is then called at every close, not only month-ends, and returns orders instead of weights:
+    {"entries": [{"key", "weight", "stop", "target", "max_days"}, ...], "exits": [key, ...]}
+`stop` and `target` are fractions of the fill price, `max_days` the sessions to hold at most. `state` then also holds `positions` {key: {entry_day, entry_price, days_held, stop, target,
+max_days, last_price, pnl}}, `slots` (free positions) and `results` {key: [the sessions on whose close the name's financial results became known, up to today]}. The replay
+(`lab/swing.py`) fills at the next close, checks stops and targets on the day's range, never sells the shares on the day it bought them (unless a stop fires), and charges slippage.
 """
 from __future__ import annotations
 
@@ -64,6 +70,18 @@ def validate(code: str) -> List[str]:
     if not has_decide:
         problems.append("there is no function decide(state, forecasts, sims, storylines, params=None)")
     return list(dict.fromkeys(problems))
+
+
+def cadence_of(code: str) -> str:
+    """How often a policy decides: "monthly" (the default, the S80 rule) or "daily" (S81 swing: `CADENCE = "daily"` at module level; decide then returns
+    {"entries": [{"key", "weight", "stop", "target", "max_days"}], "exits": [key, ...]} and state also carries `positions`, `slots` and `results`; see `lab/swing.py`)."""
+    try:
+        for node in ast.parse(code).body:
+            if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "CADENCE" for t in node.targets) and isinstance(node.value, ast.Constant):
+                return "daily" if node.value.value == "daily" else "monthly"
+    except SyntaxError:
+        pass
+    return "monthly"
 
 
 def toolkit_module() -> types.ModuleType:

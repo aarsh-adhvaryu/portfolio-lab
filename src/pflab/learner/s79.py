@@ -36,6 +36,12 @@ def register_all(con, now: datetime, studies=None) -> List[str]:
     return done
 
 
+def register_swing(con, now: datetime) -> List[str]:
+    """S81 B5: the swing sleeve (three variants) and exemption harvesting, four tests in the counter (once; idempotent by note key; the protocol's SHA is taken with line ends normalised)."""
+    from pflab.lab import swing_study
+    return swing_study.register(con, now)
+
+
 def register_seats(con, now: datetime) -> List[str]:
     """S79b item 17: the FAST and THINKER seat picks, each one test in the counter (once; idempotent by note key)."""
     return register_all(con, now, SEATS_STUDIES)
