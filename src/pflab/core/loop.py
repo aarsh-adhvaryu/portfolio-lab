@@ -139,7 +139,7 @@ def run(con, now: datetime, root=None, index: Optional[pd.Series] = None, live_d
     note = "; ".join(dec["notes"])
     con.execute("INSERT INTO core_runs_s80 VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 [day, now, pid, status, round(time.time() - t0, 3), json.dumps(brief, default=str), json.dumps({k: round(v, 5) for k, v in dec["weights"].items()}),
-                 json.dumps(chk["clipped"], default=str), json.dumps(placed), json.dumps(chk["skipped"], default=str), note[:400]])
+                 json.dumps(chk["clipped"], default=str), json.dumps(placed), json.dumps(chk["skipped"], default=str), note[:900]])
     card_tokens = None
     try:                                                                  # the book card for the strategist: never allowed to fail the loop
         from pflab.core import card

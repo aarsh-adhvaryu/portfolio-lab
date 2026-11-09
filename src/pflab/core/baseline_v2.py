@@ -71,7 +71,7 @@ def decide(state: dict) -> dict:
         members = [r for r in rows if r["sleeve"] == "core" and r["buyable"] and _group(r) == grp]
         if not members:
             if sh[grp] > 0:
-                notes.append(f"no {grp} ETF is available to buy (none of the configured symbols has a price): {sh[grp]:.0%} left in cash")
+                notes.append(f"no {grp} ETF has a price: {sh[grp]:.0%} stays cash")
             continue
         inv = {r["isin"]: 1.0 / max(state["vol"].get(r["isin"], 0.30), 0.05) for r in members}
         caps = {r["isin"]: policy.cap_of(r) for r in members}

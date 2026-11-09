@@ -133,7 +133,7 @@ def test_a_core_etf_the_store_does_not_know_is_named_not_guessed(con, monkeypatc
     cfg["baseline_v2"]["international_etfs"] = ["NOSUCHETF"]
     s = st.build(con, DAYS[-1], None, calm_index(), cfg=cfg)
     d = baseline_v2.decide(s)
-    assert any("no international ETF is available" in n for n in d["notes"])
+    assert any("no international ETF has a price" in n for n in d["notes"])
 
 
 def test_the_default_target_is_core_60_longterm_35_swing_5_with_gold_and_international_10_each():
