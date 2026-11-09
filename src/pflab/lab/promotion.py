@@ -63,6 +63,8 @@ def check(con, pm_dir: Path, root, now: datetime, challenger_id: str, data: Opti
     base_score = service.latest_run(con, service.BASELINE_ID, "history")["score"]
     sc = service.screen(hist["score"], hist["shuffled"], base_score)
     reasons = list(sc["failed"])
+    idx = service.index_clause(hist["score"])
+    reasons += idx["failed"]
     champ = shadow.champion_row(con)
     if champ and champ["policy_id"] != "baseline_v1" and champ["code"]:
         ch = service.latest_run(con, champ["policy_id"], "history", champ["params"])
@@ -84,7 +86,7 @@ def check(con, pm_dir: Path, root, now: datetime, challenger_id: str, data: Opti
                 reasons.append(f"final check 2018-2021: {fs['cagr']:.1%} against the baseline's {fb['cagr']:.1%}")
             if fs["max_drawdown"] < fb["worst_fall"] - service.SCREEN["max_extra_drawdown"]:
                 reasons.append(f"final check worst fall {fs['max_drawdown']:.1%} is far deeper than the baseline's {fb['worst_fall']:.1%}")
-    return {"ready": not reasons, "reasons": reasons, "history": {"cagr": hist["score"]["cagr"], "dsr": hist["score"].get("dsr"), "max_drawdown": hist["score"]["max_drawdown"]},
+    return {"ready": not reasons, "reasons": reasons, "index_clause": idx, "held_back_only_by_index": bool(sc["ok"] and not idx["ok"]), "history": {"cagr": hist["score"]["cagr"], "dsr": hist["score"].get("dsr"), "max_drawdown": hist["score"]["max_drawdown"]},
             "shadow": rec, "final": None if final is None else {k: v for k, v in final.items() if k != "score"} | ({"cagr": final["score"]["cagr"]} if final.get("score") else {})}
 
 

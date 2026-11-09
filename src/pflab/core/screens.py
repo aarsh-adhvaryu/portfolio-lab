@@ -37,7 +37,9 @@ def policies(con, day: date) -> dict:
         try:
             rec = shadow.record(con, pid)
             hist = lab.latest_run(con, pid, "history")
-            out["challengers"].append({"policy": pid, "history": _score(hist), "shadow_sessions": rec.get("sessions"), "shadow_excess": rec.get("excess")})
+            idx = lab.index_clause(hist["score"]) if hist else None
+            out["challengers"].append({"policy": pid, "history": _score(hist), "shadow_sessions": rec.get("sessions"), "shadow_excess": rec.get("excess"),
+                                       "index_ok": None if idx is None else idx["ok"]})
         except Exception:
             out["challengers"].append({"policy": pid, "history": None, "shadow_sessions": None, "shadow_excess": None})
     try:
@@ -46,6 +48,8 @@ def policies(con, day: date) -> dict:
             out["book_vs_benchmark"] = {"book": b["book"]["return"], "benchmark": b["benchmark"]["return"], "excess": b.get("excess"), "since": str(b.get("since")), "worst_fall": b.get("worst_fall_book")}
     except Exception:
         pass
+    out["index_limit"] = lab.INDEX_CLAUSE["max_lag_vs_index"]
+    out["held_back_by_index_limit"] = sum(1 for c in out["challengers"] if c.get("index_ok") is False)
     runs = con.execute("SELECT count(*), count(*) FILTER (WHERE status='traded') FROM core_runs_s80").fetchone()
     out["closes_run"], out["closes_with_trades"] = int(runs[0]), int(runs[1])
     return out

@@ -98,6 +98,7 @@ def compare(ctx, a):
         row = service.card_row(r)
         row["policy_id"] = pid
         row["screen"] = service.screen(r["score"], r["shuffled"], base["score"]) if base else {"ok": False, "failed": ["no baseline run yet"]}
+        row["index_clause"] = service.index_clause(r["score"])
         out.append(row)
     return {"rows": out, "baseline": None if base is None else service.card_row({**base, "run_id": base["run_id"]})}
 

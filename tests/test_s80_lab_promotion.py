@@ -137,3 +137,19 @@ def test_a_healthy_champion_is_not_rolled_back(con, tmp_path):
         v = 1_000_000 * (1.002 ** i)
         con.execute("INSERT INTO paper_days VALUES (?,?,?,?,?,?)", [date(2026, 11, 1) + timedelta(days=i), v, 0.0, v, 0.0, "{}"])
     assert promotion.rollback_check(con, NOW) is None
+
+
+def test_a_variant_that_trails_the_index_by_more_than_the_limit_is_held_back_by_that_alone(con, tmp_path):
+    """His rule (2026-11-09): promotion also needs the history to trail the Nifty 500 by no more than 2 points a year. The progress measure (the screen against the plain baseline) is untouched."""
+    service.add_variant(con, tmp_path, NOW, "lags_index", MOMENTUM, "beats the plain baseline but trails the Nifty 500 in the history")
+    laggard = {**GOOD, "cagr": 0.13, "bench_cagr": 0.16, "excess_cagr": -0.03}                  # beats the baseline's 11%, trails the index by 3 points
+    _run(con, "lags_index", "history", laggard, params={"n": 5})
+    _run(con, "baseline_lab", "history", BASE)
+    service.make_challenger(con, NOW, "lags_index", {"n": 5})
+    _shadow_days(con, "lags_index", 30)
+    assert service.screen(laggard, {"beats_real_frac": 0.05}, BASE)["ok"]                          # it still counts as beating the baseline (the strategist's progress measure)
+    v = promotion.check(con, tmp_path, None, NOW, "lags_index", data={})
+    assert not v["ready"] and v["held_back_only_by_index"] is True
+    assert any("trails the Nifty 500 by 3.0%" in r and "limit is 2%" in r for r in v["reasons"])
+    ok = {**laggard, "cagr": 0.14, "excess_cagr": -0.015}                                          # inside the limit: no reason from it
+    assert service.index_clause(ok)["ok"] and not service.index_clause({"cagr": 0.1})["ok"]       # (a run with no index comparison cannot pass)

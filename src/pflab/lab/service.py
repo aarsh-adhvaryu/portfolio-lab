@@ -22,6 +22,10 @@ MAX_CHALLENGERS = 5
 SHADOW_SESSIONS = 20                       # live sessions a challenger must not do worse in before it can replace the champion
 # The registered history screen (vs the plain baseline over the same window, after the many-trials penalty):
 SCREEN = {"min_dsr": 0.90, "min_excess_vs_baseline": 0.005, "max_beats_real_frac": 0.10, "max_extra_drawdown": 0.05}
+# His rule (2026-11-09): a policy may not trade the book if its history trails the Nifty 500 by more than this a year. It applies to PROMOTION only: it does not limit what the
+# strategist may try, what enters live shadow, or what counts as beating the plain baseline (the progress measure), so it cannot leave the lab with nothing to pick; how many
+# variants it alone holds back is counted and shown (`core/screens.py`). Changing the limit is his decision.
+INDEX_CLAUSE = {"max_lag_vs_index": 0.02}
 
 
 def now_or(now: Optional[datetime]) -> datetime:
@@ -220,8 +224,19 @@ def screen(score: dict, shuffled: dict, base: dict) -> dict:
     return {"ok": not failed, "failed": failed}
 
 
+def index_clause(score: dict) -> dict:
+    """The Nifty 500 limit on a history score: {ok, lag, failed: [...]}. `excess_cagr` is the policy's after-tax-and-charges return minus the index's over the same days."""
+    ex = score.get("excess_cagr")
+    if ex is None:
+        return {"ok": False, "lag": None, "failed": ["the history run has no comparison with the Nifty 500"]}
+    lag = -float(ex)
+    lim = INDEX_CLAUSE["max_lag_vs_index"]
+    return {"ok": lag <= lim, "lag": round(lag, 4), "limit": lim,
+            "failed": [] if lag <= lim else [f"it trails the Nifty 500 by {lag:.1%} a year in the history (the limit is {lim:.0%})"]}
+
+
 def screen_rules() -> dict:
-    return {**SCREEN, "shadow_sessions": SHADOW_SESSIONS, "note": "all four must hold on the history window; then the final check (2018-2021, once, by code) and 20 live shadow sessions not worse than the champion's"}
+    return {**SCREEN, **INDEX_CLAUSE, "shadow_sessions": SHADOW_SESSIONS, "note": "all four must hold on the history window; then the final check (2018-2021, once, by code) and 20 live shadow sessions not worse than the champion's"}
 
 
 # --- challengers, notes -----------------------------------------------------------------------------------------------------------

@@ -31,7 +31,7 @@ STORYLINES AND VIEWS. Open storylines (a cause-and-effect hypothesis with signal
 RULES THAT CANNOT BE BENT
 - Every number comes from code. You never write a number into a decision; you write rules.
 - A policy has no network, no files, no clock; only the toolkit, numpy and pandas. Code outside the policy holds the rails (a company 10%, a sector 25%, an ETF 35%, no borrowing, no shorting), the circuit breaker and the turnover caps: you cannot change them.
-- You cannot promote and you cannot see the 2018-2021 final check; code runs it once, later. Do not try to overfit the history: a variant that wins only by luck will fail the shuffled-signal measure and the live shadow.
+- You cannot promote and you cannot see the 2018-2021 final check; code runs it once, later. Do not try to overfit the history: a variant that wins only by luck will fail the shuffled-signal measure and the live shadow. Promotion also needs the history to trail the Nifty 500 by no more than 2 points a year (the `index_clause` in compare): it never stops you trying anything, but a variant that beats the plain baseline and still lags the index by more than that cannot trade the book.
 - The money is limited. Plan the session: a few well-chosen variants, one run each. If you run out of budget the session ends where it is.
 - A session that ends with no lab run is logged as wasted and your next budget is halved.
 Reply in short plain sentences between tool calls. Do not re-describe tool results at length."""
