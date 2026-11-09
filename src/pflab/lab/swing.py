@@ -40,7 +40,7 @@ except ImportError:                                                # pragma: no 
 SLIP = {"half_spread_base": 0.0005, "half_spread_cap": 0.005, "turnover_ref": 1e8, "impact_y": 1.0, "sigma_window": 20, "sigma_floor": 0.005}
 SIZING = {"weight": 0.09, "max_positions": 10, "max_new_per_day": 3}
 SWING_CFG = {"entry_fill": "close", "slippage": None, "harvest": False, "harvest_rule": dict(H.DEFAULT_RULE), "slip": dict(SLIP), "sizing": dict(SIZING), "daily_history_rows": 320,
-             "tax": {"st_rate": E.ST_RATE, "lt_rate": E.LT_RATE, "lt_exempt": E.LT_EXEMPT, "slab": E.SLAB, "lt_months": 12}}
+             "tax": {"st_rate": E.ST_RATE, "lt_rate": E.LT_RATE, "lt_exempt": E.LT_EXEMPT, "slab": E.SLAB, "lt_months": 12, "carry_years": 0}}
 ASSUMPTIONS = [
     "fills: decision at the close of t, fill at the close of t+1; stops/targets read the adjusted day range (low/high/open) of the later sessions; both in one session -> the stop",
     "slippage = half_spread + Y * sigma_d * sqrt(order / traded value), half_spread = clip(0.0005 * sqrt(1e8 / traded value), 0.0005, 0.005), Y = 1.0, sigma_d = 20-session daily volatility",
@@ -82,6 +82,57 @@ def tax_with(g: Dict[str, float], tp: dict) -> float:
     return tp["st_rate"] * st + tp["lt_rate"] * max(0.0, lt_eq - tp["lt_exempt"]) + tp["lt_rate"] * lt_o + tp["slab"] * max(0.0, slab)
 
 
+ST_BUCKETS, LT_BUCKETS = ("st_eq", "slab"), ("lt_other", "lt_eq")           # the tax engine's ST_111A / ST_SLAB and LT_112 / LT_112A, in its netting order
+
+
+def net_year(realised: Dict[str, float], carried: List[tuple], fy: int, years: int) -> Tuple[Dict[str, float], List[tuple]]:
+    """One financial year's statutory netting with the losses carried in (`tax.gains.net_year`, on the lab's four buckets): within short-term, within long-term, a short-term loss
+    against long-term gains, then the carried losses oldest first (a short-term loss against anything, a long-term loss against long-term only; none older than `years`).
+    `carried`: [(origin_fy, is_long_term, amount)]. Returns (taxable gains by bucket before the exemption, losses carried out)."""
+    b = {k: float(realised.get(k, 0.0)) for k in ST_BUCKETS + LT_BUCKETS}
+    for order in (ST_BUCKETS, LT_BUCKETS):
+        for k in order:
+            if b[k] < 0:
+                for g in order:
+                    if b[g] > 0:
+                        use = min(-b[k], b[g])
+                        b[k] += use
+                        b[g] -= use
+                    if b[k] >= 0:
+                        break
+    for k in ST_BUCKETS:
+        if b[k] < 0:
+            for g in LT_BUCKETS:
+                if b[g] > 0:
+                    use = min(-b[k], b[g])
+                    b[k] += use
+                    b[g] -= use
+                if b[k] >= 0:
+                    break
+    remaining: List[tuple] = []
+    for origin, is_lt, amt in sorted(c for c in carried if fy - c[0] <= years):
+        for g in (LT_BUCKETS if is_lt else ST_BUCKETS + LT_BUCKETS):
+            if amt <= 1e-12:
+                break
+            if b[g] > 0:
+                use = min(amt, b[g])
+                b[g] -= use
+                amt -= use
+        if amt > 1e-9:
+            remaining.append((origin, is_lt, amt))
+    st_left = sum(b[k] for k in ST_BUCKETS if b[k] < 0)
+    lt_left = sum(b[k] for k in LT_BUCKETS if b[k] < 0)
+    if st_left < 0:
+        remaining.append((fy, False, -st_left))
+    if lt_left < 0:
+        remaining.append((fy, True, -lt_left))
+    return {k: max(v, 0.0) for k, v in b.items()}, remaining
+
+
+def tax_from_taxable(t: Dict[str, float], tp: dict) -> float:
+    return tp["st_rate"] * t["st_eq"] + tp["lt_rate"] * max(0.0, t["lt_eq"] - tp["lt_exempt"]) + tp["lt_rate"] * t["lt_other"] + tp["slab"] * t["slab"]
+
+
 def bucket(tax_class: str, acquired, day, months: int = 12) -> str:
     lt = H.is_long_term(acquired, day, months)
     if tax_class == "EQUITY":
@@ -99,6 +150,25 @@ class TaxBook(E.Book):
         self.slip_paid = 0.0
         self.last_fill = 0.0
         self.trades: List[dict] = []
+        self._carried: List[tuple] = []                            # losses carried into the year being traded (A2); empty when the carry-forward years are 0
+        self._settled: set = set()
+
+    def carry_in(self, fy: int) -> List[tuple]:
+        """The losses carried into financial year `fy`: every earlier year's gains are settled once, in order (the rows are final by then)."""
+        years = int(self.tp.get("carry_years", 0))
+        if not years:
+            return []
+        for y in sorted(k for k in self.gains if k < fy and k not in self._settled):
+            _, self._carried = net_year(self.gains[y], self._carried, y, years)
+            self._settled.add(y)
+        return self._carried
+
+    def year_tax(self, fy: int, g: Dict[str, float]) -> float:
+        """The tax on financial year `fy`'s running gains `g` given the losses carried in (A2); with no carry-forward years, the lab's one-year netting."""
+        if not int(self.tp.get("carry_years", 0)):
+            return tax_with(g, self.tp)
+        taxable, _ = net_year(g, self.carry_in(fy), fy, int(self.tp["carry_years"]))
+        return tax_from_taxable(taxable, self.tp)
 
     def sell_cost(self, k, qty, px, day, kind, tax_class):
         fee = qty * px * self.rate(kind, "sell")
@@ -114,7 +184,8 @@ class TaxBook(E.Book):
         after = dict(before)
         for b, v in gains.items():
             after[b] = after.get(b, 0.0) + v
-        return fee, max(0.0, tax_with(after, self.tp) - tax_with(before, self.tp)), gains
+        fy = E.fin_year(day)
+        return fee, max(0.0, self.year_tax(fy, after) - self.year_tax(fy, before)), gains
 
     def sell(self, k, qty, px, day, kind, tax_class):
         qty = min(qty, self.qty(k))
@@ -136,8 +207,9 @@ class TaxBook(E.Book):
 
 def liquidation(book: TaxBook, row: np.ndarray, cidx: dict, meta: dict, day) -> dict:
     """The value if every holding were sold at the last close: charges (no slippage) and the tax on the sale in the year's books. Deferred tax therefore counts as owed."""
-    gy = dict(book.gains.get(E.fin_year(day), {}))
-    before = tax_with(gy, book.tp)
+    fy = E.fin_year(day)
+    gy = dict(book.gains.get(fy, {}))
+    before = book.year_tax(fy, gy)
     fees, gross = 0.0, 0.0
     for k in list(book.lots):
         q = book.qty(k)
@@ -150,7 +222,7 @@ def liquidation(book: TaxBook, row: np.ndarray, cidx: dict, meta: dict, day) -> 
         gross += q * px
         for b, v in g.items():
             gy[b] = gy.get(b, 0.0) + v
-    tax = max(0.0, tax_with(gy, book.tp) - before)
+    tax = max(0.0, book.year_tax(fy, gy) - before)
     return {"value": book.cash + gross - fees - tax, "tax": tax, "charges": fees}
 
 

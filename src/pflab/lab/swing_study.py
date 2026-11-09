@@ -98,7 +98,9 @@ def tax_params() -> dict:
     from pflab.tax import rules
     r = rules.lookup("EQUITY", date(2025, 4, 1), date(2024, 8, 1), stt_paid=True, listed=True)
     from pflab.lab import engine
-    return {"st_rate": float(r.stcg_rate), "lt_rate": float(r.ltcg_rate), "lt_exempt": float(rules.exemption(2026)), "lt_months": int(r.lt_months), "slab": engine.SLAB}
+    loss = rules.load().t["loss_rule"][0]                                          # A2: the loss rule's carry-forward years, read from its row
+    return {"st_rate": float(r.stcg_rate), "lt_rate": float(r.ltcg_rate), "lt_exempt": float(rules.exemption(2026)), "lt_months": int(r.lt_months), "slab": engine.SLAB,
+            "carry_years": int(loss["carry_forward_years"])}
 
 
 def study_cfg() -> dict:

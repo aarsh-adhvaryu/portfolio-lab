@@ -174,9 +174,35 @@ def test_the_tax_category_switches_after_twelve_months_and_the_rates_come_from_t
     long_ = b.sell_cost("X", 1000.0, 400.0, d0 + relativedelta(months=13), "equity", "EQUITY")
     assert long_[2].keys() == {"lt_eq"} and long_[1] == pytest.approx(0.125 * (long_[2]["lt_eq"] - 125_000.0))
     tp = swing_study.tax_params()                                                                    # read from configs/tax, and equal to the engine's constants
-    assert (tp["st_rate"], tp["lt_rate"], tp["lt_exempt"]) == (engine.ST_RATE, engine.LT_RATE, engine.LT_EXEMPT) and tp["lt_months"] == 12
+    assert (tp["st_rate"], tp["lt_rate"], tp["lt_exempt"]) == (engine.ST_RATE, engine.LT_RATE, engine.LT_EXEMPT) and tp["lt_months"] == 12 and tp["carry_years"] == 8
     for g in ({"st_eq": 50_000.0, "lt_eq": 300_000.0}, {"st_eq": -20_000.0, "lt_eq": 200_000.0}, {"lt_eq": -5000.0, "lt_other": 10_000.0, "slab": 7000.0}):
         assert swing.tax_with(g, tp) == pytest.approx(engine.tax_of(g))
+
+
+def test_losses_carry_forward_as_the_tax_engines_loss_rule_says():
+    tp = swing_study.tax_params()
+    cfg = {**engine.DEFAULT_CFG, **swing.SWING_CFG, "tax": tp}
+    day = date(2021, 6, 1)                                                                            # financial year 2021 (the year starting April 2021)
+
+    def book(prior):
+        b = swing.TaxBook(1e7, cfg)
+        b.gains = {fy: dict(g) for fy, g in prior.items()}
+        b.buy("X", 100_000.0, 100.0, date(2021, 4, 5), "equity")                                       # a short-term lot: sold two months later at +150%
+        return b
+
+    def sale(b):
+        return b.sell_cost("X", 1000.0, 250.0, day, "equity", "EQUITY")
+    gain = sale(book({}))[2]["st_eq"]
+    assert sale(book({}))[1] == pytest.approx(0.20 * gain)                                              # no losses carried: the full short-term tax
+    assert sale(book({2020: {"st_eq": -100_000.0}}))[1] == pytest.approx(0.20 * (gain - 100_000.0))     # a short-term loss of the year before is carried in
+    assert sale(book({2020: {"lt_eq": -100_000.0}}))[1] == pytest.approx(0.20 * gain)                   # a long-term loss never offsets a short-term gain
+    assert sale(book({2012: {"st_eq": -100_000.0}}))[1] == pytest.approx(0.20 * gain)                   # older than 8 years: expired (2021 - 2012 = 9)
+    assert sale(book({2013: {"st_eq": -100_000.0}}))[1] == pytest.approx(0.20 * (gain - 100_000.0))     # 2021 - 2013 = 8: still live
+    assert sale(book({2019: {"st_eq": -30_000.0}, 2020: {"st_eq": -40_000.0}}))[1] == pytest.approx(0.20 * (gain - 70_000.0))   # losses of two years, carried on
+    one_year = swing.TaxBook(1e7, {**engine.DEFAULT_CFG, **swing.SWING_CFG})                            # the default (no carry-forward years) is the lab's one-year netting
+    one_year.gains = {2020: {"st_eq": -100_000.0}}
+    one_year.buy("X", 100_000.0, 100.0, date(2021, 4, 5), "equity")
+    assert one_year.sell_cost("X", 1000.0, 250.0, day, "equity", "EQUITY")[1] == pytest.approx(0.20 * gain)
 
 
 # --- harvesting -------------------------------------------------------------------------------------------------------------------
@@ -329,13 +355,15 @@ def test_the_screen_is_the_protocols_rule():
 def _protocol_rule():
     text = swing_study.PROTOCOL.read_text(encoding="utf-8")
     blocks = [json.loads(b) for b in re.findall(r"```json rule\n(.*?)\n```", text, re.S)]
-    assert len(blocks) == 2
-    return blocks[0], blocks[1]
+    assert len(blocks) == 3
+    return blocks[0], blocks[1], blocks[2]
 
 
 def test_the_protocols_rule_in_code_matches_its_text():
-    a, a1 = _protocol_rule()
-    assert a == swing_study.RULE and a1 == swing_study.RULE_A1
+    a, a1, a2 = _protocol_rule()
+    assert a == swing_study.RULE and a1 == swing_study.RULE_A1 and a2["fy_start_month"] == 4
+    rows = __import__("pflab.tax.rules", fromlist=["load"]).load().t["loss_rule"]
+    assert a2["tax_carry_forward_years"].endswith("(%d)" % rows[0]["carry_forward_years"]) and swing_study.tax_params()["carry_years"] == rows[0]["carry_forward_years"]
     # the numbers the replay and the variants actually use are the protocol's
     assert a["slippage"] == swing.SLIP and a["sizing"] == swing.SIZING and a["harvest"] == {k: v for k, v in swing.SWING_CFG["harvest_rule"].items() if k != "min_room"}
     assert a["history"] == [str(x) for x in runner.HISTORY] and a["final"] == [str(x) for x in runner.FINAL]
