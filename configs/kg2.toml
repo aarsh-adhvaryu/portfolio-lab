@@ -1,0 +1,4 @@
+# The rebuilt knowledge graph (S81 B7, A52). OFF by default: it turns ON only when its nightly audit passes (src/pflab/kg2/audit.py)
+# and the release decides it. With `on = false` the graph is built and audited but never loaded into the store; nothing reads it.
+[kg]
+on = false

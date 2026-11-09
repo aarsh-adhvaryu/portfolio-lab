@@ -1,0 +1,14 @@
+# S81 B7 layer 2: the named relation "same_group_prefix". Two listed companies are in the same group when the first word of their
+# normalised names is on the same line here (a printed, checkable list; no model writes a group). Edit by hand; add a dated comment.
+# 2026-11-09: first list, groups whose company names carry the group name.
+[groups]
+tata = ["tata"]
+adani = ["adani"]
+bajaj = ["bajaj"]
+mahindra = ["mahindra"]
+aditya_birla = ["birla"]
+jsw = ["jsw"]
+hdfc = ["hdfc"]
+icici = ["icici"]
+reliance = ["reliance"]
+vedanta = ["vedanta"]
