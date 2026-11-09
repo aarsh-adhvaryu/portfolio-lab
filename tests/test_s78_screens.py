@@ -82,13 +82,13 @@ def test_watchlist_shows_an_item_with_its_zone_and_status_and_what_happens_next(
     assert int(res[1]) == 1 and int(res[2]) == 1
 
 
-def test_research_overview_says_why_research_exists_and_lists_the_investigations(server, tmp_path):
+def test_research_overview_says_how_the_system_decides_and_lists_the_open_storylines(server, tmp_path):
     rt, port = server
     steps = [("document.getElementById('screen').innerText", 1.8)]
     errors, res = _edge.shoot(f"http://127.0.0.1:{port}/#/research", str(tmp_path / "res.png"), 1500, 1000, 5, steps)
     assert errors == [], errors
     t = res[0].lower()
-    assert "why it researches" in t and "argues against itself" in t and "one look, start to finish" in t
+    assert "how it decides" in t and "tests before it trades" in t and "one close, start to finish" in t and "watching now" in t
 
 
 def test_system_checks_show_the_groups_and_what_failed_and_the_button_runs_them(server, tmp_path):
