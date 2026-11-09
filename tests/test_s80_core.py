@@ -129,7 +129,7 @@ def test_the_loop_places_orders_records_decisions_and_runs_a_session_once(con):
     assert n_orders == len(r["orders"])
     if r["orders"]:
         d = con.execute("SELECT status, case_id, reason FROM paper_decisions ORDER BY decision_id DESC LIMIT 1").fetchone()
-        assert d[0] == "executed" and d[1] is None and d[2].startswith(policy.POLICY_ID)
+        assert d[0] == "executed" and d[1] is None and (d[2].startswith(policy.POLICY_ID) or d[2].startswith("exit manager"))          # S81: a rail trim is the exit manager's
         assert con.execute("SELECT count(*) FROM paper_claims").fetchone()[0] >= 4          # the 7/28/84/182-day claims are registered
     assert loop.run(con, NOW, None, calm_index()) == {"skipped": f"session {DAYS[-1]} already done"}
     assert con.execute("SELECT count(*) FROM paper_acts WHERE loop='core_loop'").fetchone()[0] == 1

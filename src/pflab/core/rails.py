@@ -86,8 +86,9 @@ def clip_weights(state: dict, targets: Dict[str, float]) -> Dict[str, dict]:
     return out
 
 
-def check(con, state: dict, decision: dict) -> dict:
-    """The policy's targets -> the orders that may be placed, and what was clipped or skipped, each with its reason."""
+def check(con, state: dict, decision: dict, skip=()) -> dict:
+    """The policy's targets -> the orders that may be placed, and what was clipped or skipped, each with its reason. `skip`: isins the exit manager already ordered this close (S81)
+    (the rebalance must not trade the same names twice)."""
     cfg = state["cfg"]["rails"]
     band = float(state["cfg"]["baseline"]["band_pts"]) / 100.0
     total, day = float(state["value"]), state["day"]
@@ -97,6 +98,9 @@ def check(con, state: dict, decision: dict) -> dict:
     gauge_on = bool(state["gauge"]["fired"])
     for k, c in clipped.items():
         r = rows[k]
+        if k in skip:
+            skipped.append({"isin": k, "symbol": r["symbol"], "why": "the exit manager already ordered this name at this close"})
+            continue
         cur = r["value"] / total
         gap = c["target"] - cur
         if abs(gap) < band:

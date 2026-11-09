@@ -41,6 +41,34 @@ def _lab_champion(con) -> Optional[dict]:
     return service.get(con, r[0])
 
 
+def _thesis_events(con, day, s: dict) -> list:
+    """Material events (S81 B7) on the names the book holds, dated after the previous close: from the graph when it is on, else none (a graph that is off leaves exits to the levels)."""
+    try:
+        from datetime import datetime as _dt, timedelta
+        from pflab.kg import events as kev
+        held = [r["isin"] for r in s["rows"] if r["weight"] > 0]
+        return list(kev.material_events(con, held, _dt.combine(day - timedelta(days=5), _dt.min.time())) or [])
+    except Exception:
+        return []
+
+
+def _exit_orders(con, now, day, s: dict) -> list:
+    """The exit manager's post-close orders, as rail-shaped orders (never allowed to stop the loop)."""
+    from pflab.core import exits
+    from pflab.paper import book
+    out = []
+    pos = book.positions(con)
+    for o in exits.check_close(con, day, None, s, events=_thesis_events(con, day, s), now=now):
+        qty = o.get("qty")
+        if qty is None and o.get("fraction") is not None:
+            qty = float(pos.get(o["isin"], 0.0)) * float(o["fraction"])
+        value = float(o.get("value") or 0.0)
+        out.append({"isin": o["isin"], "symbol": o.get("symbol") or o["isin"], "side": o["side"], "qty": (None if o["side"] == "buy" else qty), "amount": (round(value, 2) if o["side"] == "buy" else None),
+                    "value": value, "risk_cut": False, "charges": float(o.get("est_charges") or 0.0), "tax": float(o.get("est_tax") or 0.0), "note": "", "from_w": None, "to_w": None,
+                    "reason": o["reason"], "kind": o.get("kind"), "event_id": o.get("event_id")})
+    return out
+
+
 def _decision(con, now, o: dict, index: Optional[pd.Series], day, pid: str = policy.POLICY_ID) -> int:
     from pflab.hq import scorecard
     from pflab.paper import book
@@ -52,9 +80,12 @@ def _decision(con, now, o: dict, index: Optional[pd.Series], day, pid: str = pol
     else:
         fraction = min(1.0, o["qty"] / held) if held > 0 else 1.0
         action = "SELL" if fraction >= 0.999 else "REDUCE"
-    why = (f"{pid}: weight {o['from_w']:.1%} now, target {o['to_w']:.1%} " + ("(risk-sized inside the allocation target)" if pid == policy.POLICY_ID else "(the champion policy's target)")
-           + ("; risk cut by the fall gauge" if o["risk_cut"] else "") + (f"; {o['note']}" if o["note"] else ""))
-    if o["side"] == "sell" and (o["charges"] or o["tax"]):
+    if o.get("reason"):                                                    # an exit-manager order (S81): the reason is written by `core/exits.py`
+        why = f"exit manager ({o.get('kind', 'exit')}): {o['reason']}"
+    else:
+        why = (f"{pid}: weight {o['from_w']:.1%} now, target {o['to_w']:.1%} " + ("(risk-sized inside the allocation target)" if pid == policy.POLICY_ID else "(the champion policy's target)")
+               + ("; risk cut by the fall gauge" if o["risk_cut"] else "") + (f"; {o['note']}" if o["note"] else ""))
+    if o["side"] == "sell" and (o["charges"] or o["tax"]) and not o.get("reason"):
         why += f"; estimated charges Rs {o['charges']:,.0f} and tax Rs {o['tax']:,.0f}"
     did = next_id(con, "paper_decisions", "decision_id")
     con.execute("INSERT INTO paper_decisions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -111,7 +142,14 @@ def run(con, now: datetime, root=None, index: Optional[pd.Series] = None, live_d
                 views_note = "tactical views merged"
         except Exception as e:
             cadence.act(con, now, "core_loop", f"the tactical views could not be applied: {type(e).__name__}: {str(e)[:160]}", False)
-    chk = rails.check(con, s, dec)
+    exit_orders = []
+    try:                                                                   # S81 A51: the exit manager (stops, targets, time, thesis breaks, tax harvesting, rail trims) acts before the rebalance
+        exit_orders = _exit_orders(con, now, day, s)
+    except Exception as e:
+        cadence.act(con, now, "core_loop", f"the exit manager failed ({type(e).__name__}: {str(e)[:160]}): the policy's orders stand", False)
+    chk = rails.check(con, s, dec, skip={o["isin"] for o in exit_orders})
+    if exit_orders:
+        chk = {**chk, "orders": exit_orders + chk["orders"]}
     checked = {"checked": 0, "vetoed": [], "unchecked": None}
     try:                                                                   # the big-trade check (Sonnet), never allowed to stop the book
         from pflab.core import checker
