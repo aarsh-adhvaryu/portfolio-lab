@@ -369,6 +369,7 @@ def test_material_events_reads_thesis_breaks(root, con, monkeypatch):
     assert set(e) == {"isin", "kind", "severity", "ts", "source", "ref", "text"} and isinstance(e["ts"], datetime)
     assert kev.material_events(con, [A], date(2026, 6, 11)) == [e2 for e2 in ev if e2["isin"] == A and e2["ts"] >= datetime(2026, 6, 11)]
     assert kev.material_events(con, [], date(2026, 1, 1)) == []
+    assert not [e for e in ev if e["source"] == "gdelt_gkg1"]                           # a news keyword is a lead (severity low), never a thesis break by itself
 
 
 # ------------------------------------------------------------------ the scope file
@@ -523,3 +524,65 @@ def test_requeue_gives_new_text_scope_names_their_back_years(root):
         n["text"] = True
     assert news.requeue_text(root, man, s) == 0                                           # B, C, D have no rows: nothing to add; and no duplicates
     assert man.counts()["urls"] == {"pending": 6}
+
+
+# ------------------------------------------------------------------ the "graph earns its place" study (measurement only)
+
+def _story(con, sid, kind="market"):
+    con.execute("INSERT INTO storylines_s80 (storyline_id, market, claim, kind, direction, subject, opened_on, status, prior) VALUES (?,'IN','x'||?,?,1,'NIFTY500_TRI',?, 'open', 0.5)",
+                [sid, str(sid), kind, date(2027, 1, 1)])
+
+
+def _pred(con, pid, sid, outcome, made=date(2027, 2, 1), due=date(2027, 3, 1)):
+    con.execute("INSERT INTO storyline_predictions_s80 (pred_id, storyline_id, made_on, horizon_sessions, subject, expected_sign, due_on, outcome) VALUES (?,?,?,?,?,?,?,?)",
+                [pid, sid, made, pid, "NIFTY500_TRI", 1, due, outcome])
+
+
+def _graph_evidence(con, sid, ref="e1"):
+    con.execute("INSERT INTO storyline_evidence_s80 (evidence_id, storyline_id, evidence_date, stance, text, source_kind, source_ref, strength) VALUES (?,?,?,?,?,?,?,1.0)",
+                [sid * 100, sid, date(2027, 1, 15), "for", "t", "kg2_event", ref])
+
+
+def test_study_is_pending_until_enough_scored_predictions_and_date(con):
+    from pflab.kg2 import study
+    r = study.prediction_comparison(con, date(2027, 6, 1))
+    assert r["verdict"] == "pending" and r["graph"]["n"] == 0
+    _story(con, 1)
+    _graph_evidence(con, 1)
+    for i in range(40):
+        _pred(con, i + 1, 1, "good" if i % 4 else "bad")
+    assert study.prediction_comparison(con, date(2027, 6, 1))["verdict"] == "pending"              # no plain arm yet
+    assert study.prediction_comparison(con, date(2027, 4, 1))["verdict"] == "pending"              # not before the date even with data
+
+
+def test_study_pass_and_fail_by_the_registered_rule(con):
+    from pflab.kg2 import study
+    _story(con, 1)
+    _story(con, 2)
+    _graph_evidence(con, 1)
+    for i in range(40):                                                                           # graph arm: 75% hit; plain arm: 50%
+        _pred(con, i + 1, 1, "good" if i % 4 else "bad")
+        _pred(con, 100 + i, 2, "good" if i % 2 else "bad")
+    r = study.prediction_comparison(con, date(2027, 6, 1))
+    assert r["verdict"] == "pass" and r["diff"] == pytest.approx(0.25) and r["z"] >= 1.96
+    con.execute("DELETE FROM storyline_predictions_s80")
+    for i in range(40):                                                                           # same hit rate in both arms: fail, not pending
+        _pred(con, i + 1, 1, "good" if i % 2 else "bad")
+        _pred(con, 100 + i, 2, "good" if i % 2 else "bad")
+    assert study.prediction_comparison(con, date(2027, 6, 1))["verdict"] == "fail"
+    # evidence dated after the prediction does not put a storyline in the graph arm
+    con.execute("DELETE FROM storyline_evidence_s80")
+    con.execute("INSERT INTO storyline_evidence_s80 (evidence_id, storyline_id, evidence_date, stance, text, source_kind, source_ref, strength) VALUES (1,1,?, 'for','t','kg2_event','e',1.0)", [date(2027, 2, 20)])
+    assert study.prediction_comparison(con, date(2027, 6, 1))["graph"]["n"] == 0
+
+
+def test_study_attachment_check_rederives_the_proof(root, con):
+    from pflab.kg2 import study
+    res = audit.run_audit(con, root, ASOF, graph=G(root))
+    assert res["passed"]
+    out = study.attachment_check(con, root, ASOF)
+    assert out["sample_n"] > 0 and out["sample_correct"] == out["sample_n"] and out["verdict"] == "pending"      # too few rows to conclude
+    s = pd.read_csv(root / "kg" / "audit_sample.csv", dtype=str)
+    s.loc[0, "link_proof"] = "scrip 500001 -> INE999999999 valid on 2026-06-10" if s.loc[0, "link_rule"].startswith("filing:") else "org token 'zzz' = alias"
+    s.to_csv(root / "kg" / "audit_sample.csv", index=False)
+    assert study.attachment_check(con, root, ASOF)["sample_correct"] == out["sample_n"] - 1                         # a corrupted proof is caught

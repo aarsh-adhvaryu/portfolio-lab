@@ -35,6 +35,10 @@ RULES: List[Tuple[str, str, "re.Pattern"]] = [(k, s, re.compile(p)) for k, s, p 
     ("management_change", "low", r"(appointment|resignation|cessation|change in).{0,40}(director|ceo|cfo|managing director|key managerial|company secretary|chairman)"),
     ("fund_raise", "low", r"\b(rights issue|preferential|qip|ncd|debenture|fund ?rais\w+|allotment of)"),
     ("corporate_action", "low", r"\b(split|bonus|buyback|buy-back|demerger|merger|amalgamation|scheme of arrangement)\b"),
+    ("order_win", "low", r"^new order received"),
+    ("management_change", "low", r"change in (senior )?management|^cessation|^appointment of"),
+    ("routine", "low", r"(investor presentation|^press release|postal ballot|secretarial compliance|business responsibility|certificate under regulation|"
+                      r"format of initial disclosure|annual report|notice of (annual|extra)|book closure|newspaper)"),
     ("routine", "low", r"(trading window|intimation of|newspaper publication|compliance certificate|shareholding pattern|loss of share certificate|investor (grievance|complaint)|analyst|schedule of)"),
 ]]
 

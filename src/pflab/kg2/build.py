@@ -220,6 +220,8 @@ def news_events(root: Path, asof: date, since: date, scope: dict, cache: Dict[st
         eid = _eid("gdelt_gkg1", r.isin, r.url)
         kind, sev = classify.rule_kind(head)
         kind = "news" if kind == "other" else kind
+        if kind in classify.THESIS_BREAK_KINDS:
+            sev = "low"          # a keyword in an article is a lead, never a thesis break by itself (the model's validated pick may raise it)
         c = cache.get(eid)
         if c and kind == "news":
             kind, sev = c["kind"], c["severity"]
@@ -233,7 +235,9 @@ def news_events(root: Path, asof: date, since: date, scope: dict, cache: Dict[st
 def _read_prices(root: Path, isins: set, asof: date) -> pd.DataFrame:
     import pyarrow.dataset as ds
     d = ds.dataset(str(Path(root) / "panel" / "prices.parquet"))
-    f = ds.field("isin").isin(sorted(isins)) & (ds.field("date") <= asof.isoformat())
+    import pyarrow as pa
+    lim = asof.isoformat() if pa.types.is_string(d.schema.field("date").type) or pa.types.is_large_string(d.schema.field("date").type) else asof
+    f = ds.field("isin").isin(sorted(isins)) & (ds.field("date") <= lim)
     t = d.to_table(columns=["date", "isin", "close", "volume"], filter=f).to_pandas()
     return t
 

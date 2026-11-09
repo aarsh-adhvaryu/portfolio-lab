@@ -2,7 +2,7 @@
 
 `material_events(con, isins, since)` -> [{"isin","kind","severity","ts","source","ref","text"}] for events of the thesis-break kinds (results miss, guidance cut,
 auditor resignation, promoter pledge increase, regulatory action, rating downgrade, fraud/investigation, large order loss) at any severity, and any event of
-severity `high`, whose dissemination timestamp `ts` is at or after `since` (a date or a datetime). Newest first. The tables hold nothing unless the graph's audit
+severity `high` of a FILING, and news events only at severity medium or high (a news keyword alone is severity low: a lead, never a thesis break), whose dissemination timestamp `ts` is at or after `since` (a date or a datetime). Newest first. The tables hold nothing unless the graph's audit
 passed and its switch is on (`kg2/job.py`), so with the graph OFF this returns [].
 """
 from __future__ import annotations
@@ -23,6 +23,7 @@ def material_events(con, isins: Iterable[str], since) -> List[dict]:
     ph = ",".join("?" * len(isins))
     kinds = ",".join("?" * len(THESIS_BREAK_KINDS))
     rows = con.execute(f"""SELECT isin, kind, severity, ts, source, ref, headline FROM kg2_event
-                           WHERE isin IN ({ph}) AND ts >= ? AND ts IS NOT NULL AND (kind IN ({kinds}) OR severity = 'high')
-                           ORDER BY ts DESC, event_id""", [*isins, since_ts, *THESIS_BREAK_KINDS]).fetchall()
+                           WHERE isin IN ({ph}) AND ts >= ? AND ts IS NOT NULL AND ((source = 'bse_announcement' AND (kind IN ({kinds}) OR severity = 'high'))
+                                OR (source <> 'bse_announcement' AND kind IN ({kinds}) AND severity IN ('medium', 'high')))
+                           ORDER BY ts DESC, event_id""", [*isins, since_ts, *THESIS_BREAK_KINDS, *THESIS_BREAK_KINDS]).fetchall()
     return [{"isin": r[0], "kind": r[1], "severity": r[2], "ts": r[3], "source": r[4], "ref": r[5], "text": r[6] or ""} for r in rows]
