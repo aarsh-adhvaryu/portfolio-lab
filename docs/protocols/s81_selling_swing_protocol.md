@@ -152,6 +152,25 @@ whether the study's claim A stays "supported".
 {"final_pass": {"min_excess_L_cagr_vs_index": 0.0, "max_extra_drawdown_vs_index": 0.05, "min_trades": 20}, "shuffled_cagr_is": "liquidation_cagr", "min_trades_forwarded": 40}
 ```
 
+## 7b. Amendment A2 (2026-11-09 night, before any registration and before the run for the record)
+
+**Loss carry-forward.** The first text said the year's gains "net by bucket as the law sets off" and that tax follows the tax engine's dated rows. The tax engine also holds the loss rule
+(`configs/tax/general.toml`, row `set_off_and_carry_forward`: a short-term loss against short-term then long-term gains, a long-term loss against long-term gains only, carried forward
+for 8 years). The S80 lab's book (`engine.Book`) nets within one financial year only and so wastes a bad year's losses, which would charge a high-variance sleeve tax on its good
+years that the law does not charge. For THIS study (`swing.TaxBook`, every arm: swing variants, index control, harvesting arms) the carry-forward is applied exactly as that row says,
+and the number of years is READ from the row, not typed: at each year's settlement the year's buckets are netted (within short-term, within long-term, short-term loss against
+long-term gain, then the carried losses oldest first), what is left over as a loss is carried, and the tax on a sale is the change in the year's tax on its running net given the
+losses carried in. Years are the financial year (1 April to 31 March). The monthly lab engine is not changed.
+
+**Disclosure.** Before this amendment, one un-registered timing replay of each variant (single run, no shuffles, with the one-year net only) was run on the real panel to measure the
+running time; its end values were seen: Rs 4,20,059 (momentum continuation), Rs 5,71,036 (pullback) and Rs 23,43,131 (post-results drift) from Rs 10,00,000, against the index ETF's
+Rs 54,90,147. The amendment is a fidelity fix to the law the protocol already said it follows; it helps variants with losing years and does not help the index arm (which never has a
+loss to carry). Both facts are stated here so that the reader can judge it. No pass line, window, variant or parameter changed.
+
+```json rule
+{"tax_carry_forward_years": "read from configs/tax/general.toml loss_rule.carry_forward_years (8)", "fy_start_month": 4}
+```
+
 ## 8. One run, and the limits stated before it
 
 `lab/swing_study.run` is run ONCE for the record; its result goes to `lab_runs_s80` and `docs/STUDIES.md`. A rerun with changed parameters is a new registered study. Limits: adjusted
