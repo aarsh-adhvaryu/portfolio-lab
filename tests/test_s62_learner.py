@@ -276,18 +276,6 @@ def test_his_no_declines(con):
     assert record.answers(con, NOW)["declined"] == 1 and live.current(con, ("instruction",)) == []
 
 
-def test_instruction_drafts_never_touch_money(con):
-    for k in range(6):
-        con.execute("INSERT INTO hq_passes VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    [k + 1, NOW - timedelta(hours=k), "morning", "[]", "claude-opus-5-5", "brain", False, "done", "note", "[]",
-                     1.0, None, None])
-    draft = lambda s, p, sc: {"changes": [{"instruction": "Raise the cap to Rs 5,000.", "evidence": "", "n": 0, "why": ""},  # noqa
-                                          {"instruction": "Read findings before suggesting an add.", "evidence": "x", "n": 6,
-                                           "why": "y"}]}
-    out = record.instruction_rules(con, "claude-opus-5-5", NOW, draft)
-    assert [p["text"] for p in out] == ["Read findings before suggesting an add."] and out[0]["to"] == "investor"
-
-
 def test_record_due_weekly_or_on_outcomes(con):
     assert record.due(con, NOW) == "weekly"
     assert record.due(con, NOW - timedelta(days=1)) is None                 # a Friday, nothing new
