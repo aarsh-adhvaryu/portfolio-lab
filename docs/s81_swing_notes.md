@@ -1,0 +1,55 @@
+# S81 B5, the lab for swing: notes (agent "swing", 2026-11-09 night)
+
+## What is built
+
+| piece | file | what it does |
+|---|---|---|
+| pre-registration | `docs/protocols/s81_selling_swing_protocol.md` (+ A1, A2) | committed on its own, before any code that runs it; four tests counted in the learner's counter |
+| daily replay | `src/pflab/lab/swing.py` | opt-in per policy (`CADENCE = "daily"`): a decision at every close, fills at the next close, stop / target / time exits from the day's open-high-low, slippage by liquidity, no same-day round trip, per-sleeve trade log, tax book with 12-month category and loss carry-forward, liquidation value, paired bootstrap vs the index ETF, shuffled-signal runs |
+| harvesting | `src/pflab/lab/harvest_replay.py` | `harvest_step(day, lots, prices, gains_ytd, params, blocked)`: the plain function the exit manager (`core/exits.py`) can call; the exits module was not present, so this is the minimal rule from the A51 brief |
+| study driver | `src/pflab/lab/swing_study.py` | `register`, `protocol_ok`, `seed_variants`, `run` (once), `final_check` (once per variant), the rule in code (`RULE`, `RULE_A1`, `screen_variant`, `final_screen`, `harvest_verdict`) |
+| variants | `src/pflab/lab/policies/swing_momentum_continuation.py`, `swing_pullback_in_uptrend.py`, `swing_post_results_drift.py` | lab drafts (candidates only; no grid: one trial each) |
+| panel | `src/pflab/lab/runner.py` | `build_panel(extras=True, index_etf=True)`: the day's open/high/low as ratios to the close, financial-results days by ISIN, the Nifty 500 total-return index as the held ETF `ETF:NIFTY500_TRI` (0.20% a year expense drag) |
+| migration | `src/pflab/pm/mig_s79/m_swing.py` (118) | `swing_study_s81`: verdict rows, unique per (kind, subject), so the final check cannot repeat |
+| tests | `tests/test_s81_swing.py` (21) | all synthetic |
+
+## Decisions (each recorded; the safe fallback is "monthly path as before")
+
+1. The daily mode is opt-in: `engine.evaluate(..., cadence="monthly")` is the default and takes the old code exactly; `lab_runner` reads `CADENCE` from the policy module. A test shows the monthly path never touches `swing.py`, and that the daily machinery run in monthly cadence reproduces `engine.replay`'s value path to the rupee (when the long-term test is pinned to the engine's 365-day rule; the swing book uses calendar months, as the tax engine does, which differs by one day in leap years).
+2. Fills: decision at the close of t, fill at the close of t+1 (as the monthly lab). Stops and targets read the day's adjusted range. Both in one session: the stop. Gap through a stop: the open. A target fills at the target, not at a higher open (conservative).
+3. No same-day round trip is enforced in three places: a sale due on the entry day waits unless it is a stop (only visible with `entry_fill="open"`; the study uses the default close fills, under which nothing can fire on the entry day); a name sold today is not bought today; a harvest sale is bought back next session.
+4. Slippage `half_spread + Y * sigma_d * sqrt(order / traded value)`, `half_spread = clip(0.0005 * sqrt(1e8 / traded value), 0.0005, 0.005)`, `Y = 1`, sigma = 20-session daily volatility. An assumption, not a measurement; always against the trader.
+5. Tax: the rates, the exemption and the 8 carry-forward years are read from the tax engine's dated rows (`configs/tax`), passed in `cfg["tax"]`; the engine's constants are pinned to those rows by a test. Today's law is applied to 2005-2017 (the tax engine refuses earlier dates; the real law then was different: long-term equity gains exempt, short-term 15%), stated in the protocol.
+6. Loss carry-forward (A2): added after I saw the end values of three un-registered timing replays; disclosed in the protocol. It helps losing years of the swing variants and does nothing for the index arm.
+7. Results days: the BSE "Financial Results" announcements, the dissemination time where the file has it (from mid-2015), else the news time; a stamp after 15:30 counts the next session. Checked point in time on the real panel: the traded value on the known session is 2.3 to 2.8 times its 60-session median (1.1 to 1.3 the session before), the dissemination time follows the news time by a median of 0.1 minute (99th percentile 0.2) in 2016-2017. Coverage: 557 of the 600 panel names, 874 events in 2011 rising to 1,647 in 2017; none before 2011 (the variant holds cash then).
+8. Seeding: the three variants are `draft` policies in `core_policies_s80`; `swing_study.seed_variants(con, pm_dir, now)` is idempotent. They become challengers only through `service.make_challenger` after a scored history run and act only after the A50 promotion. Live shadow of a daily policy is not built (the session loop of B6b is where a daily policy runs live): `policy_api.call` / `engine.decision_now` would return no weights for it, so it shadows flat.
+9. Registration: `learner/s79.register_swing(con, now)` (one line added to `app/runtime.py` next to `register_seats`) counts the four tests once; the SHA of the protocol is taken with line ends normalised so a CRLF checkout is not read as an edit.
+10. `engine.monte_carlo(n=0)` returned an IndexError (percentiles of an empty array), which `promotion.final_run` (n_mc=0) would have hit: fixed (`n <= 0` returns `{}`); monthly results unchanged.
+
+## Shared files touched (each a few lines)
+
+`src/pflab/lab/engine.py` (the `_swing()` dispatch at the top of `evaluate`, the `n <= 0` guard in `monte_carlo`), `src/pflab/lab/lab_runner.py` (cadence, optional panel extras, `harvest` mode), `src/pflab/lab/runner.py` (panel extras, `swing_study` panel, job folder copies `swing.py` and `harvest_replay.py`), `src/pflab/lab/policy_api.py` (`cadence_of`, doc), `src/pflab/learner/s79.py` (`register_swing`), `src/pflab/app/runtime.py` (one call). `lab/service.py`, `lab/promotion.py`, `core/*` untouched.
+
+## Results (run once, 2026-11-09 night; full table in `docs/STUDIES.md`, machine-readable in `docs/research/swing_study_results_s81.json`)
+
+- Setup: real workshop panel (600 shares + the Nifty 500 total-return index as an ETF), history 2005-2017, Docker sandbox (`pflab-sandbox:2`, contained), 20 shuffled runs per variant, 1,137 s in all; counter N 49 -> 53 after registration (bar t >= 3.107). The 2018-2021 final window was NOT touched (no variant passed, so by the protocol it is not run).
+- **Claim A: not supported.** Index ETF after tax: 13.4% a year (liquidation basis). Momentum continuation -3.3% (worse than random picks: 100% of shuffled runs beat it), pullback in uptrend -0.1% (better than random picks, about 3.6 points a year, but not better than cash after Rs 8.4 lakh of costs and tax), post-results drift +7.1% (real signal: beats all 20 shuffled runs and their 95th percentile 5.6%; worst fall -7.5% against the index's -63.7%; but it is invested a small part of the time and earns 0.6 points over cash). All three fail excess return, the paired t against the bar and the deflated Sharpe.
+- **Claim B: not supported as registered.** Harvesting added +0.15 points a year for the held index ETF (tax saved Rs 1,55,688 against Rs 10,888 of extra costs) and took 0.05 points a year off a monthly-rebalanced stock book (tax saved Rs 11,994 against Rs 30,492). The rule needed both arms.
+- Corrections found by me after the run, recorded: (1) the drawdown difference was computed with the wrong sign (index minus variant), so the first screen printed false "worst fall" failures for the pullback and drift variants; the stored scorecards were re-screened with the right sign, verdicts did not change (all fail on the other conditions); a test now pins the sign. (2) Before the run, the carry-forward amendment A2 (see the protocol's disclosure).
+- Honest limits: the 2005-2017 sample is one market, today's tax law is applied to it, the results coverage is partial (557 of 600 names, none before 2011: the drift variant was out of the market before 2011), the deflated Sharpe used three trials (a fresh store), no variant was tuned, none was retried.
+- Suggestions only (each would be a NEW registered test and a trial): a drift overlay on top of an index core instead of a stand-alone sleeve (its signal is real, the idle cash is the drag); harvesting limited to buy-and-hold core ETFs.
+
+## What is OFF, and how to switch things on
+
+- Nothing of this item acts live. The three variants are lab drafts (`swing_study.seed_variants(con, pm_dir, now)`, idempotent; the coordinator should call it where the lab seeds `baseline_lab`, e.g. beside `service.ensure_baseline`). They enter shadow only through `make_challenger` and act only after the A50 promotion; both are B3's.
+- `learner.s79.register_swing` (called from `app/runtime.py`) counts the four tests and writes the recorded verdicts and the three trials onto the app's store once.
+- `harvest_replay.harvest_step` is the function the exit manager can call; it is not wired into any live path (B4).
+- A daily policy in live shadow is not built here (see decision 8): the session loop (B6b) is where a daily policy runs live.
+
+## Tests (`tests/test_s81_swing.py`, 23, all synthetic and passing)
+
+Stop fills at the stop or worse, never better (40 random gaps and lows); target fills at the target minus slippage; time exit; both in one session takes the stop; no same-day round trip (target waits, stop may fire, a harvest sale is bought back a later session, a name sold today is not bought today); the monthly path never touches `swing.py` and the daily machinery in monthly cadence reproduces `engine.replay` to the rupee; slippage grows with the order's share of turnover and is never negative; tax category switches after 12 calendar months and the rates, exemption and carry-forward years equal the tax engine's rows; losses carry forward as the loss rule says (eight years, long-term loss never against a short-term gain); `harvest_step` rules; the three variants decide on the signals they state and run in the sandbox harness; point-in-time results; the index control and its liquidation tax; paired bootstrap; the screen is the protocol's rule; the protocol's JSON rule blocks equal the code; registration counts four tests once, the bar rises, a CRLF checkout is not an edit and a real edit is caught; the recorded verdicts follow from the stored scorecards by the registered rule and are written onto a store once; seeding makes drafts only; the final check refuses a second look. Also run and green: `test_s80_lab*`, `test_s80_strategist`, `test_s79_register`, `test_s79b_studies`, `test_s79b_construct`, `test_s64_counter`, `test_app`, `test_app_54e`.
+
+## What is left
+
+Wire `seed_variants` where the lab seeds; B4 may call `harvest_step` (and should read the claim-B result above); B6b: daily policies in the session loop (the `positions` / `slots` / `results` state and the order shape are in `policy_api.__doc__`, shown to the strategist by `toolkit_help`); the strategist's system prompt (`lab/strategist.py`) still describes weight policies only.

@@ -39,7 +39,9 @@ def register_all(con, now: datetime, studies=None) -> List[str]:
 def register_swing(con, now: datetime) -> List[str]:
     """S81 B5: the swing sleeve (three variants) and exemption harvesting, four tests in the counter (once; idempotent by note key; the protocol's SHA is taken with line ends normalised)."""
     from pflab.lab import swing_study
-    return swing_study.register(con, now)
+    done = swing_study.register(con, now)
+    swing_study.apply_recorded(con, now)                                   # the run for the record is written onto this store once (its verdicts, its trials)
+    return done
 
 
 def register_seats(con, now: datetime) -> List[str]:

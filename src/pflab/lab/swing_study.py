@@ -225,6 +225,7 @@ def run(con, pm_dir: Path, root, now: datetime, box=None, data: Optional[dict] =
             continue
         service.record_rows(con, now, vid, "history", res["results"][vid], None, bool(res.get("contained")), float(res.get("seconds") or 0.0))
         out["variants"][vid] = {"contained": bool(res.get("contained")), "seconds": res.get("seconds")}
+        out.setdefault("assumptions", {k: res["results"][vid].get(k) for k in ("notes", "slippage", "sizing", "tax")})        # the fill model and its parameters, recorded with the result
     for vid in list(out["variants"]):
         service.redeflate(con, vid)                                               # the bar rose with every variant tried: the deflated Sharpe is over all of them
     n = counter.n_tests(con)
@@ -248,6 +249,36 @@ def run(con, pm_dir: Path, root, now: datetime, box=None, data: Optional[dict] =
     out["claim_a"] = "supported" if any(v["screen"]["ok"] for v in out["variants"].values()) else "not supported"
     out["n_tests"] = n
     return out
+
+
+RESULTS = REPO / "docs" / "research" / "swing_study_results_s81.json"
+
+
+def apply_recorded(con, now: datetime, path: Optional[Path] = None) -> int:
+    """The verdicts of the run for the record (2026-11-09 night, on the workshop's real panel in the Docker sandbox) are written onto THIS store, once: the three variants' history
+    scorecards as trials in `lab_runs_s80` (so the deflated Sharpe counts them), a row each in `swing_study_s81` (so `run` refuses a second run), and the verdict on the four
+    registration rows of the counter. Only when the protocol is the registered one and is the one that was run. Returns the rows written."""
+    from pflab.lab import service
+    p = path or RESULTS
+    if not p.exists() or con.execute("SELECT 1 FROM swing_study_s81 WHERE kind='history' LIMIT 1").fetchone():
+        return 0
+    rec = json.loads(p.read_text(encoding="utf-8"))
+    ok = protocol_ok(con)
+    if not (ok["registered"] and ok["unchanged"]) or rec.get("protocol_sha256") != protocol_sha():
+        return 0
+    n = 0
+    for vid, v in rec["variants"].items():
+        service.record_rows(con, now, vid, "history", {"runs": [v["run"]], "n_trials": len(rec["variants"])}, None, bool(v.get("contained")), float(v.get("seconds") or 0.0))
+        service.redeflate(con, vid)
+        _store(con, now, "history", vid, "2005-2017", v["verdict"], {"screen": {k: v[k] for k in ("verdict", "failed", "t_bar")}, **v["run"]})
+        _mark(con, VARIANTS[vid], v["verdict"] in ("pass", "pass_thin"), {**v["run"]["score"], "_t_bar": v["t_bar"]})
+        n += 1
+    h = rec.get("harvest")
+    if h:
+        _store(con, now, "harvest", "harvest", "2005-2017", h["verdict"]["verdict"], h)
+        _mark(con, HARVEST_NOTE, bool(h["verdict"]["ok"]))
+        n += 1
+    return n
 
 
 def final_check(con, pm_dir: Path, root, now: datetime, variant: str, data: Optional[dict] = None, box=None) -> dict:

@@ -320,6 +320,21 @@ def test_the_index_control_pays_charges_slippage_and_tax_and_the_liquidation_cou
     assert 0 < L < float(np.exp(0.6 / 4) - 1)
 
 
+def test_the_drawdown_difference_has_the_sign_the_screen_reads_negative_means_deeper_than_the_index():
+    idx = pd.bdate_range("2012-01-02", "2014-12-31")
+    px = pd.DataFrame({"ETF:IDX": 100 * np.exp(-np.linspace(0, 0.5, len(idx))), "B": 100.0}, index=idx)         # an index that only falls
+    d = {"px": px, "turnover": pd.DataFrame(1e10, index=idx, columns=px.columns), "index": px["B"], "bench": px["ETF:IDX"], "index_key": "ETF:IDX",
+         "meta": {"ETF:IDX": {"symbol": "IDX", "etf": True, "sector": None, "tax": "EQUITY"}, "B": {"symbol": "B", "etf": False, "sector": None, "tax": "EQUITY"}}}
+    cfg = {**CFG}
+    index_run = swing.hold_run(d, "2012-01-02", "2014-12-31", cfg)
+    cash_run = swing.replay_daily(lambda *a, **k: {"entries": [], "exits": []}, {}, d, "2012-01-02", "2014-12-31", cfg, None, "daily")           # never trades: no fall at all
+    s = swing.score_swing(cash_run, d, cfg, index_run)
+    assert s["max_drawdown"] > s["index_max_drawdown"] and s["extra_drawdown_vs_index"] > 0.2                                                       # shallower than the index: positive
+    assert not [f for f in swing_study.screen_variant({**s, "dsr": 1.0, "t_vs_index": 99.0, "excess_L_vs_index": 1.0}, {"beats_real_frac": 0.0, "liq_cagr_p95": -1.0}, 50)["failed"] if "worst fall" in f]
+    deeper = swing.score_swing(index_run, d, cfg, cash_run)                                                                                          # the index judged against the cash arm: deeper
+    assert deeper["extra_drawdown_vs_index"] < -0.2
+
+
 def test_the_paired_bootstrap_finds_a_real_edge_and_not_noise():
     rng = np.random.default_rng(5)
     idx = pd.bdate_range("2010-01-04", periods=1500)
@@ -400,6 +415,26 @@ def test_registration_counts_four_tests_once_the_bar_rises_and_a_changed_protoco
     fake.write_bytes(raw + b"\nan edit\n")
     assert not swing_study.protocol_ok(con)["unchanged"]
     with pytest.raises(RuntimeError):
+        swing_study.run(con, tmp_path, None, NOW, data={})
+
+
+def test_the_recorded_run_is_reproduced_by_the_rule_in_code_and_written_onto_a_store_once(tmp_path):
+    from pflab.learner import counter
+    rec = json.loads(swing_study.RESULTS.read_text(encoding="utf-8"))
+    assert rec["protocol_sha256"] == swing_study.protocol_sha()                                       # the protocol file is the one that was run
+    for vid, v in rec["variants"].items():
+        again = swing_study.screen_variant(v["run"]["score"], v["run"]["shuffled"], rec["n_tests"])
+        assert again["verdict"] == v["verdict"] and again["failed"] == v["failed"], vid               # the stored verdicts follow from the stored scorecards by the registered rule
+    assert swing_study.harvest_verdict(rec["harvest"]["arms"])["verdict"] == rec["harvest"]["verdict"]["verdict"]
+    con = store.connect(tmp_path / "a.duckdb")
+    n0 = counter.n_tests(con)
+    assert swing_study.apply_recorded(con, NOW) == 0                                                  # not registered yet: nothing is written
+    swing_study.register(con, NOW)
+    assert swing_study.apply_recorded(con, NOW) == 4 and swing_study.apply_recorded(con, NOW) == 0     # once
+    assert counter.n_tests(con) == n0 + 4 and service.n_trials(con) == 3                               # the three variants are trials in the deflated Sharpe
+    assert con.execute("SELECT count(*) FROM learn_tests WHERE note LIKE 's81:%' AND passed IS NOT NULL").fetchone()[0] == 4
+    assert swing_study.stored(con, "history", "swing_post_results_drift")["verdict"] == "fail"
+    with pytest.raises(RuntimeError, match="already been run"):
         swing_study.run(con, tmp_path, None, NOW, data={})
 
 

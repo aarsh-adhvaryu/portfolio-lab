@@ -566,7 +566,7 @@ def score_swing(run: dict, data: dict, cfg: dict, index_run: Optional[dict] = No
         Li, liqi = liq_cagr(index_run, start, cfg)
         pt = paired_t(v, index_run["value"])
         ddi = float((index_run["value"] / index_run["value"].cummax() - 1).min())
-        s.update({"index_liq_cagr": Li, "excess_L_vs_index": L - Li, "t_vs_index": pt["t"], "p_vs_index": pt["p"], "index_max_drawdown": ddi, "extra_drawdown_vs_index": ddi - s["max_drawdown"],
+        s.update({"index_liq_cagr": Li, "excess_L_vs_index": L - Li, "t_vs_index": pt["t"], "p_vs_index": pt["p"], "index_max_drawdown": ddi, "extra_drawdown_vs_index": s["max_drawdown"] - ddi,
                   "index_tax_paid": index_run["book"].tax, "index_liq_tax": liqi["tax"]})
     return s
 
