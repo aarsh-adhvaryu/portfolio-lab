@@ -22,15 +22,27 @@ def _enabled(ctx):
     return (True, "") if switch.on() else (False, "the graph is OFF (configs/kg2.toml [kg] on = false)")
 
 
+def _missing_inputs(root) -> str:
+    """The graph's raw inputs are files the collectors bring (the instrument names behind the index membership). A data folder without them is waiting for them, not broken (drill, S81)."""
+    p = Path(root) / "index_membership" / "name_map.parquet"
+    return "" if p.exists() else f"the graph's raw inputs are not there yet ({p.name} under {p.parent.name}): waiting for the collectors"
+
+
 def _nightly(ctx) -> dict:
     from pflab import markets
     from pflab.kg2 import job
+    why = _missing_inputs(ctx.data_root)
+    if why:
+        return {"skipped": why, "waiting": True}
     day = markets.get("IN").session_closed_by(ctx.now)
     return job.run(ctx.con, ctx.data_root, day, classify_limit=40, now=ctx.now)
 
 
 def _topup(ctx) -> dict:
     root = Path(ctx.data_root)
+    why = _missing_inputs(root)
+    if why:
+        return {"skipped": why, "waiting": True}
     tool = Path(__file__).resolve().parents[3] / "tools" / "news_s81_run.py"
     pid_file = root / "news_s81" / "run.pid"
     if pid_file.exists():

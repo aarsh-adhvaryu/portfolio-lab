@@ -529,8 +529,10 @@ def run_once(con, now: datetime, quotes: Optional[Dict[str, float]] = None, bars
                 plan = dict(t["plan"] or {})
                 if t.get("stop_price"):
                     plan.setdefault("stop_price", t["stop_price"])
+                    plan.setdefault("stop", t["stop_price"])           # drill (S81): the exit manager's override keys are `stop` and `target`; with only the `_price` names the trigger's own levels were ignored
                 if t.get("target_price"):
                     plan.setdefault("target_price", t["target_price"])
+                    plan.setdefault("target", t["target_price"])
                 pid = _open_plan(con, now, t["isin"], r["price"], r["qty"], plan or None, market)
                 con.execute("UPDATE session_triggers_s81 SET status='fired', fired_at=?, fired_price=? WHERE trigger_id=?", [now, r["price"], t["trigger_id"]])
                 if pid and t.get("stop_price") and _exits() is None:
