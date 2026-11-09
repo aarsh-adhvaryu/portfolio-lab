@@ -320,6 +320,12 @@ def create_app(rt) -> FastAPI:
         from pflab.app import world
         return world.build(rt, rt.clock())
 
+    @app.get("/api/core")
+    def core_screens():
+        """S80: what Today shows of the v2 core: the spend by use, the champion against the plain baseline with its challengers, and the open storylines."""
+        from pflab.core import screens
+        return json.loads(json.dumps(screens.view(rt.cursor(), rt.clock()), default=str))
+
     @app.post("/api/world/pause")
     def world_pause(paused: bool = Body(..., embed=True)):
         """Pause or resume the system's own routines (the scheduler setting). Work already running finishes; nothing new starts while paused."""

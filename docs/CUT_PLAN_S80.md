@@ -32,3 +32,6 @@ The last five are woven into the app's server, its chat assistant and the 130-to
 
 ## What is not done and why
 The screens (main page spend panel, champion against baseline, storylines) are not wired: the data is there (`strategist.spend_report`, the book card, `story/numbers.py`) and the redesign's UI is a separate piece of work to be seen and judged on his screen.
+
+## Update 2026-11-09 (after his "get this done")
+Steps 1 to 3 are DONE and merged: triggers, arrivals, readers, suggestions and proposals are deleted with their routes, tools, screens and tests. Measured while doing it: `hq/scorecard.py` cannot go (the close loop and the paper provenance read it), and the brain's `think`, the worker loop and `missions` are the chat's and the Telegram asks' engine. Steps 4 and 5 therefore start with a new chat path (the assistant answering from tools without a mission or a brain pass), and only then the brain passes, missions, workers, board, roster, cases, plans, playbooks and pool can go. The three screens the redesign asked for are built (`core/screens.py`).

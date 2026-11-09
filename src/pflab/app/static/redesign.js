@@ -18,7 +18,28 @@ const RD = (() => {
   }
 
   /* ---- Today: one page ---- */
-  function today(d, sc) {
+  /* ---- the v2 core on Today (S80): spend by use, the champion against the plain baseline, the open storylines. Every figure comes from /api/core. ---- */
+  const cp = (x, dg = 1) => (x == null ? '—' : pct(x, dg, true));
+  function coreCards(cv) {
+    if (!cv) return '';
+    const sp = cv.spend, po = cv.policies, st = cv.storylines;
+    const spend = sp ? `<section class="rd-card"><h2>What the strategist costs</h2>
+        <div class="rd-row small" style="justify-content:space-between"><span>This month</span><b>${rs(sp.month.total)}</b></div>
+        <div class="small muted">strategist ${rs(sp.month.strategist)} · checker ${rs(sp.month.checker)} · escalation ${rs(sp.month.escalation)}</div>
+        <div class="small">${sp.lab_runs} lab runs · ${sp.challengers_added} challengers added · ${sp.promotions} promotions${sp.runs_per_100_rupees != null ? ` <span class="muted">(${sp.runs_per_100_rupees} runs, ${sp.challengers_per_100_rupees} challengers per Rs 100)</span>` : ''}</div>
+        ${sp.next_session_budget != null ? `<div class="small muted">next session may spend ${rs(typeof sp.next_session_budget === 'object' ? (sp.next_session_budget.rupees != null ? sp.next_session_budget.rupees : 0) : sp.next_session_budget)}</div>` : ''}</section>` : '';
+    const row = (n, h) => `<div class="rd-row small" style="justify-content:space-between"><span>${esc(n)}</span><span>${h ? `${cp(h.cagr)} a year · ${cp(h.excess_cagr)} over the Nifty 500` : 'not run yet'}</span></div>`;
+    const pol = po ? `<section class="rd-card"><h2>The policy that trades</h2>
+        <div class="small"><b>${esc(po.champion || 'none yet')}</b>${po.since ? ` <span class="muted">since ${esc(po.since)}</span>` : ''} <span class="muted">· ${po.closes_run} closes run, ${po.closes_with_trades} with trades</span></div>
+        <div class="small muted" style="margin-top:4px">Tested on 2005 to 2017, after tax and charges</div>
+        ${row('Champion', po.champion_history)}${row('Plain baseline', po.baseline_history)}
+        ${po.book_vs_benchmark ? `<div class="small" style="margin-top:4px">Live: the book ${cp(po.book_vs_benchmark.book, 2)} against ${cp(po.book_vs_benchmark.benchmark, 2)} for its benchmark since ${esc(po.book_vs_benchmark.since)}</div>` : '<div class="small muted">No live score yet: it starts after the book has marked days.</div>'}
+        ${po.challengers.length ? `<div class="small muted" style="margin-top:4px">Challengers in shadow</div>` + po.challengers.map((c) => `<div class="rd-row small" style="justify-content:space-between"><span>${esc(c.policy)}</span><span>${c.shadow_sessions != null ? c.shadow_sessions + ' of 20 sessions · ' + cp(c.shadow_excess, 2) + ' against the champion' : 'not scored'}</span></div>`).join('') : '<div class="small muted">No challenger yet.</div>'}</section>` : '';
+    const sto = st ? `<section class="rd-card"><h2>What is driving the market</h2>
+        ${st.length ? st.map((s) => `<div class="small" style="line-height:1.4"><b>${s.direction === 'up' ? '▲' : '▼'} ${Math.round(s.probability * 100)}%</b> ${esc(String(s.claim).slice(0, 150))}<div class="muted">influence ${s.influence.toFixed(2)} · ${s.scored} scored (${s.good} right), ${s.pending} pending · opened ${esc(s.opened_on)}</div></div>`).join('') : '<div class="small muted">No open storyline. The system opens one when a few signals line up.</div>'}</section>` : '';
+    return (spend || pol || sto) ? `<div class="rd-row" style="gap:14px;align-items:stretch;flex-wrap:wrap">${[pol, sto, spend].filter(Boolean).map((h) => h.replace('<section class="rd-card"', '<section class="rd-card" style="flex:1 1 300px"')).join('')}</div>` : '';
+  }
+  function today(d, sc, cv) {
     if (!d.started) return `<div class="rd-card"><span class="rd-lbl">The account</span><div class="muted">${esc(d.note || 'Starting…')}</div></div>`;
     const days = d.days || [], nifty = d.nifty || [];
     const vals = days.map((x) => x.value), nv = nifty.map((x) => x.value);
@@ -65,6 +86,7 @@ const RD = (() => {
         ${les.map((l) => `<div class="small soft" style="border-top:1px solid var(--line);padding-top:8px;line-height:1.45">${esc(l.text)}</div>`).join('')}
         ${checks ? `<a href="#/system/checks" class="small" style="margin-top:auto">${checks.ok} of ${sc.total} self-checks pass${checks.bad ? ' · ' + checks.bad + ' failing' : ''} →</a>` : ''}</section>
     </div>
+    ${coreCards(cv)}
     <div class="rd-ask"><label for="rdAsk" style="position:absolute;left:-9999px">Ask the system, or drop a file</label><input id="rdAsk" placeholder="Ask, tell it something, or drop a file in the Assistant…"><button class="btn primary" id="rdSend">Send</button></div>`;
   }
   function wireToday() {
@@ -223,7 +245,7 @@ const RD = (() => {
     pollT = setTimeout(() => { pollT = null; if (S.screen === 'system' && S.sub === 'checks') load(true); }, 1000);
   }
   async function loadScreen(screen, sub, fresh) {
-    if (screen === 'today') { const [d, sc] = await Promise.all([api('/api/paper'), api('/api/selfcheck').catch(() => null)]); if (fresh()) paint(today(d, sc), wireToday); }
+    if (screen === 'today') { const [d, sc, cv] = await Promise.all([api('/api/paper'), api('/api/selfcheck').catch(() => null), api('/api/core').catch(() => null)]); if (fresh()) paint(today(d, sc, cv), wireToday); }
     else if (screen === 'account') { const d = await api('/api/paper'); if (fresh()) paint(account(d), wireAccount); }
     else if (screen === 'watchlist') { const d = await api('/api/watchlist'); if (fresh()) paint(watchlist(d.items || []), wireWatchlist); }
     else if (screen === 'research') { const [inv, ideas, d] = await Promise.all([api('/api/investigations').catch(() => ({ investigations: [] })), api('/api/learner/ideas?limit=12').catch(() => ({ ideas: [] })), api('/api/paper').catch(() => ({}))]); if (fresh()) paint(research(inv, ideas, d), () => {}); }
