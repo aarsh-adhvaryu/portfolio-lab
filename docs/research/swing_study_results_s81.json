@@ -1,0 +1,331 @@
+{
+ "study": "s81_swing",
+ "protocol": "docs/protocols/s81_selling_swing_protocol.md",
+ "protocol_sha256": "b9fac1c59dc26d8e7d1da05f8c544844014321372e2b6440bec209a6177aee14",
+ "run_at": "2026-11-09 23:46",
+ "n_tests": 53,
+ "window": [
+  "2005-01-01",
+  "2017-12-31"
+ ],
+ "variants": {
+  "swing_momentum_continuation": {
+   "verdict": "fail",
+   "failed": [
+    "liquidation return beats the index ETF by -16.63% a year (needs +1.00%)",
+    "paired t against the index ETF -3.30 is under the learner's bar 3.11 (N=53)",
+    "100% of shuffled-signal runs reached the real Sharpe (limit 10%)",
+    "liquidation return -3.26% is not above the shuffled runs' 95th percentile 2.79%",
+    "deflated Sharpe 0.00 is under 0.9"
+   ],
+   "t_bar": 3.107496459773552,
+   "seconds": 399.56,
+   "contained": true,
+   "run": {
+    "params": {},
+    "score": {
+     "cagr": -0.03193070343598181,
+     "sharpe_daily": -0.03580721824468922,
+     "sharpe": -0.5684219676987746,
+     "vol": 0.14842953412593757,
+     "max_drawdown": -0.590034735440725,
+     "recovery_days": -1.0,
+     "n_obs": 3225.0,
+     "skew": -0.7371683721783516,
+     "kurt": 16.76411769471418,
+     "bench_cagr": 0.15155051639925876,
+     "bench_max_drawdown": -0.6370915699963622,
+     "bench_sharpe": 0.46446898890646693,
+     "excess_cagr": -0.18348121983524057,
+     "tax_paid": 246778.4009470335,
+     "charges": 248998.95250037088,
+     "turnover_per_year": 18.47725233025348,
+     "end_value": 660219.9915854641,
+     "decisions": 3225.0,
+     "failures": 0.0,
+     "liq_cagr": -0.03257054843456131,
+     "liq_value": 659415.4738173549,
+     "liq_tax": 0.0,
+     "cash_cagr": 0.065,
+     "excess_vs_cash": -0.09757054843456131,
+     "slippage_paid": 162381.40509341183,
+     "n_obs_common": 3207.0,
+     "n_trades": 1271.0,
+     "hit_rate": 0.4012588512981904,
+     "avg_days_held": 17.0786782061369,
+     "avg_ret": -0.0009180574891990841,
+     "stops": 634.0,
+     "targets": 256.0,
+     "time_exits": 381.0,
+     "index_liq_cagr": 0.13375898510248696,
+     "excess_L_vs_index": -0.16632953353704827,
+     "t_vs_index": -3.2969545351279708,
+     "p_vs_index": 0.999,
+     "index_max_drawdown": -0.6373586538532551,
+     "extra_drawdown_vs_index": 0.04732391841253003,
+     "index_tax_paid": 0.0,
+     "index_liq_tax": 540234.3020583523,
+     "dsr": 0.0005924352537522041
+    },
+    "shuffled": {
+     "n": 20.0,
+     "cagr_mean": 0.002838977760239536,
+     "cagr_p95": 0.02853796472713506,
+     "sharpe_p95": -0.008533154549873679,
+     "beats_real_frac": 1.0,
+     "liq_cagr_p95": 0.02786369095210474
+    },
+    "mc": {
+     "mc_1y_p5": -0.2491329732451032,
+     "mc_1y_p50": -0.04575925890431498,
+     "mc_1y_p95": 0.25504238133497337,
+     "mc_worst_fall_p50": -0.15467813467851815,
+     "mc_worst_fall_p5": -0.28761024381916517,
+     "mc_prob_loss": 0.61
+    }
+   }
+  },
+  "swing_pullback_in_uptrend": {
+   "verdict": "fail",
+   "failed": [
+    "liquidation return beats the index ETF by -13.47% a year (needs +1.00%)",
+    "paired t against the index ETF -2.98 is under the learner's bar 3.11 (N=53)",
+    "deflated Sharpe 0.01 is under 0.9"
+   ],
+   "t_bar": 3.107496459773552,
+   "seconds": 413.07,
+   "contained": true,
+   "run": {
+    "params": {},
+    "score": {
+     "cagr": -0.0005926291429353414,
+     "sharpe_daily": -0.023765193948224312,
+     "sharpe": -0.3772607582773125,
+     "vol": 0.14180054983035467,
+     "max_drawdown": -0.33266451241636774,
+     "recovery_days": -1.0,
+     "n_obs": 3225.0,
+     "skew": -0.45138795475546245,
+     "kurt": 7.1094024335272605,
+     "bench_cagr": 0.15155051639925876,
+     "bench_max_drawdown": -0.6370915699963622,
+     "bench_sharpe": 0.46446898890646693,
+     "excess_cagr": -0.1521431455421941,
+     "tax_paid": 133500.36430263767,
+     "charges": 436797.42935521237,
+     "turnover_per_year": 27.29385113134193,
+     "end_value": 992687.9216598534,
+     "decisions": 3225.0,
+     "failures": 0.0,
+     "liq_cagr": -0.0009689439042335213,
+     "liq_value": 992687.9216598534,
+     "liq_tax": 0.0,
+     "cash_cagr": 0.065,
+     "excess_vs_cash": -0.06596894390423352,
+     "slippage_paid": 267568.5000171049,
+     "n_obs_common": 3207.0,
+     "n_trades": 1922.0,
+     "hit_rate": 0.4656607700312175,
+     "avg_days_held": 9.075442247658689,
+     "avg_ret": 0.0016433715767892733,
+     "stops": 783.0,
+     "targets": 529.0,
+     "time_exits": 610.0,
+     "index_liq_cagr": 0.13375898510248696,
+     "excess_L_vs_index": -0.13472792900672048,
+     "t_vs_index": -2.9795599641824917,
+     "p_vs_index": 0.9974,
+     "index_max_drawdown": -0.6373586538532551,
+     "extra_drawdown_vs_index": 0.30469414143688733,
+     "index_tax_paid": 0.0,
+     "index_liq_tax": 540234.3020583523,
+     "dsr": 0.005598321937991882
+    },
+    "shuffled": {
+     "n": 20.0,
+     "cagr_mean": -0.036592987430765375,
+     "cagr_p95": -0.01713584360387566,
+     "sharpe_p95": -0.029341858111822237,
+     "beats_real_frac": 0.0,
+     "liq_cagr_p95": -0.017144224668465203
+    },
+    "mc": {
+     "mc_1y_p5": -0.20485657769174617,
+     "mc_1y_p50": 0.019307633294910365,
+     "mc_1y_p95": 0.2727025512672259,
+     "mc_worst_fall_p50": -0.13435573914542165,
+     "mc_worst_fall_p5": -0.29514705386443124,
+     "mc_prob_loss": 0.442
+    }
+   }
+  },
+  "swing_post_results_drift": {
+   "verdict": "fail",
+   "failed": [
+    "liquidation return beats the index ETF by -6.25% a year (needs +1.00%)",
+    "paired t against the index ETF -1.31 is under the learner's bar 3.11 (N=53)",
+    "deflated Sharpe 0.29 is under 0.9"
+   ],
+   "t_bar": 3.107496459773552,
+   "seconds": 307.83,
+   "contained": true,
+   "run": {
+    "params": {},
+    "score": {
+     "cagr": 0.07126089375985045,
+     "sharpe_daily": 0.010912569806217335,
+     "sharpe": 0.17323167523130029,
+     "vol": 0.038174902399280536,
+     "max_drawdown": -0.07506104060091157,
+     "recovery_days": 99.0,
+     "n_obs": 3225.0,
+     "skew": -0.3321007185786233,
+     "kurt": 17.53435680903185,
+     "bench_cagr": 0.15155051639925876,
+     "bench_max_drawdown": -0.6370915699963622,
+     "bench_sharpe": 0.46446898890646693,
+     "excess_cagr": -0.08028962263940831,
+     "tax_paid": 135253.58411480102,
+     "charges": 74399.17459980717,
+     "turnover_per_year": 2.8577718389936324,
+     "end_value": 2414433.2322261245,
+     "decisions": 3225.0,
+     "failures": 0.0,
+     "liq_cagr": 0.07129809613915272,
+     "liq_value": 2414433.2322261245,
+     "liq_tax": 0.0,
+     "cash_cagr": 0.065,
+     "excess_vs_cash": 0.00629809613915272,
+     "slippage_paid": 44540.14303792314,
+     "n_obs_common": 3207.0,
+     "n_trades": 161.0,
+     "hit_rate": 0.5403726708074534,
+     "avg_days_held": 21.559006211180126,
+     "avg_ret": 0.01867760272467178,
+     "stops": 52.0,
+     "targets": 31.0,
+     "time_exits": 78.0,
+     "index_liq_cagr": 0.13375898510248696,
+     "excess_L_vs_index": -0.06246088896333424,
+     "t_vs_index": -1.31252315621519,
+     "p_vs_index": 0.9014,
+     "index_max_drawdown": -0.6373586538532551,
+     "extra_drawdown_vs_index": 0.5622976132523435,
+     "index_tax_paid": 0.0,
+     "index_liq_tax": 540234.3020583523,
+     "dsr": 0.28985536368652626
+    },
+    "shuffled": {
+     "n": 20.0,
+     "cagr_mean": 0.05046629931962362,
+     "cagr_p95": 0.05615441658882749,
+     "sharpe_p95": -0.012405149946670843,
+     "beats_real_frac": 0.0,
+     "liq_cagr_p95": 0.05615441658882749
+    },
+    "mc": {
+     "mc_1y_p5": 0.007796046000161942,
+     "mc_1y_p50": 0.07162814034535969,
+     "mc_1y_p95": 0.14964528044878947,
+     "mc_worst_fall_p50": -0.026054431709447712,
+     "mc_worst_fall_p5": -0.05802598333475617,
+     "mc_prob_loss": 0.036
+    }
+   }
+  }
+ },
+ "harvest": {
+  "arms": {
+   "baseline_lab": {
+    "on": {
+     "liq_cagr": 0.08978909934159596,
+     "liq_value": 2987691.7177362195,
+     "tax_paid": 83337.63187467415,
+     "liq_tax": 102224.3027810595,
+     "charges": 49248.18731025366,
+     "slippage": 42478.00586147938,
+     "end_value": 3094074.574988129
+    },
+    "off": {
+     "liq_cagr": 0.09025245911360269,
+     "liq_value": 3003898.3587780106,
+     "tax_paid": 82246.87972503595,
+     "liq_tax": 115308.751767545,
+     "charges": 32651.307551026966,
+     "slippage": 28582.552575053487,
+     "end_value": 3123384.6431780686
+    },
+    "dL": -0.00046335977200673284,
+    "tax_saved": 11993.696836847317,
+    "extra_costs": 30492.33304565259,
+    "accounting_ok": false
+   },
+   "index": {
+    "on": {
+     "liq_cagr": 0.13525046168176735,
+     "liq_value": 5025923.050578101,
+     "tax_paid": 0.0,
+     "liq_tax": 384546.3254538909,
+     "charges": 16031.762766963306,
+     "slippage": 4006.2174891702202,
+     "end_value": 5417751.94450535
+    },
+    "off": {
+     "liq_cagr": 0.13375898510248696,
+     "liq_value": 4942536.399531531,
+     "tax_paid": 0.0,
+     "liq_tax": 540234.3020583523,
+     "charges": 8602.09228777904,
+     "slippage": 547.8049826374034,
+     "end_value": 5490147.207753286
+    },
+    "dL": 0.001491476579280393,
+    "tax_saved": 155687.97660446138,
+    "extra_costs": 10888.082985717083,
+    "accounting_ok": true
+   }
+  },
+  "verdict": {
+   "ok": false,
+   "verdict": "fail",
+   "failed": [
+    "baseline_lab: harvesting changes the liquidation return by -0.046% a year (needs +0.050%)",
+    "baseline_lab: the tax saved (Rs 11,994) does not exceed the extra charges and slippage (Rs 30,492)"
+   ]
+  }
+ },
+ "assumptions": {
+  "slippage": {
+   "half_spread_base": 0.0005,
+   "half_spread_cap": 0.005,
+   "turnover_ref": 100000000.0,
+   "impact_y": 1.0,
+   "sigma_window": 20,
+   "sigma_floor": 0.005
+  },
+  "sizing": {
+   "weight": 0.09,
+   "max_positions": 10,
+   "max_new_per_day": 3
+  },
+  "tax": {
+   "st_rate": 0.2,
+   "lt_rate": 0.125,
+   "lt_exempt": 125000.0,
+   "lt_months": 12,
+   "slab": 0.3,
+   "carry_years": 8
+  },
+  "index_expense_ratio": 0.002,
+  "notes": [
+   "fills: decision at the close of t, fill at the close of t+1; stops/targets read the adjusted day range (low/high/open) of the later sessions; both in one session -> the stop",
+   "slippage = half_spread + Y * sigma_d * sqrt(order / traded value), half_spread = clip(0.0005 * sqrt(1e8 / traded value), 0.0005, 0.005), Y = 1.0, sigma_d = 20-session daily volatility",
+   "tax: the tax engine's dated rows (short-term / long-term rates, yearly exemption) applied to the whole window; a lot is long-term when held MORE than 12 calendar months",
+   "no turnover caps in a swing sleeve; one position per name, 9% of the sleeve each, at most 10 positions, at most 3 new entries a day",
+   "idle cash earns the lab's cash rate untaxed; dividends are inside the adjusted closes"
+  ]
+ },
+ "corrections": "the first screen read the drawdown difference with the wrong sign (index minus variant); the stored scorecards were re-screened with variant minus index (negative = deeper than the index). Verdicts did not change.",
+ "claim_a": "not supported",
+ "claim_b": "not supported"
+}

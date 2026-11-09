@@ -49,6 +49,25 @@ def main(folder: str) -> int:
         for k in ("index", "bench"):
             data[k].index = pd.to_datetime(data[k].index)
         data["storylines"] = job.get("storylines") or {}
+        ohlc = {n: pd.read_parquet(f / f"{n}_ratio.parquet") for n in ("open", "high", "low") if (f / f"{n}_ratio.parquet").exists()}
+        for df in ohlc.values():
+            df.index = pd.to_datetime(df.index)
+        if ohlc:
+            data["ohlc"] = ohlc                                                # S81: the day's range as ratios to the close (the daily replay's stops and targets)
+        if (f / "results.json").exists():
+            data["results"] = json.loads((f / "results.json").read_text(encoding="utf-8"))   # {key: [dates the financial results became known]}
+        if (f / "extra.json").exists():
+            data.update(json.loads((f / "extra.json").read_text(encoding="utf-8")))          # {"index_key": ...}
+        if job.get("mode") == "harvest":                                       # S81 claim B: each arm with and without harvesting
+            import swing
+            arms = {}
+            for p in job["policies"]:
+                arms[p["id"]] = _load(f / p["file"], "pol_" + p["id"].replace("-", "_").replace(".", "_")).decide
+            if data.get("index_key"):
+                arms["index"] = None
+            start, end = job["window"]
+            out["results"]["harvest"] = swing.harvest_experiment(arms, data, start, end, job.get("cfg"))
+            raise StopIteration
         if job.get("mode") == "now":                                       # shadow: today's target weights of each policy, from its own previous shadow weights
             for p in job["policies"]:
                 try:
@@ -63,7 +82,8 @@ def main(folder: str) -> int:
             try:
                 mod = _load(f / p["file"], "pol_" + p["id"].replace("-", "_").replace(".", "_"))
                 grid = job.get("grid", {}).get(p["id"]) or [{}]
-                out["results"][p["id"]] = engine.evaluate(mod.decide, grid, data, start, end, job.get("cfg"), int(job.get("n_shuffles", 20)), int(job.get("n_mc", 1000)), int(job.get("seed", 80)))
+                out["results"][p["id"]] = engine.evaluate(mod.decide, grid, data, start, end, job.get("cfg"), int(job.get("n_shuffles", 20)), int(job.get("n_mc", 1000)), int(job.get("seed", 80)),
+                                                          cadence=str(getattr(mod, "CADENCE", "monthly")))
             except Exception as e:                                           # one policy failing is a finding for the strategist, not the end of the run
                 out["errors"][p["id"]] = f"{type(e).__name__}: {e}"[:600] + "\n" + traceback.format_exc()[-900:]
     except StopIteration:

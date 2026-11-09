@@ -429,9 +429,21 @@ def deflated_sharpe(sr_daily: float, n_obs: float, skew: float, kurt: float, tri
     return float(norm.cdf((sr_daily - sr0) * math.sqrt(max(n_obs - 1, 1)) / denom))
 
 
-def evaluate(decide: Callable, grid: List[dict], data: dict, start, end, cfg: Optional[dict] = None, n_shuffles: int = 20, n_mc: int = 1000, seed: int = 80) -> dict:
+def _swing():
+    try:                                                                     # in the sandbox the files sit side by side; on the host they are in the package
+        import swing as S
+    except ImportError:
+        from pflab.lab import swing as S
+    return S
+
+
+def evaluate(decide: Callable, grid: List[dict], data: dict, start, end, cfg: Optional[dict] = None, n_shuffles: int = 20, n_mc: int = 1000, seed: int = 80,
+             cadence: str = "monthly") -> dict:
     """Every combination of a policy over the window: its scorecard, its shuffled-signal runs and its Monte Carlo. The deflated Sharpe is over ALL combinations tried here (the
-    caller adds earlier trials of the session by passing `trial_srs` to `deflated_sharpe` again)."""
+    caller adds earlier trials of the session by passing `trial_srs` to `deflated_sharpe` again). A policy that declares `CADENCE = "daily"` (S81, swing) goes through `swing.py`;
+    every monthly policy takes the code below exactly as before."""
+    if cadence == "daily" or (cfg or {}).get("engine") == "swing":
+        return _swing().evaluate(decide, grid, data, start, end, cfg, n_shuffles, n_mc, seed, cadence)
     cfg = {**DEFAULT_CFG, **(cfg or {})}
     rows = []
     for p in grid:

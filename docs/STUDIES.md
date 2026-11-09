@@ -139,3 +139,39 @@ Each test ran once, 2004-2021 only (2022-2025 is spent), non-overlapping events,
 
 Recorded in `wave_study_results_s79` (protocol sha a1781a275ec1, code sha a19f5278160e); rows also in `docs/research/wave_sentiment_results_s79.json`.
 <!-- s79-wave-sentiment-results:end -->
+
+<!-- s81-swing-results:begin -->
+## S81 B5 (2026-11-09 night): the swing sleeve and exemption harvesting (protocol: docs/protocols/s81_selling_swing_protocol.md with A1 and A2)
+
+Pre-registered and committed before any code that runs it; four tests counted in the learner's counter (N 49 -> 53, development bar t >= 3.11); run ONCE on the real 2005-2017 panel (600 liquid
+shares, Nifty 500 total-return index held as an ETF with a 0.20% a year cost), in the Docker sandbox (contained), 20 shuffled-signal runs per variant, Rs 10,00,000 each, after charges,
+slippage and tax (today's tax rows applied to the whole window; losses carried forward 8 years as the tax engine's loss rule says). Results are stored in `docs/research/swing_study_results_s81.json`
+and written onto a store by `swing_study.apply_recorded`. The 2018-2021 final check was NOT run: no variant passed (it is run only for a variant that passes).
+
+**Claim A: not supported.** No swing variant beats holding the index ETF after tax and charges. The index ETF returned 13.4% a year after the tax owed on selling it (L).
+
+| variant | L a year | vs index | paired t (bar 3.11) | shuffled runs as good | real vs shuffled 95th pct | deflated Sharpe | worst fall (index -63.7%) | trades, hit rate | verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| swing_momentum_continuation | -3.3% | -16.6 pts | -3.30 | 100% | -3.3% vs +2.8% | 0.00 | -59.0% | 1,271, 40% | fail |
+| swing_pullback_in_uptrend | -0.1% | -13.5 pts | -2.98 | 0% | -0.1% vs -1.7% | 0.01 | -33.3% | 1,922, 47% | fail |
+| swing_post_results_drift | +7.1% | -6.3 pts | -1.31 | 0% | +7.1% vs +5.6% | 0.29 | -7.5% | 161, 54% | fail |
+
+Reading: charges, slippage and tax took Rs 6.6 lakh (momentum), Rs 8.4 lakh (pullback) and Rs 2.5 lakh (drift) of a Rs 10 lakh sleeve over 13 years. Momentum continuation is worse than random picks
+(every shuffled run did better): the breakout signal points the wrong way here. The pullback signal is better than random picks (about 3.6 points a year) but not better than cash once costs are paid. The
+post-results drift variant carries a real signal (it beats all 20 shuffled runs, an average winning trade of +1.9%) and a very shallow worst fall, but it trades rarely (a few positions at a time, mostly
+cash) and earns 0.6 points a year over cash; it does not come near the index. The deflated Sharpe was computed over three trials (a fresh store); in the app's store it can only be lower.
+Correction recorded: the first screen read the drawdown difference with the wrong sign; the stored scorecards were re-screened (verdicts unchanged, the reasons corrected).
+
+**Claim B: not supported as registered (both arms must pass).** Exemption and loss harvesting (the minimal A51 rule in `lab/harvest_replay.py`), with versus without, same book:
+
+| arm | liquidation return a year, with / without | change | tax saved | extra charges + slippage | passes |
+|---|---|---|---|---|---|
+| index ETF held | 13.53% / 13.38% | +0.15 pts | Rs 1,55,688 | Rs 10,888 | yes |
+| baseline_lab (monthly rebalanced shares + ETFs) | 8.98% / 9.03% | -0.05 pts | Rs 11,994 | Rs 30,492 | no |
+
+Harvesting helped the buy-and-hold index and cost money in a book that already realises gains at every rebalance. The exit manager should treat harvesting as unproven for rebalanced sleeves (a claim
+that harvesting helps buy-and-hold core ETFs only would be a new registered study).
+
+Assumptions (all in the protocol and in `docs/research/swing_study_results_s81.json`): fills at the next close; stop/target from the day's adjusted range; slippage `0.0005*sqrt(1e8/traded value)` (clipped
+0.0005-0.005) + `1.0 * 20-day volatility * sqrt(order/traded value)`; today's tax law applied to 2005-2017; results days from BSE announcements (2011 on); survivorship in the 600-name selection.
+<!-- s81-swing-results:end -->
