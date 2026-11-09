@@ -1,6 +1,6 @@
 """The assistant (S68): the one conversation. It discusses, looks things up in the system, runs calculations and scenarios, starts investigations that
 the workers carry day and night, and reports their progress back into the same thread. It is the front of the system, not a second system: it
-uses the same tools, tables, governor, egress gate and privacy checks as the workers (`hq/workers.converse`).
+uses the same tools, tables, governor, egress gate and privacy checks as the workers (`hq/converse.py`).
 
     thread        one persistent chat (title "Assistant"): it survives restarts and is never tidied away
     post          the investor's message and a pending answer; the answer is worked out on a background thread, its steps visible while it works
@@ -61,7 +61,7 @@ SYSTEM = (
     "was concluded before and why, what has gone against it since, and what is still open, and say whether it still holds. Use envelope when he asks what he can invest this "
     "month and scorecard when he asks how the recommendations have done. 15. The PAPER PORTFOLIO is the system's own copy of his portfolio (without FDs) that it runs by itself: paper_book shows it. When he asks the paper portfolio to look into something (\"look into the AI bubble for the paper portfolio\"), call paper_ask with his words: it is one input the paper team weighs and may overrule with reasons; say so. Never place, size or change a paper decision yourself. 16. FILES he drops (PDFs, Excel sheets, links in his words): call files to see what was read, then read_file (a PDF page by page, or find=a word; a sheet's rows) and file_figures (figures by company). Never tell him a file cannot be read before you have called them; quote numbers only from their results, and say plainly if a file holds nothing readable. 17. Long documents in the knowledge graph (filings, results, articles): graph_timeline lists them with a doc_id; read_document reads one in full a part at a time or by word. The reader's summary is only a summary: read the document when the question needs its details.")
 
-READ = ("picture", "portfolio", "stocks_overview", "stock_facts", "graph_timeline", "notes", "memory_recall", "journal", "research_flags",
+READ = ("picture", "portfolio", "stocks_overview", "stock_facts", "graph_timeline", "notes", "memory_recall", "research_flags",
         "price_history", "market_context", "who_is_buying", "growth", "findings", "comovement", "themes", "system_status", "cases", "experiments",
         "hypotheses", "tax_plan", "forecasts", "ipo_plan", "ready_plans", "simulation", "scenario", "measure", "quant", "recall", "rules", "envelope", "scorecard", "waiting", "paper_book", "chart_view", "watchlist", "files", "read_file", "file_figures", "read_document")
 ACT = ("open_workspace", "policy_scenarios", "exposure_shock", "ipo_policy_study", "case_calculate", "register_experiment", "frame_objective", "case_evidence", "start_investigation",
@@ -204,9 +204,9 @@ def _work(rt, cid: int, aid: int, q: str, context: str) -> None:
     rt.bump("chat", "notifications")
 
 
-def answer(rt, con, cid: int, aid: int, q: str, context: str = "", client=None, gate=None, cfg=None) -> dict:
+def answer(rt, con, cid: Optional[int], aid: Optional[int], q: str, context: str = "", client=None, gate=None, cfg=None, history: str = "") -> dict:
     from pflab.agents import analyst as an
-    from pflab.hq import brain, egress, missions, service, tools as tl, workers
+    from pflab.hq import converse, egress, missions, passes, service, tools as tl
     now = rt.clock()
     mode = rt.settings.get("brain", "economy")
     if mode == "off":
@@ -215,7 +215,7 @@ def answer(rt, con, cid: int, aid: int, q: str, context: str = "", client=None, 
     gate = gate or service.gate(rt)
     snap = missions.snapshot_id(con, rt.pm_dir)
     from pflab.app import context as _context
-    hist = _context.build(con, cid, aid, now, gate=gate)                  # S77: pins, a digest of the older chat, the last 8 in full, the files he attached
+    hist = _context.build(con, cid, aid, now, gate=gate) if cid else history                  # S77: pins, a digest of the older chat, the last 8 in full, the files he attached
     from pflab.hq import rules as _rules
     hr = _rules.active_text(con)
     acct = account_line(con, now)
@@ -223,22 +223,23 @@ def answer(rt, con, cid: int, aid: int, q: str, context: str = "", client=None, 
         hr = (hr + "\n\n" if hr else "") + acct
     first = (f"{hr}\n\n" if hr else "") + (f"{hist}\n\n" if hist else "") \
         + (f"HE IS LOOKING AT: {context}\n\n" if context else "") + f"RECORD SNAPSHOT: {snap} (today {now:%Y-%m-%d %H:%M})\n\nHIS MESSAGE:\n{q}"
-    pid = brain._record(con, now, "assistant", [], MODEL, "assistant", "running")
+    pid = passes.record(con, now, "assistant", [], MODEL, "assistant", "running")
     ctx = tl.Ctx(rt, pid, MODEL, False, {}, gate, now, client=client, mode=mode, source=first, case_ids=[], task_id=None, role="assistant",
                  allowed=frozenset(n for n in TOOLS if n in tl.TOOLS), his_text=q)
     steps: List[str] = []
 
     def step(name: str) -> None:
         steps.append(name)
-        con.execute("UPDATE chat_messages SET meta=?, route_json=? WHERE msg_id=?", [f"working: {name}…", json.dumps(steps[-8:]), aid])
-        rt.bump("chat")
+        if aid:
+            con.execute("UPDATE chat_messages SET meta=?, route_json=? WHERE msg_id=?", [f"working: {name}…", json.dumps(steps[-8:]), aid])
+            rt.bump("chat")
     messages = [{"role": "user", "content": [{"type": "text", "text": first}]}]
-    conv = workers.converse(rt, con, ctx, messages, system=SYSTEM, tools=tl.definitions(frozenset(n for n in TOOLS if n in tl.TOOLS)), model=MODEL, agent="w_assistant",
+    conv = converse.converse(rt, con, ctx, messages, system=SYSTEM, tools=tl.definitions(frozenset(n for n in TOOLS if n in tl.TOOLS)), model=MODEL, agent="w_assistant",
                             effort="medium", max_out=gv.LIMITS["w_assistant"].max_out, client=client, gate=gate, cfg=cfg or an.config(), mode=mode, his=True,
                             private_first=first, question="assistant", max_turns=MAX_TURNS, on_step=step)
     text, dropped = an.only_sourced_numbers(conv.note[:3500], an.Request(ctx.source, "assistant")) if conv.note else ("", 0)
     status = "stopped" if conv.stop_exc and not text.strip() else "done"
-    brain._close(con, pid, status, text, ctx.decisions, conv.cost, conv.first_call, "; ".join(ctx.problems) or None)
+    passes.close(con, pid, status, text, ctx.decisions, conv.cost, conv.first_call, "; ".join(ctx.problems) or None)
     if conv.stop_exc is not None and not text.strip():
         e = conv.stop_exc
         from pflab.hq import board
@@ -253,3 +254,13 @@ def answer(rt, con, cid: int, aid: int, q: str, context: str = "", client=None, 
         text += "\n\n(Some sentences were removed because they carried numbers no tool had returned.)"
     meta = f"Sonnet 5.5 · {len(steps)} tool call(s) · snapshot {snap}" + (f" · Rs {conv.cost:,.2f}" if conv.cost else "")
     return {"text": text or "(no answer)", "route": [f"tool: {s}" for s in steps[-8:]] or ["answered directly"], "meta": meta, "cost": conv.cost or None, "status": "done"}
+
+
+def ask_once(rt, q: str, history: str = "") -> dict:
+    """One answer outside a chat thread (the Telegram /brain command and the AI centre's Auto road): the same tool conversation as the chat, with the earlier turns
+    passed in as text. -> {"text", "ok", "cost"}."""
+    from pflab.hq import service
+    if rt.settings.get("brain", "economy") == "off":
+        return {"text": "The AI is switched off in Settings (brain: off). Set it to economy or normal and ask again.", "ok": False, "cost": 0.0}
+    out = answer(rt, rt.cursor(), None, None, q, history=history)
+    return {"text": out["text"], "ok": out.get("status", "done") == "done", "cost": float(out.get("cost") or 0.0)}

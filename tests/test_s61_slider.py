@@ -12,7 +12,7 @@ import pytest
 
 from pflab.agents import centre
 from pflab.app import settings as st
-from pflab.hq import brain, governor as gv, models
+from pflab.hq import governor as gv, models, passes as brain
 
 REPO = Path(__file__).resolve().parents[1]
 

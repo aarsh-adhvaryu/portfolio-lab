@@ -1,7 +1,7 @@
 """Workers (S68): the research, quant and review specialists and the coordinator, each a bounded model-and-tools loop with its own context,
 its own tools and its own promise of what it will leave behind.
 
-One board task = one worker run (`run_task`). The loop is the brain's (`hq/brain.py`: the governed `llm.call`, the egress gate, the tool
+One board task = one worker run (`run_task`). The loop is `hq/converse.py` ( the governed `llm.call`, the egress gate, the tool
 registry `hq/tools.py`, the sourced-numbers filter) generalised to a role: a worker chooses and executes several steps within its scope,
 inspects the results, recovers from a tool error, and may ask another worker for an artifact (`request_artifact`: it parks, and resumes when the
 other task is done). It is not told what to call next by the coordinator, and it is not finished when the model stops talking: it is finished
@@ -22,11 +22,9 @@ from typing import Dict, List, Optional
 from pflab.hq import governor as gv
 from pflab.hq.board import Reply
 
-MAX_TURNS = 10
-NUDGES = 2                                  # times a worker is told its promise is unmet before the task fails
+from pflab.hq.converse import CACHE, MAX_TURNS, NUDGES, Conv, _scrub_ids, _scrub_obj, converse  # noqa: E402,F401  (moved to hq/converse.py, S80 phase 4)
 PROVIDER_RETRIES = 6                        # provider errors (with back-off) before a task gives up
 RESOLVED = ("coordinator", "research", "quant", "review")
-CACHE = {"type": "ephemeral"}               # top-level automatic caching: composes with the system block's own breakpoint (S70)
 
 COMMON = (
     "You are one specialist in a private investor's portfolio system in India. He is not a trader: plain words, what a number means for him. "
@@ -79,7 +77,7 @@ SYSTEMS = {
 
 from pflab.hq import tools as _tools_loaded  # noqa: E402,F401  (the tools module first: it collects the S79 tools itself)
 from pflab.hq import tools_s79 as _t79  # noqa: E402
-READ_TOOLS = ("picture", "portfolio", "stocks_overview", "stock_facts", "graph_timeline", "notes", "memory_recall", "journal", "research_flags",
+READ_TOOLS = ("picture", "portfolio", "stocks_overview", "stock_facts", "graph_timeline", "notes", "memory_recall", "research_flags",
               "price_history", "market_context", "who_is_buying", "growth", "findings", "comovement", "themes", "system_status", "cases", "experiments",
               "hypotheses", "tax_plan", "forecasts", "ipo_plan", "ready_plans", "recall", "rules", "envelope", "paper_book", "chart_view", "watchlist", "files", "read_file", "file_figures", "read_document") + _t79.names()
 TOOLS = {
@@ -125,99 +123,9 @@ def _params(role: str, messages: list, last: bool) -> dict:
     return p
 
 
-@dataclass
-class Conv:
-    note: str = ""
-    cost: float = 0.0
-    nudges: int = 0
-    turns: int = 0
-    stop_exc: Optional[Exception] = None
-    first_call: Optional[int] = None
-
-
-def _scrub_ids(text: str, gate) -> str:
-    """The model's own words with any of his account, depository, folio or deposit ids replaced (the privacy gate would otherwise refuse the next request
-    and the task would stop on a number the model itself had copied)."""
-    from pflab.hq import redact
-    out, _ = redact.redact(text, gate, lines=False)
-    return out
-
-
-def _scrub_obj(x, gate):
-    if isinstance(x, str):
-        return _scrub_ids(x, gate)
-    if isinstance(x, dict):
-        return {k: _scrub_obj(v, gate) for k, v in x.items()}
-    if isinstance(x, list):
-        return [_scrub_obj(v, gate) for v in x]
-    return x
-
-
 def _tool_defs(role: str) -> list:
     from pflab.hq import tools as tl
     return tl.definitions(frozenset(n for n in TOOLS[role] if n in tl.TOOLS))
-
-
-def converse(rt, con, ctx, messages: list, *, system: str, tools: list, model: str, agent: str, effort: str, max_out: int, client, gate, cfg: dict, mode: str,
-             his: bool, private_first: str, question: str, check=None, max_turns: int = MAX_TURNS, on_step=None, extra_system: str = "") -> Conv:
-    """The governed tool loop for any role (workers and the assistant): each turn is priced, checked and logged by `llm.call`; each tool call goes
-    through `tools.run` (the role's allowed tools, redaction, egress). It ends with the model's final text, a wait named by a tool (`ctx.wait_for`), a
-    refusal or provider failure (returned in `stop_exc`, never swallowed), or the turn limit. `check(note)` may return a reminder to send back when the
-    model stops before its promise is met (at most NUDGES times). `on_step(text)` lets a screen show what is being done."""
-    from pflab.hq import brain, llm, tools as tl
-    out = Conv()
-    sys_blocks = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
-    if extra_system:                                         # S77: skills, after the role's own instructions, cached as a block of their own
-        sys_blocks.append({"type": "text", "text": extra_system, "cache_control": {"type": "ephemeral"}})
-    for turn in range(1, max_turns + 1):
-        out.turns = turn
-        p = {"model": model, "max_tokens": max_out, "system": sys_blocks, "thinking": {"type": "adaptive"}, "output_config": {"effort": effort},
-             "tools": tools, "messages": messages,
-             "cache_control": CACHE}                      # S70: the growing conversation is cached (it was re-sent at full price on every turn)
-        if turn == max_turns:
-            p["tool_choice"] = {"type": "none"}
-        try:
-            s = llm.call(con, agent, p, client, now=rt.clock(), mode=mode, private_text=private_first if turn == 1 else "", gate=gate,
-                         doc_kinds=("portfolio",), topic="mission", question=f"{question}, turn {turn}", cfg=cfg, turn=turn, his_order=his,
-                         egress_skip=("address_word",))   # S69: "Address the dip rule" is English; his address words, PIN codes, flat/house numbers, name and ids still block
-        except Exception as e:                                # refused, blocked, or the provider failed: the caller decides (wait or fail)
-            out.stop_exc = e
-            return out
-        out.cost += s.cost_inr
-        out.first_call = out.first_call or s.call_id
-        msg = s.message
-        uses = [b for b in msg.content if getattr(b, "type", "") == "tool_use"]
-        if getattr(msg, "stop_reason", "") != "tool_use" or not uses:
-            out.note = llm.text_of(msg)
-            reminder = check(out.note) if check else None
-            if reminder and out.nudges < NUDGES and turn < max_turns and not ctx.wait_for:
-                out.nudges += 1
-                messages.append({"role": "assistant", "content": [{"type": "text", "text": _scrub_ids(brain.unnamed(out.note, gate.names), gate) or "(done)"}]})
-                messages.append({"role": "user", "content": [{"type": "text", "text": reminder}]})
-                continue
-            return out
-        kept = [brain.as_param(b) for b in msg.content if getattr(b, "type", "") in brain.KEEP_BLOCKS]
-        for b in kept:
-            if b.get("type") == "text":
-                b["text"] = _scrub_ids(brain.unnamed(b["text"], gate.names), gate)
-            elif b.get("type") == "tool_use":                  # what the model wrote INTO a call goes back to it next turn: his ids are replaced there too
-                b["input"] = _scrub_obj(b.get("input"), gate)
-        messages.append({"role": "assistant", "content": kept})
-        results = []
-        for b in uses:
-            if on_step:
-                try:
-                    on_step(b.name)
-                except Exception:
-                    pass
-            text, err = tl.run(ctx, b.name, b.input, turn)
-            pics, ctx.images = list(ctx.images), []             # S78: a tool's picture goes back to the model INSIDE its result (vision), with the text beside it
-            content = [{"type": "text", "text": text}] + pics if pics and not err else text
-            results.append({"type": "tool_result", "tool_use_id": b.id, "content": content, **({"is_error": True} if err else {})})
-        messages.append({"role": "user", "content": results})
-        if ctx.wait_for:                                      # parked on the sandbox or on another worker's task: the caller checkpoints
-            return out
-    return out
 
 
 def _dossier(con, cid: int, task: dict, now: datetime, role: Optional[str] = None) -> str:
@@ -295,7 +203,7 @@ def _unmet_deps(con, task: dict) -> Optional[int]:
 def run_task(rt, task: dict, client=None, gate=None, cfg=None) -> Reply:
     """Run one worker task to its promise, a wait, or a failure. `client`/`gate` are injected by tests."""
     from pflab.agents import analyst as an
-    from pflab.hq import board, brain, cases, egress, llm, missions, service, tools as tl
+    from pflab.hq import board, cases, egress, llm, missions, passes, service, tools as tl
     con, now = rt.cursor(), rt.clock()
     body = task["body"]
     role = body.get("role") or {"w_coord": "coordinator", "w_research": "research", "w_quant": "quant", "w_review": "review"}.get(task["to"])
@@ -328,7 +236,7 @@ def run_task(rt, task: dict, client=None, gate=None, cfg=None) -> Reply:
     if ck.get("summary"):
         opening.append(f"YOUR EARLIER WORK ON THIS TASK (checkpoint): {ck['summary']}")
     stable = _scrub_ids("\n\n".join(opening), gate)              # evidence and checkpoints the model wrote earlier may hold an id it copied: replaced before it goes out
-    pid = brain._record(con, now, f"task:{task['id']}", [], model, role, "running")
+    pid = passes.record(con, now, f"task:{task['id']}", [], model, role, "running")
     ctx = tl.Ctx(rt, pid, model, False, {}, gate, now, client=client, mode=mode, source=stable, case_ids=[cid], task_id=task["id"], role=role,
                  allowed=frozenset(n for n in TOOLS[role] if n in tl.TOOLS))
     messages: list = [{"role": "user", "content": [{"type": "text", "text": stable}]}]
@@ -351,7 +259,7 @@ def run_task(rt, task: dict, client=None, gate=None, cfg=None) -> Reply:
     missing = missions.unmet(con, task["id"], promise)
     status = "stopped" if (stop_exc or ctx.wait_for) and missing else "done"
     note_c, dropped = an.only_sourced_numbers(note[:2500], an.Request(ctx.source, role)) if note else ("", 0)
-    brain._close(con, pid, status, note_c, ctx.decisions, cost, first_call, "; ".join(ctx.problems + ([f"{type(stop_exc).__name__}: {str(stop_exc)[:300]}"] if stop_exc else [])) or None)
+    passes.close(con, pid, status, note_c, ctx.decisions, cost, first_call, "; ".join(ctx.problems + ([f"{type(stop_exc).__name__}: {str(stop_exc)[:300]}"] if stop_exc else [])) or None)
     ck = {**ck, "summary": summary, "turns": ck.get("turns", 0) + turns}
     arts = [{"kind": a["kind"], "ref": a["ref"]} for a in missions.artifacts(con, task_id=task["id"])]
     base = {"checkpoint": ck, "artifacts": arts, "pass": pid}

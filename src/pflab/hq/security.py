@@ -356,7 +356,7 @@ def review(rt, client=None, gate=None, draft=None) -> dict:
     if not diff:
         _run(con, "review", "ok", head, {"why": "no code changed"}, now)
         return {"reviewed": 0}
-    from pflab.hq import brain
+    from pflab.hq import converse as brain
     diff = PERSON_PAN.sub("[PAN]", brain.unnamed(diff, gate.names))   # the code's docstrings name him; tests hold PANs
     bad = [k for line in diff.splitlines() for k in hits(line, gate)]
     money = amounts(con)

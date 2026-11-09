@@ -7,7 +7,8 @@ from datetime import timedelta
 
 
 def hq(rt) -> dict:
-    from pflab.hq import board, brain, cases, governor as gv, keeper, messenger, roster, watcher
+    from pflab.hq import passes
+    from pflab.hq import board, cases, governor as gv, keeper, messenger, roster, watcher
     con, now = rt.cursor(), rt.clock()
     sp = gv.spend(con, now)
     by_agent = {a["agent"]: a for a in sp["agents"]}
@@ -33,9 +34,9 @@ def hq(rt) -> dict:
         "agents": agents, "tasks": tasks, "spend": sp,
         "limits": {k: {"layer": v.layer, "per_day": v.per_day, "max_in": v.max_in, "max_out": v.max_out}
                    for k, v in gv.LIMITS.items()},
-        "brain": {"mode": rt.settings.get("brain", "economy"), "shadow": brain.SHADOW,
+        "brain": {"mode": rt.settings.get("brain", "economy"), "shadow": False,
                   "shadow_since": str(con.execute("SELECT min(passed_at) FROM hq_passes WHERE role='brain'").fetchone()[0] or "")[:10],
-                  "journal": brain.journal(con, 30), "scorecard": keeper.scorecard(con)},
+                  "journal": passes.journal(con, 30), "scorecard": keeper.scorecard(con)},
         "predictions": [{"id": p[0], "model": p[1], "made": str(p[2])[:16], "claim": p[3], "due": str(p[4]),
                          "confidence": p[5], "base_rate": p[6], "outcome": p[7], "detail": p[8]} for p in preds],
         "followups": [{**f, "at": str(f["at"])[:10]} for f in fu if f["since"]][:20],   # decisions about a company

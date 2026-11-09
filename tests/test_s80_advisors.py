@@ -18,7 +18,6 @@ def calls(monkeypatch):
     seen = []
     monkeypatch.setattr(service, "_last", {})                        # the round's own rate limits are keyed by object id: start clean
     monkeypatch.setattr(missions, "scan", lambda r: seen.append("scan") or {})
-    monkeypatch.setattr(service, "brain_wake", lambda r: seen.append("brain") or {"pass": None})
     return seen
 
 
@@ -32,12 +31,12 @@ def test_with_the_switch_on_the_round_runs_no_advisor_layer(rt, calls, monkeypat
 def test_with_the_switch_off_or_the_loop_off_the_advisors_run_as_before(rt, calls, monkeypatch):
     _set(monkeypatch, False)
     service.round_(rt)
-    assert {"scan", "brain"} <= set(calls)
+    assert "scan" in calls
     calls.clear()
     _set(monkeypatch, True, on=False)                               # the loop off brings v1 back whole
     rt.settings["scheduler"] = True
     service.round_(rt)
-    assert "scan" in calls                                           # (the brain is rate-limited: it ran in the first round)
+    assert "scan" in calls
 
 
 def test_the_review_and_companion_jobs_skip_while_the_switch_holds(monkeypatch, tmp_path):

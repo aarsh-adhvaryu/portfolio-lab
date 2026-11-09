@@ -37,8 +37,8 @@ def test_pause_starts_no_reader_brain_keeper_or_agent_hand_off_but_his_own_order
     from pflab.hq import cases, keeper, roster, service
     monkeypatch.setattr(an, "config", lambda: {"cap": 500.0})
     calls = []
-    for name in ("brain_wake",):
-        monkeypatch.setattr(service, name, lambda rt, *a, _n=name, **k: calls.append(_n) or {})
+    from pflab.hq import missions
+    monkeypatch.setattr(missions, "scan", lambda rt: calls.append("scan") or {})
     monkeypatch.setattr(keeper, "run", lambda *a, **k: calls.append("keeper"))
     monkeypatch.setattr(cases, "sweep", lambda *a, **k: calls.append("cases") or [])
     ran = []
@@ -56,7 +56,7 @@ def test_pause_starts_no_reader_brain_keeper_or_agent_hand_off_but_his_own_order
     assert calls == [] and ran == [mine] and board.get(con, theirs)["status"] == "queued"
     rt.settings["scheduler"] = True                                                        # Resume: the held work starts
     service.round_(rt)
-    assert theirs in ran and "brain_wake" in calls
+    assert theirs in ran and "scan" in calls
 
 
 def test_the_scheduled_tick_runs_nothing_while_paused(tmp_path, monkeypatch):

@@ -137,7 +137,7 @@ def _first_message(con, reason: str, budget: float) -> str:
 def run_session(con, pm_dir: Path, root, now: datetime, reason: str, *, client, gate=None, cfg: Optional[dict] = None, data=None, box=None, budget_inr: Optional[float] = None) -> dict:
     """One strategist session. Returns {session_id, status (done | wasted | budget | failed), cost_inr, lab_runs, ...}."""
     from pflab.agents import analyst as an
-    from pflab.hq import brain, egress, llm
+    from pflab.hq import converse, egress, llm
     from pflab.pm.store import next_id
     if not core.strategist_on():
         return {"skipped": "the strategist is switched off (configs/core.toml [strategist] or the kill switch)"}
@@ -177,7 +177,7 @@ def run_session(con, pm_dir: Path, root, now: datetime, reason: str, *, client, 
         if getattr(msg, "stop_reason", "") != "tool_use" or not uses:
             log.append({"turn": turn, "says": llm.text_of(msg)[:400]})
             break
-        messages.append({"role": "assistant", "content": [brain.as_param(b) for b in msg.content if getattr(b, "type", "") in brain.KEEP_BLOCKS]})
+        messages.append({"role": "assistant", "content": [converse.as_param(b) for b in msg.content if getattr(b, "type", "") in converse.KEEP_BLOCKS]})
         results = []
         for b in uses:
             text, is_err = tools.run(ctx, b.name, b.input)

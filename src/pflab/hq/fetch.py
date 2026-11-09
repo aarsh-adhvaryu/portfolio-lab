@@ -80,8 +80,8 @@ def run(con, url: str, question: str, client, gate: egress.Gate, now: datetime, 
     host = urlparse(url).hostname
     if not host:
         raise ValueError("not a web address")
-    from pflab.hq import brain
-    model = brain.slider("fetch", gv.SONNET)                       # S61: the slider's `fetch` job
+    from pflab.hq import passes
+    model = passes.slider("fetch", gv.SONNET)                       # S61: the slider's `fetch` job
     page, cost, how, s, err = "", 0.0, "web fetch", None, "this site refuses the fetcher"
     if host not in REFUSES:
         p = {"model": model, "max_tokens": gv.LIMITS["fetch"].max_out, "system": SYSTEM,

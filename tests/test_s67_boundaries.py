@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from pflab.hq import board, brain, cases, egress, governor as gv, objectives, tools as tl
+from pflab.hq import board, cases, egress, governor as gv, objectives, tools as tl
 from pflab.hq.desk import Desk
 from pflab.learner import counter, experiments as ex
 from pflab.pm import store

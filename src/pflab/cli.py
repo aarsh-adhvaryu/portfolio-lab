@@ -170,10 +170,6 @@ def main(argv=None):
     usp.add_argument("--etf", action="store_true")
     usp.add_argument("--usd", type=float); usp.add_argument("--inr", type=float); usp.add_argument("--tcs", type=float)
     usp.add_argument("--bank"); usp.add_argument("--fy", type=int, help="financial year's starting year"); usp.add_argument("--slab", type=float)
-    hqp = sub.add_parser("hq", help="the agent HQ (S64: the replay bench)")
-    hqp.add_argument("action", choices=["replay"])
-    hqp.add_argument("pass_id", type=int, help="the journaled pass to run again")
-    hqp.add_argument("--model", default=None, help="run it on another model (default: the original pass model)")
     wkp = sub.add_parser("workshop", help="calculation workshop (S53): a model writes the maths as code, it runs here")
     wkp.add_argument("action", choices=["ask", "list", "show", "promote", "rerun"])
     wkp.add_argument("text", nargs="?", default="", help="ask: the question; show/promote/rerun: the calculation id")
@@ -320,8 +316,6 @@ def main(argv=None):
         return _conductor(a)
     if a.cmd == "workshop":
         return _workshop(a)
-    if a.cmd == "hq":
-        return _hq(a)
     if a.cmd == "ipo":
         return _ipo(a)
     if a.cmd == "us":
@@ -915,24 +909,6 @@ def _ipo(a) -> int:
     r = ipo.strategy(store.connect(), data_dir(), _date.today(), a.name, a.qty, a.price, a.budget, a.group, store.pm_dir())
     print(_js.dumps(r, indent=1, default=str))
     return 0
-
-
-def _hq(a) -> int:
-    """pflab hq replay <pass_id> [--model M]: a journaled pass run again with its tools answered from the journal."""
-    from pathlib import Path
-
-    from pflab.data import data_dir
-    from pflab.hq import desk, replay, service
-    from pflab.pm import secrets as sec
-    from pflab.pm import store
-    rt = desk.Desk(store.connect(), store.pm_dir(), data_dir(), Path(__file__).resolve().parents[2], sec.load())
-    try:
-        r = replay.replay(rt, service.client(rt), service.gate(rt), a.pass_id, a.model)
-    except (LookupError, ValueError) as e:
-        print(e)
-        return 2
-    print(replay.side_by_side(r))
-    return 0 if r["status"] == "done" else 1
 
 
 def _workshop(a) -> int:

@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from pflab.agents import analyst as an
-from pflab.hq import board, brain, egress, governor as gv, keeper, llm, messenger, reception
+from pflab.hq import board, egress, governor as gv, keeper, llm, messenger, reception
 from pflab.hq.board import Reply
 from pflab.hq.desk import Desk
 from pflab.pm import store
@@ -263,75 +263,6 @@ def test_drop_folder_files_reach_the_inbox_once_settled(con, tmp_path, monkeypat
 # --- readers --------------------------------------------------------------------------------------------------------------
 
 # --- brain ------------------------------------------------------------------------------------------------------------
-
-@pytest.fixture
-def brain_input(monkeypatch):
-    monkeypatch.setattr(brain, "portfolio_view", lambda con, asof: ("PORTFOLIO: AAA | equity | 60.0 | Rs 6,00,000 | +12.0",
-                                                                    {"AAA": AAA}))
-    monkeypatch.setattr(brain, "watch_view", lambda con: ("WATCH LIST: BBB", {"BBB": BBB}))
-
-
-def test_brain_predictions_checked_by_code():
-    syms = {"AAA": AAA, "BBB": BBB}
-    pr, problem = brain.check_prediction({"symbol": "aaa", "kind": "return_below", "level": -5, "due": "2026-11-20",
-                                          "confidence": 0.6, "claim": "AAA falls 5%"}, syms, NOW)
-    assert problem is None and pr["symbol"] == "AAA" and pr["isin"] == AAA and pr["due"] == date(2026, 11, 20)
-    for p, why in [({"symbol": "ZZZ", "kind": "return_above", "level": 5, "due": "2026-11-20", "confidence": 0.6}, "ZZZ"),
-                   ({"symbol": "BBB", "kind": "return_above", "level": 5, "due": "2026-10-27", "confidence": 0.6}, "outside"),
-                   ({"symbol": "BBB", "kind": "up", "level": 5, "due": "2026-11-20", "confidence": 0.6}, "kind"),
-                   ({"symbol": "BBB", "kind": "return_above", "level": 5, "due": "soon", "confidence": 0.6}, "unreadable"),
-                   ({"symbol": "BBB", "kind": "return_above", "level": 5, "due": "2026-11-20", "confidence": 1.2}, "range")]:
-        assert brain.check_prediction(p, syms, NOW)[1] and why in brain.check_prediction(p, syms, NOW)[1]
-
-
-def test_brain_wakes_only_on_new_material_events(con, tmp_path, brain_input, monkeypatch):
-    from pflab.app import system
-    monkeypatch.setattr(system, "stale_prices", lambda con_, now_: None)       # S67 has its own test: old prices stop a pass (test_s67_cycle)
-    rt = _desk(con, tmp_path, brain="off")
-    assert brain.wake(rt, Fake(), egress.Gate(), held=[AAA], listed=[BBB], cfg=CFG)["pass"] is None
-    rt.settings["brain"] = "economy"
-    rt.clock = lambda: datetime(2026, 10, 25, 10, 0)             # a Sunday: no morning review
-    assert brain.wake(rt, Fake(), egress.Gate(), held=[AAA], listed=[BBB], cfg=CFG)["why"] == "nothing new"
-    con.execute("INSERT INTO research_flags VALUES (1, ?, 'AAA', 'fall', ?, ?, 'r1', 'AAA fell 9% in 5 sessions on its own')",
-                [AAA, rt.clock(), rt.clock()])
-    r = brain.wake(rt, Fake([{"wake": False, "why": "minor"}]), egress.Gate(), held=[AAA], listed=[BBB], cfg=CFG)
-    assert r["pass"] is None and "minor" in r["why"]
-    assert brain.wake(rt, Fake(), egress.Gate(), held=[AAA], listed=[BBB], cfg=CFG)["why"] == "nothing new"   # seen once
-    _prices(con, AAA, date(2023, 1, 2), 100 + np.cumsum(np.random.default_rng(1).normal(0, 1, 980)))
-    con.execute("INSERT INTO research_flags VALUES (2, ?, 'AAA', 'results', ?, ?, 'r2', 'AAA filed results')",
-                [AAA, rt.clock(), rt.clock()])
-    c = Fake([{"wake": True, "why": "results"}, "AAA filed results.", "AAA filed results."])   # S60: the note, no tools
-    r = brain.wake(rt, c, egress.Gate(), held=[AAA], listed=[BBB], cfg=CFG)
-    assert r["trigger"] == "events" and r["pass"] and r["rival"]
-    assert [m["model"] for m in c.messages.sent] == [gv.HAIKU, gv.OPUS, gv.SONNET]
-    blocks = c.messages.sent[1]["messages"][0]["content"]
-    assert blocks[0]["cache_control"] == {"type": "ephemeral"} and "AAA filed results" in blocks[1]["text"]
-    assert c.messages.sent[1]["tools"] and c.messages.sent[2]["tools"] == c.messages.sent[1]["tools"]   # the same tools
-    j = brain.journal(con)
-    assert [p["role"] for p in j[:3]] == ["rival", "brain", "gate"] and j[1]["note"] == "AAA filed results."
-    assert con.execute("SELECT count(*) FROM hq_tasks").fetchone()[0] == 0          # shadow: nothing acted on
-    brain.mark(con, j[1]["id"], False, rt.clock())
-    brain.mark(con, j[1]["id"], True, rt.clock())                                   # his latest mark stands
-    assert brain.journal(con)[1]["mattered"] is True and brain.journal(con)[0]["mattered"] is None
-    assert not [e for e in brain.events(con, rt.clock() - timedelta(hours=1), rt.clock(), [AAA], [BBB])
-                if e["key"].startswith("memory:")]                                  # a mark never wakes the brain
-
-
-def test_scheduled_passes_once_each():
-    class C:
-        def __init__(self, rows):
-            self.rows = rows
-
-        def execute(self, q, a):
-            return SimpleNamespace(fetchone=lambda: (1,) if any(t in q for t in self.rows) else None)
-    assert brain.due_scheduled(C([]), datetime(2026, 10, 26, 8, 0)) is None
-    assert brain.due_scheduled(C([]), datetime(2026, 10, 26, 9, 0)) == "morning"
-    assert brain.due_scheduled(C(["'morning'"]), datetime(2026, 10, 26, 9, 0)) is None
-    worked = "trigger <> 'reflection'"
-    assert brain.due_scheduled(C([]), datetime(2026, 10, 31, 9, 30)) is None             # no pass this week: nothing to reflect on
-    assert brain.due_scheduled(C([worked]), datetime(2026, 10, 31, 9, 30)) == "reflection"
-    assert brain.due_scheduled(C([worked, "trigger='reflection'"]), datetime(2026, 10, 31, 9, 30)) is None   # once
-
 
 # --- memory keeper -------------------------------------------------------------------------------------------------------
 

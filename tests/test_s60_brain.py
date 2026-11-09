@@ -12,7 +12,7 @@ import pandas as pd
 import pytest
 
 from pflab.agents import analyst as an, memory as mem
-from pflab.hq import brain, egress, fetch, governor as gv, keeper, redact, stocks, tools as tl
+from pflab.hq import egress, fetch, governor as gv, keeper, redact, stocks, tools as tl
 from pflab.hq.desk import Desk
 from pflab.pm import store
 
@@ -93,14 +93,6 @@ class Fake:
         self.beta = SimpleNamespace(messages=self.messages)
 
 
-@pytest.fixture
-def quiet_input(monkeypatch):
-    monkeypatch.setattr(brain, "portfolio_view", lambda con, asof: ("PORTFOLIO: AAA | equity | 9.0 | Rs 90,000 | +50.0",
-                                                                    {"AAA": AAA}))
-    monkeypatch.setattr(brain, "watch_view", lambda con: ("WATCH LIST: BBB", {"BBB": BBB}))
-    monkeypatch.setattr(tl.Ctx, "book", lambda self: _book())
-
-
 # --- the registry -------------------------------------------------------------------------------------------------------
 
 def test_every_tool_has_a_strict_schema_and_bounds_are_checked_here():
@@ -111,14 +103,6 @@ def test_every_tool_has_a_strict_schema_and_bounds_are_checked_here():
     assert not any(k in p for d in defs for p in d["input_schema"]["properties"].values()
                    for k in ("minimum", "maximum", "maxLength"))                  # moved into descriptions for the API
     assert {t.kind for t in tl.TOOLS.values()} == set(tl.KINDS)
-    rp = tl.TOOLS["record_prediction"]
-    good = {"symbol": "AAA", "kind": "return_above", "level": 5, "due": "2026-11-30", "confidence": 0.6, "claim": "c"}
-    assert tl.validate(rp, good) is None
-    assert "unknown" in tl.validate(rp, {**good, "extra": 1})
-    assert "missing" in tl.validate(rp, {k: v for k, v in good.items() if k != "due"})
-    assert "one of" in tl.validate(rp, {**good, "kind": "up"})
-    assert "between" in tl.validate(rp, {**good, "confidence": 1.5})
-    assert "must be number" in tl.validate(rp, {**good, "level": True})
 
 
 def test_tool_results_are_redacted_logged_and_identity_withheld(con, tmp_path):
@@ -190,75 +174,6 @@ def test_edge_is_excess_over_the_index_after_costs_with_independent_n():
 
 
 # --- the loop -------------------------------------------------------------------------------------------------------------
-
-def test_actions_are_carried_out_once_the_shadow_ends(con, tmp_path, quiet_input, monkeypatch):
-    monkeypatch.setattr(brain, "SHADOW", False)
-    rt = _desk(con, tmp_path)
-    c = Fake([_tool_msg(("order_calculation", {"question": "Largest fall of AAA in 2024?"})), _note_msg("Ordered.")])
-    brain.think(rt, "asked", [], c, egress.Gate(), cfg=CFG)
-    assert con.execute("SELECT to_agent, from_agent, text FROM hq_tasks").fetchall() == [
-        ("calc", "brain", "Largest fall of AAA in 2024?")]
-    # the cheaper rival journals only: nothing happens twice
-    r = Fake([_tool_msg(("order_calculation", {"question": "Largest fall of AAA in 2023?"})), _note_msg("Ordered.")])
-    brain.think(rt, "asked", [], r, egress.Gate(), model=gv.SONNET, role="rival", cfg=CFG)
-    assert con.execute("SELECT count(*) FROM hq_tasks").fetchone()[0] == 1
-    assert brain.journal(con)[0]["tools"][0]["status"] == "shadow"
-
-
-def test_actions_are_capped_a_day_and_the_rest_kept_in_the_journal(con, tmp_path, quiet_input, monkeypatch):
-    monkeypatch.setattr(brain, "SHADOW", False)
-    rt = _desk(con, tmp_path)
-    ctx = tl.Ctx(rt, 1, gv.OPUS, False, {"AAA": AAA}, egress.Gate(), NOW, source="AAA")
-    for k in range(tl.DAILY["order_research"] + 1):
-        text, err = tl.run(ctx, "order_research", {"symbol": "AAA", "question": f"What changed, take {k}?"})
-    assert not err and "limit" in text
-    assert con.execute("SELECT count(*) FROM hq_tasks").fetchone()[0] == tl.DAILY["order_research"]
-    st = [s for (s,) in con.execute("SELECT status FROM hq_tool_calls ORDER BY call_no").fetchall()]
-    assert st == ["ran"] * tl.DAILY["order_research"] + ["held"] and "held" in ctx.decisions[-1]
-
-
-def test_the_last_turn_has_no_tools_and_a_refused_turn_stops_the_pass(con, tmp_path, quiet_input):
-    rt = _desk(con, tmp_path)
-    loop = [_tool_msg(("journal", {})) for _ in range(brain.MAX_TURNS - 1)] + [_note_msg("Done looking.")]
-    c = Fake(loop)
-    brain.think(rt, "asked", [], c, egress.Gate(), cfg=CFG)
-    sent = c.messages.sent
-    assert len(sent) == brain.MAX_TURNS and sent[-1]["tool_choice"] == {"type": "none"}
-    assert "last turn" in sent[-1]["messages"][-1]["content"][-1]["text"]
-    assert brain.journal(con)[0]["note"] == "Done looking."
-    con.execute("DELETE FROM api_calls")
-    con.execute("UPDATE hq_passes SET passed_at = passed_at - INTERVAL 2 DAY")
-    big = Fake([_tool_msg(("journal", {}))] * 3)
-    cfg = {**CFG, "cap": 3.0}                                         # the layer's share (15% = 0.45) fits the first turn (0.3) and refuses the second
-    with pytest.MonkeyPatch.context() as m:
-        m.setattr(gv, "cost_inr", lambda *a, **k: 0.3)
-        pid = brain.think(rt, "asked", [], big, egress.Gate(), cfg=cfg)
-    j = next(p for p in brain.journal(con) if p["id"] == pid)
-    assert j["status"] == "stopped" and "stopped before turn 2" in j["error"]       # S68: a pass that stopped with no note is not "done"
-
-
-def test_near_its_limit_the_brain_hands_off_to_a_fresh_context_and_the_next_pass_reads_it(con, tmp_path, quiet_input,
-                                                                                          monkeypatch):
-    monkeypatch.setitem(gv.LIMITS, "brain", gv.Limits("brain", 3000, 6000, {"off": 0, "economy": 4, "normal": 8}))
-    rt = _desk(con, tmp_path)
-    c = Fake([_tool_msg(("journal", {}), usage=(2000, 200)),
-              _tool_msg(("save_state", {"state": "Looked at AAA; next: BBB's results."})),
-              _tool_msg(("research_flags", {})), _note_msg("Carried on from the state.")])
-    brain.think(rt, "asked", [], c, egress.Gate(), cfg=CFG)
-    sent = c.messages.sent
-    assert "near its limit" in sent[1]["messages"][-1]["content"][-1]["text"]
-    assert len(sent[2]["messages"]) == 1 and "YOUR WORKING STATE" in sent[2]["messages"][0]["content"][1]["text"]
-    assert brain.journal(con)[0]["note"] == "Carried on from the state."
-    st = mem.recall(con, kinds=["state"], asof=NOW.date())
-    assert len(st) == 1 and st[0].subject == f"brain:{gv.OPUS}"
-    _, change, _ = brain.build_input(con, NOW.date(), "morning", [], gv.OPUS)
-    assert "YOUR LAST WORKING STATE" in change and "BBB's results" in change
-    # without a save, code writes the state itself; the new one supersedes the last
-    c2 = Fake([_tool_msg(("journal", {}), usage=(2000, 200)), _tool_msg(("research_flags", {})), _note_msg("ok")])
-    brain.think(rt, "asked", [], c2, egress.Gate(), cfg=CFG)
-    st = mem.recall(con, kinds=["state"], asof=NOW.date(), include_past=True)
-    assert len(st) == 2 and st[0].text.startswith("Tools read this pass") and st[1].valid_to is not None
-
 
 def test_governor_counts_passes_not_turns(con):
     for k, turn in enumerate([1, 2, 3, 1, 2]):

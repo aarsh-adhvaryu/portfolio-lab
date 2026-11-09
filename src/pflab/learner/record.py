@@ -167,9 +167,9 @@ def tool_rules(con, now: datetime) -> List[dict]:
 
 
 def limit_rules(con, now: datetime) -> List[dict]:
-    from pflab.hq import brain, tools as tl
+    from pflab.hq import passes, tools as tl
     out = []
-    marks = brain.marks(con)
+    marks = passes.marks(con)
     tells = {pid for (pid,) in con.execute("SELECT DISTINCT pass_id FROM hq_tool_calls WHERE tool='tell_investor' AND status='ran'").fetchall()}
     m = [v for pid, v in marks.items() if pid in tells]
     caps = {**tl.DAILY, **{k: int(v) for k, v in live.values(con, "daily_cap").items()}}
@@ -208,39 +208,17 @@ MIN_PASSES = 5
 
 
 def record_text(con, model: str, now: datetime) -> str:
-    from pflab.hq import brain, keeper
-    notes = [p for p in brain.journal(con, 40) if p["model"] == model and p["status"] == "done"][:10]
+    from pflab.hq import keeper, passes
+    notes = [p for p in passes.journal(con, 40) if p["model"] == model and p["status"] == "done"][:10]
     errs = con.execute("SELECT tool, count(*) FROM hq_tool_calls WHERE status='error' AND called_at >= ? GROUP BY tool",
                        [now - timedelta(days=30)]).fetchall()
-    m = brain.marks(con)
+    m = passes.marks(con)
     return "\n".join([keeper.scorecard_text(con, model),
                       f"MARKS by the investor: {sum(m.values())} mattered, {len(m) - sum(m.values())} did not",
                       "TOOL ERRORS (30 days): " + (", ".join(f"{t} {n}" for t, n in errs) or "none"),
                       live.brain_text(con), "RECENT NOTES:"] + [f"- {str(p['at'])[:10]} {p['trigger']}: {(p['note'] or '')[:300]}"
                                                                  for p in notes])
 
-
-def instruction_rules(con, model: str, now: datetime, draft) -> List[dict]:
-    """Worded by a model (the learner_proposals job); each goes to the investor. None without MIN_PASSES new passes."""
-    from pflab.hq import brain
-    since = con.execute("SELECT max(made_at) FROM learn_proposals WHERE kind='instruction'").fetchone()[0] or datetime(2000, 1, 1)
-    n = con.execute("SELECT count(*) FROM hq_passes WHERE role='brain' AND status='done' AND passed_at >= ?", [since]).fetchone()[0]
-    if n < MIN_PASSES or draft is None:
-        return []
-    rec = record_text(con, model, now)
-    out = draft(PROPOSE_SYSTEM, f"CURRENT INSTRUCTIONS:\n{brain.SYSTEM}\n\nRECORD:\n{rec}", PROPOSE_SCHEMA)
-    res = []
-    for c in (out.get("changes") or [])[:2]:
-        ins = str(c.get("instruction", "")).strip()
-        if not ins or re.search(r"\b(trade|buy now|sell now|order|transfer|target|limit|cap)\b", ins, re.I):
-            continue                                             # never a trade, money, a target or a limit
-        res.append(_p("instruction", "brain", ins[:500], {"evidence": str(c.get("evidence", ""))[:600],
-                                                          "why": str(c.get("why", ""))[:400]}, int(c.get("n") or 0),
-                      "worded by a model from the record: needs the investor's yes", True, None, "investor"))
-    return res
-
-
-# --- proposals kept, applied, asked --------------------------------------------------------------------------------------
 
 def _same_pending(con, p: dict) -> bool:
     return bool(con.execute("SELECT 1 FROM learn_proposals WHERE kind=? AND coalesce(target,'')=? AND coalesce(value,'')=? "
@@ -306,12 +284,12 @@ def answers(con, now: datetime) -> Dict[str, int]:
 
 def run(con, now: datetime, draft=None, why: str = "weekly") -> dict:
     """One reading of the record: the code rules, then (weekly) the model's instruction changes."""
-    from pflab.hq import brain
+    from pflab.hq import passes
     from pflab.pm.store import next_id
-    main, rival = brain.pair()
+    main, rival = passes.pair()
     props = suggestion_rules(con, main) + prediction_rules(con, main, rival) + tool_rules(con, now) + limit_rules(con, now)
     props = [p for p in props if not (p["kind"] == "model" and _settings_chose("brain"))]
-    model_props = instruction_rules(con, main, now, draft) if why == "weekly" else []
+    model_props: List[dict] = []                      # S80 phase 4: the brain's instructions are cut, so the model proposes none
     kept = [k for p in props if (k := keep(con, p, now)) is not None]
     kept += [k for p in model_props if (k := keep(con, p, now, by_model="learner_proposals")) is not None]
     rid = next_id(con, "learn_proposals", "prop_id")

@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from pflab import features
 from pflab.app import runtime, server, views
 from pflab.app import settings as st
-from pflab.hq import brain, picture
+from pflab.hq import picture
 from pflab.pm import store
 
 NOW = datetime(2026, 10, 22, 11, 30)
@@ -57,21 +57,6 @@ class _Con:
 
     def fetchone(self):
         return None
-
-
-def test_the_us_open_pass_needs_the_flag_and_holdings(monkeypatch):
-    from pflab.conductor import us_calendar as uc
-    from pflab.ledger import foreign as lf
-    monkeypatch.setattr(lf, "positions", lambda con, d: [{"symbol": "X"}])
-    monkeypatch.setattr(uc.UsCalendar, "pass_time_ist", lambda self, d: datetime(2026, 10, 28, 19, 20))
-    now = datetime(2026, 10, 28, 21, 0)
-    monkeypatch.setenv("PFLAB_PM_DIR", "Z:/no/such/pm")
-    monkeypatch.setenv("PFLAB_CHANNEL", "stable")
-    assert not brain._us_open_due(_Con(), now)                                            # holdings, flag off
-    monkeypatch.setenv("PFLAB_CHANNEL", "beta")
-    assert brain._us_open_due(_Con(), now)                                                # holdings, flag on
-    monkeypatch.setattr(lf, "positions", lambda con, d: [])
-    assert not brain._us_open_due(_Con(), now)                                            # flag on, nothing held
 
 
 @pytest.fixture

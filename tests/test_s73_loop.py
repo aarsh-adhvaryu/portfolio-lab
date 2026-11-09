@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 
 from pflab.app import assistant, chat
-from pflab.hq import brain, daily, rules, scorecard
+from pflab.hq import daily, rules, scorecard
 from pflab.plan import envelope
 from pflab.service import jobs
 from tests.test_s68_autonomy import AAA, NOW, con, rt  # noqa: F401  (fixtures)
@@ -220,12 +220,4 @@ def test_the_review_is_a_job_at_20_past_9_in_the_evening():
     from pflab.service import tasks  # noqa: F401  (importing registers the jobs)
     j = jobs.REGISTRY["review"]
     assert (j.schedule.hour, j.schedule.minute) == (21, 20)
-
-
-def test_the_paid_morning_pass_is_off_unless_the_policy_brings_it_back(con, monkeypatch):
-    monkeypatch.setattr(brain, "morning_pass_on", lambda: False)
-    monday_nine = datetime(2026, 11, 2, 9, 30)
-    assert brain.due_scheduled(con, monday_nine) is None
-    monkeypatch.setattr(brain, "morning_pass_on", lambda: True)
-    assert brain.due_scheduled(con, monday_nine) == "morning"
 

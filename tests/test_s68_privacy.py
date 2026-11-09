@@ -91,21 +91,6 @@ def test_no_worker_or_assistant_tool_can_place_an_order_or_change_a_limit(monkey
     assert "change_preference" not in assistant.TOOLS                                           # a change of his targets or limits is the brain's proposal, with his yes
 
 
-def test_the_models_own_words_never_carry_his_name_back_into_the_next_turn(rt, con):
-    from pflab.hq import brain, workers
-    m = Model({"research": [_use(("case_evidence", {"case_id": 1, "stance": "neutral", "text": "Looked at it.", "source_kind": "observation"})), _say(f"Done for {NAME}.")]})
-    rt._hq_client = m
-    cid, _ = cases.open_case(con, NOW, "AAA?", subject="AAA")
-    con.execute("UPDATE hq_cases SET status='running' WHERE case_id=?", [cid])
-    out = missions.create(con, NOW, "A research question about AAA results", pm_dir=rt.pm_dir)
-    # run the research worker directly on a task
-    tid = board.post(con, "w_research", "check", NOW, frm="mission", body={"case_id": out["case_id"], "role": "research", "promise": {"evidence": 1}, "goal": "g"})
-    t = board.get(con, tid)
-    workers.run_task(rt, t)
-    sent = json.dumps(m.seen)
-    assert NAME not in sent.lower().replace("synthname's", "")                                  # the first turn's reply is sent back only after his name is replaced
-
-
 def test_an_id_the_model_copies_into_its_own_words_or_a_call_is_replaced_not_a_reason_to_stop(rt, con):
     """Found in the real app: a quant task stopped on 'not sent: an account, depository, folio or deposit id' that the model itself had written."""
     from pflab.hq import workers
@@ -131,3 +116,18 @@ def test_an_id_already_kept_in_the_case_does_not_stop_the_next_task(rt, con):
     rep = workers.run_task(rt, board.get(con, tid))
     assert rep.status == "done", rep.text
     assert all(ACCT not in json.dumps(kw["messages"]) for _, kw in m.seen)
+
+
+def test_the_models_own_words_never_carry_his_name_back_into_the_next_turn(rt, con):
+    from pflab.hq import workers
+    m = Model({"research": [_use(("case_evidence", {"case_id": 1, "stance": "neutral", "text": "Looked at it.", "source_kind": "observation"})), _say(f"Done for {NAME}.")]})
+    rt._hq_client = m
+    cid, _ = cases.open_case(con, NOW, "AAA?", subject="AAA")
+    con.execute("UPDATE hq_cases SET status='running' WHERE case_id=?", [cid])
+    out = missions.create(con, NOW, "A research question about AAA results", pm_dir=rt.pm_dir)
+    # run the research worker directly on a task
+    tid = board.post(con, "w_research", "check", NOW, frm="mission", body={"case_id": out["case_id"], "role": "research", "promise": {"evidence": 1}, "goal": "g"})
+    t = board.get(con, tid)
+    workers.run_task(rt, t)
+    sent = json.dumps(m.seen)
+    assert NAME not in sent.lower().replace("synthname's", "")                                  # the first turn's reply is sent back only after his name is replaced

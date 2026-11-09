@@ -983,8 +983,8 @@ def create_app(rt) -> FastAPI:
     @app.post("/api/hq/passes/{pid}/mark")
     def hq_mark_pass(pid: int, mattered: bool = Body(..., embed=True)):
         """The investor marks a brain pass (the shadow protocol's usefulness measure); his latest mark stands."""
-        from pflab.hq import brain
-        brain.mark(rt.cursor(), pid, mattered, rt.clock())
+        from pflab.hq import passes
+        passes.mark(rt.cursor(), pid, mattered, rt.clock())
         rt.bump("hq")
         return {"ok": True}
 

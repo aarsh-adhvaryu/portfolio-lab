@@ -41,23 +41,3 @@ def test_mode_through_a_session_that_crosses_midnight_in_ist():
     assert CAL.pass_time_ist(date(2026, 10, 27)) == datetime(2026, 10, 27, 19, 20) and CAL.pass_time_ist(date(2026, 11, 26)) is None
     assert uc.us_session(datetime(2026, 10, 27, 19, 5), CAL) == "open"
 
-
-def test_the_brain_has_a_us_pass_once_a_day_20_minutes_into_the_session_only_with_us_holdings(tmp_path, monkeypatch):
-    monkeypatch.setenv("PFLAB_PM_DIR", str(tmp_path / "pm"))
-    monkeypatch.setenv("PFLAB_CHANNEL", "beta")                           # S65: the US sleeve is a beta feature, on in the workshop
-    import duckdb
-    from pflab.hq import brain
-    from pflab.ledger import foreign as lf
-    from pflab.pm import store
-    con = duckdb.connect(str(tmp_path / "pm.duckdb"))
-    store.migrate(con)
-    day = date(2026, 10, 27)                                              # US open 19:00 IST, pass at 19:20
-    assert not brain._us_open_due(con, datetime(2026, 10, 27, 19, 30))     # nothing held: no US pass
-    con.execute("INSERT INTO fx_rates VALUES (?, 'USDINR', 88.0, 't')", [date(2026, 9, 30)])
-    lf.add_trade(con, date(2026, 10, 1), "AAA", lf.pseudo_isin(5), "buy", 1, 100.0)
-    assert not brain._us_open_due(con, datetime(2026, 10, 27, 19, 10))     # before the pass time
-    assert brain._us_open_due(con, datetime(2026, 10, 27, 19, 30))
-    assert not brain._us_open_due(con, datetime(2026, 11, 26, 21, 0))      # Thanksgiving: shut
-    con.execute("INSERT INTO hq_passes (pass_id, passed_at, trigger, model, role, shadow, status) VALUES (1, ?, 'us_open', 'm', 'brain', true, 'done')",
-                [datetime(2026, 10, 27, 19, 25)])
-    assert not brain._us_open_due(con, datetime(2026, 10, 27, 20, 0))      # already ran today

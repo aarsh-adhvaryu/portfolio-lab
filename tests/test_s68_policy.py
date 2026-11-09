@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from pflab.agents import analyst as an
-from pflab.hq import brain, cases, egress, governor as gv, service, tools as tl
+from pflab.hq import cases, egress, governor as gv, service, tools as tl
 from pflab.hq.desk import Desk
 from pflab.pm import store
 
@@ -148,55 +148,9 @@ class Fake:
         self.beta = SimpleNamespace(messages=self.messages)
 
 
-@pytest.fixture
-def quiet(monkeypatch):
-    monkeypatch.setattr(brain, "portfolio_view", lambda con, asof: ("PORTFOLIO: AAA | equity | 9.0 | Rs 90,000 | +50.0", {"AAA": AAA}))
-    monkeypatch.setattr(brain, "watch_view", lambda con: ("WATCH LIST: none", {}))
-    monkeypatch.setattr(tl.Ctx, "book", lambda self: None)
-    monkeypatch.setattr(brain, "due_scheduled", lambda con, now, cal=None: None)
-    monkeypatch.setattr(an, "config", lambda: CFG)
-
-
 def _rt(con, tmp_path):
     return Desk(con, tmp_path / "pm", tmp_path / "data", tmp_path / "repo", None,
                 {"brain": "normal", "preset": "full", "telegram_send": False, "drop_watch": True}, clock=lambda: NOW)
-
-
-def test_a_pass_stopped_by_the_cap_at_turn_two_is_stopped_and_its_case_waits_without_an_attempt(con, tmp_path, quiet):
-    cid, _ = cases.open_case(con, NOW, "Is anything unusual in AAA?", subject="AAA", isin=AAA)
-    rt = _rt(con, tmp_path)
-    def pricey(*a, **k):                    # every turn costs Rs 400 of a Rs 700 cap: the second would pass it
-        return 400.0
-    tight = {**CFG, "cap": 700.0, "ask_above": 1000.0, "policy": {"share": {"brain": 1.0}, "day_rupees": {"brain": 5000}}}
-    import pytest as _p
-    with _p.MonkeyPatch.context() as m:
-        m.setattr(gv, "cost_inr", pricey)
-        pid = brain.think(rt, "case", [], Fake([_tool_msg(("journal", {}))]), egress.Gate(), cfg=tight, case_ids=[cid])
-    row = con.execute("SELECT status, error FROM hq_passes WHERE pass_id=?", [pid]).fetchone()
-    assert row[0] == "stopped" and "stopped before turn 2" in row[1], row                  # not "done"
-    c = cases.get(con, cid)
-    assert c["status"] == "waiting_budget" and c["attempts"] == 0 and c["next_review"] > NOW, (c["status"], c["error"], row)
-    assert cases.due(con, NOW) == []                                                   # not asked again until it can change
-    assert cid in cases.due(con, c["next_review"] + timedelta(minutes=1))               # and picked up when it can
-    assert con.execute("SELECT count(*) FROM memory WHERE kind='state'").fetchone()[0] >= 1   # the pass's checkpoint is kept
-
-
-def test_a_provider_failure_mid_pass_makes_the_case_wait_for_the_provider_not_fail(con, tmp_path, quiet):
-    cid, _ = cases.open_case(con, NOW, "Is anything unusual in AAA?", subject="AAA", isin=AAA)
-    rt = _rt(con, tmp_path)
-    pid = brain.think(rt, "case", [], Fake([_tool_msg(("journal", {})), ConnectionError("provider down")]), egress.Gate(), cfg=CFG,
-                      case_ids=[cid])
-    assert con.execute("SELECT status FROM hq_passes WHERE pass_id=?", [pid]).fetchone()[0] == "stopped"
-    c = cases.get(con, cid)
-    assert c["status"] == "waiting_provider" and c["attempts"] == 0
-
-
-def test_a_bug_mid_pass_still_counts_as_a_failed_attempt(con, tmp_path, quiet):
-    cid, _ = cases.open_case(con, NOW, "Is anything unusual in AAA?", subject="AAA", isin=AAA)
-    rt = _rt(con, tmp_path)
-    brain.think(rt, "case", [], Fake([_tool_msg(("journal", {})), ZeroDivisionError("bug")]), egress.Gate(), cfg=CFG, case_ids=[cid])
-    c = cases.get(con, cid)
-    assert c["status"] == "retry" and c["attempts"] == 1
 
 
 def test_the_policy_view_shows_every_limit_and_the_windows_spend(con, monkeypatch):

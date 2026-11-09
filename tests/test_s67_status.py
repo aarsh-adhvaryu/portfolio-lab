@@ -97,12 +97,13 @@ def test_the_hq_job_fails_when_a_part_fails_instead_of_reporting_a_success(rt, m
 
     def boom(r):
         raise ConnectionError("api.anthropic.com unreachable")
-    monkeypatch.setattr(service, "brain_wake", boom)
+    from pflab.hq import missions
+    monkeypatch.setattr(missions, "scan", boom)
     monkeypatch.setattr("pflab.hq.phone.poll_once", lambda r, timeout=0: 0)
     monkeypatch.setattr("pflab.hq.security.egress", lambda r: {})
     ctx = jobs.Ctx(rt.cursor(), NOW, rt.pm_dir, rt.data_root, rt.repo, "python", None)
     out = service.tick_job(ctx)
-    assert "brain" in out["failed"] and "unreachable" in out["failed"]["brain"]
+    assert "autonomy" in out["failed"] and "unreachable" in out["failed"]["autonomy"]
     service._last.clear()                                          # a new round on a new object of the same id would otherwise be rate-limited
     assert jobs.run_job(ctx, jobs.Job("hq_demo", jobs.REGISTRY["hq"].schedule, service.tick_job)).status == "failed"
 
@@ -147,24 +148,19 @@ def test_a_follow_up_sees_the_chat_and_the_open_work(rt, tmp_path):
     from pflab.agents import centre
     centre.ask(con, "and is that too much?", NOW.date(), llm=fake_llm, tools_override=["system"], history=h)
     assert "EARLIER IN THIS CHAT" in seen["prompt"] and "How much of AAA do I hold?" in seen["prompt"]
-    # the brain gets the same history and the open investigations as events of its pass
-    from pflab.hq import brain, cases
-    cases.open_case(con, NOW, "Is AAA's margin trend real?", subject="AAA", isin=AAA)
-    got = {}
+    # S80 phase 4: a question outside a chat thread runs the same tool conversation as the chat, with the earlier turns passed in as text
+    from pflab.app import assistant
     d = _desk(rt, tmp_path)
+    got = {}
 
-    def spy(rt_, trigger, evs, client, gate, **kw):
-        got["evs"] = evs
-        return 1
-    import pflab.hq.service as sv
-    with pytest.MonkeyPatch.context() as mp:                      # (S68: restored afterwards; this used to leak into every later test)
-        mp.setattr(sv, "client", lambda r: object())
-        mp.setattr(brain, "think", spy)
-        con.execute("INSERT INTO hq_passes VALUES (1, ?, 'asked', '[]', 'm', 'brain', false, 'done', 'The answer.', '[]', 0, NULL, NULL)", [NOW])
-        service.brain_now(d, "and is that too much?", rival=False, history=h)
-    kinds = [e["kind"] for e in got["evs"]]
-    assert kinds == ["from the investor (question)", "the conversation so far", "your open investigations"]
-    assert "Is AAA's margin trend real?" in got["evs"][2]["text"]
+    def spy(rt_, con_, cid_, aid_, q_, context="", client=None, gate=None, cfg=None, history=""):
+        got.update(cid=cid_, aid=aid_, q=q_, history=history)
+        return {"text": "The answer.", "status": "done", "cost": 1.5}
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(assistant, "answer", spy)
+        out = service.brain_now(d, "and is that too much?", rival=False, history=h)
+    assert got == {"cid": None, "aid": None, "q": "and is that too much?", "history": h}
+    assert out["ok"] is True and out["text"] == "The answer." and out["cost"] == 1.5
 
 
 # --- email: provenance, then a fresh identity check, never raw ---------------------------------------------------------------------------

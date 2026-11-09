@@ -118,9 +118,9 @@ class Run:
 
     def __init__(self, rt, con, q: str):
         from pflab.app import assistant
-        from pflab.hq import brain, service, tools as tl
+        from pflab.hq import passes, service, tools as tl
         self.rt, self.con, self.q, self.now = rt, con, q, rt.clock()
-        self.pid = brain._record(con, self.now, "assistant", [], "local", "assistant", "running")
+        self.pid = passes.record(con, self.now, "assistant", [], "local", "assistant", "running")
         self.ctx = tl.Ctx(rt, self.pid, "local", False, {}, service.gate(rt), self.now, client=None, mode=rt.settings.get("brain", "economy"), source=q, case_ids=[],
                           task_id=None, role="assistant", allowed=frozenset(n for n in assistant.TOOLS if n in tl.TOOLS), his_text=q)
         self.steps: List[str] = []
@@ -139,8 +139,8 @@ class Run:
             return {"text": text}
 
     def close(self, text: str) -> None:
-        from pflab.hq import brain
-        brain._close(self.con, self.pid, "done", text[:2000], self.ctx.decisions, 0.0, None, None)
+        from pflab.hq import passes
+        passes.close(self.con, self.pid, "done", text[:2000], self.ctx.decisions, 0.0, None, None)
 
 
 def explain(q: str, rendered: str, chat=None) -> Optional[str]:

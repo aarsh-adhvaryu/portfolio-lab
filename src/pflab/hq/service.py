@@ -4,7 +4,6 @@ job) when the window is closed. One round:
     board      the investor's orders and the agents' hand-ons, one task at a time; answers back to where they came from
     watcher    the drop folder -> the inbox (Settings: drop_watch)
     reminders  due ones sent
-    brain      wakes only on something new and material (gatekeeper first) or its morning review / weekly reflection
     keeper     predictions scored, decisions followed up (outcomes written back), notes kept tidy,
                every KEEP_EVERY
     security   S62: every request that left the PC since the last round re-checked against the egress list (code)
@@ -17,7 +16,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
 
-BRAIN_EVERY = timedelta(minutes=15)
 KEEP_EVERY = timedelta(hours=1)
 _last: dict = {}
 
@@ -69,51 +67,14 @@ def paid_allowed(rt) -> bool:
     return not paused(rt) and rt.settings.get("preset", "full") in ("full", "marathon") and (cfg["cap"] > 0 or an.acceptance(cfg, rt.clock()) is not None)
 
 
-def brain_wake(rt) -> dict:
-    from pflab.conductor import calendar as mcal
-    from pflab.hq import brain
-    held, listed = names(rt)
-    try:
-        cal = mcal.load()
-    except Exception:
-        cal = None
-    return brain.wake(rt, client(rt), gate(rt), held=held, listed=listed, cal=cal, rival=False)   # S70: the Sonnet rival only re-ran every pass to compare
-
-
-def brain_now(rt, question: Optional[str] = None, rival: bool = True, history: str = "") -> dict:
-    """The investor orders a pass (no gatekeeper: his order is the reason); his words are its event. `ok` says whether a pass
-    answered. S62: a question from the AI centre or Telegram runs without the rival (the comparison runs on the
-    scheduled passes; a question should not cost twice)."""
-    from pflab.hq import brain
-    con, now = rt.cursor(), rt.clock()
-    if rt.settings.get("brain", "economy") == "off":
-        return {"text": "The brain is off (Settings). Set it to economy or normal to order a pass.", "pass": None,
-                "ok": False}
-    evs = [{"key": f"ask:{now:%Y%m%d%H%M%S}", "kind": "from the investor (question)", "text": question}] if question else []
-    if question and history:                                   # S67: the chat so far, so a follow-up is read as one
-        evs.append({"key": f"history:{now:%Y%m%d%H%M%S}", "kind": "the conversation so far", "text": history})
-    if question:                                               # and the work already open, so he is not asked what is being looked at
-        from pflab.hq import cases
-        open_work = cases.listing(con, 4, active_only=True)
-        if open_work:
-            evs.append({"key": f"work:{now:%Y%m%d%H%M%S}", "kind": "your open investigations",
-                        "text": "; ".join(f"#{c['id']} {c['question'][:100]} ({c['status']})" for c in open_work)})
-    g = gate(rt)
-    evs, withheld = brain.screen(evs, g)
-    main, other = brain.pair()
-    pid = brain.think(rt, "asked", evs, client(rt), g, model=main, withheld=withheld)
-    if rival:
-        brain.think(rt, "asked", evs, client(rt), g, model=other, role="rival", withheld=withheld)
-    p = brain.journal(con, 5)
-    mine = next((x for x in p if x["id"] == pid), None)
-    if mine is None or mine["status"] != "done" or not (mine["note"] or "").strip():
-        why = (mine or {}).get("error") or ("no note" if mine else "unknown")
-        return {"text": f"No pass was made: {why}", "pass": pid, "ok": False}
-    lines = [mine["note"] or "(no note)"]
-    lines += [f"- {d['action']}" + (f" ({d['agent']})" if d.get("agent") and d["action"] == "investigate" else "")
-              + f": {d['subject']}: {d['reason']}" for d in mine["decisions"] if d["action"] != "nothing"]
-    return {"text": "\n".join(lines) + ("\n(Shadow mode: journalled, nothing acted on.)" if brain.SHADOW else ""), "pass": pid,
-            "cost": float(mine["cost"] or 0), "ok": True}
+def brain_now(rt, question: Optional[str] = None, rival: bool = False, history: str = "") -> dict:
+    """A question from the AI centre's Auto road or Telegram's /brain: the same tool conversation as the chat (`app/assistant.ask_once`). `ok` says whether it answered.
+    (S80 phase 4: the brain's own passes, its gatekeeper, events and rival are cut; `rival` is kept only so older callers do not break.)"""
+    from pflab.app import assistant
+    if not (question or "").strip():
+        return {"text": "Ask a question: the brain no longer makes passes of its own.", "pass": None, "ok": False}
+    out = assistant.ask_once(rt, question, history)
+    return {"text": out["text"], "pass": None, "cost": out["cost"], "ok": out["ok"]}
 
 
 def deliver(rt):
@@ -230,8 +191,6 @@ def round_(rt, stop=None, attended: bool = True) -> dict:
         part("drop", drop)
     part("reminders", lambda: messenger.due(rt))
     part("security", lambda: security.egress(rt))               # S62: what left the PC re-checked at once (code)
-    if preset != "off" and paid_allowed(rt) and advisors and _due(rt, "brain", BRAIN_EVERY):
-        part("brain", lambda: brain_wake(rt))
     if _due(rt, "keep", KEEP_EVERY):
         part("keeper", lambda: keeper.run(rt.cursor(), rt.clock(), rt.data_root))
     return out

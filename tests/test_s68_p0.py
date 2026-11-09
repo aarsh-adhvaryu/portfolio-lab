@@ -8,7 +8,7 @@ from datetime import date, datetime
 import pytest
 
 from pflab import scrub
-from pflab.hq import brain, context
+from pflab.hq import context
 from pflab.pm import store
 
 FAKE_TG = "bot1234567890:AAFakeFakeFakeFakeFakeFakeFakeFake_0123"
@@ -104,27 +104,6 @@ class _Rows:
                         return hit if hit is not None else None
                 return None
         return R()
-
-
-def test_a_refused_or_stopped_pass_does_not_stand_in_for_the_morning():
-    from types import SimpleNamespace
-
-    class C:
-        def __init__(self, statuses):
-            self.statuses = statuses            # statuses of the morning passes already in hq_passes today
-
-        def execute(self, q, a):
-            def one():
-                if "trigger='morning'" in q:
-                    excl = "NOT IN ('not made', 'stopped')" in q
-                    ok = [s for s in self.statuses if not (excl and s in ("not made", "stopped"))]
-                    return (1,) if ok else None
-                return None
-            return SimpleNamespace(fetchone=one)
-    t = datetime(2026, 10, 26, 9, 0)
-    assert brain.due_scheduled(C(["not made"]), t) == "morning"       # refused at turn 1: the morning is still due
-    assert brain.due_scheduled(C(["stopped"]), t) == "morning"
-    assert brain.due_scheduled(C(["done"]), t) is None
 
 
 def test_a_graph_label_is_never_nan(con):

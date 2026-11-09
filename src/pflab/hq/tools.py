@@ -165,8 +165,17 @@ def validate(tool: Tool, args: Any) -> Optional[str]:
 # --- read tools ------------------------------------------------------------------------------------------------------
 
 def _rs(x) -> str:
-    from pflab.hq.brain import _rs as rs
-    return rs(float(x))
+    """Rupees to the nearest thousand, Indian grouping (never a bare digit run the egress list would read as an id)."""
+    x = float(x)
+    s = str(int(round(abs(x) / 1000.0)) * 1000)
+    head, tail = s[:-3], s[-3:]
+    parts = []
+    while len(head) > 2:
+        parts.insert(0, head[-2:])
+        head = head[:-2]
+    if head:
+        parts.insert(0, head)
+    return ("-" if x < 0 else "") + "Rs " + ",".join(parts + [tail])
 
 
 def _h(text: str, n: int = 10) -> str:
@@ -490,15 +499,6 @@ def memory_recall(ctx: Ctx, a: dict) -> dict:
     return {"rows": [m.line()[:400] for m in rows], "source": "memory (rows in force today; #id to correct one)"}
 
 
-def journal(ctx: Ctx, a: dict) -> dict:
-    from pflab.hq import brain, keeper
-    mine = [p for p in brain.journal(ctx.con, 30) if p["model"] == ctx.model and p["status"] == "done"][:6]
-    return {"passes": [{"id": p["id"], "at": str(p["at"])[:16], "trigger": p["trigger"], "note": (p["note"] or "")[:300],
-                        "actions": [f"{d['action']}: {d.get('subject', '')}"[:120] for d in p["decisions"]]} for p in mine],
-            "scorecard": keeper.scorecard_text(ctx.con, ctx.model),
-            "source": "hq_passes, hq_predictions"}
-
-
 def ready_plans(ctx: Ctx, a: dict) -> dict:
     from pflab.plan import ready
     out = []
@@ -594,31 +594,6 @@ def findings(ctx: Ctx, a: dict) -> dict:
 
 
 # --- journal tools ---------------------------------------------------------------------------------------------------
-
-def record_prediction(ctx: Ctx, a: dict) -> dict:
-    from pflab.hq import brain, keeper
-    pr, problem = brain.check_prediction(a, ctx.syms, ctx.now)
-    if problem:
-        raise ValueError(problem)
-    pid = keeper.add_prediction(ctx.con, ctx.pass_id, ctx.model, pr, ctx.now)
-    if pid is None:
-        raise ValueError(f"no close on record for {pr['symbol']}: not kept")
-    ctx.predictions.append(pid)
-    return {"kept": pid, "scored": "on the close at its due date, against the stock's own base rate"}
-
-
-def save_state(ctx: Ctx, a: dict) -> dict:
-    from pflab.agents import memory as mem
-    from pflab.hq import brain
-    subject = f"brain:{ctx.model}"
-    prev = ctx.con.execute("SELECT max(mem_id) FROM memory WHERE kind='state' AND subject=? AND valid_to IS NULL",
-                           [subject]).fetchone()[0]
-    state = brain.unnamed(a["state"], ctx.gate.names)
-    mid = mem.remember(ctx.con, "state", state, subject=subject, source=f"brain pass #{ctx.pass_id}", now=ctx.now,
-                       supersedes=prev)
-    ctx.state = state
-    return {"saved": mid, "supersedes": prev}
-
 
 # --- action tools ----------------------------------------------------------------------------------------------------
 
@@ -1599,8 +1574,6 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
          {"words": _s("words that must all appear", 200), "subject": _s("subject, e.g. a symbol", 40),
           "kind": _s("kind", enum=["decision", "reason", "outcome", "feedback", "answer", "note", "state"])}, (),
          memory_recall),
-    Tool("journal", "read", "Your own recent passes, your prediction scorecard and your suggestions' record.", {}, (),
-         journal),
     Tool("ready_plans", "read", "The ready plans kept current (next FD tranche, the monthly amount).", {}, (), ready_plans),
     Tool("research_flags", "read", "Research flags found by code (material filings, results, guards, news spikes, falls).",
          {"symbol": SYMBOL, "days": DAYS}, (), research_flags),
@@ -1608,13 +1581,6 @@ TOOLS: Dict[str, Tool] = {t.name: t for t in [
          ("symbol",), price_history),
     Tool("quant", "read", "Tested quant templates (event studies, drift checks of adopted rules) for an idea.",
          {"idea": _s("the idea in words", 300)}, ("idea",), quant),
-    Tool("record_prediction", "journal", "Keep a prediction: a stock's price change from the last close to the close on "
-         "due (return_above / return_below a level in percent), due 5-90 days ahead, your confidence 0-1.",
-         {"symbol": SYMBOL, "kind": _s("kind", enum=["return_above", "return_below"]), "level": _n("percent", -90, 500),
-          "due": _s("YYYY-MM-DD", 10), "confidence": _n("probability", 0, 1), "claim": _s("the claim in words", 300)},
-         ("symbol", "kind", "level", "due", "confidence", "claim"), record_prediction),
-    Tool("save_state", "journal", "Save your working state (what you found, what is left to do) to memory; the next "
-         "context and the next pass start from it.", {"state": _s("the working state", 3000)}, ("state",), save_state),
     Tool("ask_investor", "action", "Ask the investor something only he can answer.",
          {"question": _s("the question", 400), "why": _s("why it matters", 400)}, ("question", "why"), ask_investor),
     Tool("tell_investor", "action", "Tell the investor something he should know today.",
