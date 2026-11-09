@@ -78,7 +78,12 @@ def gap_estimate(day: date, data_root: Optional[Path] = None, window: int = 250)
     if len(xs) < 60:
         return None
     x, y = np.array(xs), np.array(ys)
-    beta, alpha = np.polyfit(x, y, 1)
+    if not (np.isfinite(x).all() and np.isfinite(y).all()) or float(x.std()) == 0.0:          # a degenerate series (found by the drills): no estimate, never an error
+        return None
+    try:
+        beta, alpha = np.polyfit(x, y, 1)
+    except (np.linalg.LinAlgError, ValueError):
+        return None
     resid = y - (alpha + beta * x)
     r2 = 1.0 - float(resid.var() / y.var()) if y.var() > 0 else 0.0
     last_ret = float(sp["ret"].iloc[-1])

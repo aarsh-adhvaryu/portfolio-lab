@@ -80,11 +80,11 @@ def slices_for(con, policy_id: str, day: date) -> Optional[dict]:
     return None if last is None or last["kind"] == "withdraw" else last
 
 
-def record(con, policy_id: str, since: date, window: int) -> dict:
+def record(con, policy_id: str, since: date, window: int, day: Optional[date] = None) -> dict:
     """The live record over the last `window` sessions after `since`: the variant's and the champion's stand-in's compounded shadow returns on the sessions both were scored."""
     against = shadow.standin(con)
     rows = con.execute("SELECT a.day, a.ret, b.ret FROM core_shadow_s80 a JOIN core_shadow_s80 b ON a.day=b.day AND b.policy_id=? WHERE a.policy_id=? AND a.day > ? "
-                       "AND a.ret IS NOT NULL AND b.ret IS NOT NULL ORDER BY a.day", [against, policy_id, since]).fetchall()
+                       "AND a.day <= ? AND a.ret IS NOT NULL AND b.ret IS NOT NULL ORDER BY a.day", [against, policy_id, since, day or date.max]).fetchall()
     n_all = len(rows)
     rows = rows[-int(window):] if window else rows
     ca = cb = 1.0
@@ -107,7 +107,7 @@ def review(con, now: datetime, day: date) -> List[dict]:
             continue
         i = min(range(len(steps)), key=lambda j: abs(steps[j] - share))
         gate = gates[min(i, len(gates) - 1)]
-        rec = record(con, pid, since, gate)
+        rec = record(con, pid, since, gate, day)
         n = rec["sessions_since"]
         if n < min_n:
             continue

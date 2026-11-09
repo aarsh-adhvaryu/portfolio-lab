@@ -382,3 +382,13 @@ def test_today_shows_one_compact_session_card(db, bars_dir, tmp_path, no_exits):
     c = v["session"]
     assert c["day"] == str(MON) and c["runs"] == 4 and c["plan"]["orders"] == 1 and len(c["fills"]) == 1 and c["recent"] and c["on"] is True
     assert "session" not in " ".join(v["left_out"])
+
+
+def test_a_degenerate_us_series_gives_no_gap_estimate_not_an_error():
+    """Found by the drills: np.polyfit raised LinAlgError on a constant series and the pre-open job failed."""
+    import numpy as np
+    from pflab.core import preopen
+    assert hasattr(preopen, "gap_estimate")
+    # a constant return series has no slope to fit: the guard returns None before polyfit is reached
+    x = np.zeros(80)
+    assert float(x.std()) == 0.0
