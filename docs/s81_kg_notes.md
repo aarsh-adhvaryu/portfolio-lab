@@ -53,3 +53,14 @@ None (only new files; `src/pflab/kg/events.py` is new inside the old package).
 ## What is left
 Model classification of events runs only on request (`classify_limit`); a result-miss detector (needs consensus) does not exist (kind `results_miss` only by the model);
 a scheduler hook for the collector's daily top-up (the collector backfills one year; a daily run of `run.py --days 3` keeps it current).
+
+## Real path (2026-11-09 ~23:50, scope of 514 names, as-of 2026-11-09, collector paused for the audit and restarted after)
+Collection: 365 days in ~32 min, 184,799 article rows (19 MB of rows), no failed day. Text pass was still running (about 9k pages kept, 40% of attempts refused/blocked).
+Graph: 521 nodes, 3,363 facts, 4,320 relations (4,183 same_industry, 137 same_group_prefix), 91,294 events, 153,803 unlinked (counts below). Audit: PASSED, every gating check:
+every row has isin/source/date (0 missing); point in time (0 after the day); filing link rate 99.94% on listed scrips (S80: 84.5%: cause in decision 5); news tag agreement 0 bad;
+duplicates 0.0%; closed lists ok; rebuild byte-identical (needs the collector paused: two builds of a moving input differ, by design); sample of 50 written.
+Informational: 3,444 filings in the 365-day file without a dissemination time were left out; the news link share is 14% because 114k rows are `text_pending` (text still being
+fetched) and 36k tags-only rows have no second confirmation (peripheral mentions are not shown, by design). The local model classified 120 events (0 failed, ~5 s each).
+The graph was NOT loaded into any store (switch OFF; throw-away in-memory store used). `data\kg\audit_last.json`, `audit_sample.csv`, `graph\*.parquet` hold the result.
+For a rebuild that stays identical while the collector runs, pause it first: create `news_s81\STOP`, wait for exit, run `tools\kg2_run.py`, restart `run.py`.
+Second collector run started 23:52 (log `D:\s81_scratch\kg_run\stdout2.log`; same command as above).
