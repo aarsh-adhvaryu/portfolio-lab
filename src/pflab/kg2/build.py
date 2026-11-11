@@ -9,7 +9,8 @@ as-of date, and `known_from` (<= asof: point in time; a result is known from its
 Layer 2 RELATIONS by a NAMED rule only: `same_industry`, `same_group_prefix` (the group list in configs/kg2_groups.toml). A supplier/customer relation exists only
 where a filing states it and no parser for that exists yet, so there are none. No relation is written by a model.
 Layer 3 EVENTS (filings, news), attached by a confident rule only; the rule and its proof are on the row:
-  filing   its scrip code -> the ISIN valid on its dissemination DATE (`bse_scrip_isin`); a filing with NO dissemination time is left out of everything (his decision)
+  filing   its scrip code -> the ISIN valid on its dissemination DATE (`bse_scrip_isin`); a filing with a date but NO dissemination time is used from the NEXT TRADING DAY's
+           open (09:15 IST; A58, `filing_time.py`), its time stored as DERIVED (`ts_rule`), its date on the row
   news     the article row's organisation token equals the company's alias (tag) AND the article's own text names the company (or, with no text, its URL slug does)
 Everything else is `unlinked` (counted by reason, never shown).
 """
@@ -26,12 +27,12 @@ from urllib.parse import urlparse
 
 import pandas as pd
 
-from pflab.kg2 import classify, news, scope as sc
+from pflab.kg2 import classify, filing_time as ft, news, scope as sc
 
 NODE_COLS = ["isin", "name", "symbol", "origin", "source", "as_of"]
 FACT_COLS = ["isin", "fkey", "fvalue", "value_num", "source", "as_of", "known_from"]
 REL_COLS = ["src_isin", "dst_isin", "rule", "detail", "source", "as_of"]
-EVENT_COLS = ["event_id", "isin", "source", "ref", "ts", "event_date", "kind", "severity", "headline", "link_rule", "link_proof", "dedupe_key"]
+EVENT_COLS = ["event_id", "isin", "source", "ref", "ts", "event_date", "kind", "severity", "headline", "link_rule", "link_proof", "dedupe_key", "ts_rule"]
 UNLINKED_COLS = ["source", "ref", "ts", "reason", "scope_name"]
 TABLES = {"node": NODE_COLS, "fact": FACT_COLS, "relation": REL_COLS, "event": EVENT_COLS, "unlinked": UNLINKED_COLS}
 KEYS = {"node": ["isin"], "fact": ["isin", "fkey", "as_of"], "relation": ["src_isin", "dst_isin", "rule"], "event": ["event_id"],
@@ -111,34 +112,45 @@ def read_filings(root: Path, since: date, until: date) -> pd.DataFrame:
     for y in range(since.year, until.year + 1):
         for p in sorted((base / str(y)).glob("*.parquet")):
             if since.isoformat() <= p.stem <= (until + timedelta(days=1)).isoformat():
-                frames.append(pd.read_parquet(p))
+                frames.append(pd.read_parquet(p).assign(file_day=date.fromisoformat(p.stem)))
     if not frames:
-        return pd.DataFrame(columns=["scrip_code", "company", "headline", "category", "subcategory", "news_dt", "dissem_dt", "attachment", "news_sub"])
+        return pd.DataFrame(columns=["scrip_code", "company", "headline", "category", "subcategory", "news_dt", "dissem_dt", "attachment", "news_sub", "file_day"])
     df = pd.concat(frames, ignore_index=True)
     df["scrip_code"] = df["scrip_code"].astype(str)
     return df
 
 
 def filing_events(root: Path, asof: date, since: date, scope_isins: set, cache: Dict[str, dict], names: Dict[str, str]) -> tuple:
-    """(events, unlinked, stats) for the filings of the scope's scrips. A filing with no dissemination time is left out and counted."""
+    """(events, unlinked, stats) for the filings of the scope's scrips. A filing with no dissemination time is used from the next trading day's open (A58): its `ts` is that
+    open, `ts_rule` says `next_open_no_release_time`, `event_date` is the filing's own date. Only filings dated on or before `asof` are read (a derived time may fall after `asof`:
+    readers hold such a row back until its time, `kg.events.material_events(until=...)`)."""
     m = scrip_map(root)
     my = m[m["isin"].isin(scope_isins)]["scrip_code"].unique()
     df = read_filings(root, since, asof)
-    stats = {"filings_read": int(len(df)), "no_dissem_time": 0, "in_scope": 0}
+    stats = {"filings_read": int(len(df)), "no_dissem_time": 0, "derived_time_used": 0, "in_scope": 0}
     if df.empty:
         return [], [], stats
     df = df[df["scrip_code"].isin(set(my))].copy()
     stats["in_scope"] = int(len(df))
     stats["no_dissem_time"] = int(df["dissem_dt"].isna().sum())
-    df = df[df["dissem_dt"].notna()].copy()
-    df["day"] = pd.to_datetime(df["dissem_dt"]).dt.date
+    tr = [ft.filing_time(a, b, c) for a, b, c in zip(df["dissem_dt"], df["news_dt"], df["file_day"])]
+    df["ts"] = [t[0] for t in tr]
+    df["ts_rule"] = [t[1] for t in tr]
+    df["day"] = [t[2] for t in tr]
+    df = df[df["ts_rule"].notna()].copy()                                      # a row with no date at all cannot be placed in time
     df = df[df["day"] <= asof]
-    df = df.drop_duplicates(["scrip_code", "headline", "dissem_dt"]).reset_index(drop=True)
+    derived = df["ts_rule"] == ft.RULE_DERIVED
+    timed_keys = {(a, norm_headline(h), d) for a, h, d in zip(df.loc[~derived, "scrip_code"], df.loc[~derived, "headline"], df.loc[~derived, "day"])}
+    twin = derived & pd.Series([(a, norm_headline(h), d) in timed_keys for a, h, d in zip(df["scrip_code"], df["headline"], df["day"])], index=df.index)
+    stats["derived_dropped_twin_of_timed"] = int(twin.sum())
+    df = df[~twin]
+    df = df.drop_duplicates(["scrip_code", "headline", "ts"]).reset_index(drop=True)
+    stats["derived_time_used"] = int((df["ts_rule"] == ft.RULE_DERIVED).sum())
     lk = link_scrips(df, m)
     events, unlinked = [], []
     seen = set()
     for r in lk.itertuples():
-        ts = pd.Timestamp(r.dissem_dt).to_pydatetime()
+        ts = pd.Timestamp(r.ts).to_pydatetime()
         if pd.isna(r.isin) or r.isin is None:
             unlinked.append({"source": "bse_announcement", "ref": f"{r.scrip_code}|{ts.isoformat()}", "ts": ts, "reason": r.why, "scope_name": r.company})
             continue
@@ -152,9 +164,12 @@ def filing_events(root: Path, asof: date, since: date, scope_isins: set, cache: 
         c = cache.get(eid)
         if c and kind == "other":
             kind, sev = c["kind"], c["severity"]
+        derived_row = r.ts_rule == ft.RULE_DERIVED
         events.append({"event_id": eid, "isin": r.isin, "source": "bse_announcement", "ref": str(r.attachment or f"{r.scrip_code}|{ts.isoformat()}"), "ts": ts,
-                       "event_date": r.day, "kind": kind, "severity": sev, "headline": head[:500], "link_rule": "filing:scrip_isin_on_dissem_date",
-                       "link_proof": f"scrip {r.scrip_code} -> {r.isin} valid on {r.day.isoformat()}", "dedupe_key": f"{r.isin}|{norm_headline(head)}|{ts.isoformat()}"})
+                       "event_date": r.day, "kind": kind, "severity": sev, "headline": head[:500],
+                       "link_rule": "filing:scrip_isin_on_filing_date_no_release_time" if derived_row else "filing:scrip_isin_on_dissem_date",
+                       "link_proof": f"scrip {r.scrip_code} -> {r.isin} valid on {r.day.isoformat()}" + (f"; no release time: used from {ts:%Y-%m-%d %H:%M} (next trading open)" if derived_row else ""),
+                       "dedupe_key": f"{r.isin}|{norm_headline(head)}|{ts.isoformat()}", "ts_rule": r.ts_rule})
     return events, unlinked, stats
 
 
@@ -226,7 +241,8 @@ def news_events(root: Path, asof: date, since: date, scope: dict, cache: Dict[st
         if c and kind == "news":
             kind, sev = c["kind"], c["severity"]
         events.append({"event_id": eid, "isin": r.isin, "source": "gdelt_gkg1", "ref": r.url, "ts": ts, "event_date": day, "kind": kind, "severity": sev,
-                       "headline": head[:500], "link_rule": rule, "link_proof": proof, "dedupe_key": f"{r.isin}|{norm_headline(head)}|{day.isoformat()}"})
+                       "headline": head[:500], "link_rule": rule, "link_proof": proof, "dedupe_key": f"{r.isin}|{norm_headline(head)}|{day.isoformat()}",
+                       "ts_rule": ft.RULE_NEWS})
     return events, unlinked, stats
 
 

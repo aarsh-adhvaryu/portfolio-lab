@@ -166,7 +166,8 @@ def _login_lost(e: Exception) -> bool:
 # --- the events of the session (thesis breaks) ----------------------------------------------------------------------------------------------------
 
 def _filing_events(isins: List[str], since: datetime, until: datetime, data_root: Optional[Path] = None) -> List[dict]:
-    """The plain fallback: BSE announcements disseminated in (since, until] on `isins`, by the red-flag classifier (no dissemination time: left out)."""
+    """The plain fallback: BSE announcements disseminated in [since, until] on `isins`, by the red-flag classifier. A filing with no release time counts from the next trading
+    day's open (A58, `kg2/filing_time.py`): it is read from the file of its own day, so a session sees the filings dated on the days since the previous session."""
     from pflab.data import bse_scrip_isin, data_dir, red_flags
     root = Path(data_root) if data_root else data_dir()
     out: List[dict] = []
@@ -178,19 +179,29 @@ def _filing_events(isins: List[str], since: datetime, until: datetime, data_root
     if not len(m):
         return out
     codes = {str(r.scrip_code): r.isin for r in m.itertuples()}
-    f = root / "bse_announcements" / str(until.year) / f"{until.date().isoformat()}.parquet"
-    if not f.exists():
-        return out
-    df = pd.read_parquet(f)
-    df = df[df["scrip_code"].astype(str).isin(codes)]
-    for r in df.itertuples():
-        ts = pd.to_datetime(r.dissem_dt, errors="coerce")
-        if pd.isna(ts) or not (since < ts.to_pydatetime() <= until):
+    from pflab import markets
+    from pflab.kg2 import filing_time as ft
+    mk = markets.get("IN")
+    d0 = mk.previous_session(until.date()) if mk.is_session(until.date()) else mk.last_session_on_or_before(until.date())
+    days, d = [], d0
+    while d <= until.date():                                                   # the previous session's day and the days after it: their no-time filings are due at this open
+        days.append(d)
+        d += timedelta(days=1)
+    for day in days:
+        f = root / "bse_announcements" / str(day.year) / f"{day.isoformat()}.parquet"
+        if not f.exists():
             continue
-        flags = red_flags.classify(str(r.headline or ""), str(r.category or ""), str(r.subcategory or ""))
-        for fl in flags:
-            sev = "high" if fl in ("INSOLVENCY", "DEFAULT", "FRAUD", "FORENSIC_AUDIT") else "medium"
-            out.append({"isin": codes[str(r.scrip_code)], "kind": fl, "severity": sev, "ts": ts.to_pydatetime(), "source": "bse_announcements", "ref": f"{r.scrip_code}:{ts:%Y%m%d%H%M%S}", "text": str(r.headline or "")[:200]})
+        df = pd.read_parquet(f)
+        df = df[df["scrip_code"].astype(str).isin(codes)]
+        for r in df.itertuples():
+            ts, rule, _own = ft.filing_time(r.dissem_dt, getattr(r, "news_dt", None), day)
+            if ts is None or not (since <= ts <= until) or (rule == ft.RULE_RELEASE and day != until.date()):
+                continue
+            flags = red_flags.classify(str(r.headline or ""), str(r.category or ""), str(r.subcategory or ""))
+            for fl in flags:
+                sev = "high" if fl in ("INSOLVENCY", "DEFAULT", "FRAUD", "FORENSIC_AUDIT") else "medium"
+                out.append({"isin": codes[str(r.scrip_code)], "kind": fl, "severity": sev, "ts": ts, "source": "bse_announcements", "ref": f"{r.scrip_code}:{ts:%Y%m%d%H%M%S}",
+                            "text": str(r.headline or "")[:200], "ts_rule": rule})
     return out
 
 
@@ -208,7 +219,7 @@ def session_events(con, isins: List[str], since: datetime, until: datetime, data
         if ts is None:
             continue
         ts = pd.to_datetime(ts).to_pydatetime()
-        if since < ts <= until:
+        if since <= ts <= until:                                              # a filing with no release time is due AT the open (A58: derived time 09:15)
             keep.append(dict(e, ts=ts))
     return keep, src
 
@@ -474,7 +485,7 @@ def events_for(con, now: datetime, open_dt: datetime, isins: List[str], injected
         keep = []
         for e in injected:
             ts = pd.to_datetime(e.get("ts")).to_pydatetime() if e.get("ts") is not None else None
-            if ts is not None and open_dt < ts <= now and e["isin"] in isins:         # released DURING the session and already out by now (point-in-time)
+            if ts is not None and open_dt <= ts <= now and e["isin"] in isins:         # released DURING the session and already out by now (point-in-time)
                 keep.append(dict(e, ts=ts))
         return keep, "injected"
     try:

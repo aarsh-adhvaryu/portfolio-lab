@@ -218,10 +218,14 @@ def guards(con, gs, at: datetime, now: Optional[datetime] = None) -> int:
 
 
 def articles(con, gkg: pd.DataFrame, now: Optional[datetime] = None, max_names: int = 6) -> int:
+    from pflab.kg2 import filing_time as ft
     n = 0
-    for r in gkg.itertuples():
-        if pd.isna(r.date):
+    fdays = gkg["file_day"] if "file_day" in gkg.columns else [None] * len(gkg)
+    for r, fday in zip(gkg.itertuples(), fdays):
+        pub, _rule = ft.news_time(r.date, fday)              # S82 (A58): its publication time in IST, or (no time) the next day after its collection day; neither: left out
+        if pub is None:
             continue
+        r = r._replace(date=pub)
         title = (r.url.rstrip("/").split("/")[-1].replace("-", " ")[:200]) if r.url else ""
         did = g.doc(con, "article", r.url, r.date, title, r.url, r.source, None if pd.isna(r.tone) else float(r.tone),
                     r.themes, {"india": bool(r.india), "quotes": r.quotes[:500] if isinstance(r.quotes, str) else ""}, now)

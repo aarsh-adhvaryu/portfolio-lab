@@ -94,4 +94,5 @@ def collect_day(d: date, aliases: Dict[str, List[str]], root: Optional[Path] = N
 def load(since: date, root: Optional[Path] = None) -> pd.DataFrame:
     root = root or data_dir()
     files = sorted(p for p in (root / "gkg").glob("*.parquet") if p.stem >= since.isoformat())
-    return pd.concat([pd.read_parquet(p) for p in files], ignore_index=True) if files else pd.DataFrame(columns=KEEP)
+    # `file_day` (S82, A58): the collection day of the file, so an item with no time of its own can be used from the next day
+    return pd.concat([pd.read_parquet(p).assign(file_day=date.fromisoformat(p.stem)) for p in files], ignore_index=True) if files else pd.DataFrame(columns=KEEP + ["file_day"])
