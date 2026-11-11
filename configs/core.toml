@@ -195,7 +195,7 @@ max_share = 0.60
 step = 0.05
 
 [picks.us]
-on = false                    # OFF until the US wiring lands (the coordinator turns it on)
+on = true                     # S83 L8: the US wiring is in (us/picks_wire.py; the close loop of the sub-book sizes, buys and syncs the picks); false = the sub-book holds SPY only
 start_share = 0.50            # the picks' share of the sub-book (SPY keeps at least 30% of it)
 min_share = 0.30
 max_share = 0.70

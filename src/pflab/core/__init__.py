@@ -31,7 +31,7 @@ DEFAULTS = {
     "picks": {"on": True, "judge_every_sessions": 60, "window_sessions": 120, "behind_points": 2.0, "min_liquidity_inr": 50000000, "us_floor_price": 5, "us_floor_value_usd": 2000000,
               "us_max_stocks": 12, "us_stock_cap": 0.10, "us_spy_floor": 0.30,
               "in": {"on": True, "start_share": 0.40, "min_share": 0.20, "max_share": 0.60, "step": 0.05},
-              "us": {"on": False, "start_share": 0.50, "min_share": 0.30, "max_share": 0.70, "step": 0.05}},
+              "us": {"on": True, "start_share": 0.50, "min_share": 0.30, "max_share": 0.70, "step": 0.05}},
 }
 
 

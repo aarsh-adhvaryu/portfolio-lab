@@ -238,3 +238,109 @@ def test_a_failed_first_picks_session_leaves_the_book_as_it_is_and_stops_after_t
 def test_once_the_system_has_a_pick_the_no_picks_line_goes_away(con):
     picks.propose(con, NOW, "IN", [item("CCC")], session_ref="s1")
     assert first.picks_line(con) is None
+
+
+# --- the US sub-book holds picked stocks: SPY never under 30%, a stock at most 10%, at most 12 stocks ------------------------------------------------
+
+@pytest.fixture
+def ucon(tmp_path, monkeypatch):
+    from pflab.pm import store
+    monkeypatch.setenv("PFLAB_PM_DIR", str(tmp_path))
+    monkeypatch.setenv("PFLAB_DATA_DIR", str(tmp_path / "data"))
+    c = store.connect(tmp_path / "u.duckdb")
+    c.execute("INSERT INTO fx_rates VALUES (?, 'USDINR_FBIL', 90.0, 'test')", [date(2026, 10, 28)])
+    return c
+
+
+UDAYS = [d.date() for d in pd.bdate_range("2026-08-03", "2026-11-06")]
+
+
+def write_bars(tmp_path, sym, base, drift=0.001, volume=1_000_000.0):
+    p = tmp_path / "data" / "us" / "raw"
+    p.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for k, d in enumerate(UDAYS):
+        c = base * (1 + drift) ** k * (1 + (0.01 if k % 2 else -0.01) * (1 + len(sym) % 3))
+        rows.append((d, c - 0.3, c + 0.5, c - 0.5, c, c, volume, 0.0))
+    pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "adj_close", "volume", "dividend"]).to_parquet(p / f"{sym}.parquet")
+
+
+def us_setup(ucon, tmp_path, stocks=("STKA",)):
+    for d in [date(2026, 10, 30)] + UDAYS:
+        ucon.execute("INSERT INTO fx_rates VALUES (?, 'USDINR_FBIL', 90.0, 'test') ON CONFLICT DO NOTHING", [d])
+    ucon.execute("INSERT INTO paper_cash VALUES (?,?,?,?,?,?)", [1, date(2026, 10, 1), 2_000_000.0, "seed", "test cash", datetime(2026, 11, 3, 7, 0)])
+    write_bars(tmp_path, "SPY", 100.0)
+    for s in stocks:
+        write_bars(tmp_path, s, 50.0)
+
+
+UCFG = {"on": True, "slippage_bps": 5.0, "min_trade_usd": 10.0}
+
+
+def test_a_us_pick_is_bought_beside_spy_and_spy_stays_at_least_30_percent(ucon, tmp_path):
+    from pflab.us import adapter, book, picks_wire
+    us_setup(ucon, tmp_path)
+    assert pick_share.on("US"), "[picks.us] on is true in configs/core.toml"
+    out = picks.propose(ucon, datetime(2026, 11, 3, 7, 0), "US", [item("STKA")], session_ref="s1")
+    assert [a["symbol"] for a in out["accepted"]] == ["STKA"], out
+    adapter.close_us(ucon, datetime(2026, 11, 3, 7, 0), tmp_path / "data", UCFG)                         # the first session: the account opens, buys are ordered
+    sides = {r[0]: r[1] for r in ucon.execute("SELECT symbol, side FROM us_orders_s81").fetchall()}
+    assert sides == {"SPY": "buy", "STKA": "buy"}
+    adapter.close_us(ucon, datetime(2026, 11, 4, 7, 0), tmp_path / "data", UCFG)                         # the orders fill at the next open
+    pos = book.positions(ucon, date(2026, 11, 3))
+    assert len(pos) == 2
+    row = ucon.execute("SELECT value_usd, holdings_json FROM us_days_s81 ORDER BY day DESC LIMIT 1").fetchone()
+    h = json.loads(row[1])
+    w = {k: v["value_usd"] / row[0] for k, v in h.items()}
+    stka = next(v for k, v in w.items() if k != "SPY" and "SPY" not in k and v < 0.2)
+    assert 0.03 < stka <= 0.10 + 1e-9                                                                    # on its way to the 10% stock rail (the sub-book is funded in tranches: bought gradually)
+    reasons = [r[0] for r in ucon.execute("SELECT reason FROM us_orders_s81 WHERE symbol IN ('SPY', 'STKA') ORDER BY order_id").fetchall()]
+    assert any("SPY" not in r and "target 10.0%" in r for r in reasons[:2]) and any("target 85.0%" in r for r in reasons[:2])
+    spy = max(w.values())
+    assert spy >= 0.30
+    assert ucon.execute("SELECT state FROM picks_s83 WHERE symbol='STKA'").fetchone()[0] in ("buying", "held")
+    run_note = ucon.execute("SELECT note FROM us_runs_s81 ORDER BY day DESC LIMIT 1").fetchone()[0]
+    assert "core: SPY" in run_note
+    assert picks_wire.symbols(ucon) == ["STKA"]
+
+
+def test_the_picks_total_is_held_so_that_spy_keeps_its_floor_and_a_withdrawn_pick_is_sold(ucon, tmp_path):
+    from pflab.us import data, picks_wire, policy
+    us_setup(ucon, tmp_path, stocks=tuple(f"S{i:02d}" for i in range(12)))
+    now = datetime(2026, 11, 9, 7, 0)
+    out = picks.propose(ucon, now, "US", [item(f"S{i:02d}") for i in range(12)], session_ref="s1")
+    assert len(out["accepted"]) == 12, out["refused"]
+    extra = picks.propose(ucon, now, "US", [item("S12")], session_ref="s1")
+    assert extra["accepted"] == [] and extra["refused"]                                                   # a 13th stock is refused (bars missing too, but the count says it)
+    syms = picks_wire.symbols(ucon)
+    bars = data.load(["SPY"] + syms, tmp_path / "data")
+    ucon.execute("INSERT INTO us_account_s81 VALUES (1, ?, 1.0, 90.0, 'FBIL', 10000.0, 0.10, 'test', ?)", [date(2026, 11, 2), now])
+    from pflab.us import book
+    book.add_cash(ucon, now, date(2026, 11, 2), 10_000.0, "transfer", "test")
+    ucon.execute("INSERT INTO us_days_s81 VALUES (?,?,?,?,?,?,?)", [date(2026, 11, 2), 10_000.0, 10_000.0, 90.0, "FBIL", 900_000.0, "{}"])
+    st = picks.attach(ucon, policy.build(ucon, date(2026, 11, 6), bars, UCFG, tmp_path / "data", now, pick_syms=syms), "US")
+    pw = picks_wire.extra_weights(ucon, st)
+    total = sum(pw["extra"].values())
+    assert len(pw["extra"]) == 12 and all(v <= 0.10 + 1e-9 for v in pw["extra"].values())
+    assert total <= 0.95 - 0.30 + 1e-9 and pw["core_total"] >= 0.30 - 1e-9                                 # SPY's target is never under the 30% floor
+    dec = policy.decide(st, extra=pw["extra"], core_total=pw["core_total"])
+    spy_key = next(r["isin"] for r in st["rows"] if r["symbol"] == "SPY")
+    assert dec["weights"][spy_key] >= 0.30 - 1e-9 and sum(dec["weights"].values()) <= 0.95 + 1e-9
+    # a withdrawn pick that is held gets a target of zero
+    k = next(r["isin"] for r in st["rows"] if r["symbol"] == "S00")
+    ucon.execute("UPDATE picks_s83 SET state='withdrawn' WHERE symbol='S00'")
+    ucon.execute("INSERT INTO us_lots_s81 VALUES (1, ?, 'S00', ?, 20.0, 50.0, 90.0, 'FBIL', 'fill')", [k, date(2026, 11, 2)])
+    st = picks.attach(ucon, policy.build(ucon, date(2026, 11, 6), bars, UCFG, tmp_path / "data", now, pick_syms=syms), "US")
+    pw = picks_wire.extra_weights(ucon, st)
+    assert pw["extra"]["S00"] == 0.0 and any("withdrawn pick is sold" in n for n in pw["notes"])
+
+
+def test_with_no_picks_the_us_decision_is_what_it_was(ucon, tmp_path):
+    from pflab.us import data, picks_wire, policy
+    us_setup(ucon, tmp_path, stocks=())
+    bars = data.load(["SPY"], tmp_path / "data")
+    st = policy.build(ucon, date(2026, 11, 6), bars, UCFG, tmp_path / "data", datetime(2026, 11, 9, 7, 0))
+    st["value"] = st["cash"] = 1000.0
+    assert picks_wire.extra_weights(ucon, st) == {"extra": {}, "core_total": 0.95, "notes": []}
+    dec = policy.decide(st)
+    assert list(dec["weights"].values()) == [pytest.approx(0.95)]

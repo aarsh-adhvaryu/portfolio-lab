@@ -315,7 +315,7 @@ def test_the_rules_numbers_are_the_protocols_text_and_the_configs():
         assert (c["start_share"], c["min_share"], c["max_share"], c["step"]) == tuple(pick_share.RULE[m][k] for k in ("start_share", "min_share", "max_share", "step"))
         d = core.DEFAULTS["picks"]["in" if m == "IN" else "us"]
         assert (d["start_share"], d["min_share"], d["max_share"], d["step"]) == (c["start_share"], c["min_share"], c["max_share"], c["step"])
-    assert pick_share.settings("IN")["on"] is True and pick_share.settings("US")["on"] is False
+    assert pick_share.settings("IN")["on"] is True and pick_share.settings("US")["on"] is True          # S83 L8: the US wiring is in
     assert pick_share.settings("IN")["min_liquidity_inr"] == 50_000_000 and pick_share.settings("US")["us_max_stocks"] == 12
 
 
