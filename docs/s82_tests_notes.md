@@ -51,4 +51,11 @@ the `propose_allocation` drill uses sleeves {core 60, longterm 40}; the `swing_s
 - no test was deleted in test_s81_session.py: every swing-entry test was rewritten (the trigger-specific part, "the trigger is armed/fired", went with `add_trigger`).
 
 ## Still failing / owned by others
-(filled in at the end of the run, see the bottom)
+Verified green on this branch (commit below): tests/test_s81_session.py, test_s81_exits.py, test_s81_core_lab.py, test_s81_drills_fixes.py, test_s81_drills_harness.py, and (run once before and
+after, no change needed) test_s80_core.py, test_s80_advisors/lab/lab_promotion/lab_service/screens/story/strategist/tactical.py, test_s81_loop_exits/loop_probation/kept_behaviour/autonomy/ondemand/swing.py
+(first run: 171 passed, the 22 failures were all in the five files above and are fixed). Not run (owned by others): test_s81_us.py, test_s82_*.py, kg and fills tests, `lab/alloc_lab.py` /
+`core/rails.py` 60% limit tests. Nothing in my files fails because of their work: no failure was left for another agent, and no test depended on the premium default
+(`test_the_rail_can_be_extended_to_gold_by_a_setting` is not in the S81/S80 files I ran).
+Not exercised: `tools/drills_s81.py` itself (the accelerated drill needs the full harness run; the harness unit tests pass and the `session_replay` rebuild follows the same calls as the session tests,
+but the drill's end-to-end run is for the coordinator).
+Shared files touched: none (tests, tools/drills_s81.py and this note only).
