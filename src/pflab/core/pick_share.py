@@ -185,9 +185,15 @@ def status(con, market: str = "IN") -> dict:
 
 
 def report_line(con, day: date) -> Optional[str]:
-    """A plain sentence for the 15:45 report when a judgment moved a share on `day` (both markets, joined), else None."""
+    """A plain sentence for the 15:45 report of session `day` when a judgment moved a share at that close or at the one before it (the judgment is made by the evening close loop, so the
+    next day's report tells it), both markets joined; None when nothing moved."""
+    try:
+        from pflab import markets
+        since = markets.get("IN").previous_session(day)
+    except Exception:
+        since = day
     out = []
-    for r in con.execute("SELECT market, old_share, new_share, reason FROM sleeve_share_s83 WHERE decided_on=? AND abs(new_share - old_share) > 1e-9 ORDER BY change_id", [day]).fetchall():
+    for r in con.execute("SELECT market, old_share, new_share, reason FROM sleeve_share_s83 WHERE decided_on >= ? AND decided_on <= ? AND abs(new_share - old_share) > 1e-9 ORDER BY change_id", [since, day]).fetchall():
         name = NAMES.get(r[0], r[0])
         out.append(f"{name} picks share {'raised' if r[2] > r[1] else 'lowered'} from {r[1]:.0%} to {r[2]:.0%}: {r[3]}.")
     return " ".join(out) if out else None

@@ -280,7 +280,9 @@ def test_the_report_line_tells_a_move_in_plain_words(con):
     pick_share.judge(con, NOW, "IN", START, rec(60, 3.0))
     line = pick_share.report_line(con, START)
     assert "India picks share raised from 40% to 45%" in line and "ahead of the Nifty 500" in line
-    assert pick_share.report_line(con, START + timedelta(days=1)) is None
+    nxt = [d for d in DAYS if d > START][0]
+    assert "India picks share raised" in pick_share.report_line(con, nxt)                       # the evening loop judged it; the next session's report tells it
+    assert pick_share.report_line(con, [d for d in DAYS if d > nxt][1]) is None
 
 
 def test_the_us_share_starts_at_half_and_moves_in_the_same_steps(con, monkeypatch):
