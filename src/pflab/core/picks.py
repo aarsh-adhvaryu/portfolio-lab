@@ -22,7 +22,7 @@ after the policy has decided, `sync(con, day, market, state)` after the orders a
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Callable, Dict, List, Optional
 
 from pflab.core import pick_share
@@ -460,6 +460,9 @@ def target_weights(con, state: dict, market: str = "IN") -> Dict[str, float]:
         if p["source"] == "kite" or p["state"] == "withdrawn":
             out[k] = cur.get(k, 0.0) * ((1.0 - cut) if gauge and p["state"] != "withdrawn" else 1.0)
             occupied += cur.get(k, 0.0)
+            hi = float(c["us_stock_cap"]) if market == "US" else policy.cap_of(rows[k])
+            if p["state"] != "withdrawn" and cur.get(k, 0.0) > hi + 1e-9:       # a holding over the company rail is brought down to it (a rail trim, as the baseline always did), never bought
+                out[k] = min(out[k], hi)
         else:
             system.append(p)
     sh = share(con, market)["share"]
@@ -476,6 +479,8 @@ def target_weights(con, state: dict, market: str = "IN") -> Dict[str, float]:
                 out[k] = cur.get(k, 0.0) * (1.0 - cut)                       # no buying while the gauge fires; held picks are cut like the rest of the equity
             else:
                 out[k] = max(cur.get(k, 0.0), want.get(k, 0.0))              # never sold to reach a share; a pick above its risk size keeps what it holds
+            if cur.get(k, 0.0) > stock_cap + 1e-9:                           # only the company rail trims a pick (a rail trim)
+                out[k] = min(out[k], stock_cap)
     return out
 
 

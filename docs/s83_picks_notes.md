@@ -18,7 +18,8 @@ Branch `s83/picks` (based on `pm/s82-gaps` 1960e33). Protocol first: `docs/proto
   `share - what his Kite stocks (and any withdrawn pick still held) hold`. If his Kite stocks already hold more than the share, the system's picks wait for room (propose still accepts them and says so
   in a `note`); a pick is never bought by selling his stocks.
 * Kite stocks keep what they hold: `baseline_v2` no longer tops them up toward the risk size / `longterm_buy_pct` (they are "managed" by the picks rule and their target is what they hold). This is a
-  change of the S81 baseline's behaviour for his stocks, as the brief asks. A fall gauge still cuts them like the other equity.
+  change of the S81 baseline's behaviour for his stocks, as the brief asks. A fall gauge still cuts them like the other equity. A pick (his or the system's) over the company rail is brought down to it
+  (the baseline's old "trim to the rail", kept: `tests/test_s81_drills_fixes` kill9 relies on it), never bought.
 * Sizing: inverse volatility among the system's picks, each at most the 10% stock rail (US: `us_stock_cap`), total at most the room. A pick above its risk size keeps what it holds (max of current and target).
 * Where the picks enter: `state.build` adds `state["picks"]` (`weights`, `managed`, `share`) and the not-yet-held picked names as rows with no quantity (so rails see them). `baseline_v2` takes the
   picks' weights into `weights` and `inc_lt` (new cash goes to the core first, then to longterm and the picks: the existing path). A promoted lab policy or a probation blend gets `picks.merge` in the loop:

@@ -150,7 +150,7 @@ def test_an_accepted_pick_is_bought_over_several_sessions_inside_the_turnover_ca
     s = st.build(con, START, None, INDEX)
     assert CCC in {r["isin"] for r in s["rows"]} and s["picks"]["weights"][CCC] == pytest.approx(0.10, abs=1e-6)           # sized by risk, at the stock rail
     kite = {AAA, BBB, FFF}
-    assert all(s["picks"]["weights"][k] == pytest.approx(next(r["value"] for r in s["rows"] if r["isin"] == k) / s["value"]) for k in kite)   # his stocks keep what they hold
+    assert all(s["picks"]["weights"][k] == pytest.approx(min(0.10, next(r["value"] for r in s["rows"] if r["isin"] == k) / s["value"])) for k in kite)   # his stocks keep what they hold (a name over the 10% rail is brought to it)
     days = [d for d in DAYS if d >= START][:14]
     seen_states, bought = [], []
     for d in days:
@@ -180,7 +180,7 @@ def test_a_pick_is_never_sold_to_reach_a_share_and_no_new_pick_is_taken_while_it
     assert held > 0.05
     con.execute("INSERT INTO sleeve_share_s83 VALUES (1, 'IN', ?, 0.40, 0.20, 'behind the Nifty 500: the share falls', '{}')", [START])      # a shrink to 20%: below what the book holds
     s = st.build(con, START + timedelta(days=12), None, INDEX)
-    assert s["picks"]["weights"][CCC] >= held - 1e-9                       # never below what it holds
+    assert s["picks"]["weights"][CCC] >= min(held, 0.10) - 1e-9            # never below what it holds (only the company rail can bring a name down)
     r = step(con, [d for d in DAYS if d > START + timedelta(days=12)][0])
     assert not [o for o in r.get("orders", []) if o["symbol"] == "CCC" and o["side"] == "sell"]
     out = picks.propose(con, NOW, "IN", [item("DDD")], session_ref="s2")
