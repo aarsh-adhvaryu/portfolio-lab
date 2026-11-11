@@ -158,18 +158,23 @@ def test_a_fill_with_no_known_liquidity_does_not_enter_the_fit(con):
 
 
 def test_the_session_marks_live_quotes_real_and_injected_ones_not(db, no_exits):
-    from tests.test_s81_session import FakeKite
+    """Through a tactical view (carried out in session), so the test does not depend on the swing triggers."""
+    from pflab.core import views
     from pflab.core import session as ses
+    from tests.test_s80_core import DAYS
+    from tests.test_s81_session import FakeKite
     liq = {CCC: {"adv_rupees": 1.0e9, "typical_minute_volume": 1e4}}
-    ses.add_trigger(db, NOW, CCC, "above", 99.0, amount=50000.0, valid_from=MON)
+    ok = views.issue(db, NOW, DAYS[-1], direction=1, names=["CCC"], share_of_budget=0.5, horizon_sessions=10, stop_pct=8.0, reason="CCC looks cheap against its sector after the result",
+                     isin_of=lambda s: {"CCC": CCC}.get(s))
+    assert ok["ok"]
     bars = {CCC: day_bars(MON, lambda i: 100.0).iloc[:46]}
     t = datetime.combine(MON, time(10, 0))
     r = ses.run_once(db, t, quotes={CCC: 100.0}, bars=bars, liq=liq)                          # injected quotes: a replay or a test
     assert len(r["fills"]) == 1
     assert db.execute("SELECT source FROM session_fills_s81").fetchone()[0] == "injected"
     assert fills.real_fill_count(db) == 0
-    ses.add_trigger(db, NOW, CCC, "above", 99.0, amount=50000.0, valid_from=MON)
-    r = ses.run_once(db, t + timedelta(minutes=5), kite=FakeKite(), bars=bars, liq=liq)       # a live (Kite) quote
+    db.execute("UPDATE core_views_s80 SET executed_json = NULL")                              # let the view run once more, now on a live (Kite) quote
+    r = ses.run_once(db, t + timedelta(minutes=5), kite=FakeKite(), bars=bars, liq=liq)
     assert len(r["fills"]) == 1
     assert [x[0] for x in db.execute("SELECT source FROM session_fills_s81 ORDER BY fill_id").fetchall()] == ["injected", "live"]
     assert fills.real_fill_count(db) == 1
