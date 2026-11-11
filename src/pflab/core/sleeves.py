@@ -106,10 +106,10 @@ def with_pick_share(con, sh: dict) -> dict:
 def target_shares(con, cfg: dict, target: Optional[dict]) -> dict:
     """The shares the baseline holds the book to, as fractions of the book: the active allocation's (classes plus its sleeve shares) or the starting default when there is none
     (or the active one has no sleeve shares: an older, class-only target is not guessed at). The longterm share is the picks rule's (S83 L5): `with_pick_share`."""
-    return with_pick_share(con, _target_shares(con, cfg, target))
+    return with_pick_share(con, target_shares_raw(con, cfg, target))
 
 
-def _target_shares(con, cfg: dict, target: Optional[dict]) -> dict:
+def target_shares_raw(con, cfg: dict, target: Optional[dict]) -> dict:
     if target and target.get("id") is not None:
         s = stored(con, target["id"])
         if s:

@@ -128,12 +128,13 @@ def test_the_fallback_keeps_the_us_sub_books_share_and_the_longterm_sleeve(con, 
     # the US sub-book's own state (`us_*_s81`) belongs to the `us` agent and is not read here: the target keeps the share that book is funded to hold (asserted on the target above)
 
 
-def test_the_fallback_keeps_the_active_targets_own_split_not_a_fixed_one(con, tmp_path):
+def test_the_fallback_keeps_the_active_targets_own_classes_and_the_picks_rules_longterm_share(con, tmp_path):
     r = allocation.propose_allocation(con, {"equity": 60, "gold": 20, "international": 10, "cash": 10}, REASONS, NOW, sectors={}, by="the strategist")
     con.execute("INSERT OR REPLACE INTO allocation_sleeves_s81 VALUES (?,?,?,?,?)", [r["target_id"], "IN", json.dumps({"core": 55.0, "longterm": 45.0}), None, NOW])
     allocation.review_target(con, r["target_id"], "approve", "test", NOW)
     out = alloc_lab.adopt_index_only(con, NOW, "A test of the fallback: it must keep the active target's sleeves, international and cash shares and move only the gold into the index.")
-    assert out["adopted"] and out["classes"] == {"equity": 80.0, "gold": 0.0, "international": 10.0, "cash": 10.0} and out["sleeves"] == {"core": 55.0, "longterm": 45.0}
+    # S83 L6: the longterm share is the picks rule's (40% until a judgment moves it), not the active target's 45: the rest of the target's split (international, cash) is kept
+    assert out["adopted"] and out["classes"] == {"equity": 80.0, "gold": 0.0, "international": 10.0, "cash": 10.0} and out["sleeves"] == {"core": 60.0, "longterm": 40.0}
 
 
 def _old_style_index_only(con):

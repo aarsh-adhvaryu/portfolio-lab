@@ -83,36 +83,42 @@ def render_code(params: dict) -> str:
     return TEMPLATE.replace("__DEFAULTS__", repr(dict(sorted(p.items()))))
 
 
-def default_params(cfg: Optional[dict] = None) -> dict:
-    """The starting target of `configs/core.toml [baseline_v2]` as a variant's parameters (fractions of the book)."""
+def live_shares(con, sh: dict) -> dict:
+    """S83 L6: the picks sleeve is replaced by its liquid-stock stand-in at the LIVE share (`pick_share`, the picks rule's, L5) on both sides of a comparison: a candidate or a proposal made
+    with a `con` carries the live longterm share, so picks neither help nor hurt a core proposal. Without a `con` (or with the picks off) the shares are as given."""
+    return sleeves.with_pick_share(con, sh) if con is not None else sh
+
+
+def default_params(cfg: Optional[dict] = None, con=None) -> dict:
+    """The starting target of `configs/core.toml [baseline_v2]` as a variant's parameters (fractions of the book); with `con` its longterm share is the live picks share."""
     cfg = cfg or core.settings()
-    sh = sleeves.default_shares(cfg)
+    sh = live_shares(con, sleeves.default_shares(cfg))
     b = cfg["baseline_v2"]
     return {"idx": round(sh["index"], 4), "gold": round(sh["gold"], 4), "intl": round(sh["international"], 4), "longterm": round(sh["longterm"], 4),
             "idx_syms": list(b["index_etfs"]), "gold_syms": list(b["gold_etfs"]), "intl_syms": list(b["international_etfs"])}
 
 
-def index_only_params(cfg: Optional[dict] = None) -> dict:
+def index_only_params(cfg: Optional[dict] = None, con=None) -> dict:
     """S82 (C3): "the India core is index ETFs only": the starting allocation with the core's gold weight moved into the broad-market index ETFs (each at most 60% of the book through the
     lab's caps). The sleeve shares (core 60 / longterm 40) and the international share are KEPT (the international share is held in the US sub-book; the replay models it by its ETF proxy)."""
-    p = default_params(cfg)
+    p = default_params(cfg, con)
     p["idx"] = round(p["idx"] + p["gold"], 4)
     p["gold"] = 0.0
     p["idx_syms"] = broad_syms(cfg)
     return p
 
 
-def candidates(cfg: Optional[dict] = None) -> Dict[str, dict]:
-    return {INDEX_HOLD: {"params": index_only_params(cfg),
+def candidates(cfg: Optional[dict] = None, con=None) -> Dict[str, dict]:
+    return {INDEX_HOLD: {"params": index_only_params(cfg, con),
                          "hypothesis": "The India core as index ETFs only (the Nifty 500 and Nifty 50 index ETFs; the gold share moves into them), keeping the sleeve shares and the international share: the A50 benchmark made a candidate, so when nothing beats the index the system owns it."},
-            DEFAULT_ID: {"params": default_params(cfg),
+            DEFAULT_ID: {"params": default_params(cfg, con),
                          "hypothesis": "The system's starting allocation (core 60 with gold 10 and international 10, longterm 40), as a variant the lab can score like any policy."}}
 
 
 def seed(con, pm_dir: Path, now: datetime) -> list:
     """Register the always-present candidates (once: a policy that exists is left alone). -> the ids added."""
     added = []
-    for pid, c in candidates().items():
+    for pid, c in candidates(con=con).items():
         if service.get(con, pid):
             continue
         r = service.add_variant(con, pm_dir, now, pid, render_code(c["params"]), c["hypothesis"])
@@ -128,11 +134,21 @@ def family(con) -> list:
 
 # --- the strategist's tool ---------------------------------------------------------------------------------------------------------------------
 
-def proposal_params(classes: dict, sleeves_pct: dict) -> dict:
+def proposal_params(classes: dict, sleeves_pct: dict, con=None) -> dict:
+    """The variant's parameters for a proposal. With `con` the longterm share is the LIVE picks share, whatever the proposal says (L5 owns it: S83 L6) and the core is what is left."""
     gold, intl, cash = (float(classes.get(k, 0.0)) for k in ("gold", "international", "cash"))
+    sleeves_pct = live_sleeves_pct(con, sleeves_pct)
     core_pct = float(sleeves_pct["core"])
     return {"idx": round(max(0.0, core_pct - gold - intl - cash) / 100.0, 4), "gold": round(gold / 100.0, 4), "intl": round(intl / 100.0, 4),
             "longterm": round(float(sleeves_pct["longterm"]) / 100.0, 4)}
+
+
+def live_sleeves_pct(con, sleeves_pct: dict) -> dict:
+    """The sleeves in percent with the longterm share set to the live picks share (core = the rest); unchanged without a `con` or with the picks off for India."""
+    if con is None:
+        return sleeves_pct
+    live = live_shares(con, {"longterm": float(sleeves_pct["longterm"]) / 100.0, "core": float(sleeves_pct["core"]) / 100.0, "gold": 0.0, "international": 0.0, "cash": 0.0, "source": ""})
+    return {**sleeves_pct, "core": round(live["core"] * 100.0, 4), "longterm": round(live["longterm"] * 100.0, 4)}
 
 
 def propose(con, pm_dir: Path, now: datetime, classes: dict, sleeves_pct: dict, reasons: str, sectors: Optional[dict] = None, market: str = "IN", by: str = "the strategist") -> dict:
@@ -154,10 +170,15 @@ def propose(con, pm_dir: Path, now: datetime, classes: dict, sleeves_pct: dict, 
         return {"ok": True, "reaffirmed": True, "target_id": r["target_id"], "note": "the active target stands: this is its re-examination for the week (recorded with your reasons)"}
     tid = r["target_id"]
     pid = f"alloc_t{tid}"
-    code = render_code({**default_params(), **proposal_params(r["classes"], chk["sleeves"])})
+    sl_live = live_sleeves_pct(con, chk["sleeves"])                         # S83 L6: the variant is judged at the live picks share, the same as the baseline it is compared with
+    code = render_code({**default_params(con=con), **proposal_params(r["classes"], chk["sleeves"], con)})
     v = service.add_variant(con, pm_dir, now, pid, code, ("allocation proposal #%d: " % tid) + " ".join(str(reasons).split())[:200])
-    con.execute("INSERT OR REPLACE INTO allocation_sleeves_s81 VALUES (?,?,?,?,?)", [tid, market, json.dumps(chk["sleeves"], sort_keys=True), pid if v.get("ok") else None, now])
-    return {"ok": True, "target_id": tid, "variant": pid if v.get("ok") else None, "classes": r["classes"], "sectors": r["sectors"], "sleeves": chk["sleeves"], "status": "proposed",
+    con.execute("INSERT OR REPLACE INTO allocation_sleeves_s81 VALUES (?,?,?,?,?)", [tid, market, json.dumps(sl_live, sort_keys=True), pid if v.get("ok") else None, now])
+    out = {"ok": True, "target_id": tid, "variant": pid if v.get("ok") else None, "classes": r["classes"], "sectors": r["sectors"], "sleeves": sl_live, "status": "proposed"}
+    if abs(float(sl_live["longterm"]) - float(chk["sleeves"]["longterm"])) > 0.05:
+        out["longterm_share"] = (f"the longterm share is set by the picks rule (S83 L5), not by a proposal: you asked for {float(chk['sleeves']['longterm']):g}% and it stays at "
+                                 f"{float(sl_live['longterm']):g}%; the rest of the proposal was taken")
+    return {**out,
             "next": f"run_lab on {pid} (it is a plain policy: the lab replays it 2005-2017 after tax and charges); code adopts it when it passes the A50 rule against the index and the "
                     "once-only 2018-2021 check, and is not below the current allocation. Until then the current target stands."}
 
@@ -199,10 +220,10 @@ def _scoped_shares(con) -> dict:
     from pflab.paper import allocation
     cfg = core.settings()
     act = allocation.active_target(con)
-    sh = sleeves.target_shares(con, cfg, {"id": act["target_id"], "classes": act["classes"], "sectors": act["sectors"]} if act else None)
+    sh = sleeves.target_shares_raw(con, cfg, {"id": act["target_id"], "classes": act["classes"], "sectors": act["sectors"]} if act else None)
     if sh["core"] >= 0.999 and sh["longterm"] <= 0.001:
         sh = sleeves.default_shares(cfg)
-    return sh
+    return live_shares(con, sh)                                    # S83 L6: the longterm share is the picks rule's, the core is what is left (the fallback never touches the picks)
 
 
 def adopt_index_only(con, now: datetime, why: str, by: str = ADOPTER) -> dict:

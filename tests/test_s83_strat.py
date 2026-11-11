@@ -372,3 +372,40 @@ def test_a_proposal_that_changes_the_longterm_share_is_taken_for_the_rest_and_to
     assert out["sleeves"] == {"core": 60.0, "longterm": 40.0}
     again = json.loads(tools.run(ctx, "propose_allocation", {**args, "sleeves": {"core": 60, "longterm": 40}, "classes": {"equity": 84, "gold": 10, "international": 1, "cash": 5}})[0])
     assert again["ok"] and "longterm_share" not in again                                              # the live share asked for: nothing to tell
+
+
+# --- L6: the index fallback leaves the picks alone; a variant is judged at the live picks share ---------------------------------------------------------
+
+def test_the_index_fallback_changes_neither_picks_sleeve_nor_their_positions(con):
+    from pflab.lab import alloc_lab
+    from pflab.paper import allocation, book
+    from pflab.us import book as usbook
+    picks.adopt_kite_holdings(con, NOW)
+    picks.propose(con, NOW, "IN", [item("CCC")], session_ref="s1")
+    for i, (k, sym) in enumerate((("ZZ0000000011", "USA"), ("ZZ0000000012", "USB"))):                                   # two held US picks in the sub-book
+        con.execute("INSERT INTO picks_s83 (pick_id, market, isin, symbol, source, thesis, break_condition, storylines_json, state, proposed_on, state_changed_on) "
+                    "VALUES (?, 'US', ?, ?, 'system', ?, ?, '[]', 'held', ?, ?)", [300 + i, k, sym, TEXT, BRK, START, START])
+        con.execute("INSERT INTO us_lots_s81 VALUES (?, ?, ?, ?, 5.0, 50.0, 90.0, 'FBIL', 'fill')", [i + 1, k, sym, START])
+    snap = lambda: (con.execute("SELECT * FROM picks_s83 ORDER BY pick_id").fetchall(), {k: round(v, 6) for k, v in book.positions(con).items()}, usbook.positions(con, START),
+                    con.execute("SELECT count(*) FROM paper_orders").fetchone()[0], pick_share.share(con, "IN")["share"], pick_share.share(con, "US")["share"])
+    before = snap()
+    out = alloc_lab.adopt_index_only(con, datetime(2026, 11, 2, 9, 0), "after tax and charges the current allocation fails the index rule; holding the index passes it")
+    assert out["adopted"], out
+    res = alloc_lab.rescope_old_index_only(con, datetime(2026, 11, 2, 9, 5))
+    assert res == {"rescoped": False} or res.get("rescoped") in (True, False)
+    assert snap() == before                                                                                  # both picks sleeves, their positions and their shares are untouched
+    sl = json.loads(con.execute("SELECT sleeves_json FROM allocation_sleeves_s81 WHERE target_id=?", [out["target_id"]]).fetchone()[0])
+    assert sl["longterm"] == pytest.approx(40.0) and sl["core"] == pytest.approx(60.0)                       # the target keeps the picks rule's longterm share
+
+
+def test_a_candidate_and_a_proposal_are_judged_at_the_live_picks_share(con, tmp_path):
+    from pflab.lab import alloc_lab
+    con.execute("INSERT INTO sleeve_share_s83 (change_id, market, decided_on, old_share, new_share, reason, figures_json) VALUES (1, 'IN', ?, 0.40, 0.45, 'ahead of the index', '{}')", [START])
+    assert alloc_lab.default_params(con=con)["longterm"] == pytest.approx(0.45) and alloc_lab.default_params()["longterm"] == pytest.approx(0.40)
+    assert alloc_lab.candidates(con=con)[alloc_lab.DEFAULT_ID]["params"]["longterm"] == pytest.approx(0.45)
+    assert alloc_lab.index_only_params(con=con)["longterm"] == pytest.approx(0.45)
+    p = alloc_lab.proposal_params({"gold": 10, "international": 0, "cash": 5}, {"core": 50, "longterm": 50}, con)
+    assert p["longterm"] == pytest.approx(0.45) and p["idx"] == pytest.approx(0.55 - 0.15)                    # the asked 50 is ignored; the core is what is left
+    out = alloc_lab.propose(con, tmp_path, datetime(2026, 11, 2, 9, 0), {"equity": 85, "gold": 10, "international": 0, "cash": 5}, {"core": 50, "longterm": 50},
+                            "Put the idle cash into the index and keep a gold slice for a crash; the longterm share is the picks rule's.")
+    assert out["ok"] and out["sleeves"]["longterm"] == pytest.approx(45.0) and "set by the picks rule" in out["longterm_share"]
