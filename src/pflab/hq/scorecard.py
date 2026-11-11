@@ -19,8 +19,6 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
-HORIZONS = (7, 28, 84)                     # calendar days: about 5, 20 and 60 sessions
-KIND = {"BUY": "add", "ADD": "add", "REDUCE": "trim", "SELL": "trim", "HOLD": "hold", "WAIT": "wait"}
 MIN_N = 20
 
 

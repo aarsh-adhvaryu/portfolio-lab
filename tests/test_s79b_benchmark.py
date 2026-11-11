@@ -147,13 +147,13 @@ def test_the_switch_off_makes_it_behave_as_not_there(con, monkeypatch):
     assert con.execute("SELECT count(*) FROM blended_benchmark_s79").fetchone()[0] == 0
 
 
-def test_stale_class_data_is_flagged_and_the_dossier_text_reads_the_result(con):
+def test_stale_class_data_is_flagged_and_the_status_names_its_source_and_labels_tax_as_an_estimate(con):
+    """(S82: the paper team's `dossier_text` had no caller and was deleted; what it read, `status`, is what is tested.)"""
     run_book(con)
     benchmark.refresh(con, "IN", DAYS[-1], NOW, levels(through=date(2026, 11, 2)))
     s = benchmark.status(con, "IN")
     assert set(s["stale_classes"]) == {"equity", "gold", "international"}
-    txt = benchmark.dossier_text(con, DAYS[-1])
-    assert txt.startswith("RESULT VS ITS OWN BENCHMARK") and "kite_seed" in txt and "tax (estimate)" in txt
+    assert "kite_seed" in s["benchmark"]["source"] and any("tax is an estimate" in n for n in s["notes"]) and s["latest_month"] is not None
 
 
 def test_the_tool_the_job_and_the_world_panel_read_the_same_record(con, monkeypatch):

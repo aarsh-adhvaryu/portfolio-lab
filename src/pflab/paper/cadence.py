@@ -33,10 +33,6 @@ def last_acts(con) -> List[dict]:
         "SELECT loop, logged_at, what, useful FROM paper_acts WHERE act_id IN (SELECT max(act_id) FROM paper_acts GROUP BY loop) ORDER BY loop").fetchall()]
 
 
-def acted_since(con, loop: str, since: datetime) -> bool:
-    return bool(con.execute("SELECT 1 FROM paper_acts WHERE loop=? AND logged_at >= ? LIMIT 1", [loop, since]).fetchone())
-
-
 def silent_loops(con, now: datetime) -> List[str]:
     """Loops that should have acted by now and have not. The live watch counts only inside market hours; no loop is expected before the portfolio has started."""
     from pflab.paper import book
@@ -125,11 +121,6 @@ def postmortem(con, now: datetime) -> dict:
 
 def lessons(con, limit: int = 8) -> List[dict]:
     return [{"kind": r[0], "text": r[1], "n": r[2]} for r in con.execute("SELECT kind, text, n FROM paper_lessons ORDER BY n DESC, lesson_id DESC LIMIT ?", [limit]).fetchall()]
-
-
-def lessons_text(con) -> str:
-    ls = lessons(con)
-    return ("WHAT ITS OWN RECORD HAS TAUGHT IT (by code; use it, and say when you go against it): " + " | ".join(l["text"] for l in ls)) if ls else ""
 
 
 # --- the daily look -----------------------------------------------------------------------------------------------------------------

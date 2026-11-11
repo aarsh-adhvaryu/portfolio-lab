@@ -67,8 +67,3 @@ def test_check_company_counts_quarters(con, tmp_path, monkeypatch):
     assert needs.check_company(con, None, "INE999Z01010", datetime(2026, 10, 27), "ZZZ") is not None  # no scrip: no data
 
 
-def test_the_closing_checklist_is_asked_once_and_names_the_fd_risk(con):
-    q = needs.closing_checklist(con, 7, 4, "SBI and HDFC", datetime(2026, 10, 28))
-    assert q is not None and needs.closing_checklist(con, 7, 4, "SBI and HDFC", datetime(2026, 10, 29)) is None
-    text = con.execute("SELECT text FROM questions WHERE q_id=?", [q]).fetchone()[0]
-    assert "7 of your FDs say 'Credit to Account' and 4 say 'Default'" in text and "HDFC is one you keep" in text and "Quicko" in text

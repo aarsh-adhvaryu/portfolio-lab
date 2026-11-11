@@ -383,23 +383,3 @@ def size_buy(con, now: datetime, case_id: int, isin: str, action: str, root=None
     s = construct_sizes(con, now, dec, root, closes)
     return s.get("new")
 
-
-def dossier_text(con, now: datetime) -> str:
-    """One paragraph for the paper team's dossier: the advice of today (computed once a day and kept), labelled by its status. '' when off."""
-    if not settings()["on"]:
-        return ""
-    try:
-        r = con.execute("SELECT result_json FROM construct_runs_s85 WHERE kind='advice' AND as_of=? AND ok ORDER BY run_id DESC LIMIT 1", [now.date()]).fetchone()
-        if r:
-            out = json.loads(r[0])
-            status = "NOT ADOPTED"
-        else:
-            out = advise(con, now, log=True)
-            if not out.get("ok"):
-                return ""
-            status = "ADOPTED" if out.get("adopted") else "NOT ADOPTED"
-        moves = [f"{t['side'].upper()} {t['symbol']} about Rs {t['rupees']:,.0f}" for t in out.get("trades", [])[:6]]
-        return (f"CONSTRUCT ({status}: advice from the risk model, the ensemble forecast, the rails, charges and tax; sizing is by the current rules unless adopted; call `construct` for the numbers): "
-                + ("; ".join(moves) if moves else "no trade beats doing nothing after costs and tax") + f". Binding: {', '.join(out.get('binding', [])[:4]) or 'none'}.")
-    except Exception:
-        return ""

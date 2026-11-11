@@ -315,33 +315,3 @@ def status(con, day: date, market: str = "IN") -> dict:
         out["gaps"] = trade_toward(h, act)
     return out
 
-
-def dossier_text(con, day: date, market: str = "IN") -> str:
-    """The block the paper team reads: its target and the gap to it, or the instruction to propose the first."""
-    try:
-        s = status(con, day, market)
-    except Exception:
-        return ""
-    act = s["active"]
-    if act is None:
-        if s["pending"]:
-            return f"ALLOCATION TARGET: #{s['pending'][0]['target_id']} is proposed and waits for the independent review; until it is active the book has no target to trade toward."
-        return "ALLOCATION TARGET: the system has none yet. " + playbook_text()
-    cl = ", ".join(f"{k} {v:g}%" for k, v in act["classes"].items())
-    sec = ("; sectors: " + ", ".join(f"{k} {v:g}%" for k, v in act["sectors"].items())) if act["sectors"] else ""
-    g = s.get("gaps") or {}
-    gap = ("in band: no trade is needed for the allocation" if g.get("in_band") else
-           "ADD " + ", ".join(f"{x['name']} {x['gap_pct']:+.1f} pts (about Rs {x['gap_rupees']:,.0f})" for x in g.get("add", []))
-           + ("; " if g.get("add") and g.get("trim") else "") + ("TRIM " + ", ".join(f"{x['name']} {x['gap_pct']:+.1f} pts (about Rs {x['gap_rupees']:,.0f})" for x in g.get("trim", [])) if g.get("trim") else ""))
-    return (f"ITS OWN ALLOCATION TARGET (#{act['target_id']}, active since {str(act['activated_at'])[:10]}, re-examined at the review due {act['review_due']}): {cl}{sec}. Reasons: {act['reasons'][:500]} "
-            f"GAP TO IT NOW: {gap}. Trade toward it with paper_decide (names of your choice; sizes and rails are code's). If the reasons no longer hold, call propose_allocation with the new split; "
-            "the independent review decides before it is active.")
-
-
-def playbook_text() -> str:
-    """One paragraph for the paper team's first review (and each weekly one): the lead includes it in the paper playbook's decision step."""
-    return ("ALLOCATION: the system's book has its own target, not the investor's. Decide it yourselves, with reasons: how much to hold in equity (shares and index ETFs), gold (gold ETFs, "
-            "SGBs), international (Nasdaq or other foreign-index ETFs listed in India) and cash, and the sector split of the companies. Read `system_allocation` for the current target and the "
-            "gap to it, call `propose_allocation` with the percentages (they sum to 100; each at least zero) and the reasons, including what would make you change it. Code refuses a split "
-            "that breaks the rails (a company 10%, a sector 25%, one ETF 35%, no F&O, no borrowing, no short sales); the independent reviewer must approve it before it is active. Re-examine "
-            "it at every weekly review: say if it stands or propose the new split. Stocks and ETFs of any kind may be bought toward it.")

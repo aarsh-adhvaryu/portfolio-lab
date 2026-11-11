@@ -278,42 +278,6 @@ def run_all(rt, agents: Dict[str, Callable], deliver=None, max_n: int = 20, stop
     return n
 
 
-WORKERS = 3                                               # tasks of the worker agents that may run at the same time
-
-
-def run_parallel(rt, agents: Dict[str, Callable], deliver=None, workers: int = WORKERS, max_n: int = 12, stop=None, his_only: bool = False,
-                 prefix: str = "w_") -> int:
-    """Run the due tasks of the worker agents on up to `workers` threads until none is due and none is running (or `max_n` were taken). Independent tasks
-    overlap; a task whose dependency is not done is parked (never queued) and so never takes a thread; what a running task queues (a coordinator's plan) is
-    picked up by the threads that are waiting for it. Returns how many ran."""
-    import time
-    taken, busy = [0], [0]
-    lock = threading.Lock()
-
-    def loop():
-        while stop is None or not stop.is_set():
-            with lock:
-                if taken[0] >= max_n:
-                    return
-                busy[0] += 1
-            ran = run_one(rt, agents, deliver, his_only, prefix)
-            with lock:
-                busy[0] -= 1
-                if ran is not None:
-                    taken[0] += 1
-                    continue
-                idle = busy[0] == 0
-            if idle:
-                return
-            time.sleep(0.05)                                   # a sibling is still running and may queue more work
-    ts = [threading.Thread(target=loop, name=f"worker-{i + 1}", daemon=True) for i in range(max(1, workers))]
-    for t in ts:
-        t.start()
-    for t in ts:
-        t.join()
-    return taken[0]
-
-
 def recent(con, limit: int = 40) -> List[dict]:
     ids = [r[0] for r in con.execute("SELECT task_id FROM hq_tasks ORDER BY task_id DESC LIMIT ?", [limit]).fetchall()]
     return [get(con, i) for i in ids]
