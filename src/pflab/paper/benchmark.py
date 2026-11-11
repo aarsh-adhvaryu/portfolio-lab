@@ -420,19 +420,3 @@ def status(con, market: str = "IN", day: Optional[date] = None) -> dict:
             res["whole_book"] = {"error": f"{type(e).__name__}: {str(e)[:120]}"}
     return res
 
-
-def dossier_text(con, day: Optional[date] = None, market: str = "IN") -> str:
-    """One block for the weekly review: the result against its own benchmark and last month's split. Empty when there is nothing recorded."""
-    try:
-        s = status(con, market, day)
-    except Exception:
-        return ""
-    if not s.get("started") or s.get("book", {}).get("return") is None:
-        return ""
-    lm = s.get("latest_month")
-    bit = ""
-    if lm:
-        bit = (f" Month {lm['month'][:7]}{' (so far)' if lm['partial'] else ''}: book {lm['book_return']:+.2%} vs benchmark {lm['bench_return']:+.2%}; allocation {lm['allocation']:+.2%}, "
-               f"selection {lm['selection']:+.2%}, timing {lm['timing']:+.2%}, costs {lm['costs']:+.2%}, tax (estimate) {lm['tax']:+.2%}, residual {lm['residual']:+.2%}.")
-    return (f"RESULT VS ITS OWN BENCHMARK (the blend of its allocation target: {s['benchmark']['source']}): since {s['since']} the book {s['book']['return']:+.2%} vs the benchmark "
-            f"{s['benchmark']['return']:+.2%} (excess {s['excess']:+.2%}).{bit} Read it for what the allocation and the selection each added or cost.")

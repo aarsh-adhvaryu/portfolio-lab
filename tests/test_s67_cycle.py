@@ -282,12 +282,8 @@ def test_a_case_that_never_settles_is_closed_as_inconclusive_after_its_passes_an
         assert con.execute(f"SELECT count(*) FROM {table}").fetchone()[0] == 0
 
 
-def test_an_ipo_allotment_opens_a_case_that_weighs_holding_as_much_as_selling_and_a_listing_day_sale_is_not_assumed(con):
-    con.execute("INSERT INTO ipo_applications (ipo_id, account_id, status, allotted_qty, allotted_amount, listed_on, isin) VALUES ('IPO1', 'ZER', 'allotted', 20, 20000, NULL, ?)", [AAA])
-    new = cases.discover(con, NOW, [AAA], [])
-    c = cases.get(con, new[0])
-    assert "holding it, selling part and selling it all" in c["question"] and "no listing-day sale is assumed" in c["assumptions"]
-    assert "business group is not evidence of returns" in c["assumptions"][1] and cases.discover(con, NOW, [AAA], []) == []     # once
+def test_the_ipo_strategy_weighs_holding_as_much_as_selling_from_the_numbers(con):
+    """(S82: `cases.discover`, which opened a case for an allotment, had no caller and was deleted; the strategy's own wording is what stays tested.)"""
     from pflab.plan import ipo
     import pandas as pd
     base = {"n": 40, "listing_gain_at_close": {"median": 0.05, "p10": -0.1, "p90": 0.3, "share_up": 0.62},

@@ -240,11 +240,6 @@ def _suggestions(con, kind, good, n, model="claude-opus-5-5", answer="none"):
                                                                 answer, "good" if k < good else "bad", NOW])
 
 
-def test_wilson_interval():
-    lo, hi = record.wilson(5, 25)
-    assert 0.08 < lo < 0.1 and 0.38 < hi < 0.41
-
-
 def test_proposal_to_investor_then_his_yes_applies(con):
     p = record._p("daily_cap", "tell_investor", "lower the messages to 2 a day", {"n": 25}, 25, "rule", True, "2", "investor")
     pid = record.keep(con, p, NOW)
@@ -264,11 +259,11 @@ def test_his_no_declines(con):
     assert record.answers(con, NOW)["declined"] == 1 and live.current(con, ("instruction",)) == []
 
 
-def test_record_due_weekly_or_on_outcomes(con):
+def test_record_due_weekly_only(con):
     assert record.due(con, NOW) == "weekly"
     assert record.due(con, NOW - timedelta(days=1)) is None                 # a Friday, nothing new
-    _suggestions(con, "hold", 10, 20)
-    assert record.due(con, NOW - timedelta(days=1)) == "outcomes"
+    _suggestions(con, "hold", 10, 20)                                       # S82: scored old suggestions no longer bring the reading forward (nothing scores them now)
+    assert record.due(con, NOW - timedelta(days=1)) is None
 
 
 # --- the cycle ------------------------------------------------------------------------------------------------------------

@@ -38,7 +38,6 @@ MAX_STEPS = 4                 # case passes before a case that still has no deci
 REVIEW_DAYS = 7               # the default next review of a closed case
 RETRY_MINUTES = 15
 FRESH_DAYS = {"filing": 30, "result": 100, "article": 3, "web": 7, "dataset": 30, "email": 14, "calculation": 3650, "observation": 3}
-CASE_PASS_EVERY = timedelta(hours=1)
 MISSION_OWNED = "(SELECT case_id FROM hq_missions WHERE state IN ('planning', 'working', 'reviewing', 'synthesising'))"
 
 
@@ -552,21 +551,6 @@ def end_pass(con, ids: Sequence[int], pass_id: int, now: datetime, ok: bool, err
             set_status(con, cid, "queued", now, f"step {steps} done, not decided: queued for another look")
 
 
-def defer(con, ids: Sequence[int], now: datetime, why: str, kind: str = "waiting_budget", resume_at: Optional[datetime] = None) -> None:
-    """A pass was not made, or stopped, for a reason that is not the case's (a spending limit, the provider): the case WAITS with the reason and
-    the time to look again (`resume_at`, else an hour), and no attempt is counted. It is picked up by `due` when that time comes, so a
-    refusal that cannot change before then is not asked again every round."""
-    if kind not in WAITING_FOR_CONDITION:
-        raise ValueError(f"kind must be one of {WAITING_FOR_CONDITION}")
-    with _LIVE_LOCK:
-        _LIVE.difference_update(ids)
-    at = resume_at or (now + timedelta(hours=1))
-    for cid in ids:
-        con.execute("UPDATE hq_cases SET status=?, attempts=greatest(attempts - 1, 0), next_review_at=?, last_error=?, updated_at=? "
-                    "WHERE case_id=? AND status='running'", [kind, at, why[:300], now, cid])
-        log(con, cid, now, kind, f"{why[:160]}; looks again {at:%Y-%m-%d %H:%M}")
-
-
 def reap(con, now: datetime) -> int:
     """Cases left `running` by a process that died: back to retry (the pass is counted), or failed when out of attempts."""
     with _LIVE_LOCK:
@@ -687,50 +671,6 @@ def link_outcomes(con, now: datetime) -> int:
 
 # --- discovery: the system finds its own open questions ----------------------------------------------------------------------------------------
 
-def discover(con, now: datetime, held: Sequence[str] = (), listed: Sequence[str] = ()) -> List[int]:
-    """Open a case for each unresolved question the stores show, with no one asking: a hypothesis waiting for a decision, a thesis near
-    its end, a prediction overdue and unscored, a held company with a material reading not yet connected to anything, a task held at the
-    hop limit. Same signal, same key: never twice. Returns the new case ids."""
-    new = []
-    names = {i: s for i, s in con.execute("SELECT isin, symbol FROM instruments WHERE symbol IS NOT NULL").fetchall()}
-
-    def go(question: str, key: str, subject: Optional[str] = None, isin: Optional[str] = None, assumptions=()):
-        cid, fresh = open_case(con, now, question, origin="code", subject=subject, isin=isin, assumptions=assumptions, key=key)
-        if fresh:
-            new.append(cid)
-
-    for hid, subject, cause in con.execute("SELECT hyp_id, subject, cause FROM kg_hypotheses WHERE status='review' ORDER BY hyp_id").fetchall():
-        go(f"Is '{cause[:160]}' really why {subject} moved? Decide the hypothesis from evidence.", f"discover:hypothesis:{hid}",
-           subject=str(subject)[:20], assumptions=[cause[:200]])
-    for tid, text, exp in con.execute("SELECT thesis_id, text, expires FROM theses WHERE status='open' AND expires IS NOT NULL AND expires <= ? "
-                                      "ORDER BY thesis_id", [(now + timedelta(days=7)).date()]).fetchall():
-        go(f"The thesis '{text[:200]}' ends on {exp}: does the evidence still support it?", f"discover:thesis:{tid}:{exp}", assumptions=[text[:200]])
-    for pid, claim, due_ in con.execute("SELECT pred_id, claim, due FROM hq_predictions WHERE outcome IS NULL AND due < ? ORDER BY pred_id",
-                                        [(now - timedelta(days=3)).date()]).fetchall():
-        go(f"A prediction ('{claim[:160]}') was due {due_} and is not scored: why, and was the reasoning sound?", f"discover:prediction:{pid}")
-    if held or listed:
-        q = ",".join("?" * len(set(held) | set(listed)))
-        for doc, isin, summary in con.execute(
-                f"SELECT r.doc_id, json_extract_string(r.isins_json, '$[0]'), r.summary FROM hq_readings r WHERE r.material='yes' AND r.read_at >= ? "
-                f"AND json_extract_string(r.isins_json, '$[0]') IN ({q}) ORDER BY r.read_at DESC LIMIT 5",
-                [now - timedelta(days=2), *sorted(set(held) | set(listed))]).fetchall():
-            sym = names.get(isin, isin)
-            go(f"A material document about {sym} was read ({(summary or '')[:160]}): what does it change for the investor's holding or plan?",
-               f"discover:reading:{doc}", subject=sym, isin=isin)
-    for ipo_id, isin, qty, amount, listed in con.execute(
-            "SELECT ipo_id, isin, allotted_qty, allotted_amount, listed_on FROM ipo_applications WHERE status = 'allotted' AND coalesce(allotted_qty, 0) > 0 "
-            "AND (listed_on IS NULL OR listed_on >= ?) ORDER BY ipo_id", [(now - timedelta(days=30)).date()]).fetchall():
-        sym = names.get(isin, ipo_id)
-        go(f"An IPO allotment ({sym}) is in hand: what do the facts say about holding it, selling part and selling it all? Weigh holding as much as selling, "
-           "say what is known, what is not, and what the group exposure adds; decide before the listing.", f"discover:ipo:{ipo_id}", subject=sym, isin=isin,
-           assumptions=["no listing-day sale is assumed", "belonging to a business group is not evidence of returns"])
-    for tid, text, body in con.execute("SELECT task_id, text, body_json FROM hq_tasks WHERE status='held' ORDER BY task_id").fetchall():
-        b = json.loads(body or "{}")
-        go(f"A chain of agents stopped at the hop limit (task #{tid}, meant for {b.get('meant_for', '?')}): release it, dismiss it, or ask for it again?",
-           f"discover:held:{tid}")
-    return new
-
-
 # --- views ------------------------------------------------------------------------------------------------------------------------------------
 
 def listing(con, limit: int = 30, active_only: bool = False) -> List[dict]:
@@ -745,33 +685,6 @@ def listing(con, limit: int = 30, active_only: bool = False) -> List[dict]:
         c["assessment"] = assess(con, cid)
         out.append(c)
     return out
-
-
-def brief(con, ids: Sequence[int], now: datetime, evidence_lines: int = 10) -> str:
-    """The cases of a pass as the brain reads them: question, assumptions, state, evidence with dates and stance, open requests, the
-    log's last lines. All code-made text; evidence text comes from sources and is marked as such."""
-    out = []
-    for cid in ids:
-        c = get(con, cid)
-        if c is None:
-            continue
-        a = assess(con, cid, now)
-        lines = [f"CASE #{cid} ({c['status']}, opened {str(c['opened'])[:10]} by {c['origin']}): {c['question']}"]
-        if c["assumptions"]:
-            lines.append("  assumptions: " + "; ".join(c["assumptions"]))
-        lines.append(f"  evidence so far: {a['for']} for, {a['against']} against, {a['missing']} missing, {a['stale']} stale, from {a['sources']} source(s) "
-                     f"-> {a['verdict']}")
-        stale_ids = {e["id"] for e in stale_items(evidence(con, cid), now)}
-        for e in evidence(con, cid)[-evidence_lines:]:
-            when = e["published"] or e["event"]
-            lines.append(f"  - [{e['stance']}{', STALE' if e['id'] in stale_ids else ''}] {e['text'][:220]}"
-                         + (f" (published/event {str(when)[:10]}, retrieved {str(e['retrieved'])[:10]})" if when else f" (retrieved {str(e['retrieved'])[:10]})"))
-        for k, r, s in con.execute("SELECT dep_key, request, status FROM hq_case_deps WHERE case_id=? ORDER BY dep_id", [cid]).fetchall():
-            lines.append(f"  request {k} ({s}): {r[:160]}")
-        for at, ev_, det in con.execute("SELECT logged_at, event, detail FROM hq_case_log WHERE case_id=? ORDER BY log_id DESC LIMIT 3", [cid]).fetchall():
-            lines.append(f"  log {str(at)[:16]} {ev_}: {(det or '')[:140]}")
-        out.append("\n".join(lines))
-    return "\n".join(out) if out else "CASES: none to work on"
 
 
 def counts(con) -> Dict[str, int]:

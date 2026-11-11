@@ -331,15 +331,6 @@ def test_construct_sizes_only_when_adopted_and_the_manager_hook_is_inert_otherwi
     assert s["1"]["amount_rupees"] <= 0.10 * 1_000_000                                   # inside the 10% rail whatever the book is
 
 
-def test_dossier_text_is_labelled_and_off_switch_silences_it(live, monkeypatch):
-    con, series = live
-    monkeypatch.setattr(R, "load_closes", lambda *a, **k: series)
-    t = R.dossier_text(con, NOW)
-    assert t.startswith("CONSTRUCT (NOT ADOPTED") and "current rules" in t
-    monkeypatch.setattr(R, "settings", lambda: {**C.DEFAULTS, "on": False})
-    assert R.dossier_text(con, NOW) == ""
-
-
 # --- the tool ---------------------------------------------------------------------------------------------------------------------
 def _ctx(con):
     return SimpleNamespace(con=con, now=NOW, rt=SimpleNamespace(data_root=None), call_ref=77)

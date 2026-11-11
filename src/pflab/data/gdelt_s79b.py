@@ -50,12 +50,13 @@ THEMES = {   # group -> predicate over a GKG V1 theme code
     "trade": lambda t: "TRADE" in t or t.startswith(("TARIFF", "SANCTION")) or t in ("ECON_FOREIGNTRADE",),
 }
 NEG_TONE = -2.0
+TIMEOUT = (20, 60)                  # (connect, read) seconds for every request in this module (S82: no call may wait for ever)
 
 
 def _get(url: str, session: requests.Session, tries: int = 3):
     for a in range(tries):
         try:
-            r = session.get(url, timeout=90)
+            r = session.get(url, timeout=TIMEOUT)
             if r.status_code == 200 and r.content[:2] == b"PK":
                 return r.content
             if r.status_code == 404:

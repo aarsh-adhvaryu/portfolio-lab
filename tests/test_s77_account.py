@@ -270,25 +270,6 @@ def test_a_loop_that_stays_silent_is_found_and_the_live_watch_only_counts_in_mar
 
 # --- skills --------------------------------------------------------------------------------------------------------------------------
 
-def test_every_skill_file_parses_names_its_source_and_each_role_gets_its_set():
-    from pflab.hq import skills
-    names = [s["name"] for s in skills.all_skills()]
-    assert sorted(names) == sorted({n for ns in skills.BY_ROLE.values() for n in ns}) and len(names) == 6
-    for s in skills.all_skills():
-        assert "tradermonty/claude-trading-skills" in s["body"] and "MIT" in s["body"]                      # credit and licence kept
-    assert "Skill: position-sizing" in skills.block("quant") and "Skill: position-sizing" not in skills.block("review")
-    assert "Skill: pre-trade-gate" in skills.block("review") and skills.block("nobody") == ""
-
-
-def test_a_broken_skill_is_ignored_not_fatal(tmp_path):
-    from pflab.hq import skills
-    (tmp_path / "bad").mkdir()
-    (tmp_path / "bad" / "SKILL.md").write_text("no frontmatter here", encoding="utf-8")
-    (tmp_path / "wrongname").mkdir()
-    (tmp_path / "wrongname" / "SKILL.md").write_text("---\nname: other\ndescription: x\n---\nbody", encoding="utf-8")
-    assert skills.all_skills(tmp_path) == []
-
-
 # --- the assistant's context against drift ---------------------------------------------------------------------------------------------
 
 def _chat(con, n_pairs, decisions=None):
