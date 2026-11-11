@@ -38,6 +38,22 @@ import pandas as pd
 
 from pflab import markets
 
+
+
+def settings() -> dict:
+    """configs/s79b.toml [waves]: the section kept for macro attribution (on, backfill_sessions) after the wave flag was deleted (A60)."""
+    try:
+        from pflab import _toml
+        p = Path(__file__).resolve().parents[3] / "configs" / "s79b.toml"
+        return dict(_toml.load(p).get("waves", {}) or {})
+    except Exception:
+        return {}
+
+
+def is_on() -> bool:
+    return bool(settings().get("on", True))
+
+
 WINDOW = 250
 MIN_N = 20
 RIDGE = 0.02

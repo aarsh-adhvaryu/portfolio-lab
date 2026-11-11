@@ -55,3 +55,21 @@ def test_the_strategist_reads_a_chat_request_as_a_reason_and_the_new_triggers_by
     con.execute("INSERT INTO probation_s81 (change_id, policy_id, changed_on, kind, share, reason, made_at) VALUES (1,'p1',?,'withdraw',0.0,'worse than the champion',?)", [NOW.date(), NOW - timedelta(hours=2)])
     r = triggers_s81.reasons(con, NOW)
     assert any("thesis-break exit" in x for x in r) and any("probation slice of p1: withdraw" in x for x in r)
+
+
+def test_the_harvesting_window_starts_a_paid_session_only_while_a_harvest_switch_is_on(con, monkeypatch):
+    """A60: harvesting is off in the live book (`harvest_core`, `harvest_longterm`), so the January window is no reason for a paid Opus session; with a switch on it is one again."""
+    from pflab.core import exits
+    from pflab.lab import triggers_s81
+    jan = datetime(2027, 1, 5, 11, 0)
+    con.execute("INSERT INTO core_sessions_s80 (session_id, started_at, reason, status) VALUES (1, ?, 'weekly', 'done')", [datetime(2026, 12, 20, 11, 0)])
+    real = exits.settings
+
+    def with_switches(core, longterm):
+        return lambda: {**real(), "harvest_core": core, "harvest_longterm": longterm}
+    monkeypatch.setattr(exits, "settings", with_switches(False, False))
+    assert not any("harvesting window" in x for x in triggers_s81.reasons(con, jan))
+    monkeypatch.setattr(exits, "settings", with_switches(False, True))
+    assert any("harvesting window" in x for x in triggers_s81.reasons(con, jan))
+    monkeypatch.setattr(exits, "settings", with_switches(True, False))
+    assert any("harvesting window" in x for x in triggers_s81.reasons(con, jan))

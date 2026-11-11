@@ -27,7 +27,12 @@ RATE TESTS        value area: share of events whose close is back inside the pri
                   POC migration: events = days with a migration flag (mig = +1/-1 of the committed `volume_profile.event_frame`: 5-session lookback, 0.25 value-area-height dead band); outcome = sign of
                   the 5-session return from the NEXT session's close (ret_5_next); ties dropped; agreement against 50% with a one-sided exact binomial test (claimed direction: follows);
                   the "effect" for the 0.5% condition is the mean of sign(mig) * ret_5_next; halves: agreement above 50% in both.
-Nothing here is a model: all numbers are the code's."""
+Nothing here is a model: all numbers are the code's.
+
+A60 (2026-11-11): every test registered here failed or found no reliable follow-through. The event lists (`event_list`: waves, rotation, crude falls, extreme sentiment), the value-area and
+POC-migration studies (`value_area_study`, `poc_migration_study`, `va_frame`) and the driver (`run_test`) were DELETED with the features they tested; the studies were run once and cannot be
+rerun. What stays is the rule for an index event study (`index_event_study`, with its gate) and the record: `record`, `results`, `already_recorded`, the stored rows and
+docs/research/wave_sentiment_results_s79.json. The paragraphs above describe the rules as they were run."""
 from __future__ import annotations
 
 import hashlib
@@ -341,196 +346,10 @@ def _finish(res: dict, t_needed: float) -> dict:
     return res
 
 
-# ----------------------------------------------------------------------------------------------------------------------------------
-# study 2: value-area exits (a share), study 3: POC migration (binomial)
-# ----------------------------------------------------------------------------------------------------------------------------------
-
-def value_area_study(test: str, market: str, k: int, frame: pd.DataFrame, t_needed: float, n_counter: int, draws: int = DRAWS, seed: int = SEED) -> dict:
-    """`frame` = quant.volume_profile.value_area_events (one row per session, ascending, columns date, outside, dist_pct, back_in_1, back_in_5)."""
-    res = _base_result(test, market, k, "value_area")
-    res.update({"t_needed": t_needed, "n_counter": n_counter, "seed": seed, "draws": draws, "unit": "share", "effect_gate_applies": False, "effect_gate_value": 0.0})
-    if frame is None or len(frame) == 0:
-        res["status"] = "not_available"
-        res["verdict"] = _verdict(res)
-        return res
-    f = frame.reset_index(drop=True)
-    dts = list(f["date"])
-    if dts[-1] > PERIOD_END or dts[0] < PERIOD_START:
-        raise PeriodRefused("the value-area frame reaches outside 2004-01-01..2021-12-31")
-    col = f"back_in_{k}"
-    out = (f["outside"].to_numpy(float) != 0) & np.isfinite(f["outside"].to_numpy(float))
-    y = f[col].to_numpy(float)
-    dist = f["dist_pct"].to_numpy(float)
-    ok = out & np.isfinite(y)
-    rows = [(int(i), dts[i], "up" if f["outside"].iloc[i] > 0 else "down") for i in np.where(ok)[0]]
-    res["n_events_raw"] = len(rows)
-    kept = non_overlapping(rows, k)
-    res["n_events"] = len(kept)
-    res["range"] = (str(dts[0]), str(dts[-1]))
-    if kept:
-        res["event_range"] = (str(kept[0][1]), str(kept[-1][1]))
-    kept_i = {r[0] for r in kept}
-    if len(kept) < MIN_EVENTS:
-        res["status"] = "n_too_small"
-        res["verdict"] = _verdict(res)
-        return res
-    base_idx = np.array([r[0] for r in rows if r[0] not in kept_i])
-    res["n_baseline"] = int(len(base_idx))
-    ev_idx = np.array([r[0] for r in kept])
-    edges = np.unique(np.quantile(dist[ev_idx], np.linspace(0, 1, N_BINS + 1)))
-    edges[0], edges[-1] = -np.inf, np.inf
-    nb = len(edges) - 1
-    be, bb = np.clip(np.searchsorted(edges, dist[ev_idx], side="right") - 1, 0, nb - 1), np.clip(np.searchsorted(edges, dist[base_idx], side="right") - 1, 0, nb - 1) if len(base_idx) else np.array([], int)
-    used = [b for b in range(nb) if (be == b).sum() > 0 and (bb == b).sum() >= max(k, 3)]
-    if not used:
-        res["status"] = "n_too_small"
-        res["verdict"] = "n too small, no conclusion (no matched baseline)"
-        return res
-    w = np.array([(be == b).sum() for b in used], float)
-    w /= w.sum()
-    rng = np.random.default_rng(seed)
-
-    def strat(ev_pos, ev_b, base_pos, base_b):
-        e_rates = np.array([y[ev_pos][ev_b == b].mean() for b in used])
-        b_rates = np.array([y[base_pos][base_b == b].mean() for b in used])
-        return float((w * (e_rates - b_rates)).sum()), e_rates, b_rates
-    effect, e_rates, b_rates = strat(ev_idx, be, base_idx, bb)
-    d_star = np.zeros(draws)
-    for wb, b in zip(w, used):
-        d_star += wb * boot_diff(y[ev_idx][be == b], y[base_idx][bb == b], k, draws, rng)
-    sd = float(d_star.std(ddof=1))
-    # claimed direction: events return MORE often
-    cnt = int((d_star <= 0).sum())
-    res.update({"effect": effect, "ci_low": float(np.percentile(d_star, 2.5)), "ci_high": float(np.percentile(d_star, 97.5)), "p": (cnt + 1) / (draws + 1) if effect > 0 else 1.0,
-                "sd_boot": sd, "t_stat": effect / sd if sd > 0 else None, "direction": "up" if effect > 0 else "down",
-                "share_events": float(y[ev_idx].mean()), "share_baseline_matched": float((w * b_rates).sum()), "bins_used": len(used)})
-    kd = [r[1] for r in kept]
-    med = kd[len(kd) // 2 - 1]
-    effs = []
-    base_dates = np.array([dts[i] for i in base_idx], dtype=object)
-    for first in (True, False):
-        sel = [r for r in kept if (r[1] <= med) == first]
-        ei = np.array([r[0] for r in sel])
-        bsel = base_idx[np.array([(d <= med) == first for d in base_dates], bool)]
-        ebin = np.clip(np.searchsorted(edges, dist[ei], side="right") - 1, 0, nb - 1)
-        bbin = np.clip(np.searchsorted(edges, dist[bsel], side="right") - 1, 0, nb - 1) if len(bsel) else np.array([], int)
-        ub = [b for b in used if (ebin == b).sum() > 0 and (bbin == b).sum() > 0]
-        if not ub:
-            effs.append(float("nan"))
-            continue
-        ww = np.array([(ebin == b).sum() for b in ub], float)
-        ww /= ww.sum()
-        effs.append(float(sum(wi * (y[ei][ebin == b].mean() - y[bsel][bbin == b].mean()) for wi, b in zip(ww, ub))))
-    res["halves"] = {"split_at": str(med), "first": {"n": int(sum(1 for r in kept if r[1] <= med)), "effect": effs[0]},
-                     "second": {"n": int(sum(1 for r in kept if r[1] > med)), "effect": effs[1]}}
-    res["same_sign"] = bool(all(np.isfinite(e) and e > 0 for e in effs) and effect > 0)
-    return _finish(res, t_needed)
-
-
-def poc_migration_study(test: str, market: str, frame: pd.DataFrame, t_needed: float, n_counter: int, h: int = 5, draws: int = DRAWS, seed: int = SEED) -> dict:
-    """`frame` = quant.volume_profile.value_area_events (columns date, mig, ret_5_next)."""
-    from scipy.stats import binomtest
-    res = _base_result(test, market, h, "poc_migration")
-    res.update({"t_needed": t_needed, "n_counter": n_counter, "seed": seed, "draws": draws, "unit": "share"})
-    if frame is None or len(frame) == 0:
-        res["status"] = "not_available"
-        res["verdict"] = _verdict(res)
-        return res
-    f = frame.reset_index(drop=True)
-    dts = list(f["date"])
-    if dts[-1] > PERIOD_END or dts[0] < PERIOD_START:
-        raise PeriodRefused("the value-area frame reaches outside 2004-01-01..2021-12-31")
-    mig, ret = f["mig"].to_numpy(float), f["ret_5_next"].to_numpy(float)
-    rows = [(int(i), dts[i], "up" if mig[i] > 0 else "down") for i in range(len(f)) if np.isfinite(mig[i]) and mig[i] != 0 and np.isfinite(ret[i])]
-    res["n_events_raw"] = len(rows)
-    kept = [r for r in non_overlapping(rows, h) if ret[r[0]] != 0]
-    res["n_events"] = len(kept)
-    res["range"] = (str(dts[0]), str(dts[-1]))
-    if kept:
-        res["event_range"] = (str(kept[0][1]), str(kept[-1][1]))
-    if len(kept) < MIN_EVENTS:
-        res["status"] = "n_too_small"
-        res["verdict"] = _verdict(res)
-        return res
-    sg = np.array([math.copysign(1.0, mig[r[0]]) for r in kept])
-    rt = np.array([ret[r[0]] for r in kept])
-    agree = (np.sign(rt) == sg)
-    n, kk = len(kept), int(agree.sum())
-    bt = binomtest(kk, n, 0.5, alternative="greater")
-    ci = binomtest(kk, n, 0.5).proportion_ci(confidence_level=0.95)
-    signed = sg * rt
-    res.update({"effect": kk / n - 0.5, "ci_low": float(ci.low - 0.5), "ci_high": float(ci.high - 0.5), "p": float(bt.pvalue), "agree": kk, "agree_share": kk / n,
-                "mean_signed_return": float(signed.mean()), "sd_boot": float(math.sqrt(0.25 / n)), "t_stat": float((kk / n - 0.5) / math.sqrt(0.25 / n)),
-                "direction": "follows" if kk / n > 0.5 else "against", "effect_gate_applies": True, "effect_gate_value": float(signed.mean())})
-    kd = [r[1] for r in kept]
-    med = kd[len(kd) // 2 - 1]
-    sh = [float(agree[[r[1] <= med for r in kept]].mean()) - 0.5, float(agree[[r[1] > med for r in kept]].mean()) - 0.5]
-    res["halves"] = {"split_at": str(med), "first": {"n": int(sum(r[1] <= med for r in kept)), "effect": sh[0]}, "second": {"n": int(sum(r[1] > med for r in kept)), "effect": sh[1]}}
-    res["same_sign"] = bool(sh[0] > 0 and sh[1] > 0)
-    return _finish(res, t_needed)
-
-
-# ----------------------------------------------------------------------------------------------------------------------------------
-# event lists for the real run
-# ----------------------------------------------------------------------------------------------------------------------------------
-
-def event_list(family: str, market: str, root) -> Optional[List[Tuple[date, str]]]:
-    """[(date, label)] for the forward-return families, from the other agents' event lists; None when the list does not exist for the market."""
-    s, e = PERIOD_START, PERIOD_END
-    if family == "wave":
-        from pflab.quant import waves
-        return None if market != "IN" else [(x["date"], x.get("direction") or "") for x in waves.wave_events(market, s, e, root=Path(root))]
-    if family == "rotation":
-        from pflab.quant import waves
-        return None if market != "IN" else [(x["date"], x.get("direction") or "") for x in waves.rotation_events(market, s, e, root=Path(root))]
-    if family == "crude_fall":
-        from pflab.quant import waves
-        return [(x["date"], "fall") for x in waves.crude_fall_events(market, s, e, root=Path(root))]
-    if family == "extreme_sentiment":
-        from pflab.sentiment.compute import extreme_sentiment_events
-        df = extreme_sentiment_events(market, s, e, root=Path(root))
-        return [(pd.Timestamp(d).date(), str(k)) for d, k in zip(df["date"], df["kind"])]
-    raise ValueError(family)
-
-
-def va_frame(market: str, root) -> pd.DataFrame:
-    from pflab.quant import volume_profile as VP
-    return VP.value_area_events(market, PERIOD_START, PERIOD_END, root=Path(root))
-
-
 def bar_now(con) -> Tuple[float, int]:
     from pflab.learner import counter
     n = counter.n_tests(con)
     return counter.t_needed(n), n
-
-
-def run_test(test: str, market: str, root, con, draws: int = DRAWS, frames: Optional[dict] = None) -> dict:
-    """Run one registered test on the real data (or the given root). Returns the result dict (not recorded)."""
-    if test not in TESTS:
-        raise KeyError(test)
-    family, h = TESTS[test]
-    t_needed, n = bar_now(con)
-    if family in ("value_area", "poc_migration"):
-        fr = (frames or {}).get(market)
-        if fr is None:
-            fr = va_frame(market, root)
-        r = value_area_study(test, market, h, fr, t_needed, n, draws) if family == "value_area" else poc_migration_study(test, market, fr, t_needed, n, h, draws)
-    else:
-        ev = event_list(family, market, root)
-        if ev is None:
-            r = _base_result(test, market, h, family)
-            r.update({"status": "not_available", "t_needed": t_needed, "n_counter": n, "note": "no daily cross-section of names / flows for this market"})
-            r["verdict"] = _verdict(r)
-            return r
-        s = load_index(root, market)
-        if s.empty:
-            r = _base_result(test, market, h, family)
-            r.update({"status": "not_available", "t_needed": t_needed, "n_counter": n, "note": f"no {INDEX_NAME[market]} series"})
-            r["verdict"] = _verdict(r)
-            return r
-        r = index_event_study(test, market, h, list(s.index), s.to_numpy(float), ev, t_needed, n, draws, family=family)
-    r["index"] = INDEX_NAME[market]
-    return r
 
 
 # ----------------------------------------------------------------------------------------------------------------------------------

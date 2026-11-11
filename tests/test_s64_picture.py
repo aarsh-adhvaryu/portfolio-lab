@@ -49,11 +49,11 @@ def test_headline_is_built_from_the_sections():
          "portfolio": {"buckets": {"equity": {"now_pct": 4.0, "target_pct": 38.0, "state": "under"}}},
          "themes_and_cash": {"themes": {"ai_it": {"label": "AI and IT", "share_of_portfolio_pct": 8.9, "limit_pct": None}}},
          "holdings": [{"symbol": "AAA", "held": True, "guard": "ok"}, {"symbol": "BBB", "held": True, "guard": "block"}],
-         "on_offer": {"in_buy_zone_and_guard_ok": ["CCC"]}, "waiting_for_him": {"open_questions": 5, "held_messages": 2}}
+         "on_offer": {"open_pot_ideas": []}, "waiting_for_him": {"open_questions": 5, "held_messages": 2}}
     h = picture.headline(p)
     assert h[0].startswith("Market: watch") and "dip rule on" in h[0]
     assert "News mood: no articles stored" in h[1] and "equity 4% (target 38%, under)" in h[2]
-    assert "AI and IT 8.9% (no limit yet)" in h[3] and "warnings on ['BBB']" in h[4] and "in buy zone: ['CCC']" in h[4]
+    assert "AI and IT 8.9% (no limit yet)" in h[3] and "warnings on ['BBB']" in h[4] and "buy zone" not in h[4]       # A60: the zone failed its test and is not on offer
     assert "5 questions; 2 held messages" in h[5]
 
 

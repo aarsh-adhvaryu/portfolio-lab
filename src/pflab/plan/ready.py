@@ -187,7 +187,7 @@ def _range(z: dict) -> Optional[dict]:
 
 
 def ring(con, asof: date, adv, zones: Dict[str, dict], fall_fn=None) -> dict:
-    """The outer ring, as an idea: the plan's stock rupees into list names not held yet (those in their zone first),
+    """The outer ring, as an idea: the plan's stock rupees into list names not held yet (in the order of the list: the buy zone failed its test, so it orders nothing),
     nothing topping up held names; its numbers beside the plan's."""
     from pflab.pm import today as nw
     from pflab.plan import guards as gd
@@ -204,7 +204,7 @@ def ring(con, asof: date, adv, zones: Dict[str, dict], fall_fn=None) -> dict:
         return {"shown": True, "possible": False,
                 "why": "every name on your list that passes the guards is held already: a new ring needs new names on "
                        "your list (your call); the watch list checks any name you add"}
-    order = sorted(ok, key=lambda i: (0 if (zones.get(i) or {}).get("verdict") == "IN ZONE" else 1, ok[i]))
+    order = sorted(ok, key=lambda i: ok[i])        # by symbol: the zone verdict (S54c, failed) never orders picks
     picks = order[: max(1, min(len(order), 3))]
     each = spend / len(picks)
     buys = []

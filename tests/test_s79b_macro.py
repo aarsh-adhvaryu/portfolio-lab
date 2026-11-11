@@ -1,4 +1,4 @@
-"""S79b item 15: macro attribution, waves, rotation, crude falls and the wave lens. Synthetic data only."""
+"""S79b item 15: macro attribution (the waves, rotation, crude-fall and wave-lens parts were deleted in A60: their study failed). Synthetic data only."""
 from datetime import date, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,7 +10,7 @@ import pytest
 
 from pflab import markets
 from pflab.pm import store
-from pflab.quant import macro_attr as MA, transmission as tr, waves as W
+from pflab.quant import macro_attr as MA, transmission as tr
 
 TRUE = {"crude": -0.05, "currency": -0.8, "us10y": -0.01, "nasdaq": 0.15, "flows": 0.05, "asia": 0.30}
 NOW = datetime(2026, 11, 8, 3, 0)
@@ -176,165 +176,7 @@ def test_flows_part_appears_only_when_the_report_is_in(tmp_path, con):
     assert MA.catch_up(con, tmp_path, "IN", last, now=NOW, backfill=5)["sessions_written"] == 0
 
 
-# --- waves ----------------------------------------------------------------------------------------------------------------------------------
-
-def make_cross_section(seed=5, n_days=820, n_names=600):
-    """Background days: market ~ N(0, 0.8%), each name = beta x market + own N(0, 2%). Event days are set by the caller."""
-    rng = np.random.default_rng(seed)
-    dates = [d.date() for d in pd.bdate_range("2016-01-04", periods=n_days)]
-    m = rng.normal(0, 0.008, n_days)
-    beta = rng.normal(1.0, 0.2, n_names)
-    own = rng.normal(0, 0.02, (n_days, n_names))
-    turnover = np.tile(rng.uniform(1e6, 1e9, n_names), (n_days, 1))
-    return dates, m, beta, own, turnover
-
-
-def _stats(dates, m, beta, own, turnover):
-    R = m[:, None] * beta[None, :] + own
-    return W.stats_from_arrays(dates, R, turnover, m)
-
-
-def test_wave_flagged_on_extreme_breadth_low_dispersion_and_not_on_a_dispersed_day(tmp_path):
-    dates, m, beta, own, to = make_cross_section()
-    up, dispersed, down, sector_day = 760, 780, 800, 740
-    m[up] = 0.04;  own[up] = np.random.default_rng(1).normal(0, 0.004, own.shape[1])               # everything rises together
-    m[down] = -0.045;  own[down] = np.random.default_rng(2).normal(0, 0.004, own.shape[1])
-    m[dispersed] = 0.025;  own[dispersed] = np.random.default_rng(3).normal(0, 0.07, own.shape[1])  # a big index day with names all over the place
-    m[sector_day] = 0.003;  own[sector_day] = 0.012 + np.random.default_rng(4).normal(0, 0.003, own.shape[1])   # every name up, but not through the market
-    st = _stats(dates, m, beta, own, to)
-    fl = W.wave_flags(st)
-    assert bool(fl.loc[dates[up], "wave"]) and fl.loc[dates[up], "direction"] == "up"
-    assert bool(fl.loc[dates[down], "wave"]) and fl.loc[dates[down], "direction"] == "down"
-    assert not bool(fl.loc[dates[dispersed], "wave"])
-    assert not bool(fl.loc[dates[sector_day], "wave"])
-    assert st.loc[dates[sector_day], "adv_share"] > 0.95 and st.loc[dates[sector_day], "dom_share"] < 0.5   # extreme breadth, but the market did not do it
-    # the single-session decision (the live path) agrees with the vectorised one
-    one = W.wave_flag_at(st, dates[up])
-    assert one["decided"] and one["wave"] and one["direction"] == "up" and one["n_reference"] >= W.MIN_REF
-    assert not W.wave_flag_at(st, dates[dispersed])["wave"]
-    ev = W.wave_events("IN", stats=st)
-    assert {e["date"] for e in ev} >= {dates[up], dates[down]} and dates[dispersed] not in {e["date"] for e in ev}
-    assert len(ev) <= 0.06 * len(dates)                                  # rare by construction, not every busy day
-    # a short history is "not decided", with its count
-    early = W.wave_flag_at(st, dates[100])
-    assert early["decided"] is False and "not decided" in early["note"]
-
-
-def test_wave_statistics_are_point_in_time():
-    dates, m, beta, own, to = make_cross_section(n_days=700)
-    full = _stats(dates, m, beta, own, to)
-    cut = 650
-    part = _stats(dates[:cut], m[:cut], beta, own[:cut], to[:cut])
-    pd.testing.assert_frame_equal(full.iloc[:cut], part, check_exact=False, atol=1e-9)
-    fl_full, fl_part = W.wave_flags(full), W.wave_flags(part)
-    assert (fl_full["wave"].iloc[:cut].to_numpy() == fl_part["wave"].to_numpy()).all()
-    assert np.allclose(fl_full["thr_adv_hi"].iloc[:cut].to_numpy(float), fl_part["thr_adv_hi"].to_numpy(float), equal_nan=True)
-
-
-def test_reference_sample_never_includes_the_spent_years():
-    idx = [d.date() for d in pd.bdate_range("2018-06-01", periods=1800)]       # runs well past 2021
-    x = pd.Series(np.random.default_rng(0).normal(0, 1, 1800), index=idx)
-    x.iloc[-300:] = 50.0                                                       # a huge level in 2025-26 must not move any threshold
-    q = W.expanding_q(x, 0.95)
-    after = [i for i, d in enumerate(idx) if d > W.REF_END]
-    assert len(after) > 100 and q.iloc[after].nunique() == 1                   # frozen at the 2020-2021 sample
-    assert q.iloc[-1] < 5
-    assert W.threshold_at(x, idx[-1], 0.95) == pytest.approx(q.iloc[-1])
-
-
-# --- rotation and crude -------------------------------------------------------------------------------------------------------------------
-
-def make_rotation_world(root: Path, diverge=True, seed=11):
-    rng = np.random.default_rng(seed)
-    ind = markets.get("IN")
-    days = ind.sessions_between(date(2018, 1, 1), date(2021, 6, 30))
-    n = len(days)
-    flows = rng.normal(0, 1.5, n)                                    # Rs 1,000 crore
-    T = 820
-    flows[T - 4:T] = [-1.6, -2.0, -1.2, -1.8]                        # a selling streak
-    flows[T] = 9.0                                                   # then unusually large buying
-    asia = rng.normal(0, 0.8, n)
-    idx = asia + rng.normal(0, 0.1, n)
-    idx[T] = asia[T] + (1.8 if diverge else 0.0)
-    d0 = ind.previous_session(days[0])
-    _put(root, "indices", "NIFTY500_TRI", [d0] + days, [100.0] + list(_levels_from_pct(idx)))
-    for k in MA.ASIA_KEYS:
-        _put(root, "global", k, [d0] + days, [100.0] + list(_levels_from_pct(asia)))
-    rows = [{"report_date": ind.next_session(d), "asset": "Equity", "route": "Sub-total", "net_cr": float(v) * 1000.0} for d, v in zip(days, flows)]
-    (root / "macro").mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(rows).to_parquet(root / "macro" / "FPI_DAILY.parquet", index=False)
-    return days, T
-
-
-def test_rotation_on_flow_switch_with_asia_divergence(tmp_path):
-    days, T = make_rotation_world(tmp_path / "yes", diverge=True)
-    ev = W.rotation_events("IN", root=tmp_path / "yes")
-    hit = [e for e in ev if e["session"] == days[T]]
-    assert hit and hit[0]["direction"] == "in"
-    assert hit[0]["date"] == markets.get("IN").next_session(days[T])         # knowable when NSDL reports it, a session later
-    # the same flow switch without the divergence from Asia is not a rotation
-    days2, T2 = make_rotation_world(tmp_path / "no", diverge=False)
-    assert not [e for e in W.rotation_events("IN", root=tmp_path / "no") if e["session"] == days2[T2]]
-    # without the flow file there are simply no events
-    assert W.rotation_events("IN", root=tmp_path / "empty") == []
-
-
-def test_crude_fall_events_by_percentile_and_point_in_time():
-    idx = [d.date() for d in pd.bdate_range("2012-01-02", periods=1000)]
-    mv = pd.Series(np.random.default_rng(2).normal(0, 1.5, 1000), index=idx)
-    mv.iloc[800] = -12.0
-    ev = W.crude_fall_events("IN", moves=mv)
-    assert any(e["crude_date"] == idx[800] for e in ev)
-    assert all(e["move_pct"] <= e["threshold_pct"] for e in ev)
-    assert not any(e["crude_date"] < idx[500] for e in ev)                    # no verdict before 500 earlier moves
-    mv2 = mv.copy()
-    mv2.iloc[900:] = -30.0                                                    # later crashes do not create or remove an earlier event
-    ev2 = W.crude_fall_events("IN", moves=mv2, end=idx[899])
-    assert [e["crude_date"] for e in ev2] == [e["crude_date"] for e in ev if e["crude_date"] <= idx[899]]
-    assert W.crude_fall_events("IN", moves=mv.iloc[:100]) == []
-
-
-# --- the lens -------------------------------------------------------------------------------------------------------------------------------
-
-def test_lens_registers_in_shadow_and_shifts_only_after_waves():
-    from pflab.fcast import forecasters as F, plugins, protocol as P
-    W.register_lens()
-    assert "lens_wave" in plugins.REGISTRY and plugins.REGISTRY["lens_wave"].markets == ("IN",) and plugins.REGISTRY["lens_wave"].replay_ok
-    assert plugins.REGISTRY["lens_wave"].protocol.endswith("s79_wave_sentiment_protocol.md")
-    con = duckdb.connect(":memory:")
-    store.migrate(con)
-    assert plugins.admitted(con, "lens_wave", "IN", 5) is False                # no live sessions: shadow
-    rng = np.random.default_rng(9)
-    dates = pd.bdate_range("2015-01-01", periods=1100)
-    r = rng.normal(0.0, 0.01, len(dates))
-    wave_pos = list(range(200, 900, 60))
-    for p in wave_pos:
-        r[p + 1:p + 6] += 0.012                                                 # a wave is followed by five good days
-    close = pd.Series(100 * np.exp(np.cumsum(r)), index=dates)
-    states = pd.Series(0, index=[d.date() for d in dates])
-    for p in wave_pos:
-        states.iloc[p] = 1
-    fr = W.lens_frame(None, "IN", close, 5, states=states)
-    base = F.volatility(close, 5)
-    assert list(fr.columns) == list(P.LEVELS) and fr.index.equals(close.index)
-    ok = fr.dropna()
-    assert (np.diff(ok.to_numpy(), axis=1) > 0).all()
-    quiet = [i for i in range(300, 1000) if i not in wave_pos]
-    assert np.allclose(fr.iloc[quiet].to_numpy(), base.iloc[quiet].to_numpy())  # no wave: the volatility quantiles, unchanged
-    first, last = wave_pos[0], wave_pos[-1]
-    assert np.allclose(fr.iloc[first].to_numpy(), base.iloc[first].to_numpy())   # the first wave: nothing yet learnt (no earlier wave), no shift
-    assert fr.iloc[last][0.5] > base.iloc[last][0.5] + 0.002                    # after several waves that were followed by gains the median is shifted up
-    # point in time: changing closes after a wave's date does not change that date's quantiles
-    close2 = close.copy()
-    close2.iloc[wave_pos[4] + 1:] *= np.linspace(1.0, 2.0, len(close2) - wave_pos[4] - 1)
-    fr2 = W.lens_frame(None, "IN", close2, 5, states=states)
-    assert np.allclose(fr2.iloc[wave_pos[4]].to_numpy(), fr.iloc[wave_pos[4]].to_numpy())
-    # other markets and an empty state series: it cannot forecast
-    assert W.lens_frame(None, "US", close, 5, states=states) is None
-    assert W.lens_frame(None, "IN", close, 5, states=pd.Series(dtype=float)) is None
-
-
-# --- tools, store, note, jobs -------------------------------------------------------------------------------------------------------------
+# --- tools, jobs -------------------------------------------------------------------------------------------------------------
 
 def _ctx(root, con, call_ref=7):
     return SimpleNamespace(rt=SimpleNamespace(data_root=root), con=con, asof=date(2024, 12, 31), call_ref=call_ref)
@@ -344,8 +186,8 @@ def test_tools_work_with_empty_args_and_on_missing_data(tmp_path, con):
     import pflab.hq.tools  # noqa: F401  (loads the tool table first, as the app does)
     from pflab.hq import tools_s79
     import pflab.hq.tools  # noqa: F401
-    from pflab.hq.tools_s79 import t_waves as TW
-    assert {"macro_attribution", "wave_detector"} <= set(tools_s79.names())
+    from pflab.hq.tools_s79 import t_macro as TW
+    assert "macro_attribution" in tools_s79.names() and "wave_detector" not in tools_s79.names()
     make_world(tmp_path)
     TW._DESIGNS.clear()
     out = TW.macro_attribution(_ctx(tmp_path, con), {})
@@ -354,8 +196,6 @@ def test_tools_work_with_empty_args_and_on_missing_data(tmp_path, con):
     assert sum(p["pct"] for p in out["parts"].values() if p["pct"] is not None) + out["unexplained_pct"] == pytest.approx(out["total_pct"], abs=1e-5)
     us = TW.macro_attribution(_ctx(tmp_path, con), {"market": "US"})
     assert "note" in us and "error" not in us                                  # no S&P 500 history here: a harmless note
-    w = TW.wave_detector(_ctx(tmp_path, con), {})
-    assert w["wave"] is False and w["call_ref"] == 7 and "error" not in w
     nothing = TW.macro_attribution(_ctx(tmp_path / "void", con), {})
     assert "error" not in nothing and "note" in nothing
     TW._DESIGNS.clear()
@@ -363,32 +203,15 @@ def test_tools_work_with_empty_args_and_on_missing_data(tmp_path, con):
 
 def test_switch_off_returns_off(tmp_path, con, monkeypatch):
     import pflab.hq.tools  # noqa: F401
-    from pflab.hq.tools_s79 import t_waves as TW
-    monkeypatch.setattr(W, "settings", lambda: {"on": False})
+    from pflab.hq.tools_s79 import t_macro as TW
+    monkeypatch.setattr(MA, "settings", lambda: {"on": False})
     assert TW.macro_attribution(_ctx(tmp_path, con), {})["off"] is True
-    assert TW.wave_detector(_ctx(tmp_path, con), {})["off"] is True
-
-
-def test_flag_stored_once_and_the_note_cites_the_calls(tmp_path, con):
-    in_days, _ = make_world(tmp_path)
-    s = in_days[-5]
-    MA.write(con, MA.Design(tmp_path, "IN").attribute(s), NOW)
-    stats = {"adv_share": 0.97, "n_all": 2700, "xs_disp": 0.004, "med_ret": 0.03, "disp_ratio": 0.13, "dom_share": 0.95, "n_univ": 495}
-    thr = {"adv_hi": 0.8, "adv_lo": 0.2, "disp_ratio_max": 2.5, "dom_min": 0.6}
-    w = {"stats": stats, "thresholds": thr, "direction": "up"}
-    W.record_flag(con, "IN", s, "wave", "up", stats, thr, W.wave_sentence(w, s), NOW, call_id=41)
-    W.record_flag(con, "IN", s, "wave", "up", stats, thr, W.wave_sentence(w, s), NOW, call_id=41)
-    assert con.execute("SELECT count(*) FROM wave_flag WHERE market='IN' AND session=?", [s]).fetchone()[0] == 1
-    assert W.recent_flags(con, "IN")[0]["salience"] == "high"
-    txt = W.wave_note(con, "IN", s, calls={"wave_detector": 41, "macro_attribution": 42})
-    assert "[call 41]" in txt and "[call 42]" in txt and "not with its own picks" in txt and "97%" in txt
-    assert W.wave_note(con, "IN", in_days[-4], calls={}) == ""                  # nothing flagged that day: nothing to say
 
 
 def test_jobs_registered_and_catch_up_all_missed_sessions(tmp_path, con):
-    import pflab.service.tasks_s79_waves  # noqa: F401
+    import pflab.service.tasks_s79_macro  # noqa: F401
     from pflab.service import jobs
-    assert {"macro_attribution", "wave_scan"} <= set(jobs.REGISTRY)
+    assert "macro_attribution" in jobs.REGISTRY and "wave_scan" not in jobs.REGISTRY
     in_days, _ = make_world(tmp_path)
     MA.write(con, MA.Design(tmp_path, "IN").attribute(in_days[-40]), NOW)
     r = MA.catch_up(con, tmp_path, "IN", in_days[-1], now=NOW, backfill=10)

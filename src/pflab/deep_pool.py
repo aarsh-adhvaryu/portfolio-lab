@@ -1,4 +1,4 @@
-"""S79b item 17: idle cores for deep work (replay by year, Monte Carlo, event studies, `construct`), only in `deep` mode.
+"""S79b item 17: idle cores for deep work (replay by year, Monte Carlo, event studies), only in `deep` mode.
 
     pool = DeepPool()                         # workers = cores - 2 (never fewer than 1)
     out = pool.run(fn, items)                 # fn must be picklable (a module-level function); items are its single arguments

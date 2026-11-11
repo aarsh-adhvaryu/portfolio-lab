@@ -9,14 +9,14 @@ TEMPLATES: Dict[str, List[str]] = {
     "Company research": [
         "Read the last four quarterly results (Research and plans: results and the analyst's note)",
         "Check surveillance, pledges and the guards for it",
-        "Look at its buy zone and whether the price is rich for its growth",
+        "Look at its price range (an estimate, not a tested signal) and whether the price is rich for its growth",
         "Read the latest filings and news in the knowledge graph",
         "Write or update the thesis: why, what would prove it wrong, by when",
         "Ask deep research only if the local answers leave a question open",
     ],
     "Before a buy": [
         "The guards pass and it is on the stock list",
-        "It is in its buy zone, or the reason to pay more is written in the thesis",
+        "The reason for this price is written in the thesis (the buy zone failed its test: it is no condition)",
         "The amount fits the plan and the bucket's band after the buy",
         "No results or big event due in the next few days (or that is the point)",
         "Enter the order yourself in Kite; the system never places one",

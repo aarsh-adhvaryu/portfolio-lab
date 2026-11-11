@@ -191,12 +191,15 @@ def test_store_prices_and_the_lines_the_brain_and_the_page_read(env, monkeypatch
     monkeypatch.setattr(rf, "monthly_table", lambda root_=None: pd.DataFrame(columns=["rate", "label"]))
     monkeypatch.setattr(capm, "erp", lambda root_=None, table=None: 0.07)
     out = fl.store_prices(con, root, date(2026, 10, 9), u, datetime(2026, 10, 9, 21), paths=2000)
-    assert out["stored"] == 6 and list(out["skipped"]) == [B]                           # 3 horizons x 2 methods; B has no prices
+    assert out["stored"] == 3 and list(out["skipped"]) == [B]                           # 3 horizons x the plain method (A60: the failed EWMA scaling is no longer drawn live); B has no prices
     assert fl.store_prices(con, root, date(2026, 10, 9), u, datetime(2026, 10, 9, 22), paths=2000)["stored"] == 0
     lines = fl.price_lines(con, A, "AAA", root)
     assert len(lines) == 3 and "stats_plain" in lines[0] and "not tested yet" in lines[0] and "none scored yet" in lines[0]
     fan = fl.fan(con, A, root)
     assert [r["sessions"] for r in fan["ranges"]] == [21, 63, 252] and fan["ranges"][0]["q10"] < fan["ranges"][0]["q90"]
+    assert {r[0] for r in con.execute("SELECT DISTINCT model FROM forecasts WHERE use LIKE 'price%'").fetchall()} == {"stats_plain"}
+    monkeypatch.setattr(fl, "LIVE_METHODS", fl.METHODS)                                 # an older store holds EWMA rows too: the reader still serves them when a calibration file says so
+    assert fl.store_prices(con, root, date(2026, 10, 9), u, datetime(2026, 10, 9, 23), paths=2000)["stored"] == 3
     (root / "research").mkdir(parents=True)
     (root / "research" / "s64_ranges.json").write_text(json.dumps({"serve": "stats_ewma", "label": "calibrated: test"}))
     assert "stats_ewma" in fl.price_lines(con, A, "AAA", root)[0]                       # the served method's rows are read
