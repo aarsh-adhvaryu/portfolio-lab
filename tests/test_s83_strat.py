@@ -359,3 +359,16 @@ def test_the_baselines_longterm_share_is_the_picks_rule_and_core_is_what_is_left
     assert sh["international"] == pytest.approx(0.10)
     s = step(con, date(2026, 11, 2))
     assert s is not None
+
+
+def test_a_proposal_that_changes_the_longterm_share_is_taken_for_the_rest_and_told_so(con, tmp_path):
+    ctx = ctx_for(con, tmp_path)
+    args = {"classes": {"equity": 85, "gold": 10, "international": 0, "cash": 5}, "sleeves": {"core": 50, "longterm": 50}, "sectors": {},
+            "reasons": "Put the idle cash into the index and keep a gold slice for a crash; the longterm share is whatever the picks rule says."}
+    text, err = tools.run(ctx, "propose_allocation", args)
+    out = json.loads(text)
+    assert not err and out["ok"], out
+    assert "set by the picks rule" in out["longterm_share"] and "stays at 40%" in out["longterm_share"]
+    assert out["sleeves"] == {"core": 60.0, "longterm": 40.0}
+    again = json.loads(tools.run(ctx, "propose_allocation", {**args, "sleeves": {"core": 60, "longterm": 40}, "classes": {"equity": 84, "gold": 10, "international": 1, "cash": 5}})[0])
+    assert again["ok"] and "longterm_share" not in again                                              # the live share asked for: nothing to tell

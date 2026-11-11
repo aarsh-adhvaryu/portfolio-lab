@@ -110,10 +110,33 @@ def compare(ctx, a):
        "reasons": S("what the book should hold and why, and what would change it (40+ characters)")}, ["classes", "sleeves", "reasons"])
 def propose_allocation(ctx, a):
     from pflab.lab import alloc_lab
-    r = alloc_lab.propose(ctx.con, ctx.pm_dir, ctx.now, a.get("classes") or {}, a.get("sleeves") or {}, str(a.get("reasons", "")), sectors=a.get("sectors") or {})
+    sleeves, told = _keep_longterm_share(ctx.con, a.get("sleeves") or {})
+    r = alloc_lab.propose(ctx.con, ctx.pm_dir, ctx.now, a.get("classes") or {}, sleeves, str(a.get("reasons", "")), sectors=a.get("sectors") or {})
     if r.get("ok"):
         ctx.stats["variants"] += 1 if r.get("variant") else 0
+        if told:
+            r["longterm_share"] = told
     return r
+
+
+LONGTERM_TOLD = "the longterm share is set by the picks rule (S83 L5), not by a proposal"
+
+
+def _keep_longterm_share(con, sleeves: dict) -> tuple:
+    """S83 L6: the longterm share belongs to the picks rule (`pick_share.share(con, "IN")`). A proposal that tries to change it is accepted for its other fields and keeps the current share;
+    -> (the sleeves to check, a plain sentence or None)."""
+    try:
+        from pflab.core import pick_share
+        if not pick_share.on("IN"):
+            return sleeves, None
+        live = round(float(pick_share.share(con, "IN")["share"]) * 100.0, 4)
+        asked = float(sleeves.get("longterm"))
+    except Exception:
+        return sleeves, None
+    if abs(asked - live) <= 0.05:
+        return sleeves, None
+    return {**{k: v for k, v in sleeves.items() if k not in ("core", "longterm")}, "core": round(100.0 - live, 4), "longterm": live}, (
+        f"{LONGTERM_TOLD}: you asked for {asked:g}% and it stays at {live:g}% (core {100.0 - live:g}%); the rest of the proposal was taken")
 
 
 @tool("make_challenger", "Put a variant with a scored history run into live shadow as a challenger (at most 5 at once). If it has a grid, name the params you mean.",
