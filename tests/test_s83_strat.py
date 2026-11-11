@@ -344,3 +344,18 @@ def test_with_no_picks_the_us_decision_is_what_it_was(ucon, tmp_path):
     assert picks_wire.extra_weights(ucon, st) == {"extra": {}, "core_total": 0.95, "notes": []}
     dec = policy.decide(st)
     assert list(dec["weights"].values()) == [pytest.approx(0.95)]
+
+
+# --- L6: the longterm share is the picks rule's ---------------------------------------------------------------------------------------------------
+
+def test_the_baselines_longterm_share_is_the_picks_rule_and_core_is_what_is_left(con):
+    from pflab import core
+    from pflab.core import sleeves
+    sh = sleeves.target_shares(con, core.settings(), None)
+    assert sh["longterm"] == pytest.approx(0.40) and sh["core"] == pytest.approx(0.60) and sh["index"] == pytest.approx(0.40) and "picks rule" in sh["source"]
+    con.execute("INSERT INTO sleeve_share_s83 (change_id, market, decided_on, old_share, new_share, reason, figures_json) VALUES (1, 'IN', ?, 0.40, 0.45, 'ahead of the index', '{}')", [START])
+    sh = sleeves.target_shares(con, core.settings(), None)
+    assert sh["longterm"] == pytest.approx(0.45) and sh["core"] == pytest.approx(0.55) and sh["index"] == pytest.approx(0.35) and sh["gold"] == pytest.approx(0.10)
+    assert sh["international"] == pytest.approx(0.10)
+    s = step(con, date(2026, 11, 2))
+    assert s is not None
