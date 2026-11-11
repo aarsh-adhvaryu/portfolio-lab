@@ -254,15 +254,44 @@ def tick(con, pm_dir: Path, root, now: datetime, client_fn, data=None, box=None)
     except Exception as e:
         out["allocation"] = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
     reasons = due(con, now)
+    try:                                                                    # S82 C9: the once-only first real session in the app (kept out of `due`, which is the weekly rule's own)
+        from pflab.lab import first_session_s82
+        reasons = reasons + first_session_s82.reasons(con, now)
+    except Exception:
+        pass
     if not reasons:
         return {**out, "nothing_due": True}
+    try:                                                                    # S82 C9: the first session waits (recorded, tried at a later open) when the paid cap has no room
+        from pflab.lab import first_session_s82 as first
+        if first.REASON in reasons:
+            rm = first.room(con, now)
+            if not rm["ok"]:
+                reasons = [r for r in reasons if r != first.REASON]
+                first.waiting(con, now, rm["why"])
+                out["first_session_s82"] = "waiting: " + rm["why"]
+                if not reasons:
+                    return out
+    except Exception:
+        pass
     out["reasons"] = reasons
     try:                                                                    # no client (the workshop's paid-call guard, no key, a bad key): the session waits and says why; the job does not fail
         client = client_fn()
     except Exception as e:
         out["skipped"] = f"no cloud client, so no session now ({type(e).__name__}: {str(e)[:200]})"
+        try:
+            from pflab.lab import first_session_s82 as first
+            if first.REASON in reasons:
+                first.waiting(con, now, "no cloud client (no API key, or the workshop's paid-call guard)")
+        except Exception:
+            pass
         return out
     out["session"] = run_session(con, pm_dir, root, now, "; ".join(reasons)[:280], client=client, data=data, box=box)
+    try:
+        from pflab.lab import first_session_s82 as first
+        if first.REASON in reasons:
+            out["first_session_s82"] = first.after_session(con, now, out["session"])
+    except Exception:
+        pass
     return out
 
 

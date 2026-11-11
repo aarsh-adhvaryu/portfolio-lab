@@ -46,9 +46,76 @@ def _section(name: str, defaults: dict) -> dict:
     return out
 
 
-def settings() -> dict:
-    """`[fills]` of configs/core.toml over the defaults (an unreadable file leaves the defaults)."""
-    return _section("fills", DEFAULTS)
+def settings(con=None, market: str = "IN") -> dict:
+    """`[fills]` of configs/core.toml over the defaults (an unreadable file leaves the defaults). With `con`, the three calibrated numbers (S82 C8) of the latest ACCEPTED row of
+    `fills_calibration_s82` replace the file's values (always held inside `bounds()`); no accepted row, or an unreadable table, leaves the file's values."""
+    c = _section("fills", DEFAULTS)
+    if con is not None:
+        c.update(calibrated_values(con, market))
+    return c
+
+
+# --- the calibration of the three fitted numbers (S82 C8; the fit itself is `core/fills_cal.py`) -------------------------------------------
+
+FITTED = ("half_spread_liquid_bps", "half_spread_illiquid_bps", "impact_bps")
+MIN_REAL_FILLS = 30
+BOUND_FACTORS = (0.5, 3.0)                       # each fitted number stays within 0.5x to 3x of the configured default ...
+BOUND_FLOORS = {"half_spread_liquid_bps": 0.5, "half_spread_illiquid_bps": 0.5, "impact_bps": 5.0}      # ... and never under 0.5 bp of spread or 5 bp of impact
+
+
+def bounds(base: Optional[dict] = None) -> Dict[str, tuple]:
+    """{name: (low, high)} of the fitted numbers around the configured defaults."""
+    b = base or _section("fills", DEFAULTS)
+    return {k: (max(BOUND_FLOORS[k], BOUND_FACTORS[0] * float(b[k])), BOUND_FACTORS[1] * float(b[k])) for k in FITTED}
+
+
+def _latest_accepted(con, market: str = "IN") -> Optional[dict]:
+    try:
+        r = con.execute("SELECT cal_id, made_at, n_used, new_json FROM fills_calibration_s82 WHERE market=? AND accepted ORDER BY cal_id DESC LIMIT 1", [market]).fetchone()
+    except Exception:
+        return None
+    if not r:
+        return None
+    try:
+        vals = json.loads(r[3] or "{}")
+    except Exception:
+        return None
+    return {"cal_id": r[0], "made_at": r[1], "n_fills": r[2], "values": vals}
+
+
+def calibrated_values(con, market: str = "IN") -> dict:
+    """The fitted numbers of the latest accepted calibration, each clamped to `bounds()` (so no stored row can break the model); {} when there is none."""
+    row = _latest_accepted(con, market)
+    if not row:
+        return {}
+    bd, out = bounds(), {}
+    for k in FITTED:
+        v = row["values"].get(k)
+        if isinstance(v, (int, float)) and math.isfinite(v):
+            out[k] = min(bd[k][1], max(bd[k][0], float(v)))
+    return out
+
+
+def real_fill_count(con, market: str = "IN") -> int:
+    """Fills recorded from a LIVE Kite quote (source 'live'); tests, drills, replays and simulations never count."""
+    try:
+        return int(con.execute("SELECT count(*) FROM session_fills_s81 WHERE market=? AND source='live'", [market]).fetchone()[0])
+    except Exception:
+        return 0
+
+
+def calibration_status(con, market: str = "IN") -> dict:
+    """What Today shows about the fill-cost model: {'source': 'calibrated' | 'defaults', 'n_fills', 'values', 'as_of', 'text'}. 'defaults' counts the real fills so far."""
+    row = _latest_accepted(con, market)
+    vals = settings(con, market)
+    values = {k: round(float(vals[k]), 3) for k in FITTED}
+    if row:
+        return {"source": "calibrated", "n_fills": int(row["n_fills"] or 0), "values": values, "as_of": str(row["made_at"])[:10],
+                "text": f"Fill costs: calibrated from {int(row['n_fills'] or 0)} real fills on {str(row['made_at'])[:10]} "
+                        f"(half spread {values['half_spread_liquid_bps']:.1f} bp liquid to {values['half_spread_illiquid_bps']:.1f} bp illiquid, impact {values['impact_bps']:.1f} bp)."}
+    n = real_fill_count(con, market)
+    return {"source": "defaults", "n_fills": n, "values": values, "as_of": None,
+            "text": f"Fill costs: the assumed defaults (not yet calibrated: {n} of {MIN_REAL_FILLS} real fills so far)."}
 
 
 def session_settings() -> dict:
@@ -165,10 +232,11 @@ def _decision(con, now: datetime, isin: str, side: str, qty: Optional[float], am
 
 
 def execute(con, now: datetime, isin: str, side: str, *, quote: float, qty: Optional[float] = None, amount: Optional[float] = None, kind: str = "", reason: str = "",
-            plan_id: Optional[int] = None, market: str = "IN", root: Optional[Path] = None, liq: Optional[dict] = None, bypass_guard: bool = False, cfg: Optional[dict] = None) -> dict:
+            plan_id: Optional[int] = None, market: str = "IN", root: Optional[Path] = None, liq: Optional[dict] = None, bypass_guard: bool = False, cfg: Optional[dict] = None, source: str = "sim") -> dict:
     """Place and fill ONE paper order at `quote` (a live quote) plus the liquidity model's spread and slippage. A buy is given as `amount` rupees (or `qty`), a sell as `qty`.
     Returns {'status': 'filled' | 'held' | 'partial' | 'not_filled', 'qty', 'price', 'quote', 'half_spread_bps', 'slippage_bps', 'cost_rupees', 'blocked_qty', 'flag', 'why', ...}.
-    'held': the guard refused it today (the caller queues it); 'partial': part was filled and `blocked_qty` waits. `bypass_guard` (a stop only) fills anyway and flags the day."""
+    'held': the guard refused it today (the caller queues it); 'partial': part was filled and `blocked_qty` waits. `bypass_guard` (a stop only) fills anyway and flags the day.
+    `source` says where the quote came from: only 'live' (a live Kite quote in the app's session loop) counts as a REAL fill for the calibration; the default 'sim' is a test, drill or simulation."""
     from pflab.paper import book
     from pflab.pm.store import next_id
     if not quote or quote <= 0:
@@ -193,7 +261,7 @@ def execute(con, now: datetime, isin: str, side: str, *, quote: float, qty: Opti
         else:
             want_qty, blocked = g["allowed_qty"], g["blocked_qty"]
     liq = liq if liq is not None else liquidity(con, isin, day, market, root)
-    c = cfg or settings()
+    c = cfg or settings(con, market)
     m = model(want_qty * quote, (liq or {}).get("adv_rupees"), c)
     px = price_for(side, quote, m)
     flags = [flag] if flag else []
@@ -215,9 +283,10 @@ def execute(con, now: datetime, isin: str, side: str, *, quote: float, qty: Opti
     tid, fq, fpx, fee, realised, tax = t
     cost = (fpx - quote) * fq if side == "buy" else (quote - fpx) * fq
     fid = next_id(con, "session_fills_s81", "fill_id")
-    con.execute("INSERT INTO session_fills_s81 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    con.execute("INSERT INTO session_fills_s81 (fill_id, ts, market, day, isin, symbol, side, qty, quote, price, half_spread_bps, slippage_bps, adv_rupees, order_rupees, participation, "
+                "cost_rupees, kind, plan_id, reason, flag, order_id, trade_id, decision_id, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 [fid, now, market, day, isin, meta["symbol"], side, float(fq), float(quote), float(fpx), m["half_spread_bps"], m["slippage_bps"], m["adv_rupees"], float(fq * fpx),
-                 m["participation"], float(cost), kind, plan_id, why[:500], "; ".join(flags) or None, oid, tid, did])
+                 m["participation"], float(cost), kind, plan_id, why[:500], "; ".join(flags) or None, oid, tid, did, source])
     status = "partial" if blocked > 1e-9 else "filled"
     return {"status": status, "fill_id": fid, "order_id": oid, "trade_id": tid, "decision_id": did, "qty": float(fq), "price": float(fpx), "quote": float(quote),
             "half_spread_bps": m["half_spread_bps"], "slippage_bps": m["slippage_bps"], "participation": m["participation"], "cost_rupees": float(cost), "charges": float(fee),
