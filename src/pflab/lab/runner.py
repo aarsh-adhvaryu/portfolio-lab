@@ -248,13 +248,15 @@ def load_panel(folder: Path) -> dict:
 def cost_config() -> dict:
     """The charges the paper book takes, as flat per-side rates at a typical order (`construct/costs.rate`)."""
     from pflab.construct import costs
-    return {"charges": {kind: {side: float(costs.rate(kind, side)) for side in ("buy", "sell")} for kind in ("equity", "etf")}}
+    from pflab.paper import rails as hard
+    syms, cap = hard.broad_index()                                           # S82 (A56): the replay applies the same broad-index limit as the live rails
+    return {"charges": {kind: {side: float(costs.rate(kind, side)) for side in ("buy", "sell")} for kind in ("equity", "etf")}, "max_broad_etf": cap, "broad_syms": sorted(syms)}
 
 
 def write_job(work: Path, data: dict, policies: List[dict], window, grid: Dict[str, list], cfg: Optional[dict] = None, n_shuffles: int = 20, n_mc: int = 1000, seed: int = 80,
               now_spec: Optional[dict] = None) -> None:
     """`policies`: [{"id", "code"}]. The job folder holds everything the run needs and nothing else (it is mounted read-only)."""
-    for name in ("engine.py", "toolkit.py", "lab_runner.py", "swing.py", "harvest_replay.py"):
+    for name in ("engine.py", "toolkit.py", "lab_runner.py", "swing.py", "harvest_replay.py", "c4_replay.py"):
         shutil.copy(LAB_DIR / name, work / name)
     save_panel(data, work)
     files = []

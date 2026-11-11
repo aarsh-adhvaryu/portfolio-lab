@@ -19,8 +19,12 @@ MON, TUE = date(2026, 11, 2), date(2026, 11, 3)
 
 
 @pytest.fixture
-def db(con):
-    """The S80 book plus a name the book does not hold (CCC), so an entry has room under the 10% rail."""
+def db(con, monkeypatch):
+    """The S80 book plus a name the book does not hold (CCC), so an entry has room under the 10% rail. The shipped config has no stop on the longterm sleeve (S82 C4b); these tests
+    exercise the stop MACHINERY, so they switch it on."""
+    from pflab.core import exits as _exits
+    real = _exits.settings
+    monkeypatch.setattr(_exits, "settings", lambda: {**real(), "longterm": {**real()["longterm"], "stop": True}})
     con.execute("INSERT INTO instruments (isin, key_kind, asset_class, tax_class, listed, symbol, name, source, built_at) VALUES (?, 'isin', 'equity', 'EQUITY', TRUE, 'CCC', 'CCC Ltd', 'synthetic', now())", [CCC])
     for d in DAYS:
         con.execute("INSERT INTO prices VALUES (?, ?, 100.0, 'EQ', 'nse_bhavcopy', now())", [CCC, d])

@@ -68,6 +68,11 @@ def main(folder: str) -> int:
             start, end = job["window"]
             out["results"]["harvest"] = swing.harvest_experiment(arms, data, start, end, job.get("cfg"))
             raise StopIteration
+        if job.get("mode") == "c4":                                            # S82: harvesting where it can help, and stops on long-term stocks (protocol s82_harvest_stops)
+            import c4_replay
+            start, end = job["window"]
+            out["results"]["c4"] = c4_replay.run_all(data, start, end, job.get("cfg"))
+            raise StopIteration
         if job.get("mode") == "now":                                       # shadow: today's target weights of each policy, from its own previous shadow weights
             for p in job["policies"]:
                 try:

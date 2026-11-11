@@ -1,7 +1,7 @@
 """`baseline_v2` (S81, A48-A49): the baseline of the close loop, core + satellite. It needs no proven edge and acts from the first close.
 
     core      it may BUY the core ETFs (index, gold, international) up to the system's allocation target; the ETF list comes from `configs/core.toml [baseline_v2]`
-              (symbols the store knows: Nifty 500 and Nifty 50 index ETFs, a gold ETF, a Nasdaq 100 ETF listed in India), each sized by risk and held to the 35% ETF rail
+              (symbols the store knows: Nifty 500 and Nifty 50 index ETFs, a gold ETF, a Nasdaq 100 ETF listed in India), each sized by risk and held to its ETF rail (60% for a broad-market index ETF, 35% for the others)
     longterm  the held stock names stay as they are: they are bought toward their risk size while the sleeve is under its target (and never above `longterm_buy_pct`, until the
               learning book's own picks exist: the sleeve's other points wait as cash) and never sold to reach a sleeve share
     gauge     when the fall gauge fires every equity position (index ETFs and longterm names) is cut by `gauge_cut`, the difference kept in cash; gold and international stay

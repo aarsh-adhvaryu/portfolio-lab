@@ -289,6 +289,7 @@ def replay_daily(decide: Callable, params: dict, data: dict, start, end, cfg: Op
     pend_rebuy: List[Tuple[str, float]] = []
     first_done, month_trade, month_key = False, 0.0, None
     values, dates, n_dec, failures = [], [], 0, 0
+    liq_values: List[float] = []                                   # S82 (C4): the liquidation-marked path, each session's value if everything were sold that session (cfg["track_liq"])
     kind_of = lambda k: "etf" if meta[k].get("etf") else "equity"
     taxcls = lambda k: meta[k].get("tax", "EQUITY")
 
@@ -379,7 +380,7 @@ def replay_daily(decide: Callable, params: dict, data: dict, start, end, cfg: Op
             else:
                 run_exits()
                 run_entries()
-        elif D in by_trade:
+        elif D in by_trade and not (cfg.get("deploy_once") and any(book.qty(k) > 0 for k in book.lots)):     # S82 (C4): a buy-and-hold book is deployed once and never rebalanced
             d = by_trade[D]
             mk = (D.year, D.month)
             if mk != month_key:
@@ -394,7 +395,7 @@ def replay_daily(decide: Callable, params: dict, data: dict, start, end, cfg: Op
             if w is not None:
                 held_before = {k for k in book.lots if book.qty(k) > 0}
                 month_trade += E._rebalance(book, w, meta, cfg, D, row, cidx, first_done, month_trade)
-                first_done = True
+                first_done = first_done or bool(w) if cfg.get("deploy_once") else True      # a buy-and-hold book's first deployment is the first decision that names something (exempt from the turnover caps)
                 n_dec += 1
                 traded_today |= held_before | {k for k in book.lots if book.qty(k) > 0}
 
@@ -409,6 +410,8 @@ def replay_daily(decide: Callable, params: dict, data: dict, start, end, cfg: Op
         v = value_now(row)
         values.append(v)
         dates.append(D)
+        if cfg.get("track_liq"):
+            liq_values.append(liquidation(book, row, cidx, meta, D.date())["value"])
 
         if daily and D in decision_days:
             try:
@@ -420,7 +423,7 @@ def replay_daily(decide: Callable, params: dict, data: dict, start, end, cfg: Op
                 pend_entries, pend_exits = [], set()
                 if failures > 3 and failures > 0.25 * len(decision_days):
                     raise RuntimeError(f"the policy failed on {failures} decisions; last: {type(e).__name__}: {e}")
-    return {"value": pd.Series(values, index=dates), "book": book, "decisions": n_dec, "failures": failures, "trades": book.trades, "open": dict(P),
+    return {"value": pd.Series(values, index=dates), "liq_path": pd.Series(liq_values, index=dates) if liq_values else None, "book": book, "decisions": n_dec, "failures": failures, "trades": book.trades, "open": dict(P),
             "last_row": pxv[len(cal) - 1], "last_day": cal[-1].date(), "cidx": cidx, "meta": meta}
 
 
@@ -464,7 +467,7 @@ def _decide_daily(decide, params, data, cfg, book, P, i, D, cidx, cols, cntv, st
     state = {"day": day, "prices": prices, "turnover": turn, "weights": {l: cur[perm[l]] for l in lab if perm[l] in cur}, "value": V,
              "meta": {k: {"symbol": meta[k].get("symbol"), "etf": bool(meta[k].get("etf")), "sector": meta[k].get("sector")} for k in lab},
              "universe": list(universe), "index": data["index"].loc[:D].tail(rows), "target": None,
-             "caps": {k: (cfg["max_etf"] if meta[k].get("etf") else cfg["max_stock"]) for k in lab}, "positions": positions,
+             "caps": {k: E.position_cap(meta[k], cfg) for k in lab}, "positions": positions,
              "slots": max(0, cfg["sizing"]["max_positions"] - len(P)), "results": res}
     w = decide(state, data.get("forecasts") or {}, data.get("sims") or {}, data.get("storylines") or {}, dict(params or {}))
     if not isinstance(w, dict):

@@ -26,7 +26,7 @@ def code_hash() -> str:
 
 
 def cap_of(row: dict) -> float:
-    return hard.MAX_ETF if (row["asset_class"] or "") == "etf" else hard.MAX_STOCK
+    return hard.limit_of(row["asset_class"], row.get("symbol"))                   # S82 (A56): a broad-market index ETF 60%, another ETF 35%, a stock 10%
 
 
 def risk_weights(budget: float, inv_vol: Dict[str, float], caps: Dict[str, float]) -> Dict[str, float]:

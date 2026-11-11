@@ -128,6 +128,7 @@ class Runtime:
             s79.register_all(self.cursor(), self.clock())
             s79.register_seats(self.cursor(), self.clock())
             s79.register_swing(self.cursor(), self.clock())            # S81 B5
+            s79.register_c4(self.cursor(), self.clock())               # S82 C4
             s79.apply_verdicts(self.cursor())
         except Exception:
             log.exception("registering S79 studies failed")

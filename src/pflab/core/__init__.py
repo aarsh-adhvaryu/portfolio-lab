@@ -25,7 +25,9 @@ DEFAULTS = {
     "probation": {"start_share": 0.05, "steps": [0.05, 0.10, 0.20], "sessions_to_grow": [20, 40], "max_total_share": 0.20, "tolerance": 0.002, "min_sessions_to_judge": 10},
     "checker": {"on": True, "big_trade_share": 0.05, "model": "claude-sonnet-5-5"},
     "tactical": {"on": True, "start_share": 0.10, "high_share": 0.20, "low_share": 0.05, "views_to_judge": 20},
-    "rails": {"turnover_day": 0.10, "turnover_month": 0.40, "min_trade_rupees": 2000.0, "max_cost_share": 0.02},
+    "rails": {"turnover_day": 0.10, "turnover_month": 0.40, "min_trade_rupees": 2000.0, "max_cost_share": 0.02,
+              # S82 (A56): a broad-market index ETF (Nifty 50 and Nifty 500 index ETFs only, by symbol) may hold up to 60% of the book; every other ETF stays at 35%
+              "broad_index_etfs": ["NIFTYBEES", "MONIFTY500"], "broad_index_cap": 0.60},
     "baseline": {"band_pts": 1.5, "vol_window": 250, "gauge_drawdown": 0.10, "gauge_below_ma": 200, "gauge_cut": 0.25},
 }
 

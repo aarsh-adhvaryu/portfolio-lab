@@ -20,6 +20,8 @@ import pandas as pd
 
 LT_EXEMPT, ST_RATE, LT_RATE, SLAB = 125_000.0, 0.20, 0.125, 0.30                      # the paper book's tax constants (paper/book.py)
 DEFAULT_CFG = {"capital": 1_000_000.0, "cash_rate": 0.065, "n_liquid": 60, "min_history": 300, "turn_window": 250, "max_stock": 0.10, "max_etf": 0.35, "max_sector": 0.25,
+               # S82 (A56): a broad-market index ETF (by symbol; the host overrides both from configs/core.toml [rails]) may reach `max_broad_etf`; every other ETF keeps `max_etf`
+               "max_broad_etf": 0.60, "broad_syms": ["NIFTYBEES", "MONIFTY500"],
                "turnover_day": 0.10, "turnover_month": 0.40, "min_trade": 0.001, "min_trade_rupees": 2000.0, "max_cost_share": 0.02, "history_rows": 800,
                "charges": {"equity": {"buy": 0.0012, "sell": 0.0012}, "etf": {"buy": 0.0003, "sell": 0.0003}},
                # S81 (A50): the index the policy is measured against is HELD AS AN ETF: its yearly cost is taken out of the total-return index and its buy and sell charges and the tax of a
@@ -117,17 +119,26 @@ class Book:
         self.traded += rupees
 
 
+def position_cap(m: dict, cfg: dict) -> float:
+    """The single-holding rail of one security's meta: a broad-market index ETF `max_broad_etf`, another ETF `max_etf`, a stock `max_stock` (the live rails: `paper/rails.limit_of`)."""
+    if not m.get("etf"):
+        return cfg["max_stock"]
+    if str(m.get("symbol") or "").upper() in {str(x).upper() for x in (cfg.get("broad_syms") or ())}:
+        return max(cfg["max_etf"], cfg.get("max_broad_etf", cfg["max_etf"]))
+    return cfg["max_etf"]
+
+
 # --- the rails, as the replay applies them ----------------------------------------------------------------------------------------
 
 def clip_weights(w: Dict[str, float], meta: Dict[str, dict], cfg: dict, current: Optional[Dict[str, float]] = None) -> Dict[str, float]:
-    """The hard rails on target weights: a company at most 10%, an ETF 35%, a sector 25% (increases scaled back; a position already over stays where it is, never bought), no
+    """The hard rails on target weights: a company at most 10%, an ETF 35% (a broad-market index ETF 60%), a sector 25% (increases scaled back; a position already over stays where it is, never bought), no
     negative weight, the total at most 100% (nothing is borrowed)."""
     cur = current or {}
     out = {}
     for k, v in w.items():
         if v <= 0 or k not in meta:
             continue
-        lim = cfg["max_etf"] if meta[k].get("etf") else cfg["max_stock"]
+        lim = position_cap(meta[k], cfg)
         out[k] = min(v, max(lim, cur.get(k, 0.0)))
     sec: Dict[str, List[str]] = {}
     for k in out:
@@ -239,7 +250,7 @@ def _decide_at(decide, params, data, cfg, book, d, D, row, cidx, cnt, rng, shuff
     state = {"day": d.date(), "prices": prices, "turnover": turn, "weights": {l: cur[perm[l]] for l in cols if perm[l] in cur}, "value": V,
              "meta": {k: {"symbol": meta[k].get("symbol"), "etf": bool(meta[k].get("etf")), "sector": meta[k].get("sector")} for k in cols},
              "universe": list(universe), "index": data["index"].loc[:d].tail(cfg["history_rows"]), "target": None,
-             "caps": {k: (cfg["max_etf"] if meta[k].get("etf") else cfg["max_stock"]) for k in cols}}
+             "caps": {k: position_cap(meta[k], cfg) for k in cols}}
     w = decide(state, data.get("forecasts") or {}, data.get("sims") or {}, data.get("storylines") or {}, dict(params or {}))
     if not isinstance(w, dict):
         raise ValueError("decide must return a dict")

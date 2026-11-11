@@ -82,7 +82,7 @@ def validate_target(weights: dict, sectors: Optional[dict] = None) -> dict:
     if secs and sum(secs.values()) > classes["equity"] + TOL:
         problems.append(f"the sectors add up to {sum(secs.values()):g}% but equity is {classes['equity']:g}%: sectors are companies, which are equity")
     return {"ok": not problems, "problems": problems, "classes": {k: round(v, 4) for k, v in classes.items()}, "sectors": {k: round(v, 4) for k, v in secs.items()},
-            "rails": {"one company": f"{rails.MAX_STOCK:.0%}", "one sector": f"{rails.MAX_SECTOR:.0%}", "one ETF": f"{rails.MAX_ETF:.0%}"}}
+            "rails": {"one company": f"{rails.MAX_STOCK:.0%}", "one sector": f"{rails.MAX_SECTOR:.0%}", "one ETF": f"{rails.MAX_ETF:.0%}", "one broad-market index ETF": f"{rails.broad_index()[1]:.0%}"}}
 
 
 def class_of(asset_class: Optional[str], name: Optional[str] = None, symbol: Optional[str] = None, isin: Optional[str] = None) -> str:

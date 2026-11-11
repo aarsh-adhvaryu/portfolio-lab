@@ -38,9 +38,9 @@ DEFAULTS = {
     "trim_over_pts": 0.5, "trim_buffer_pts": 1.0, "min_trim_rupees": 2000.0, "stop_vol_window": 250, "fallback_vol": 0.30,
     "harvest_quarter_months": [1, 2, 3], "harvest_off_quarter_share": 0.34, "harvest_margin": 0.90, "harvest_min_gain": 5000.0, "harvest_cost_multiple": 3.0,
     "harvest_max_book_share": 0.05, "loss_harvest": True, "loss_min_saving": 1000.0, "rebuy": True,
-    "harvest_core": False, "harvest_longterm": False,          # A60: harvesting is OFF per sleeve until the narrower study (C4a) passes for that sleeve
+    "harvest_core": False, "harvest_longterm": False,          # S82 C4: the registered study did not pass either arm: still OFF. A60: harvesting is OFF per sleeve until the narrower study (C4a) passes for that sleeve
     "core": {"stop": False, "target_reward": 0.0, "time_stop_days": 0, "thesis_break": False},
-    "longterm": {"stop": True, "stop_sigmas": 2.0, "stop_horizon_days": 63, "stop_min_pct": 0.12, "stop_max_pct": 0.35, "target_reward": 0.0, "time_stop_days": 0, "thesis_break": True},
+    "longterm": {"stop": False, "stop_sigmas": 2.0, "stop_horizon_days": 63, "stop_min_pct": 0.12, "stop_max_pct": 0.35, "target_reward": 0.0, "time_stop_days": 0, "thesis_break": True},
     "score": {"horizons": [20, 60], "min_n": 20},
 }
 
@@ -557,7 +557,7 @@ def _trims(con, now: datetime, day: date, rows: List[dict], total: float, plans:
         ac = meta[isin]["asset_class"] or ""
         if ac not in book.BUYABLE:
             continue
-        cap = hard.MAX_ETF if ac == "etf" else hard.MAX_STOCK
+        cap = hard.limit_of(ac, meta[isin].get("symbol"))
         w = value[isin] / total
         if w > cap + over:
             target = cap - buf
