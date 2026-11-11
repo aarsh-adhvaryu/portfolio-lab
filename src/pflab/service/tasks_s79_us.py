@@ -24,11 +24,20 @@ register(Job("us_close", Interval(120, weekdays_only=False), _run, "the paper US
 
 
 def _prices(ctx) -> dict:
-    """The 13 US ETFs the sub-book holds: their last 10 days appended to `data/us/raw` (network; a failure is reported, never fatal)."""
+    """The 13 US ETFs, SPY and (S83) every held and every picked or skipped US stock: their last 10 days appended to `data/us/raw` (a name with no file yet is downloaded whole; network; a failure is reported, never fatal)."""
     from pflab.data import us_prices
-    out = us_prices.collect(sorted(us_prices.ETFS), ctx.data_root, recent_days=10)
+    out = us_prices.collect(us_prices.tracked_symbols(getattr(ctx, "con", None)), ctx.data_root, recent_days=10)
     bad = {k: v for k, v in out.items() if isinstance(v, str)}
     res = {"symbols": len(out), "problems": len(bad)}
+    try:                                                    # S83: the SEC ticker file (CIKs, names, the screen's universe) once a week; a failure (e.g. no contact in the secrets file) is reported, never fatal
+        import time
+        from pathlib import Path
+        from pflab.lab import screen
+        p = Path(ctx.data_root).joinpath(*screen.UNIVERSE_FILE)
+        if not p.exists() or time.time() - p.stat().st_mtime > 7 * 86400:
+            res["sec_universe"] = screen.refresh_us_universe(ctx.data_root)
+    except Exception as e:
+        res["sec_universe"] = f"not refreshed ({type(e).__name__}: {str(e)[:100]})"
     if len(bad) == len(out):
         res["failed"] = {"us_prices": "no symbol could be refreshed: " + next(iter(bad.values()))[:160]}
     return res

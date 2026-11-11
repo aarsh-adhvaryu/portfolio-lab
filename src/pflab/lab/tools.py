@@ -199,6 +199,30 @@ def issue_view(ctx, a):
                        session_id=ctx.session_id)
 
 
+# --- S83 L2: what the strategist may look at to choose (lab/screen.py; every number is code, public data, point in time) ----------------------------------------------------
+
+LIMITS = {"screen_stocks": 30000, "company_card": 16000}        # a result is cut at 9,000 characters unless named here (a 40-row screen is longer)
+
+
+@tool("screen_stocks", "Up to 40 stocks for the picks sleeve (IN: liquid shares, floor Rs 5 crore a day; US: the A62 floor, bars fetched on demand). Every number is code, point in time: returns, 200-day average, volatility, "
+      "traded value, size, sector, indices, shareholding, deals, events, red flags, price range, storylines, P/E. Figures describe the past; only 'below its 200-day average earns less' passed a test; deals are context; "
+      "US history is survivorship-biased.",
+      {"market": S("IN or US"), "filters": O("optional: min_traded_value_inr, min_momentum (126-session return as a fraction), max_volatility (fraction), sector, in_index (NIFTY500, NIFTY200, NIFTY100, NIFTY_MIDCAP100), "
+                                             "exclude_held, exclude_flagged, symbols (list), include_suspect_prices; US: grow_universe, fetch_cap"),
+       "sort": S("momentum_63, momentum_126 (default), momentum_252, low_volatility, traded_value, market_cap, promoter_change, near_52w_high"), "n": I("rows, at most 40")}, ["market"])
+def screen_stocks(ctx, a):
+    from pflab.lab import screen
+    return screen.screen_stocks(ctx.con, ctx.now, str(a.get("market") or "IN"), a.get("filters") or None, str(a.get("sort") or "momentum_126"), int(a.get("n") or 40), root=ctx.root, detail="brief")
+
+
+@tool("company_card", "One page for one name: price, 52-week range, liquidity, size, shareholding, deals (context only), results and graph events, red flags, price range, storylines, filed fundamentals (IN) or SEC facts and "
+      "filings (US), the A62 floor, and what the rails allow. Every number is code; the same labels as screen_stocks.",
+      {"market": S("IN or US"), "symbol": S("the stock's symbol")}, ["market", "symbol"])
+def company_card(ctx, a):
+    from pflab.lab import screen
+    return screen.fit_card(screen.company_card(ctx.con, ctx.now, str(a.get("market") or "IN"), str(a.get("symbol") or ""), root=ctx.root), LIMITS["company_card"] - 500)
+
+
 def make_ctx(con, pm_dir, root, now, session_id, data=None, box=None) -> SimpleNamespace:
     return SimpleNamespace(con=con, pm_dir=pm_dir, root=root, now=now, session_id=session_id, data=data, box=box, finished=None,
                            stats={"lab_runs": 0, "variants": 0, "challengers": 0, "notes": 0})
@@ -213,4 +237,4 @@ def run(ctx, name: str, args: dict) -> tuple:
     except Exception as e:
         return json.dumps({"ok": False, "problem": f"{type(e).__name__}: {str(e)[:300]}"}), True
     text = json.dumps(res, default=str)
-    return text[:9000], bool(isinstance(res, dict) and res.get("ok") is False)
+    return text[:LIMITS.get(name, 9000)], bool(isinstance(res, dict) and res.get("ok") is False)

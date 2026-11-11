@@ -95,6 +95,43 @@ def sp500_symbols(get_html: Optional[Callable] = None) -> List[str]:
     return sorted({str(s).strip().replace(".", "-") for s in t["Symbol"] if isinstance(s, str)})
 
 
+PICK_TABLES = ("picks_s83", "pick_skips_s83", "skips_s83")        # S83: the picks (any state: a withdrawn pick is still scored later) and the skipped ideas (a price record to score later)
+SYMBOL_OK = r"^[A-Z][A-Z0-9.\-]{0,9}$"
+
+
+def held_symbols(con) -> List[str]:
+    """The US stocks the sub-book holds (open lots of `us_lots_s81`); [] when the table is absent."""
+    try:
+        return [str(s).upper() for (s,) in con.execute("SELECT DISTINCT symbol FROM us_lots_s81 WHERE qty > 0 AND symbol IS NOT NULL ORDER BY 1").fetchall()]
+    except Exception:
+        return []
+
+
+def picked_symbols(con) -> List[str]:
+    """The US names the picks agent has named, in any state, and the ideas it skipped (`picks_s83` and friends; each table may be absent, and a table with no market column is filtered by the key
+    of the name: a US key starts ZZ or US, an Indian one INE or INF)."""
+    out: List[str] = []
+    for t in PICK_TABLES:
+        for where in ("upper(market) = 'US'", "(isin LIKE 'ZZ%' OR isin LIKE 'US%')"):
+            try:
+                out += [str(s).upper() for (s,) in con.execute(f"SELECT DISTINCT symbol FROM {t} WHERE {where} AND symbol IS NOT NULL ORDER BY 1").fetchall()]
+                break
+            except Exception:
+                continue
+    return out
+
+
+def tracked_symbols(con=None, pm_dir: Optional[Path] = None) -> List[str]:
+    """What the daily US collection fetches (S83 L2): the ETFs the data layer always tracked, SPY (the sub-book's core and the index every pick is scored against), every held US stock and
+    every picked or skipped one, then his own list. Symbols in Yahoo style (BRK-B)."""
+    import re
+    syms = list(ETFS) + ["SPY"]
+    if con is not None:
+        syms += held_symbols(con) + picked_symbols(con)
+    syms += my_names(pm_dir)
+    return [s for s in dict.fromkeys(x.strip().upper().replace(".", "-") for x in syms) if re.match(SYMBOL_OK, s)]
+
+
 def my_names(pm_dir: Optional[Path]) -> List[str]:
     """His US list (PFLAB_PM_DIR/us_list.toml: symbols = [...]), and nothing else."""
     from pflab import _toml
