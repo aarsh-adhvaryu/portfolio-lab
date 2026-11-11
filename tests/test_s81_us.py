@@ -109,12 +109,17 @@ def test_rail_ignores_other_classes_and_can_be_switched_off():
     assert premium.settings()["max_premium_pct"] == 2.0 and premium.settings()["taper_from_pct"] == 1.0       # the shipped defaults (configs/core.toml [premium])
 
 
-def test_the_rail_can_be_extended_to_gold_by_a_setting():
+def test_gold_is_held_to_the_premium_rail_by_default_and_a_setting_can_narrow_it():
     gold = _state({INTL: {"known": True, "premium_pct": 8.0, "as_of": date(2026, 11, 4)}}, klass="gold")
     out, notes = premium.premium_rail(gold, {INTL: 0.10})
-    assert out[INTL] == 0.10 and notes == []                              # by default only the international class is held to the limit
-    out, notes = premium.premium_rail(gold, {INTL: 0.10}, {"premium": {"classes": ["international", "gold"]}})
-    assert out[INTL] == 0.0 and "8.0% above its NAV" in notes[0]
+    assert out[INTL] == 0.0 and "8.0% above its NAV" in notes[0]            # S82 C1: the shipped classes are international AND gold
+    assert premium.settings()["classes"] == ["international", "gold"]
+    out, notes = premium.premium_rail(gold, {INTL: 0.10}, {"premium": {"classes": ["international"]}})
+    assert out[INTL] == 0.10 and notes == []                              # a setting that names only the international class leaves gold alone
+    # selling is never blocked, and a gold ETF under the limit may be bought
+    ok = _state({INTL: {"known": True, "premium_pct": 0.2, "as_of": date(2026, 11, 4)}}, klass="gold")
+    out, notes = premium.premium_rail(ok, {INTL: 0.10})
+    assert out[INTL] == 0.10 and notes == []
 
 
 def test_rails_check_places_no_buy_of_a_dear_international_etf_and_records_the_reason(con):
