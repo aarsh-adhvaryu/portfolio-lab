@@ -1066,6 +1066,14 @@ def step_exit_plan(env: "Env", c: Check, phase: str) -> None:
     ex = importlib.import_module("pflab.core.exits")
     victim = STOCKS[1][1]
     if phase == "setup":
+        # S82 (C4b, the registered verdict): the shipped config has NO stop for the longterm sleeve, so this drill, which proves the stop MACHINERY, switches the stop on for its own run
+        orig_settings = ex.settings
+
+        def _stops_on():
+            s = orig_settings()
+            s["longterm"] = {**s["longterm"], "stop": True}
+            return s
+        ex.settings = _stops_on
         # a 45% fall in SYNFMCG2 on the third session: the held-back closes of the following sessions are lowered
         import pandas as pd
         p = env.dir / "held_prices.parquet"

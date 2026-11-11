@@ -100,6 +100,15 @@ def own_vol(con, isin: str, day: date, cfg: dict) -> float:
     return float(max(np.std(r, ddof=1) * math.sqrt(252), 0.05))
 
 
+def _stop_words(lv: dict, ref: float, why: str, under: str) -> str:
+    """The stop in words. A stop that was GIVEN (an override) has no risk-sized distance: then the distance is worked out from the price, never assumed."""
+    pct = lv.get("stop_pct")
+    if pct is None and ref:
+        pct = max(0.0, 1.0 - float(lv["stop"]) / float(ref))
+        why = "set explicitly"
+    return f"stop Rs {lv['stop']:,.2f} ({pct:.0%} under {under}, {why})"
+
+
 def _levels(cfg: dict, sleeve: str, ref: float, vol: float, override: Optional[dict] = None) -> dict:
     sc = cfg.get(sleeve) if isinstance(cfg.get(sleeve), dict) else cfg["longterm"]
     stop = target = None
@@ -199,7 +208,7 @@ def open_plan(con, now: datetime, market: str, isin: str, sleeve: str, entry_pri
         return int(ex["plan_id"])
     lv = _levels(cfg, sleeve, float(entry_price), vol, plan)
     pid = _id(con, "exit_plans_s81", "plan_id")
-    note = ("opened at entry: " + (f"stop Rs {lv['stop']:,.2f} ({lv['stop_pct']:.0%} under the entry, from its own volatility of {vol:.0%} a year)" if lv["stop"] else "no stop (rebalance only)")
+    note = ("opened at entry: " + (_stop_words(lv, float(entry_price), f"from its own volatility of {vol:.0%} a year", "the entry") if lv["stop"] else "no stop (rebalance only)")
             + (f", target Rs {lv['target']:,.2f}" if lv["target"] else "") + (f", time stop {lv['time_stop_days']} days" if lv["time_stop_days"] else "")
             + (f", thesis break on {len(lv['thesis_break_kinds'])} kinds of event" if lv["thesis_break_kinds"] else ""))
     con.execute("INSERT INTO exit_plans_s81 (plan_id, market, isin, sleeve, opened_on, entry_price, qty, target, stop, time_stop_days, thesis_break_kinds, tax_boundary_date, status, "
@@ -231,7 +240,7 @@ def backfill_plans(con, day: date, market: str = MARKET, now: Optional[datetime]
         vol = own_vol(con, isin, day, cfg)
         lv = _levels(cfg, sleeve, ref, vol)
         pid = _id(con, "exit_plans_s81", "plan_id")
-        note = ("backfilled from the lots: " + (f"stop Rs {lv['stop']:,.2f} ({lv['stop_pct']:.0%} under the price of {day}, own volatility {vol:.0%} a year)" if lv["stop"] else "no stop (rebalance only)")
+        note = ("backfilled from the lots: " + (_stop_words(lv, ref, f"own volatility {vol:.0%} a year", f"the price of {day}") if lv["stop"] else "no stop (rebalance only)")
                 + (f", target Rs {lv['target']:,.2f}" if lv["target"] else "") + (f", time stop {lv['time_stop_days']} days" if lv["time_stop_days"] else ""))
         con.execute("INSERT INTO exit_plans_s81 (plan_id, market, isin, sleeve, opened_on, entry_price, qty, target, stop, time_stop_days, thesis_break_kinds, tax_boundary_date, status, "
                     "source, vol, note, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",

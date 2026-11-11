@@ -115,6 +115,23 @@ def test_open_plan_longterm_defaults_and_overrides_and_adding(con):
     assert q["stop"] == 80.0 and q["target"] == 130.0 and q["time_stop_days"] == 30       # a plan can still carry its own levels (the override keys)
 
 
+def test_an_explicit_stop_opens_a_plan_even_when_the_sleeve_has_no_risk_sized_stop(con, monkeypatch):
+    """S82 (found by the accelerated drill): the shipped config has no stop for the longterm sleeve (C4b), so a GIVEN stop has no risk-sized distance; the plan's note must still be written."""
+    orig = exits.settings
+
+    def no_stop():
+        s = orig()
+        s["longterm"] = {**s["longterm"], "stop": False}
+        return s
+    monkeypatch.setattr(exits, "settings", no_stop)
+    pid = exits.open_plan(con, NOW, "IN", SWG, "longterm", 100.0, 500, plan={"stop": 80.0})
+    p = exits.get_plan(con, pid)
+    assert p["stop"] == 80.0 and "stop Rs 80.00 (20% under the entry, set explicitly)" in p["note"]
+    pid2 = exits.open_plan(con, NOW, "IN", WIN, "longterm", 100.0, 10)
+    q = exits.get_plan(con, pid2)
+    assert q["stop"] is None and "no stop (rebalance only)" in q["note"]               # with no stop in the config and none given: no stop
+
+
 def test_a_stored_swing_tag_gets_the_longterm_levels_and_there_are_no_swing_defaults(con):
     """A60: the swing sleeve is deleted; an old plan or tag that still says 'swing' is handled as longterm (no target, no time stop)."""
     assert "swing" not in exits.DEFAULTS and not hasattr(exits, "swing_score")
