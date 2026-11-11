@@ -34,9 +34,12 @@ def us_value_usd(con, day: date) -> dict:
         return {"usd": 0.0, "cash_usd": 0.0, "marked_day": None, "open": False}
     r = con.execute("SELECT day, value_usd, cash_usd FROM us_days_s81 WHERE day <= ? ORDER BY day DESC LIMIT 1", [day]).fetchone()
     c = book.cash(con, day)
+    # a transfer counts in the whole book from its RUPEE day (the day the rupee book paid): until then the dollars are still in the rupee book's value
+    transfer.ensure_table(con)
+    pending = float(con.execute("SELECT coalesce(sum(usd), 0) FROM us_transfers_s82 WHERE rupee_day > ? AND us_day <= ?", [day, day]).fetchone()[0] or 0.0)
     if not r:
-        return {"usd": c, "cash_usd": c, "marked_day": None, "open": True}
-    return {"usd": float(r[1]) + (c - float(r[2])), "cash_usd": c, "marked_day": r[0], "open": True}
+        return {"usd": c - pending, "cash_usd": c, "marked_day": None, "open": True}
+    return {"usd": float(r[1]) + (c - float(r[2])) - pending, "cash_usd": c, "marked_day": r[0], "open": True}
 
 
 def _us_inr(con, day: date, root=None) -> dict:

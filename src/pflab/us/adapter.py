@@ -24,7 +24,7 @@ from pflab import us
 from pflab.us import book, clock, data, fx as usfx, instruments as uins, policy, transfer, wholebook
 
 MAX_CATCHUP_SESSIONS = 40
-GAP_RISK = ("Decisions use the last US close and orders fill at the NEXT US open (plus a few basis points). A stop acts at the next open, so a gap can pass it: "
+GAP_RISK = ("Decisions use the last US close and orders fill at the NEXT US open (plus a few basis points); a stop acts at the next open, so a gap can pass it: "
             "the price can open well beyond the stop and the loss is then taken at that price, not at the stop.")
 
 

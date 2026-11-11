@@ -23,7 +23,9 @@ MARKUP = 0.004
 @pytest.fixture
 def con(tmp_path, monkeypatch):
     monkeypatch.setenv("PFLAB_PM_DIR", str(tmp_path))
-    return store.connect(tmp_path / "l.duckdb")
+    c = store.connect(tmp_path / "l.duckdb")
+    c.execute("INSERT INTO fx_rates VALUES (?, 'USDINR_FBIL', 90.0, 'test')", [date(2026, 10, 28)])        # a stated rate for the whole-book helpers (never the workshop's real market file)
+    return c
 
 
 def _rupee_cash(c, amount, day=date(2026, 10, 1)):
@@ -122,7 +124,7 @@ def test_a_pre_s82_seed_is_converted_into_a_transfer_without_losing_a_row_and_on
     assert con.execute("SELECT * FROM us_cash_s81 ORDER BY entry_id").fetchall() == cash_rows_before and con.execute("SELECT * FROM us_account_s81").fetchall() == acct_before   # no row lost or changed
     days = con.execute("SELECT day, value, flows FROM paper_days ORDER BY day").fetchall()
     assert [round(v) for _, v, _ in days] == [900_000] * 3 and [round(f) for _, _, f in days] == [-100_000, 0, 0]       # restated; the rupee book's own return is not hurt
-    assert "from nothing" in con.execute("SELECT note FROM paper_cash WHERE kind='us_transfer'").fetchone() or True
+    assert "from nothing" in con.execute("SELECT ref FROM paper_cash WHERE kind='us_transfer'").fetchone()[0]
     snap = (con.execute("SELECT count(*) FROM us_transfers_s82").fetchone(), con.execute("SELECT count(*) FROM paper_cash").fetchone(), _rupee_book_cash(con))
     assert transfer.convert_seed(con, NOW) == []                                          # idempotent
     assert (con.execute("SELECT count(*) FROM us_transfers_s82").fetchone(), con.execute("SELECT count(*) FROM paper_cash").fetchone(), _rupee_book_cash(con)) == snap
@@ -274,7 +276,7 @@ def test_a_blocked_india_etf_is_said_in_the_reason_and_its_share_is_the_us_books
     _rupee_cash(con, 1_000_000.0)
     isin = "INF247L01AB1"
     lf.register_instrument(con, "MON100", isin, "Motilal Nasdaq 100 ETF", market="IN", currency="INR", etf=True, now=NOW)
-    con.execute("UPDATE instruments SET asset_class='etf', tax_class=NULL WHERE isin=?", [isin])
+    con.execute("UPDATE instruments SET asset_class='etf', tax_class='equity' WHERE isin=?", [isin])
     for k in range(4):
         con.execute("INSERT INTO prices VALUES (?, ?, 103.0, 'EQ', 'nse_bhavcopy', now())", [isin, date(2026, 10, 30) + timedelta(days=k)])
         con.execute("INSERT INTO navs VALUES (?, '1', ?, 100.0, 'amfi_navall', now())", [isin, date(2026, 10, 30) + timedelta(days=k)])
@@ -319,6 +321,8 @@ def test_catch_up_of_the_rupee_book_takes_the_transfer_out_of_the_flows(con):
     d0 = date(2026, 11, 2)
     con.execute("INSERT INTO paper_days VALUES (?,?,?,?,?,?)", [d0, 1_000_000.0, 1_000_000.0, 0.0, 0.0, "{}"])
     book.open_account(con, datetime(2026, 11, 3, 7, 0), d0, 100_000.0, FXR, 0.10)         # moved on the IST morning of the 3rd
+    for d in (date(2026, 11, 3), date(2026, 11, 4)):
+        con.execute("INSERT INTO prices VALUES ('INE000A01011', ?, 100.0, 'EQ', 'nse_bhavcopy', now())", [d])
     pb.catch_up(con, date(2026, 11, 4), datetime(2026, 11, 4, 17, 0))
     rows = {d: (v, f) for d, v, f in con.execute("SELECT day, value, flows FROM paper_days").fetchall()}
     assert rows[date(2026, 11, 3)] == (pytest.approx(900_000.0), pytest.approx(-100_000.0)) and rows[date(2026, 11, 4)][1] == 0.0
@@ -477,7 +481,7 @@ def test_a_refused_fetch_keeps_the_old_map_and_says_so(tmp_path):
     root = tmp_path / "data"
     (root / "us").mkdir(parents=True)
     (root / "us" / "cik_map.json").write_text('{"SPY": 884394}', encoding="utf-8")
-    out = uins.refresh_if_due(root, get=lambda url: (_ for _ in ()).throw(sec_edgar.SecRefused("SEC answered 403")), max_age_days=0, now=NOW)
+    out = uins.refresh_if_due(root, get=lambda url: (_ for _ in ()).throw(sec_edgar.SecRefused("SEC answered 403")), max_age_days=0)
     assert "SecRefused" in out["failed"] and uins.load_ciks(root) == {"SPY": 884394}
 
 
@@ -493,3 +497,37 @@ def test_market_in_is_unchanged(con):
     from pflab.us import clock
     assert clock.window_ist(date(2026, 11, 9), market="IN") == (datetime(2026, 11, 9, 9, 15), datetime(2026, 11, 9, 15, 30))
     assert con.execute("SELECT count(*) FROM us_transfers_s82").fetchone()[0] == 0
+
+
+# ---------------------------------------------------------------- a store at the S81 schema (the app may have opened the account with the old seed)
+
+def test_the_conversion_works_on_a_store_at_the_s81_schema_and_the_close_goes_on_from_there(con, tmp_path):
+    con.execute("DROP TABLE us_transfers_s82")                                             # the S81 schema has no such table; the store's own migration would add it at the next open
+    con.execute("DELETE FROM schema_migrations WHERE version >= 144") if con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name='schema_migrations'").fetchone()[0] else None
+    root = tmp_path / "data"
+    days = [date(2026, 11, 2), date(2026, 11, 3)]
+    _spy(root, days)
+    for d in [date(2026, 10, 30)] + days:
+        _fx(con, d)
+    _rupee_cash(con, 1_000_000.0)
+    usd = 100_000.0 / (90.0 * (1 + MARKUP))
+    _old_style_account(con, usd=usd, opened=date(2026, 11, 2))
+    # the old run had bought three S81 ETFs already: an order of the retired baseline is open
+    con.execute("INSERT INTO us_orders_s81 VALUES (1, ?, ?, 'US:QQQ', 'QQQ', 'buy', NULL, 100.0, 'open', NULL, 'old baseline')", [date(2026, 11, 2), NOW])
+    r = adapter.close_us(con, datetime(2026, 11, 4, 7, 0), root, CFG)
+    assert r["converted_seed"][0]["converted"] and _rupee_book_cash(con) == pytest.approx(900_000.0 - r["funding"]["inr"] if r.get("funding") and "inr" in r["funding"] else 900_000.0, abs=0.05)
+    assert con.execute("SELECT phase FROM us_transfers_s82 ORDER BY transfer_id").fetchone() == ("converted_seed",)
+    assert con.execute("SELECT count(*) FROM us_cash_s81 WHERE kind='seed'").fetchone()[0] == 1       # the seed row is still there
+    assert adapter.close_us(con, datetime(2026, 11, 4, 8, 0), root, CFG)["skipped"].endswith("already done")
+    assert len(con.execute("SELECT * FROM us_transfers_s82 WHERE phase='converted_seed'").fetchall()) == 1
+
+
+def test_in_the_systems_own_account_a_seed_that_the_ledger_cannot_pay_on_the_opening_day_is_paid_when_it_can(con, tmp_path):
+    (tmp_path / system.FLAG).write_text('since = "2026-10-01T00:00:00"\nstart_cash_rupees = 500000\n', encoding="utf-8")
+    system.append(con, [ev.Event(kind="deposit", account_id=system.SYSBANK, date=date(2026, 11, 3), amount=300_000.0, ref="topup:test")], NOW)   # money arrives AFTER the opening day
+    _old_style_account(con, usd=100_000.0 / (90.0 * (1 + MARKUP)), opened=date(2026, 11, 2))
+    out = transfer.convert_seed(con, datetime(2026, 11, 4, 7, 0))
+    assert out[0]["converted"] and out[0]["rupee_day"] == "2026-11-04"                      # not the opening day (no cash then): the first day it could be paid
+    from pflab.paper import book as pb
+    assert pb.holdings(con, date(2026, 11, 4))["value"] == pytest.approx(200_000.0, abs=0.05)
+    assert transfer.convert_seed(con, datetime(2026, 11, 4, 8, 0)) == []

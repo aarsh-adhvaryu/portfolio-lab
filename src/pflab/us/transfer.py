@@ -21,6 +21,14 @@ REF = "us_transfer"
 PHASES = ("open", "build", "topup", "converted_seed")
 
 
+def ensure_table(con) -> None:
+    """A store still at the S81 schema (the running app may have opened the account with the old seed before this release) has no `us_transfers_s82` until its migration runs: make the
+    table exist (the same DDL as migration 144, `IF NOT EXISTS`), so conversion and funding never fail on schema."""
+    from pflab.pm.mig_s79 import m_us82
+    for _v, _n, sql in m_us82.MIGRATIONS:
+        con.execute(sql)
+
+
 def _own() -> bool:
     from pflab.ledger import system
     return system.active()
@@ -81,6 +89,7 @@ def debit_rupee(con, rupee_day: date, inr: float, ref: str, why: str, now: datet
 
 
 def transfers(con) -> List[dict]:
+    ensure_table(con)
     cols = ("transfer_id", "us_day", "rupee_day", "inr", "fx_rate", "fx_source", "markup", "usd", "markup_inr", "phase", "rupee_ref", "share_after", "reason")
     return [dict(zip(cols, r)) for r in con.execute(f"SELECT {', '.join(cols)} FROM us_transfers_s82 ORDER BY transfer_id").fetchall()]
 
@@ -100,6 +109,7 @@ def rupee_flows(con, lo: Optional[date], hi: date) -> float:
 
 
 def month_moved(con, day: date) -> float:
+    ensure_table(con)
     r = con.execute("SELECT coalesce(sum(inr), 0) FROM us_transfers_s82 WHERE rupee_day >= ? AND rupee_day <= ?", [date(day.year, day.month, 1), day]).fetchone()
     return float(r[0] or 0.0)
 
@@ -110,6 +120,7 @@ def fund(con, now: datetime, us_day: date, inr: float, fx: dict, phase: str, rea
     `inr / (rate x (1 + markup))` dollars on `us_day`, so the whole book loses the funding markup and nothing else."""
     if phase not in PHASES:
         raise ValueError(f"phase is one of {PHASES}")
+    ensure_table(con)
     rupee_day = rupee_day or now.date()
     markup = costs.fx_markup_funding()
     tid = next_id(con, "us_transfers_s82", "transfer_id")
@@ -145,6 +156,7 @@ def convert_seed(con, now: datetime, root=None) -> List[dict]:
     acct = book.account(con)
     if acct is None:
         return []
+    ensure_table(con)
     out = []
     seeds = con.execute("SELECT entry_id, day, usd FROM us_cash_s81 WHERE kind='seed' ORDER BY entry_id").fetchall()
     for entry_id, day, usd in seeds:
