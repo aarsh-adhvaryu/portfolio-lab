@@ -263,7 +263,7 @@ def _nudges(rt, n: int = 4) -> List[dict]:
     out = []
     for r in w.get("rows", []):
         z = r.get("zone") or {}
-        if z.get("verdict") in ("IN ZONE", "RICH", "NO"):
+        if z.get("verdict") in ("RICH", "NO"):          # "in the zone" is no nudge: that test failed (A60)
             out.append({"symbol": r["symbol"], "verdict": z["verdict"], "text": z.get("headline", ""), "price": z.get("price")})
     return out[:n]
 

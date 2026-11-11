@@ -1,7 +1,7 @@
 """S81 B4: the exit manager and tax selling (`core/exits.py`, `core/harvest.py`, `core/tax_rows.py`). Synthetic data only (rule 7).
 
 Book at the 2026-10-30 close (FY2026-27, the exemption row Rs 1,25,000): WIN (long-term, big gain), NEW (a gain whose lots turn long-term in 12 days), LOSS (a short-term loss),
-CALM (a long-term holding with a small gain), SWG (a swing position), GLD (a gold ETF in the core). A synthetic sell in the year's trades gives the loss harvest a gain to offset.
+CALM (a long-term holding with a small gain), SWG (a recent buy; it was the swing position before A60: a stored 'swing' tag now reads as longterm), GLD (a gold ETF in the core). A synthetic sell in the year's trades gives the loss harvest a gain to offset.
 """
 from __future__ import annotations
 
@@ -63,6 +63,13 @@ def con(tmp_path, monkeypatch):
     return c
 
 
+@pytest.fixture
+def harvest_on(monkeypatch):
+    """A60: exemption and loss harvesting are OFF per sleeve in the live config until the narrower study passes; the tests of the harvest mechanics switch both sleeves on."""
+    real = exits.settings
+    monkeypatch.setattr(exits, "settings", lambda: {**real(), "harvest_core": True, "harvest_longterm": True})
+
+
 def _state(con, day=DAY, total=None):
     h = book.holdings(con, day)
     return {"day": day, "value": total or h["value"], "rows": [{**r, "buyable": r["price"] is not None, "value": r["value"] or 0.0} for r in h["rows"]], "breaker": {"on": False}}
@@ -96,16 +103,23 @@ def test_backfill_gives_every_position_a_plan_from_its_lots_and_sleeve_defaults(
     assert p[NEW]["tax_boundary_date"] == tax_rows.long_term_from(date(2025, 11, 10)) and p[WIN]["tax_boundary_date"] is None
 
 
-def test_open_plan_swing_defaults_and_overrides_and_adding(con):
-    pid = exits.open_plan(con, NOW, "IN", SWG, "swing", 100.0, 500)
+def test_open_plan_longterm_defaults_and_overrides_and_adding(con):
+    pid = exits.open_plan(con, NOW, "IN", SWG, "longterm", 100.0, 500)
     p = exits.get_plan(con, pid)
-    assert p["stop"] < 100 and p["target"] > 100 and p["time_stop_days"] == 21 and p["status"] == "open"
-    dist = 1 - p["stop"] / 100.0
-    assert p["target"] == pytest.approx(100.0 * (1 + 2.0 * dist))                         # a target of twice the stop distance, from the config
-    assert exits.open_plan(con, NOW, "IN", SWG, "swing", 110.0, 100) == pid               # a second buy updates the same plan
-    pid2 = exits.open_plan(con, NOW, "IN", WIN, "longterm", 100.0, 10, plan={"stop": 80.0, "time_stop_days": 30})
+    assert p["stop"] < 100 and p["target"] is None and p["time_stop_days"] is None and p["status"] == "open"       # the longterm sleeve: a stop and a thesis break, no target, no time stop
+    assert 0.12 <= 1 - p["stop"] / 100.0 <= 0.35 and p["thesis_break_kinds"]
+    assert exits.open_plan(con, NOW, "IN", SWG, "longterm", 110.0, 100) == pid            # a second buy updates the same plan
+    assert exits.get_plan(con, pid)["entry_price"] > 100.0
+    pid2 = exits.open_plan(con, NOW, "IN", WIN, "longterm", 100.0, 10, plan={"stop": 80.0, "target": 130.0, "time_stop_days": 30})
     q = exits.get_plan(con, pid2)
-    assert q["stop"] == 80.0 and q["time_stop_days"] == 30
+    assert q["stop"] == 80.0 and q["target"] == 130.0 and q["time_stop_days"] == 30       # a plan can still carry its own levels (the override keys)
+
+
+def test_a_stored_swing_tag_gets_the_longterm_levels_and_there_are_no_swing_defaults(con):
+    """A60: the swing sleeve is deleted; an old plan or tag that still says 'swing' is handled as longterm (no target, no time stop)."""
+    assert "swing" not in exits.DEFAULTS and not hasattr(exits, "swing_score")
+    p = exits.get_plan(con, exits.open_plan(con, NOW, "IN", SWG, "swing", 100.0, 500))
+    assert p["target"] is None and p["time_stop_days"] is None and p["stop"] < 100
 
 
 # --- each exit kind fires once and only once -----------------------------------------------------------------------------------------
@@ -134,7 +148,7 @@ def test_a_stop_order_that_never_filled_is_voided_and_fires_again_next_close(con
 
 
 def test_target_and_time_stop_each_fire_once(con):
-    pid = exits.open_plan(con, NOW, "IN", SWG, "swing", 100.0, 500)
+    pid = exits.open_plan(con, NOW, "IN", SWG, "longterm", 100.0, 500, plan={"target": 125.0, "time_stop_days": 21})        # the levels the swing sleeve used to default to, now given by the plan
     p = exits.get_plan(con, pid)
     px = p["target"] + 1.0
     o = exits.check_quote(con, datetime(2026, 11, 2, 11, 0), {SWG: px})
@@ -149,7 +163,7 @@ def test_target_and_time_stop_each_fire_once(con):
 
 def test_a_name_bought_today_waits_in_the_session_unless_its_stop_fires(con):
     d = datetime(2026, 10, 30, 11, 0)
-    p = exits.get_plan(con, exits.open_plan(con, NOW, "IN", SWG, "swing", 100.0, 500))
+    p = exits.get_plan(con, exits.open_plan(con, NOW, "IN", SWG, "longterm", 100.0, 500, plan={"target": 125.0}))
     _fill(con, SWG, "buy", 10, 100.0, DAY)                                                # shares bought today (a lot dated today)
     assert exits.check_quote(con, d, {SWG: p["target"] + 2.0}) == []                      # target today: no same-day round trip, it waits
     assert con.execute("SELECT count(*) FROM exit_events_s81 WHERE kind='target' AND status='guarded'").fetchone()[0] == 1
@@ -209,7 +223,7 @@ def test_guard_window_comes_from_the_config(con, monkeypatch):
 
 # --- tax figures come from the engine rows --------------------------------------------------------------------------------------------
 
-def test_exemption_harvest_books_at_most_the_exemption_and_buys_back_next_session(con):
+def test_exemption_harvest_books_at_most_the_exemption_and_buys_back_next_session(con, harvest_on):
     exits.backfill_plans(con, DAY)
     room, work = harvest.exemption_room(con, DAY, exits.settings())
     assert work["exemption"] == rules.exemption(2027) == 125000.0 and work["in_last_quarter"] is False
@@ -235,7 +249,7 @@ def _next_session(con, d):
     return nd
 
 
-def test_harvest_sale_buyback_resets_cost_and_never_shares_a_session(con):
+def test_harvest_sale_buyback_resets_cost_and_never_shares_a_session(con, harvest_on):
     exits.backfill_plans(con, DAY)
     o = exits.check_close(con, DAY, None, _state(con))
     sale = [x for x in o if x["kind"] == "harvest" and x["isin"] == WIN][0]
@@ -262,7 +276,7 @@ def test_harvest_sale_buyback_resets_cost_and_never_shares_a_session(con):
     assert n_events == 1
 
 
-def test_harvest_amount_follows_the_dated_row(con, tmp_path, monkeypatch):
+def test_harvest_amount_follows_the_dated_row(con, tmp_path, monkeypatch, harvest_on):
     exits.backfill_plans(con, DAY)
     base_room = harvest.exemption_room(con, DAY, exits.settings())[0]
     src = rules.config_dir()
@@ -283,7 +297,7 @@ def test_harvest_amount_follows_the_dated_row(con, tmp_path, monkeypatch):
         rules._load.cache_clear()
 
 
-def test_exemption_already_used_leaves_no_room_and_no_row_means_no_harvest(con, monkeypatch):
+def test_exemption_already_used_leaves_no_room_and_no_row_means_no_harvest(con, monkeypatch, harvest_on):
     exits.backfill_plans(con, DAY)
     con.execute("INSERT INTO paper_trades VALUES (9002, ?, 9002, NULL, ?, 'X', 'sell', 100, 100.0, 10.0, 130000.0, 0.0, ?)",
                 [date(2026, 9, 1), CALM, json.dumps({"gains": {"lt_eq": 130000.0}})])
@@ -295,7 +309,7 @@ def test_exemption_already_used_leaves_no_room_and_no_row_means_no_harvest(con, 
     assert out == [] and "no row" in notes[0]
 
 
-def test_loss_harvest_offsets_gains_and_buys_back(con):
+def test_loss_harvest_offsets_gains_and_buys_back(con, harvest_on):
     exits.backfill_plans(con, DAY)
     cfg = exits.settings()
     o = exits.check_close(con, DAY, None, _state(con))
@@ -309,9 +323,26 @@ def test_loss_harvest_offsets_gains_and_buys_back(con):
     assert [x for x in exits.check_close(con, DAY, None, _state(con)) if x["isin"] == LOSS] == []
 
 
-def test_core_etf_with_a_non_equity_tax_class_is_not_loss_or_exemption_harvested(con):
+def test_core_etf_with_a_non_equity_tax_class_is_not_loss_or_exemption_harvested(con, harvest_on):
     exits.backfill_plans(con, DAY)
     assert [x for x in exits.check_close(con, DAY, None, _state(con)) if x["isin"] == GLD] == []
+
+
+def test_harvesting_is_off_by_default_and_each_sleeve_has_its_own_switch(con, monkeypatch):
+    """A60: both switches are false in the shipped config; a sleeve whose switch is on is harvested and the other is not."""
+    cfg = exits.settings()
+    assert cfg["harvest_core"] is False and cfg["harvest_longterm"] is False
+    exits.backfill_plans(con, DAY)
+    assert [x for x in exits.check_close(con, DAY, None, _state(con)) if x["kind"] == "harvest"] == []       # off: no exemption or loss harvest at all
+    con.execute("DELETE FROM exit_events_s81")
+    real = exits.settings
+    monkeypatch.setattr(exits, "settings", lambda: {**real(), "harvest_longterm": True})
+    on = [x for x in exits.check_close(con, DAY, None, _state(con)) if x["kind"] == "harvest"]
+    assert on and {x["isin"] for x in on} <= {WIN, NEW, LOSS, CALM, SWG}                                        # the longterm names only: the gold ETF is in the core
+    con.execute("DELETE FROM exit_events_s81")
+    monkeypatch.setattr(exits, "settings", lambda: {**real(), "harvest_core": True})
+    only_core = [x for x in exits.check_close(con, DAY, None, _state(con)) if x["kind"] == "harvest"]
+    assert all(x["isin"] == GLD for x in only_core)                                                             # core on, longterm off: no longterm name is harvested
 
 
 # --- rails ---------------------------------------------------------------------------------------------------------------------------
@@ -399,30 +430,20 @@ def test_a_stop_that_saved_money_scores_good(con):
 
 def test_record_laplace_rate_only_from_twenty(con):
     for i in range(25):
-        con.execute("INSERT INTO exit_scores_s81 (score_id, market, isin, kind, sleeve, trade_id, sold_on, horizon_sessions, diff, diff_pct, outcome) VALUES (?, 'IN', ?, 'target', 'swing', ?, ?, 20, 1.0, 1.0, ?)",
+        con.execute("INSERT INTO exit_scores_s81 (score_id, market, isin, kind, sleeve, trade_id, sold_on, horizon_sessions, diff, diff_pct, outcome) VALUES (?, 'IN', ?, 'target', 'longterm', ?, ?, 20, 1.0, 1.0, ?)",
                     [i + 1, SWG, i + 1, DAY, "good" if i < 20 else "bad"])
     for i in range(5):
-        con.execute("INSERT INTO exit_scores_s81 (score_id, market, isin, kind, sleeve, trade_id, sold_on, horizon_sessions, diff, diff_pct, outcome) VALUES (?, 'IN', ?, 'time', 'swing', ?, ?, 20, -1.0, -1.0, 'bad')",
+        con.execute("INSERT INTO exit_scores_s81 (score_id, market, isin, kind, sleeve, trade_id, sold_on, horizon_sessions, diff, diff_pct, outcome) VALUES (?, 'IN', ?, 'time', 'longterm', ?, ?, 20, -1.0, -1.0, 'bad')",
                     [100 + i, SWG, 100 + i, DAY])
     rec = exits.record(con, 20)
     t = {r["kind"]: r for r in rec["by_kind"]}
     assert t["target"]["n"] == 25 and t["target"]["hit_rate"] == pytest.approx((20 + 1) / (25 + 2), abs=1e-3)
     assert t["time"]["n"] == 5 and "hit_rate" not in t["time"] and "count" in t["time"]["note"]
-    s = exits.swing_score(con)
-    assert s["n"] == 30 and s["grow"] is True and s["excess"] > 0
-    con.execute("UPDATE exit_scores_s81 SET diff_pct=-5.0, outcome='bad'")
-    s2 = exits.swing_score(con)
-    assert s2["grow"] is False and s2["excess"] < 0
-
-
-def test_swing_score_with_few_sales_does_not_grow(con):
-    s = exits.swing_score(con)
-    assert s == {**s, "n": 0, "grow": False} and "base share" in s["why"]
 
 
 # --- the loop's contract -----------------------------------------------------------------------------------------------------------------
 
-def test_orders_have_the_contract_fields_and_off_switch(con, monkeypatch):
+def test_orders_have_the_contract_fields_and_off_switch(con, monkeypatch, harvest_on):
     exits.backfill_plans(con, DAY)
     o = exits.check_close(con, DAY, None, _state(con))
     assert o

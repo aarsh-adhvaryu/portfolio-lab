@@ -1,15 +1,12 @@
-"""Portfolio construction (S79b item 18A): the SIZING step of the paper team's flow.
+"""Portfolio construction (S79b item 18A), after A60 (2026-11-11).
 
-    the paper team proposes a direction with reasons (`paper_decide`)  ->  `construct` sizes it  ->  the independent reviewer checks  ->  code executes.
+`construct` (a shrunk-covariance optimiser that sized the paper book) was tested once against the current sizing rules (`docs/protocols/s79_construct_protocol.md`): inconclusive
+(p 0.41) and never adopted, so the advice tool, the optimiser and the study driver were deleted (rule 10: what does not pass has no live feature). This package keeps
 
-`construct` turns the ensemble forecast (an expected return and a dispersion per name, `fcast`) and a shrunk-covariance risk model (`risk.py`) into target weights through
-a constrained optimiser (`optimiser.py`): the hard rails are constraints, Zerodha charges and the estimated tax of realising gains (`costs.py`) are in the objective, and the
-book is pulled toward the system's own allocation target (`paper/allocation.py`). It never chooses a direction and never trades: the output is weights and the trades they
-imply, and the manager's own execution path (rails, cash, fills, tax) is unchanged. The current sizing rules stay the fallback and decide whenever `construct` is off, not
-adopted, or fails.
-
-Two switches in `configs/s79b.toml [construct]`: `on` (the tool exists and shows its advice, labelled "not adopted") and `adopt` (the manager sizes live decisions with it;
-needs `on`, AND the stored verdict "adopt" of the registered comparison `docs/protocols/s79_construct_protocol.md`, run by `compare.py`).
+    risk.py     the Ledoit-Wolf shrunk covariance (read by `core/state.py` volatilities and `core/card.py`)
+    costs.py    Zerodha charges and the estimated FIFO tax as per-side rates (read by `lab/runner.py`)
+    compare.py  `clean`, the data-break filter `lab/runner.py:build_panel` uses
+    here        the record of the registered study: its protocol hash and the counter row (the learner's counter N keeps it)
 """
 from __future__ import annotations
 
@@ -21,27 +18,8 @@ from typing import Optional
 
 REPO = Path(__file__).resolve().parents[3]
 PROTOCOL = REPO / "docs" / "protocols" / "s79_construct_protocol.md"
-CONFIG = REPO / "configs" / "s79b.toml"
 NOTE = "s79:construct"
 TEMPLATE = "construct_s79"
-
-DEFAULTS = {"on": True, "adopt": False, "risk_aversion": 2.5, "equity_premium": 0.05, "tilt_cap": 0.30, "horizon": 20, "window": 250, "vol_blend": 0.5, "fallback_vol": 0.30,
-            "cash_rate": 0.07, "lambda_target": 5.0, "band_pct": 2.0, "turnover_penalty": 0.0005, "forecast_max_age_days": 10, "freeze_no_forecast": True}
-
-
-def settings() -> dict:
-    """`[construct]` of configs/s79b.toml over the defaults above. A missing file or table gives the defaults (on, not adopted)."""
-    out = dict(DEFAULTS)
-    try:
-        from pflab import _toml
-        out.update({k: v for k, v in (_toml.load(CONFIG).get("construct") or {}).items() if k in DEFAULTS})
-    except Exception:
-        pass
-    return out
-
-
-def is_on() -> bool:
-    return bool(settings()["on"])
 
 
 def protocol_sha() -> str:
@@ -73,25 +51,3 @@ def protocol_ok(con) -> dict:
     except FileNotFoundError:
         return {"registered": reg is not None, "unchanged": False, "why": "the protocol file is missing"}
     return {"registered": reg is not None, "unchanged": reg == now, "why": None if reg == now else ("not registered yet" if reg is None else "the protocol file changed after it was registered")}
-
-
-def verdict(con) -> Optional[dict]:
-    """The stored verdict of the registered backtest comparison (the latest 'compare' run), or None when it has not been run."""
-    try:
-        r = con.execute("SELECT summary_json, as_of, created_at FROM construct_runs_s85 WHERE kind='compare' ORDER BY run_id DESC LIMIT 1").fetchone()
-    except Exception:
-        return None
-    if not r:
-        return None
-    d = json.loads(r[0] or "{}")
-    d["run_at"] = str(r[2])[:16]
-    return d
-
-
-def adopted(con) -> bool:
-    """True only when `on`, `adopt` are both set AND the stored comparison verdict is 'adopt' AND the protocol file is the registered one."""
-    s = settings()
-    if not (s["on"] and s["adopt"]):
-        return False
-    v = verdict(con)
-    return bool(v and v.get("verdict") == "adopt" and protocol_ok(con)["unchanged"])

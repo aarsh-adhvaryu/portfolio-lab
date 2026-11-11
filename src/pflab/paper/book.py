@@ -18,7 +18,7 @@ import math
 from datetime import date, datetime, time, timedelta
 from typing import Dict, List, Optional, Tuple
 
-LT_EXEMPT, ST_RATE, LT_RATE, SLAB = 125_000.0, 0.20, 0.125, 0.30
+LT_EXEMPT, ST_RATE, LT_RATE, SLAB = 125_000.0, 0.20, 0.125, 0.30   # LT_EXEMPT is no longer read by `tax_of` (S82: the tax engine's dated row is); it stays only as the labelled fallback of kg2/position and the pinned copy in lab/engine
 START_CASH = 500_000.0                 # the fake account's cash at the start (his answer 2026-11-01); `[paper] start_cash_rupees` changes it before the start
 CLOSE_AT = time(15, 30)
 BUYABLE = ("equity", "etf")
@@ -215,8 +215,17 @@ def _bucket(tax_class: Optional[str], asset_class: Optional[str], acq: date, day
     return "slab"
 
 
-def tax_of(g: Dict[str, float]) -> float:
-    """The year's tax on its gains by bucket (set-off: a short-term equity loss reduces long-term gains; a long-term loss only long-term ones)."""
+def tax_of(g: Dict[str, float], day: Optional[date] = None) -> float:
+    """The year's tax on its gains by bucket (set-off: a short-term equity loss reduces long-term gains; a long-term loss only long-term ones).
+    The yearly long-term exemption is read from the tax engine's dated row for the financial year of `day` (S82; `core/tax_rows.exemption`, never a literal here);
+    without a `day` it is the one in force today. Only a year BEFORE the first dated row (a historical simulation, e.g. the construction study in 2012) falls back to the
+    labelled estimate `LT_EXEMPT`; every live date is covered by a row."""
+    from pflab.core import tax_rows
+    from pflab.tax import rules
+    try:
+        exempt = tax_rows.exemption(day or date.today())
+    except rules.RuleGap:
+        exempt = LT_EXEMPT
     st, lt_eq, lt_o, slab = g.get("st_eq", 0.0), g.get("lt_eq", 0.0), g.get("lt_other", 0.0), g.get("slab", 0.0)
     if st < 0:
         lt_eq, st = lt_eq + st, 0.0
@@ -224,7 +233,7 @@ def tax_of(g: Dict[str, float]) -> float:
         lt_o, lt_eq = lt_o + lt_eq, 0.0
     if lt_o < 0:
         lt_o = 0.0
-    return ST_RATE * st + LT_RATE * max(0.0, lt_eq - LT_EXEMPT) + LT_RATE * lt_o + SLAB * max(0.0, slab)
+    return ST_RATE * st + LT_RATE * max(0.0, lt_eq - exempt) + LT_RATE * lt_o + SLAB * max(0.0, slab)
 
 
 def year_gains(con, fy: int) -> Dict[str, float]:
@@ -354,7 +363,7 @@ def fill(con, upto: date, now: datetime, live: Optional[Dict[str, float]] = None
             after = dict(before)
             for k, v in gains.items():
                 after[k] = after.get(k, 0.0) + v
-            tax = round(max(0.0, tax_of(after) - tax_of(before)), 2)       # drill (S81): a sale at a loss after gains booked this year ADDS a negative tax (a set-off); the ledger's charge cannot be negative and the sale used to fail the whole `paper` job. No refund is booked: the estimate stays cautious
+            tax = round(max(0.0, tax_of(after, d) - tax_of(before, d)), 2)       # drill (S81): a sale at a loss after gains booked this year ADDS a negative tax (a set-off); the ledger's charge cannot be negative and the sale used to fail the whole `paper` job. No refund is booked: the estimate stays cautious
             _apply_sell(con, d, oid, isin, meta, q, px, fee, tax, now)
             tid = _trade(con, d, oid, did, isin, meta["symbol"], "sell", q, px, fee, round(sum(gains.values()), 2), tax,
                          {"gains": {k: round(v, 2) for k, v in gains.items()}, "tax_label": "estimate: FIFO lots, cess and surcharge not added", **_basis(live_px, now)})
@@ -420,6 +429,7 @@ def catch_up(con, upto: date, now: datetime) -> dict:
     if last is None:
         return {"skipped": "not started"}
     days, filled, actions = [], [], []
+    prev = last
     for d in sessions_after(con, last, upto):
         if _own():                                              # S79b 18E: the session's splits, bonuses, dividends and ISIN changes reach the ledger BEFORE its fills and its mark
             try:
@@ -431,6 +441,9 @@ def catch_up(con, upto: date, now: datetime) -> dict:
         flow = 0.0
         if _own():
             flow = float(con.execute("SELECT coalesce(sum(amount), 0) FROM events WHERE kind='deposit' AND account_id='SYSBANK' AND trade_date = ? AND ref LIKE 'topup:%'", [d]).fetchone()[0])
+        from pflab.us import transfer                           # S82 (A57): rupees moved to the US sub-book since the last marked day are money OUT of the rupee book (inside the whole book)
+        flow += transfer.rupee_flows(con, prev, d)
+        prev = d
         mark(con, d, flow)
         days.append(str(d))
     return {"days": days, "filled": filled, "corporate_actions": actions}

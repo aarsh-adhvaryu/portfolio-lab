@@ -160,18 +160,6 @@ def check(con, agent: str, est_inr: float, n_in: int, n_out: int, now: datetime,
         raise
 
 
-def mode_pace(con, now: datetime, layer: str = "workers") -> Optional[str]:
-    """S79 (A42): the clock's MODE sets a rupee pace per hour for the system's OWN optional work (the agenda). Returns why a paid item should wait, or None.
-    It is not applied to his orders or to a mission already under way: they are held by the day and month limits only."""
-    from pflab import markets
-    if not markets.pace_spend():
-        return None
-    _m, md = markets.primary(now)
-    hour = _spent_system(con, agents_in(layer), now - timedelta(hours=1))
-    budget = markets.rupee_per_hour(md)
-    return f"the {layer} have spent ~Rs {hour:,.1f} in the last hour; the {md} mode paces ~Rs {budget:,.0f} an hour" if hour >= budget else None
-
-
 def acc_end(cfg: dict, now: datetime) -> Optional[datetime]:
     """When a refusal by the acceptance window's own cap can next change: never inside the window (a cap spent stays spent)."""
     w = an.acceptance(cfg, now)

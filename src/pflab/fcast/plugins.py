@@ -48,7 +48,7 @@ class Lens:
 
 
 REGISTRY: Dict[str, Lens] = {}
-_BUILTIN = ("pflab.quant.volume_profile", "pflab.fcast.lens_wave", "pflab.fcast.lens_tone", "pflab.sentiment.lens", "pflab.quant.lens_wave", "pflab.quant.lens_tone")
+_BUILTIN: tuple = ()      # modules that provide a lens and a `register_lens()`; empty since A60 (the three shadow lenses were built on features whose studies failed). A lens that passes a registered study is named here.
 
 
 def register(lens: Lens) -> Lens:
@@ -115,8 +115,7 @@ _REAL: Dict[tuple, bool] = {}
 
 
 def is_market_series(market: str, close: pd.Series) -> bool:
-    """True when `close` is the market's own index series as held in the data folder (same dates, same level). Lenses read the real files (daily bars, wave statistics, sentiment
-    inputs) beside the close they are given; on any other series (a synthetic one in a test, a different index) their inputs would not match it, so none runs. The check is
+    """True when `close` is the market's own index series as held in the data folder (same dates, same level). Lenses read the real files (daily bars and any other input) beside the close they are given; on any other series (a synthetic one in a test, a different index) their inputs would not match it, so none runs. The check is
     cached per (market, first and last date, length)."""
     if not REQUIRE_REAL_SERIES:
         return True

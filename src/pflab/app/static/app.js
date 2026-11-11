@@ -870,7 +870,7 @@ function renderResearch(d) {
       <div class="row wrapr" style="justify-content:space-between"><span class="lbl">Ready plans for the next money</span><span class="tiny muted">${st.at ? 'kept current; last refresh ' + esc(String(st.at).replace('T', ' ').slice(0, 16)) : 'being prepared…'} · proposals, not orders: you place every trade</span></div>
       ${st.error ? `<div class="small warn">${esc(st.error)}</div>` : ''}
       ${d.plans.map(planCard).join('') || '<span class="small muted">No plan yet: no FD tranche or monthly amount is set, or the first refresh is running.</span>'}
-      <span class="tiny muted">The plans are the tested advisor (S45). "Buy around" and "Zone" describe the price (the buy zone); they do not change the plan until a pre-registered study shows that waiting for the zone beats buying at once.</span>
+      <span class="tiny muted">The plans are the tested advisor (S45). "Buy around" and "Zone" describe the price (the buy zone); they do not change the plan: the test of waiting for the zone against buying at once failed (S54c), so the plan buys at once.</span>
       <div class="cols" style="gap:10px">
         <div style="flex:1 1 300px;background:#1A1215;border:1px solid #7A2E2E;border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px">
           <span class="lbl down">Not buying now: the guards say no</span>

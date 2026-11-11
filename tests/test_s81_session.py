@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from pflab.core import fills, preopen, session, views
+from pflab.core import exits, fills, preopen, session, views
 from pflab.paper import book, cadence
 from tests.test_s80_core import AAA, BBB, DAYS, GLD, NOW, con  # noqa: F401  (the fixture)
 
@@ -19,8 +19,12 @@ MON, TUE = date(2026, 11, 2), date(2026, 11, 3)
 
 
 @pytest.fixture
-def db(con):
-    """The S80 book plus a name the book does not hold (CCC), so an entry has room under the 10% rail."""
+def db(con, monkeypatch):
+    """The S80 book plus a name the book does not hold (CCC), so an entry has room under the 10% rail. The shipped config has no stop on the longterm sleeve (S82 C4b); these tests
+    exercise the stop MACHINERY, so they switch it on."""
+    from pflab.core import exits as _exits
+    real = _exits.settings
+    monkeypatch.setattr(_exits, "settings", lambda: {**real(), "longterm": {**real()["longterm"], "stop": True}})
     con.execute("INSERT INTO instruments (isin, key_kind, asset_class, tax_class, listed, symbol, name, source, built_at) VALUES (?, 'isin', 'equity', 'EQUITY', TRUE, 'CCC', 'CCC Ltd', 'synthetic', now())", [CCC])
     for d in DAYS:
         con.execute("INSERT INTO prices VALUES (?, ?, 100.0, 'EQ', 'nse_bhavcopy', now())", [CCC, d])
@@ -62,6 +66,39 @@ def run_day(db, day, bars_dir, tmp_path, **kw):
 def fills_of(con, day=None):
     q = "SELECT ts, symbol, side, qty, quote, price, half_spread_bps, slippage_bps, kind, flag FROM session_fills_s81" + (" WHERE day=?" if day else "") + " ORDER BY fill_id"
     return con.execute(q, [day] if day else []).fetchall()
+
+
+def fb_plan(con, now, isin, entry, qty, stop=None, target=None, sessions=15):
+    """A plan in the session fallback's table (the code that reads it stays, for the day the exit manager cannot be imported); its opener was a swing function and is gone (A60)."""
+    from pflab import markets
+    from pflab.pm.store import next_id
+    pid = next_id(con, "session_exit_fb_s81", "plan_id")
+    con.execute("INSERT INTO session_exit_fb_s81 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", [pid, "IN", isin, now.date(), entry, qty, stop or round(entry * 0.92, 2), target or round(entry * 1.15, 2),
+                                                                                      markets.get("IN").session_after(now.date(), sessions), "open", None, "fallback plan (core.exits missing)"])
+    return pid
+
+
+def issue_view(con, name="CCC", share=0.5):
+    """The tactical view that now carries a name in (the swing trigger it replaces is deleted): buys in session, once, under the timing rules."""
+    ok = views.issue(con, NOW, DAYS[-1], direction=1, names=[name], share_of_budget=share, horizon_sessions=10, stop_pct=8.0, reason=f"{name} looks cheap against its sector after the result",
+                     isin_of=lambda s: {"CCC": CCC}.get(s))
+    assert ok["ok"]
+    return ok["view_id"]
+
+
+def plan_after_entry(con, stop, target=None, sleeve="longterm", fallback=False):
+    """An `on_step` hook: the moment the view's buy has filled, open the exit plan with the exit manager's own function (the session does not open plans any more); `fallback`: in the
+    session fallback's table instead (use it with the `no_exits` fixture, which makes the session read that table)."""
+    seen = []
+
+    def hook(t, r):
+        if not seen and any(f["kind"] == "view" and f["side"] == "buy" for f in r["fills"]):
+            f = [x for x in r["fills"] if x["kind"] == "view"][0]
+            if fallback:
+                seen.append(fb_plan(con, t, CCC, f["price"], f["qty"], stop=stop, target=target))
+            else:
+                seen.append(exits.open_plan(con, t, "IN", CCC, sleeve, f["price"], f["qty"], {"stop": stop, "target": target} if target else {"stop": stop}))
+    return hook
 
 
 # --- the model ---------------------------------------------------------------------------------------------------------------------------------
@@ -109,7 +146,7 @@ def test_a_bigger_order_pays_more_basis_points_in_the_book(db):
 def test_no_same_day_round_trip_a_sale_of_todays_shares_is_held_and_a_stop_fills_flagged(db):
     t = datetime.combine(MON, time(10, 0))
     liq = {"adv_rupees": 1.0e9, "typical_minute_volume": 10000.0}
-    assert fills.execute(db, t, CCC, "buy", quote=100.0, qty=300, kind="swing_entry", liq=liq)["status"] == "filled"
+    assert fills.execute(db, t, CCC, "buy", quote=100.0, qty=300, kind="view", liq=liq)["status"] == "filled"
     held = fills.execute(db, t + timedelta(minutes=30), CCC, "sell", quote=110.0, qty=300, kind="target", liq=liq)
     assert held["status"] == "held" and "round trip" in held["why"] and book.positions(db)[CCC] == 300
     stop = fills.execute(db, t + timedelta(minutes=40), CCC, "sell", quote=95.0, qty=300, kind="stop", liq=liq, bypass_guard=True)
@@ -130,7 +167,7 @@ def test_selling_older_shares_and_buying_back_a_name_sold_today(db):
 # --- the session loop on replayed bars -------------------------------------------------------------------------------------------------------------
 
 def test_a_stop_hit_mid_session_fills_at_the_replayed_quote_plus_slippage_never_better(db, bars_dir, tmp_path, no_exits):
-    session._fb_open_plan(db, NOW, AAA, 100.0, 1000)                                    # entry 100: stop 92, target 115 (the fallback plan)
+    fb_plan(db, NOW, AAA, 100.0, 1000)                                                  # entry 100: stop 92, target 115 (the fallback plan)
     write_bars(bars_dir, "AAA", 100.0, {MON: lambda i: 100.0 if i < 105 else 91.0})      # the 11:00 minute closes below the stop
     r = run_day(db, MON, bars_dir, tmp_path, isins=[AAA])
     f = fills_of(db, MON)
@@ -143,24 +180,24 @@ def test_a_stop_hit_mid_session_fills_at_the_replayed_quote_plus_slippage_never_
     assert db.execute("SELECT status FROM session_exit_fb_s81").fetchone()[0] in ("closed", "open")
 
 
-def test_a_swing_entry_fires_on_its_trigger_only_after_the_first_15_minutes_and_near_vwap(db, bars_dir, tmp_path, no_exits):
-    session.add_trigger(db, NOW, CCC, "above", 101.0, amount=50000.0, valid_from=MON, stop_price=97.0, target_price=110.0, reason="breakout above its range")
-    write_bars(bars_dir, "CCC", 100.0, {MON: lambda i: 100.0 if i < 3 else 102.0})       # through the trigger at 09:18, flat near VWAP after that
-    r = run_day(db, MON, bars_dir, tmp_path, isins=[CCC])
+def test_a_view_entry_waits_out_the_first_15_minutes_and_fills_near_vwap_and_its_stop_plan_opens(db, bars_dir, tmp_path):
+    issue_view(db)
+    write_bars(bars_dir, "CCC", 100.0, {MON: lambda i: 100.0})                              # flat on its VWAP all day
+    r = run_day(db, MON, bars_dir, tmp_path, isins=[CCC], on_step=plan_after_entry(db, 97.0, 110.0))
     f = fills_of(db, MON)
-    assert len(f) == 1 and f[0][8] == "swing_entry" and f[0][2] == "buy"
-    assert f[0][0].time() == time(9, 30)                                               # hit at 09:20 but the first 15 minutes are barred: the first step at 09:30
+    assert len(f) == 1 and f[0][8] == "view" and f[0][2] == "buy"
+    assert f[0][0].time() == time(9, 30)                                                   # the 09:20 and 09:25 steps are inside the first 15 minutes: the first step that may buy is 09:30
     waits = db.execute("SELECT what FROM session_log_s81 WHERE kind='wait'").fetchall()
     assert waits and "opening spike" in waits[0][0]
-    assert f[0][5] > f[0][4] >= 101.0
-    plan = db.execute("SELECT stop_price, target_price, status FROM session_exit_fb_s81 WHERE isin=?", [CCC]).fetchone()
-    assert plan == (97.0, 110.0, "open")                                               # the entry opened its exit plan
-    assert db.execute("SELECT status FROM session_triggers_s81").fetchone()[0] == "fired"
-    assert r["steps"] == 74                                                          # 09:20 ... 15:25 every 5 minutes
+    assert f[0][5] > f[0][4] >= 100.0                                                       # filled worse than the quote
+    plan = db.execute("SELECT stop, target, status, sleeve FROM exit_plans_s81 WHERE isin=?", [CCC]).fetchone()
+    assert plan == (97.0, 110.0, "open", "longterm")                                       # the exit plan opened right after the fill, by the exit manager's own function
+    assert json.loads(db.execute("SELECT executed_json FROM core_views_s80").fetchone()[0])[CCC]["qty"] > 0      # carried out once
+    assert r["steps"] == 74                                                                # 09:20 ... 15:25 every 5 minutes
 
 
-def test_a_swing_entry_waits_when_the_price_is_away_from_vwap_or_the_volume_is_thin(db, bars_dir, tmp_path, no_exits):
-    session.add_trigger(db, NOW, CCC, "above", 101.0, amount=50000.0, valid_from=MON)
+def test_a_view_entry_waits_when_the_price_is_away_from_vwap_or_the_volume_is_thin(db, bars_dir, tmp_path, no_exits):
+    issue_view(db)
     write_bars(bars_dir, "CCC", 100.0, {MON: lambda i: 100.0 + min(i, 40) * 0.2})        # a steady run up: by 09:30 the price is 1.5% above the day's VWAP
     run_day(db, MON, bars_dir, tmp_path, isins=[CCC], last=time(10, 0))
     assert fills_of(db) == []
@@ -172,22 +209,37 @@ def test_a_swing_entry_waits_when_the_price_is_away_from_vwap_or_the_volume_is_t
     run_day(db, MON, bars_dir, tmp_path, isins=[CCC], last=time(10, 0))
     assert fills_of(db) == []
     assert any("typical minute volume" in w[0] for w in db.execute("SELECT what FROM session_log_s81 WHERE kind='wait'").fetchall())
-    assert db.execute("SELECT status FROM session_triggers_s81").fetchone()[0] == "armed"
+    assert json.loads(db.execute("SELECT executed_json FROM core_views_s80").fetchone()[0] or "{}") == {}     # still waiting: not carried out
 
 
 def test_with_no_minute_bars_an_entry_waits_and_says_so(db, no_exits):
-    session.add_trigger(db, NOW, CCC, "above", 101.0, amount=50000.0, valid_from=MON)
+    issue_view(db)
     r = session.run_once(db, datetime.combine(MON, time(11, 0)), quotes={CCC: 103.0}, bars={}, liq={CCC: {"adv_rupees": 1e9, "typical_minute_volume": 1e4}}, data_root=None)
     assert fills_of(db) == [] and r["waiting"] and "no minute bars" in r["waiting"][0]["why"][0]
 
 
-def test_a_same_day_exit_is_held_to_the_next_session_unless_its_stop_fires(db, bars_dir, tmp_path, no_exits):
-    session.add_trigger(db, NOW, CCC, "above", 101.0, amount=50000.0, valid_from=MON, stop_price=97.0, target_price=110.0)
-    # Monday: in at 09:30, then through the 110 target at 11:00: the target sale would be a same-day round trip
-    write_bars(bars_dir, "CCC", 100.0, {MON: lambda i: 102.0 if i < 105 else 111.0, TUE: lambda i: 108.0})
-    run_day(db, MON, bars_dir, tmp_path, isins=[CCC])
+def test_a_queued_buy_waits_for_the_timing_rules_too(db, bars_dir, tmp_path, no_exits):
+    """The other entry that still exists: a buy the guard held to the next session goes through the same VWAP and volume check before it is filled."""
+    db.execute("INSERT INTO session_queue_s81 (queue_id, market, isin, side, qty, kind, plan_id, reason, queued_on, run_on, status) VALUES (1,'IN',?,'buy',300,'rebalance',NULL,'sold today, bought back',?,?,'queued')",
+               [CCC, date(2026, 10, 30), MON])
+    write_bars(bars_dir, "CCC", 100.0, {MON: lambda i: 100.0 + min(i, 40) * 0.2})
+    run_day(db, MON, bars_dir, tmp_path, isins=[CCC], last=time(10, 0))
+    assert fills_of(db) == [] and db.execute("SELECT status FROM session_queue_s81").fetchone()[0] == "queued"
+    assert any("queued buy waits" in w[0] and "VWAP" in w[0] for w in db.execute("SELECT what FROM session_log_s81 WHERE kind='wait'").fetchall())
+    write_bars(bars_dir, "CCC", 100.0, {MON: lambda i: 100.0})
+    run_day(db, MON, bars_dir, tmp_path, isins=[CCC], last=time(10, 0))
     f = fills_of(db, MON)
-    assert [x[8] for x in f] == ["swing_entry"] and book.positions(db)[CCC] > 0          # no sale on the day of entry
+    assert [x[8] for x in f] == ["rebalance"] and f[0][0].time() == time(9, 30)
+    assert db.execute("SELECT status FROM session_queue_s81").fetchone()[0] == "done"
+
+
+def test_a_same_day_exit_is_held_to_the_next_session_unless_its_stop_fires(db, bars_dir, tmp_path, no_exits):
+    issue_view(db)
+    # Monday: in at 09:30 (stop 97, target 110 in the fallback table right after the fill), then through the 110 target at 11:00: the target sale would be a same-day round trip
+    write_bars(bars_dir, "CCC", 100.0, {MON: lambda i: 102.0 if i < 105 else 111.0, TUE: lambda i: 108.0})
+    run_day(db, MON, bars_dir, tmp_path, isins=[CCC], on_step=plan_after_entry(db, 97.0, 110.0, fallback=True))
+    f = fills_of(db, MON)
+    assert [x[8] for x in f] == ["view"] and book.positions(db)[CCC] > 0                 # no sale on the day of entry
     q = db.execute("SELECT status, kind, run_on FROM session_queue_s81").fetchall()
     assert q == [("queued", "target", TUE)]
     assert any("same-day round trip" in x[0] for x in db.execute("SELECT what FROM session_log_s81 WHERE kind='queue'").fetchall())
@@ -197,12 +249,25 @@ def test_a_same_day_exit_is_held_to_the_next_session_unless_its_stop_fires(db, b
     assert db.execute("SELECT status FROM session_queue_s81").fetchone()[0] == "done"
 
 
-def test_a_stop_on_the_day_of_entry_fills_and_the_day_is_flagged(db, bars_dir, tmp_path, no_exits):
-    session.add_trigger(db, NOW, CCC, "above", 101.0, amount=50000.0, valid_from=MON, stop_price=97.0, target_price=110.0)
+def test_the_exit_manager_holds_a_same_day_target_itself_and_sells_it_at_the_next_sessions_first_step(db, bars_dir, tmp_path):
+    """With the real exit manager (not the fallback) the same-day target is not even emitted (`exits._sell`: only a stop sells today's shares), so nothing is queued; the plan stays."""
+    issue_view(db)
+    write_bars(bars_dir, "CCC", 100.0, {MON: lambda i: 102.0 if i < 105 else 111.0, TUE: lambda i: 111.0})
+    run_day(db, MON, bars_dir, tmp_path, isins=[CCC], on_step=plan_after_entry(db, 97.0, 110.0))
+    assert [x[8] for x in fills_of(db, MON)] == ["view"] and book.positions(db)[CCC] > 0
+    assert db.execute("SELECT count(*) FROM session_queue_s81").fetchone()[0] == 0
+    assert db.execute("SELECT status FROM exit_plans_s81 WHERE isin=?", [CCC]).fetchone()[0] == "open"
+    run_day(db, TUE, bars_dir, tmp_path, isins=[CCC])
+    g = fills_of(db, TUE)
+    assert [x[8] for x in g] == ["target"] and g[0][0].time() == time(9, 20) and g[0][4] == 111.0 and CCC not in book.positions(db)       # a target is no late kind: the first step of the next session
+
+
+def test_a_stop_on_the_day_of_entry_fills_and_the_day_is_flagged(db, bars_dir, tmp_path):
+    issue_view(db)
     write_bars(bars_dir, "CCC", 100.0, {MON: lambda i: 102.0 if i < 105 else 96.0})
-    run_day(db, MON, bars_dir, tmp_path, isins=[CCC])
+    run_day(db, MON, bars_dir, tmp_path, isins=[CCC], on_step=plan_after_entry(db, 97.0, 110.0))
     f = fills_of(db, MON)
-    assert [x[8] for x in f] == ["swing_entry", "stop"] and f[1][9] and "same-day round trip" in f[1][9]
+    assert [x[8] for x in f] == ["view", "stop"] and f[1][9] and "same-day round trip" in f[1][9]
     assert CCC not in book.positions(db)
     assert db.execute("SELECT count(*) FROM session_queue_s81").fetchone()[0] == 0
 
@@ -253,8 +318,8 @@ def test_the_tactical_view_is_carried_out_in_session_once_and_the_close_does_not
 
 def test_the_circuit_breaker_stops_every_buy_in_session(db, bars_dir, tmp_path, no_exits, monkeypatch):
     monkeypatch.setattr(cadence, "breaker", lambda con: {"on": True, "drawdown": -0.2, "limit": -0.12})
-    session.add_trigger(db, NOW, CCC, "above", 101.0, amount=50000.0, valid_from=MON)
-    write_bars(bars_dir, "CCC", 100.0, {MON: lambda i: 102.0})
+    issue_view(db)
+    write_bars(bars_dir, "CCC", 100.0, {MON: lambda i: 100.0})
     run_day(db, MON, bars_dir, tmp_path, isins=[CCC], last=time(10, 0))
     assert fills_of(db) == []
     assert any("circuit breaker" in w[0] for w in db.execute("SELECT what FROM session_log_s81 WHERE kind='skip'").fetchall())
@@ -320,12 +385,13 @@ def _world(root):
 
 def test_the_preopen_plan_has_the_conditional_orders_their_triggers_and_numbers(db, tmp_path, no_exits):
     _world(tmp_path / "data")
-    session._fb_open_plan(db, NOW, AAA, 100.0, 1000)
-    session.add_trigger(db, NOW, CCC, "above", 101.0, amount=50000.0, valid_from=MON, stop_price=97.0, reason="breakout")
+    fb_plan(db, NOW, AAA, 100.0, 1000)
+    vid = issue_view(db)
     r = preopen.ensure_plan(db, datetime.combine(MON, time(8, 20)), "IN", root=tmp_path / "data")
-    assert r["made"] and r["orders"] == 4 and r["late"] is False                         # a stop, a target, a time stop (the fallback plan) and the trigger
+    assert r["made"] and r["orders"] == 4 and r["late"] is False                         # a stop, a target, a time stop (the fallback plan) and the tactical view
     p = preopen.get_plan(db, "IN", MON)
-    assert "Pre-open plan for Mon 02 Nov 2026" in p["text"] and "buy about Rs 50,000 of CCC if it rises to 101.00" in p["text"] and "sell AAA if it falls to 92.00" in p["text"]
+    assert "Pre-open plan for Mon 02 Nov 2026" in p["text"] and f"tactical view #{vid} (up on CCC): carried out in session under the timing rules" in p["text"] and "sell AAA if it falls to 92.00" in p["text"]
+    assert "swing" not in p["text"].lower() and "Timing rule for entries: not in the first 15 minutes" in p["text"]
     assert "S&P 500" in p["text"] and "Expected Nifty 50 gap about" in p["text"] and "moves no order" in p["text"]
     assert preopen.ensure_plan(db, datetime.combine(MON, time(8, 40)), "IN", root=tmp_path / "data")["kept"] is True
     late = preopen.ensure_plan(db, datetime.combine(TUE, time(11, 0)), "IN", root=tmp_path / "data")
@@ -336,14 +402,14 @@ def test_the_preopen_plan_has_the_conditional_orders_their_triggers_and_numbers(
 
 def test_the_1545_report_says_what_the_plan_was_what_ran_what_filled_and_what_did_not(db, bars_dir, tmp_path, no_exits):
     _world(tmp_path / "data")
-    session.add_trigger(db, NOW, CCC, "above", 101.0, amount=50000.0, valid_from=MON, stop_price=97.0, target_price=110.0)
+    issue_view(db)
     preopen.ensure_plan(db, datetime.combine(MON, time(8, 30)), "IN", root=tmp_path / "data")
     write_bars(bars_dir, "CCC", 100.0, {MON: lambda i: 102.0 if i < 105 else 111.0})
-    run_day(db, MON, bars_dir, tmp_path, isins=[CCC])
+    run_day(db, MON, bars_dir, tmp_path, isins=[CCC], on_step=plan_after_entry(db, 97.0, 110.0, fallback=True))
     t = session.report_day(db, MON)
-    assert "Session Mon 02 Nov" in t and "Plan: 1 conditional order(s) (1 swing entry), made 08:30" in t and "expected Nifty gap about" in t
+    assert "Session Mon 02 Nov" in t and "Plan: 1 conditional order(s) (1 view), made 08:30" in t and "expected Nifty gap about" in t
     assert "Checks: 74 session check(s) between 09:20 and 15:25, 74 with live quotes" in t
-    assert "Filled: 1 paper order(s)" in t and "buy" in t and "CCC (swing_entry)" in t and "against the quote" in t and "slippage" in t
+    assert "Filled: 1 paper order(s)" in t and "buy" in t and "CCC (view)" in t and "against the quote" in t and "slippage" in t
     assert "Held to the next session: 1 order(s)" in t and "Waited:" in t
     assert "Post-close loop: not yet" in t
     assert len(t.splitlines()) <= 15
@@ -375,8 +441,8 @@ def test_the_replay_never_shows_the_loop_a_minute_that_had_not_closed(db, bars_d
 
 def test_today_shows_one_compact_session_card(db, bars_dir, tmp_path, no_exits):
     from pflab.core import screens
-    session.add_trigger(db, NOW, CCC, "above", 101.0, amount=50000.0, valid_from=MON)
-    write_bars(bars_dir, "CCC", 100.0, {MON: lambda i: 102.0})
+    issue_view(db)
+    write_bars(bars_dir, "CCC", 100.0, {MON: lambda i: 100.0})
     run_day(db, MON, bars_dir, tmp_path, isins=[CCC], last=time(9, 40))
     v = screens.view(db, datetime.combine(MON, time(9, 41)))
     c = v["session"]

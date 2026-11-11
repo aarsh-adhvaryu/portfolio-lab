@@ -57,18 +57,17 @@ def test_the_fill_time_rail_in_paper_rails_uses_the_same_limits(con):
     assert hard.buy_room(con, ETFS["GOLDBEES"][0], day) == pytest.approx(0.35 * total)
     assert hard.buy_room(con, STOCKS[0][0], day) < 0.10 * total + 1e-6
     assert "60%" in hard.describe()["one ETF"]
-    assert hard.rails_denominator(con, day) == pytest.approx(total)                  # no whole-book function yet: the rupee book
+    assert hard.rails_denominator(con, day) == pytest.approx(total)                  # no US sub-book open: the whole book is the rupee book
 
 
 def test_the_denominator_hook_points_at_the_whole_book_when_it_exists(con, monkeypatch):
+    from pflab.us import wholebook
     day = DAYS[-1]
     total = book.holdings(con, day)["value"]
-    fake = types.ModuleType("pflab.us.wholebook")
-    fake.whole_book_inr = lambda c, d: {"whole_inr": 2.0 * total}
-    monkeypatch.setitem(sys.modules, "pflab.us.wholebook", fake)
+    monkeypatch.setattr(wholebook, "whole_book_inr", lambda c, d, root=None: {"whole_inr": 2.0 * total})
     assert hard.rails_denominator(con, day) == pytest.approx(2.0 * total)
     assert hard.buy_room(con, ETFS["NIFTYBEES"][0], day) == pytest.approx(0.60 * 2.0 * total)       # the rails are a share of the WHOLE book (A57)
-    fake.whole_book_inr = lambda c, d: (_ for _ in ()).throw(RuntimeError("no fx"))
+    monkeypatch.setattr(wholebook, "whole_book_inr", lambda c, d, root=None: (_ for _ in ()).throw(RuntimeError("no fx")))
     assert hard.rails_denominator(con, day) == pytest.approx(total)                  # a failure never skips a rail: the rupee book
 
 

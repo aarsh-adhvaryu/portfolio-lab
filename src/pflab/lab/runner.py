@@ -125,7 +125,8 @@ NEWS_CLOSE_HOUR = 15.5                                         # a result stampe
 
 def build_results(root: Path, keys: List[str], sessions: pd.DatetimeIndex, end: date, first_year: int = 2010) -> Dict[str, List[str]]:
     """{key: [the session on whose close each 'Financial Results' announcement of the name is known]}, from the BSE announcements (category Result, subcategory Financial Results).
-    The time is the dissemination time where the file has one (from mid-2015), else the news time. A stamp after 15:30 is known at the next session's close. The scrip code is mapped
+    The time is the dissemination time where the file has one (from mid-2015), else the news time; with neither (A58, S82) the filing counts from the next trading day (the
+    file's own day plus one, then the first session on or after it). A stamp after 15:30 is known at the next session's close. The scrip code is mapped
     to the ISIN valid on that day. Nothing is built for years the files do not cover (the variant that reads it then holds cash)."""
     import glob
     base = Path(root) / "bse_announcements"
@@ -137,11 +138,12 @@ def build_results(root: Path, keys: List[str], sessions: pd.DatetimeIndex, end: 
             d = pd.read_parquet(f, columns=["scrip_code", "category", "subcategory", "news_dt", "dissem_dt"])
             d = d[(d["category"] == "Result") & (d["subcategory"] == "Financial Results")]
             if len(d):
-                frames.append(d)
+                frames.append(d.assign(file_day=pd.Timestamp(Path(f).stem)))
     if not frames:
         return {}
     a = pd.concat(frames, ignore_index=True)
     ts = a["dissem_dt"].where(a["dissem_dt"].notna(), a["news_dt"])
+    ts = ts.where(ts.notna(), a["file_day"] + pd.Timedelta(days=1))               # A58: no time at all -> the next day, so the next session at the earliest
     a = a.assign(ts=ts).dropna(subset=["ts"])
     hour = a["ts"].dt.hour + a["ts"].dt.minute / 60.0
     day = a["ts"].dt.normalize() + pd.to_timedelta((hour > NEWS_CLOSE_HOUR).astype(int), unit="D")

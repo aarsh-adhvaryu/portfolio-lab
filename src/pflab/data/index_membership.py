@@ -118,16 +118,6 @@ class CarryBackTooLong(RuntimeError):
 
 
 # -- sources -----------------------------------------------------------
-def _session() -> requests.Session:
-    s = requests.Session()
-    s.headers.update({**HEADERS, "Accept": "*/*", "Referer": CIRCULARS_REFERER})
-    try:
-        s.get(CIRCULARS_REFERER, timeout=40)
-    except Exception:
-        pass
-    return s
-
-
 def fetch_current(index: str = "NIFTY200", root: Optional[Path] = None,
                   refresh: bool = False) -> pd.DataFrame:
     """Today's constituent list, with ISIN. Cached on disk."""

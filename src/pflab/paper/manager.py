@@ -21,16 +21,12 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
-ACTIONS = ("BUY", "ADD", "REDUCE", "SELL", "HOLD", "WAIT")
 KIND = {"BUY": "add", "ADD": "add", "REDUCE": "trim", "SELL": "trim", "HOLD": "hold", "WAIT": "wait"}
 HORIZONS = (7, 28, 84, 182)
 GATE_SESSIONS = 40                     # about two months of sessions (his choice, 2026-11-01)
 MONTHLY_RUPEES = 500.0                 # the team's money for the paper portfolio a month (his choice: the cap raised to Rs 1,500 for it)
 MISSION_RUPEES = 100.0                 # one piece of the team's work on the paper portfolio at most (a standard investigation measured Rs 50-80)
-REVIEW_EVERY_DAYS = 7
-MOVE_DAY, MOVE_SINCE, MOVE_LIVE = 0.08, 0.15, 0.03            # a close-to-close move, a move since the last review, a move today on the live quote
 CASH_PA = 0.07                         # what cash is taken to earn when keeping cash is scored (an assumption, stated)
-ACTIVE = ("planning", "awaiting_approval", "working", "reviewing", "synthesising")
 
 
 # --- settings and money -------------------------------------------------------------------------------------------------------------

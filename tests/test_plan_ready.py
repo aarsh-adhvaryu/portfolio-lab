@@ -107,3 +107,15 @@ def test_no_ring_without_names_to_start(con, monkeypatch):
     adv = fake_run()(con, ASOF, 1.0, True)[1]
     r = ready.ring(con, ASOF, adv, {})
     assert r["shown"] and not r["possible"] and "new names on your list" in r["why"]
+
+
+def test_the_zone_verdict_does_not_order_the_ring(con, monkeypatch):
+    """A60 (the buy-zone test failed, S54c): a name 'IN ZONE' is not picked ahead of the others; picks go in the order of the list."""
+    names = [("AAA", "A"), ("BBB", "B"), ("CCC", "C"), ("DDD", "D"), ("EEE", "E")]
+    monkeypatch.setattr(guards, "stock_list", lambda: [{"symbol": s, "isin": f"INE000{k}01001"} for s, k in names])
+    adv = fake_run()(con, ASOF, 1.0, True)[1]
+    adv.skipped = []
+    zones = {f"INE000{k}01001": {"bottom": 900.0, "top": 980.0, "price": 1000.0, "verdict": "IN ZONE" if s == "EEE" else "ABOVE ZONE"}
+             for s, k in names}
+    r = ready.ring(con, ASOF, adv, zones)
+    assert [b["symbol"] for b in r["buys"]] == ["BBB", "CCC", "DDD"]

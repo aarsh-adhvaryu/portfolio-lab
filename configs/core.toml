@@ -158,11 +158,17 @@ classes = ["international", "gold"]   # C1 (S82): gold ETFs are held to the same
 # S81 B8 phase B (A53): the paper US sub-book (src/pflab/us/), USD, on the US close processed in the IST morning. OFF until the coordinator's loop and his yes: nothing else depends on it.
 [us]
 on = true
-start_share = 0.05            # the sub-book starts as this share of the system's book (rupees at the start FX rate); it is paper money (his to change)
-start_inr_fallback = 100000.0 # when the system's book is not readable (rupees)
-universe = ["SPY", "QQQ", "XLC", "XLY", "XLP", "XLE", "XLF", "XLV", "XLI", "XLB", "XLRE", "XLK", "XLU"]   # the ETFs data/us already collects
-invested_share = 0.95         # the baseline holds this share of the sub-book in the universe (equal weights), the rest in cash
-deploy_turnover_day = 1.0     # while less than half of invested_share is invested (a fresh account) the day's turnover cap is this share of the sub-book, and the monthly cap is not applied
+# S82 (A56-A59): the sub-book is ONE book with the rupee book: it is funded by a TRANSFER out of the rupee book's cash (never new money), sized to the international share of the WHOLE book
+# ([baseline_v2] international_pct), reached in tranches, holds SPY as its core, and is decided on the last US close (orders fill at the next US open).
+fund_day_share = 0.05         # one transfer a day at most, never more than this share of the whole book (it is also kept inside the rails' turnover caps)
+topup_below_share = 0.08      # once the target was reached, top up from rupee cash only when the international share of the whole book falls under this; never sold down to reach it (tax)
+universe = ["SPY", "QQQ", "XLC", "XLY", "XLP", "XLE", "XLF", "XLV", "XLI", "XLB", "XLRE", "XLK", "XLU"]   # ONLY the list the data collector tracks (no longer a holding list)
+broad_index_etfs = ["SPY"]    # the sub-book's core: a broad US index ETF may hold up to broad_index_cap of the sub-book (the rupee rails' 35% ETF rail would stop "hold SPY" at 35%)
+broad_index_cap = 1.0         # of the sub-book
+etf_cap = 0.35                # any other ETF, of the sub-book
+stock_cap = 0.10              # one company, of the sub-book (stock picks come in S83)
+invested_share = 0.95         # the policy holds this share of the sub-book in its core ETF(s), the rest stays dollars (fees, tax, withholding)
+deploy_turnover_day = 1.0     # while the sub-book holds mostly uninvested dollars (a fresh account or a fresh tranche) the day's turnover cap is this share of the sub-book, and the monthly cap is not applied
 settle_minutes = 30           # a session counts as closed this long after its close (the daily bar is final)
 slippage_bps = 5.0            # ESTIMATE: a buy fills this much above the next open, a sell this much below
 min_trade_usd = 25.0

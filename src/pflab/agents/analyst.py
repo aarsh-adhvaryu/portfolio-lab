@@ -593,55 +593,6 @@ def trial_note(con, req: Request, client, model: str, *, now: Optional[datetime]
             "raw": raw, "kept": kept, "cost_inr": inr, "call_id": cid}
 
 
-# --- S47 pass 3: the harness editor (docs/STUDIES.md) ----------------------------------------
-
-HARNESS_CHARS = 1500
-HARNESS_SYSTEM = (
-    "You improve the instruction text (the 'harness') appended to the prompt of a small local language model (8B "
-    "parameters) that writes short notes about Indian listed companies from given facts and public documents. A "
-    "checker rejects a draft when a number is not in the facts or in the source it cites, when a sentence states a "
-    "fact without a citation tag ([F:name] or [S#]; the model's own inference is tagged [inf]), or when it breaks the "
-    "format; the model then gets the checker's messages and tries again, three drafts in all. You see the current "
-    "harness and drafts that failed all three times, with the checker's messages. Write two improved harness texts: "
-    "'general' fixes a weakness that affects most drafts; 'specific' targets the commonest failure in these "
-    f"examples. Each at most {HARNESS_CHARS} characters of plain instructions for the model: no company names and no "
-    "numbers taken from the examples. Reply with JSON only: {\"general\": \"...\", \"specific\": \"...\"}.")
-HARNESS_TASKS = {"writing": "The task: a brief of plain cited sentences about one company from a facts table and sources.",
-                 "research": "The task: answer a research question about one company from numbered public documents."}
-
-
-def propose_harness(con, kind: str, harness: str, cases: Sequence[str], client, *, now: Optional[datetime] = None,
-                    cfg: Optional[dict] = None, pv: Optional[Private] = None, approved: bool = True) -> Dict[str, Any]:
-    """Two candidate harnesses from Opus (live), shown only the local model's failed drafts (text built from public
-    documents) and the guard's messages, as documents of kind 'trace' through the egress gate, priced first."""
-    now = now or datetime.now()
-    cfg = cfg or config()
-    if not cfg["adopted"]:
-        raise NotAdopted("the analyst is off until the pre-registered comparison shows a clear gain")
-    docs = [Doc(f"failed draft {k}", c[:4000], "local model draft", f"{now:%Y-%m-%d}", "trace")
-            for k, c in enumerate(cases, start=1)]
-    req = Request(f"{HARNESS_TASKS[kind]}\n\nCURRENT HARNESS:\n{harness or '(none)'}", f"harness:{kind}", docs)
-    gate(req, pv if pv is not None else private_values(con), kinds=("trace",))
-    user = (req.question + "\n\n" + "\n\n".join(f"--- {d.title} ---\n{d.text}" for d in docs))
-    p = {"model": cfg["model"], "max_tokens": MAX_TOKENS, "system": HARNESS_SYSTEM, "thinking": {"type": "adaptive"},
-         "output_config": {"effort": EFFORT}, "messages": [{"role": "user", "content": user}]}
-    n_in = client.messages.count_tokens(model=p["model"], system=p["system"], messages=p["messages"],
-                                        thinking=p["thinking"]).input_tokens
-    _, est = cost(n_in, MAX_TOKENS, False, cfg["usd_inr"], p["model"])
-    check_budget(con, est, cfg, now, approved)
-    cid = _log(con, req, "live", p["model"], "sending", now, p, est)
-    msg = client.beta.messages.create(**p, betas=[FALLBACK_BETA], fallbacks="default")
-    text = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
-    it, ot = int(getattr(msg.usage, "input_tokens", 0) or 0), int(getattr(msg.usage, "output_tokens", 0) or 0)
-    usd, inr = cost(it, ot, False, cfg["usd_inr"], p["model"])
-    con.execute("UPDATE api_calls SET status='done', input_tokens=?, output_tokens=?, cost_usd=?, cost_inr=?, "
-                "finished_at=? WHERE call_id=?", [it, ot, usd, inr, now, cid])
-    m = re.search(r"\{.*\}", text, re.S)
-    out = json.loads(m.group(0)) if m else {}
-    clean = lambda s: str(s or "").strip()[:HARNESS_CHARS]           # noqa: E731
-    return {"general": clean(out.get("general")), "specific": clean(out.get("specific")), "call_id": cid, "cost_inr": inr}
-
-
 def write_calculation(con, prompt: str, system: str, client, *, now: Optional[datetime] = None,
                       cfg: Optional[dict] = None, pv: Optional[Private] = None, approved: bool = False,
                       gate_text: Optional[str] = None) -> str:

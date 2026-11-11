@@ -1,5 +1,5 @@
-"""S80 phase 3 job `story_daily`: the storylines' daily upkeep after the close (the dot-connecting step). The adapters bring dated evidence items from the flows, the macro attribution and
-the wave scan; the LOCAL reader attaches each to a storyline, opens a new one, or ignores it (a disagreement escalates to Sonnet only inside the cap); then every open storyline's
+"""S80 phase 3 job `story_daily`: the storylines' daily upkeep after the close (the dot-connecting step). The adapters bring dated evidence items from the flows, the macro attribution
+and the kg2 events; the LOCAL reader attaches each to a storyline, opens a new one, or ignores it (a disagreement escalates to Sonnet only inside the cap); then every open storyline's
 probability is recomputed by code from the signals and the evidence, new storylines get their predictions at 5 and 20 sessions, due predictions are scored, influence follows the record,
 and the record of which kinds of story hold is refreshed. Free except an escalation. Skips when `[core] on = false` or the kill switch is set."""
 from __future__ import annotations

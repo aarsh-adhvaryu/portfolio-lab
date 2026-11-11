@@ -113,8 +113,7 @@ def compute_watch(rt, now: Optional[datetime] = None, paths: int = bz.PATHS) -> 
                      "reasons": g.reasons if g else [], "quarters": quarters, "flags_7d": int(flags7),
                      "results": fl.results_lines(con, scrip, n["symbol"]) if scrip else [], "asks": asks,
                      "name": views._clean((con.execute("SELECT name FROM instruments WHERE isin=?", [n["isin"]]).fetchone() or [None])[0])})
-    order = {"IN ZONE": 0, "ABOVE ZONE": 1, "RICH": 2, "NO DATA": 3, "NO": 4}
-    rows.sort(key=lambda r: (order.get(r["zone"].get("verdict"), 9), r["symbol"] or ""))
+    rows.sort(key=lambda r: (1 if r["guard"] in ("block", "fail") else 0, r["symbol"] or ""))      # the zone verdict orders nothing (S54c failed, A60)
     out = {"at": now.isoformat(timespec="seconds"), "paths": paths, "rows": rows}
     write_cache(rt, "watch", out)
     rt.bump("watch", "command")
@@ -148,7 +147,7 @@ def compute_plan(rt, amount: Optional[float] = None, now: Optional[datetime] = N
 
 
 def hold_off(watch: Optional[dict], con, now: datetime) -> List[dict]:
-    """Names on the list not to buy now, with the reason: a guard, a price above its zone, results within reach."""
+    """Names on the list not to buy now, with the reason: a guard, results within reach (never the price against its zone: that test failed, A60)."""
     out = []
     pending = {s: str(t) for s, t in con.execute(
         "SELECT subject, max(target) FROM forecasts WHERE use='revenue' AND scored_at IS NULL GROUP BY subject").fetchall()}
@@ -163,8 +162,6 @@ def hold_off(watch: Optional[dict], con, now: datetime) -> List[dict]:
         elif q_end and (now.date() - date.fromisoformat(q_end[:10])).days >= 30:
             out.append({"symbol": r["symbol"], "kind": "results",
                         "why": f"results for the quarter ended {q_end[:10]} are due; its range is ready"})
-        elif z.get("verdict") in ("ABOVE ZONE", "RICH"):
-            out.append({"symbol": r["symbol"], "kind": "zone", "why": f"{z['headline']} (now {z['price']:,.2f})"})
     return out
 
 

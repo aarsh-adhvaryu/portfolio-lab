@@ -294,10 +294,14 @@ def holder_events(root: Path, kind: str, start: str, end: str) -> pd.DataFrame:
         fs = glob.glob(str(root / "bse_announcements" / "**" / "*.parquet"), recursive=True)
         if not fs:
             return pd.DataFrame(columns=cols)
-        df = _duck.sql(f"""select scrip_code, headline, subcategory, coalesce(dissem_dt, news_dt) t
-                            from read_parquet({fs!r}, union_by_name=true)
+        from pflab.kg2 import filing_time as ft            # A58 (S82): a filing with neither time is used from the next trading open after its file's day
+        df = _duck.sql(f"""select scrip_code, headline, subcategory, coalesce(dissem_dt, news_dt) t, filename
+                            from read_parquet({fs!r}, union_by_name=true, filename=true)
                             where category = 'Insider Trading / SAST' and coalesce(subcategory, '') not ilike '%trading window%'
-                              and coalesce(dissem_dt, news_dt) between TIMESTAMP '{start}' and TIMESTAMP '{end} 23:59:59'""").df()
+                              and (coalesce(dissem_dt, news_dt) between TIMESTAMP '{start}' and TIMESTAMP '{end} 23:59:59' or coalesce(dissem_dt, news_dt) is null)""").df()
+        if len(df):
+            df = ft.stamp_missing(df)
+            df = df[(df["t"] >= pd.Timestamp(start)) & (df["t"] <= pd.Timestamp(f"{end} 23:59:59"))]
         if df.empty:
             return pd.DataFrame(columns=cols)
         df["isin"] = resolve_isins(df, bse_scrip_isin.load(root))

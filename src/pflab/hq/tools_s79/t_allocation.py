@@ -1,8 +1,6 @@
-"""S79 item 2 (A45): the system's own allocation target. `system_allocation` reads it (target, reasons, drift, review dates); `propose_allocation` is how the paper team
-proposes it (coordinator and quant of a PAPER mission only; code checks the rails; the independent review must approve before it is active)."""
+"""S79 item 2 (A45): the system's own allocation target. `system_allocation` reads it (target, reasons, drift, review dates); the proposing is the strategist's lab tool
+`propose_allocation` (`lab/tools.py`; code checks the rails and the sleeve caps). S82: the paper team's old proposing tool and its sector-text parser were deleted."""
 from __future__ import annotations
-
-import json
 
 from pflab.hq.tools import Ctx, Tool, _n, _s
 
@@ -19,22 +17,6 @@ def system_allocation(ctx: Ctx, a: dict) -> dict:
         return out
     except Exception as e:                                     # a probe or a store without the table must get a harmless answer
         return {"active": None, "note": f"the allocation record is not readable now ({type(e).__name__})"}
-
-
-def _sectors(text: str) -> dict:
-    """'IT:15, Banks:20' or a JSON object -> {sector: pct}. A malformed piece is an error the team is told."""
-    t = (text or "").strip()
-    if not t:
-        return {}
-    if t.startswith("{"):
-        return {str(k): float(v) for k, v in json.loads(t).items()}
-    out = {}
-    for piece in t.split(","):
-        if not piece.strip():
-            continue
-        name, _, val = piece.rpartition(":")
-        out[name.strip()] = float(val.strip().rstrip("%"))
-    return out
 
 
 TOOLS = [

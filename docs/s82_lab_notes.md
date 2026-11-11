@@ -8,7 +8,7 @@ and `tests/test_s81_core_lab.py` (rewritten where the swing sleeve or the old in
 ### C3 the limit
 * `configs/core.toml [rails]`: `broad_index_etfs = ["NIFTYBEES", "MONIFTY500"]` (JUNIORBEES, the Nifty Next 50, is not broad), `broad_index_cap = 0.60`. The defaults sit in `core/__init__.py` too.
 * One function everywhere: `paper/rails.py` `limit_of(asset_class, symbol)` / `etf_limit(symbol)` / `broad_index()`. Used by `core/policy.cap_of` (so baseline_v2, the v1 baseline and `rails.clip_weights` see it),
-  `core/rails.py` (docstring only: it calls `cap_of`), the fill-time cut `paper/rails.buy_room` and `flags`, the exit manager's rail trim (`core/exits.py`), `construct/run.py` (the `pflab pm propose` bounds),
+  `core/rails.py` (docstring only: it calls `cap_of`), the fill-time cut `paper/rails.buy_room` and `flags`, the exit manager's rail trim (`core/exits.py`), `(construct/run.py was deleted upstream by the cut agent: its bound change went with it),
   `paper/allocation.validate_target` (its printed rails) and the lab replay (`lab/engine.position_cap`, used by `clip_weights`, the state's `caps` in `engine.py` and `swing.py`).
 * The replay agrees with the live rails: `runner.cost_config()` puts `broad_syms` and `max_broad_etf` (read from the config) into every job's cfg; `engine.DEFAULT_CFG` carries the same defaults, so a job folder
   without them still applies 60% to the two broad ETFs. A test compares `engine.position_cap` with `hard.limit_of` for five symbols.
@@ -105,5 +105,5 @@ and a changed protocol is caught; claim A and claim B verdicts at their edges; t
 applied or not by the switch; the stop distance is the live exit plan's rule; claim A on a synthetic book; the runner job carries the C4 files.
 
 ## What is left
-* The coordinator: `docs/STUDIES.md` (two verdicts and the 3 counted tests), `docs/PLAN.md` / `BUILT.md`, the strategist prompt text, `rails_denominator` / `state["value"]` wiring once `us.wholebook` lands.
+* The coordinator: `docs/STUDIES.md` (two verdicts and the 3 counted tests), `docs/PLAN.md` / `BUILT.md`, the strategist prompt text, `core/rails.clip_weights` still uses `state["value"]` (rupee book) for weights, on purpose; only `buy_room` takes the whole book through `rails_denominator`, which now calls the real `us.wholebook.whole_book_inr`.
 * A study of the stock sleeve's lag (about 1.3 points a year against the broad ETFs after tax) belongs to the strategist's lab, not tonight.

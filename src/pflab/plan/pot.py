@@ -3,7 +3,7 @@ its own limit; each idea has a reason, a buy price, an exit and a score).
 
     limit          proposed by code at 5% of equity, cut to the room the equity targets leave; applied only after his yes
     add_idea       the brain gives the stock and the reason in words; the buy price, the exit, the stop and the amount come
-                   from code (the buy zone and the calibrated price ranges), the amount at most the room left in the pot
+                   from code (the stored price ranges; the buy zone failed its test and gates nothing), the amount at most the room left in the pot
     ipo_candidates new NSE listings enter as ideas after 20 sessions of prices
     score_due      at the horizon: the return since the idea, and the return in excess of the market through the stock's
                    CAPM beta, both by code
@@ -24,9 +24,9 @@ HORIZON_DEFAULT = 180
 
 
 def zone_numbers(con, root, isin: str, asof: date, guard: str = "ok") -> dict:
-    """The price numbers of an idea, all by code: price_low / price_high = the buy zone (20th-40th percentile of the year's closes); max_buy = the lower of the
-    zone's top and the 21-session middle of the price range; wrong_price = the 63-session 10th percentile. Missing history or no stored range leaves the
-    field None; nothing is guessed. (Moved here from the cut `hq/suggestions.py`.)"""
+    """The price numbers of an idea, all by code: price_low / price_high = the year's range of closes (20th-40th percentile, shown as information: the
+    buy-zone test failed, S54c, so it caps nothing); max_buy = the 21-session middle of the stored price range, else None; wrong_price = the 63-session 10th
+    percentile. Missing history or no stored range leaves the field None; nothing is guessed. (Moved here from the cut `hq/suggestions.py`.)"""
     from pflab.app import research
     from pflab.plan import buyzone
     from pflab.quant import forecast as fc
@@ -39,7 +39,7 @@ def zone_numbers(con, root, isin: str, asof: date, guard: str = "ok") -> dict:
     method, label = fc.serving_method(root)
     q = {h: con.execute("SELECT q10, q50, q90 FROM forecasts WHERE use=? AND subject=? AND model=? ORDER BY as_of DESC LIMIT 1",
                         [f"price{h}", isin, method]).fetchone() for h in (21, 63)}
-    out["max_buy"] = min(out["price_high"], float(q[21][1])) if q[21] else out["price_high"]
+    out["max_buy"] = float(q[21][1]) if q[21] else None
     if q[63]:
         out["wrong_price"] = float(q[63][0])
         out["wrong_if"] = (f"it closes below {q[63][0]:,.0f}, the 10th percentile of its 3-month price range "
@@ -105,7 +105,7 @@ def numbers(con, root, isin: str, asof: date) -> dict:
             n = young_numbers(c)
         else:
             n = {"buy_below": s["max_buy"], "exit_above": float(q252[0]), "stop_below": s["wrong_price"],
-                 "how": "buy zone and the stored price ranges (estimates)"}
+                 "how": "the stored price ranges (estimates)"}
     n["ref_close"] = float(c.iloc[-1])
     return n
 

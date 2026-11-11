@@ -166,7 +166,8 @@ def _login_lost(e: Exception) -> bool:
 # --- the events of the session (thesis breaks) ----------------------------------------------------------------------------------------------------
 
 def _filing_events(isins: List[str], since: datetime, until: datetime, data_root: Optional[Path] = None) -> List[dict]:
-    """The plain fallback: BSE announcements disseminated in (since, until] on `isins`, by the red-flag classifier (no dissemination time: left out)."""
+    """The plain fallback: BSE announcements disseminated in [since, until] on `isins`, by the red-flag classifier. A filing with no release time counts from the next trading
+    day's open (A58, `kg2/filing_time.py`): it is read from the file of its own day, so a session sees the filings dated on the days since the previous session."""
     from pflab.data import bse_scrip_isin, data_dir, red_flags
     root = Path(data_root) if data_root else data_dir()
     out: List[dict] = []
@@ -178,19 +179,29 @@ def _filing_events(isins: List[str], since: datetime, until: datetime, data_root
     if not len(m):
         return out
     codes = {str(r.scrip_code): r.isin for r in m.itertuples()}
-    f = root / "bse_announcements" / str(until.year) / f"{until.date().isoformat()}.parquet"
-    if not f.exists():
-        return out
-    df = pd.read_parquet(f)
-    df = df[df["scrip_code"].astype(str).isin(codes)]
-    for r in df.itertuples():
-        ts = pd.to_datetime(r.dissem_dt, errors="coerce")
-        if pd.isna(ts) or not (since < ts.to_pydatetime() <= until):
+    from pflab import markets
+    from pflab.kg2 import filing_time as ft
+    mk = markets.get("IN")
+    d0 = mk.previous_session(until.date()) if mk.is_session(until.date()) else mk.last_session_on_or_before(until.date())
+    days, d = [], d0
+    while d <= until.date():                                                   # the previous session's day and the days after it: their no-time filings are due at this open
+        days.append(d)
+        d += timedelta(days=1)
+    for day in days:
+        f = root / "bse_announcements" / str(day.year) / f"{day.isoformat()}.parquet"
+        if not f.exists():
             continue
-        flags = red_flags.classify(str(r.headline or ""), str(r.category or ""), str(r.subcategory or ""))
-        for fl in flags:
-            sev = "high" if fl in ("INSOLVENCY", "DEFAULT", "FRAUD", "FORENSIC_AUDIT") else "medium"
-            out.append({"isin": codes[str(r.scrip_code)], "kind": fl, "severity": sev, "ts": ts.to_pydatetime(), "source": "bse_announcements", "ref": f"{r.scrip_code}:{ts:%Y%m%d%H%M%S}", "text": str(r.headline or "")[:200]})
+        df = pd.read_parquet(f)
+        df = df[df["scrip_code"].astype(str).isin(codes)]
+        for r in df.itertuples():
+            ts, rule, _own = ft.filing_time(r.dissem_dt, getattr(r, "news_dt", None), day)
+            if ts is None or not (since <= ts <= until) or (rule == ft.RULE_RELEASE and day != until.date()):
+                continue
+            flags = red_flags.classify(str(r.headline or ""), str(r.category or ""), str(r.subcategory or ""))
+            for fl in flags:
+                sev = "high" if fl in ("INSOLVENCY", "DEFAULT", "FRAUD", "FORENSIC_AUDIT") else "medium"
+                out.append({"isin": codes[str(r.scrip_code)], "kind": fl, "severity": sev, "ts": ts, "source": "bse_announcements", "ref": f"{r.scrip_code}:{ts:%Y%m%d%H%M%S}",
+                            "text": str(r.headline or "")[:200], "ts_rule": rule})
     return out
 
 
@@ -208,7 +219,7 @@ def session_events(con, isins: List[str], since: datetime, until: datetime, data
         if ts is None:
             continue
         ts = pd.to_datetime(ts).to_pydatetime()
-        if since < ts <= until:
+        if since <= ts <= until:                                              # a filing with no release time is due AT the open (A58: derived time 09:15)
             keep.append(dict(e, ts=ts))
     return keep, src
 
@@ -266,7 +277,7 @@ def _carry_out(con, now: datetime, o: dict, ctx: dict, results: dict) -> Optiona
     elif qty is None:
         qty = math.floor(float(o.get("amount") or 0.0) / px)
     r = fills.execute(con, now, isin, side, quote=px, qty=qty, kind=kind, reason=o.get("reason", ""), plan_id=o.get("plan_id"), root=ctx.get("root"), liq=(ctx.get("liq") or {}).get(isin),
-                      bypass_guard=(kind == "stop"))
+                      bypass_guard=(kind == "stop"), source=str(ctx.get("source") or "injected"))
     return _record(con, now, o, r, qty, results)
 
 
@@ -373,7 +384,8 @@ def run_once(con, now: datetime, quotes: Optional[Dict[str, float]] = None, bars
                 log(con, now, "degrade", f"minute bars of today could not be read ({type(e).__name__}): entries wait for them")
     bars = bars or {}
     br = cadence.breaker(con)
-    ctx = {"quotes": quotes, "bars": bars, "breaker": br, "cfg": cfg, "minutes_in": minutes_in, "root": root, "liq": liq or {}}
+    ctx = {"quotes": quotes, "bars": bars, "breaker": br, "cfg": cfg, "minutes_in": minutes_in, "root": root, "liq": liq or {},
+           "source": "live" if live else "injected"}            # S82 C8: only a fill at a live Kite quote counts as a real fill for the fill-cost calibration
     res = {"fills": out["fills"], "queued": out["queued"], "blocked": out["blocked"]}
     checks = {"exit_plans": 0, "orders_due": 0, "views": 0, "queued": 0, "events": 0}
 
@@ -474,7 +486,7 @@ def events_for(con, now: datetime, open_dt: datetime, isins: List[str], injected
         keep = []
         for e in injected:
             ts = pd.to_datetime(e.get("ts")).to_pydatetime() if e.get("ts") is not None else None
-            if ts is not None and open_dt < ts <= now and e["isin"] in isins:         # released DURING the session and already out by now (point-in-time)
+            if ts is not None and open_dt <= ts <= now and e["isin"] in isins:         # released DURING the session and already out by now (point-in-time)
                 keep.append(dict(e, ts=ts))
         return keep, "injected"
     try:
@@ -629,5 +641,24 @@ def report_day(con, day: date, market: str = MARKET) -> str:
     if notes:
         L.append("Did not run as planned: " + " | ".join(dict.fromkeys(n[:160] for n in notes[:4])))
     core = con.execute("SELECT status, orders_json FROM core_runs_s80 WHERE day=?", [day]).fetchone()
-    L.append("Post-close loop: " + (f"{core[0]} ({len(json.loads(core[1] or '[]'))} order(s))." if core else "not yet; it runs when NSE's closing files arrive this evening."))
-    return "\n".join(L[:15])
+    tail = [strategist_line(con, day)] if strategist_line(con, day) else []                        # S82 C9: one plain line on the strategist's newest note
+    tail.append("Post-close loop: " + (f"{core[0]} ({len(json.loads(core[1] or '[]'))} order(s))." if core else "not yet; it runs when NSE's closing files arrive this evening."))
+    return "\n".join(L[:15 - len(tail)] + tail)
+
+
+def strategist_line(con, day: date) -> Optional[str]:
+    """One plain line for the self-report: the strategist's newest note when it was written in the last 3 days (what it concluded, any allocation it put forward, what the session cost)."""
+    try:
+        from pflab.lab import service as lab
+        n = lab.latest_strategist_note(con)
+        if not n["note"] or str(n["when"])[:10] < str(day - timedelta(days=3)):
+            return None
+        p = n["proposal"]
+        prop = ""
+        if p:
+            mix = ", ".join(f"{k} {v:g}%" for k, v in sorted(p["classes"].items(), key=lambda kv: -kv[1]) if v)
+            prop = f" It {'kept the allocation as it stands' if p.get('reaffirmed') else 'proposed an allocation'}" + (f" ({mix})" if mix else "") + "."
+        cost = f" The session cost Rs {n['cost_rupees']:,.0f}." if n["cost_rupees"] is not None else ""
+        return f"Strategist ({n['when']}): {' '.join(str(n['note']).split())[:220]}{prop}{cost}"
+    except Exception:
+        return None

@@ -403,27 +403,20 @@ def status(con, market: str = "IN", day: Optional[date] = None) -> dict:
             worst = min(worst, g / peak - 1.0)
     rcj = con.execute("SELECT class_ret_json FROM blended_benchmark_s79 WHERE market=? AND as_of=?", [market, d_last]).fetchone()
     stale = (json.loads(rcj[0] or "{}").get("stale") or []) if rcj else []
-    return {"market": market, "started": True, "since": str(rows[0][0]), "as_of": str(d_last), "sessions": len(rows) - 1,
+    res = {"market": market, "started": True, "since": str(rows[0][0]), "as_of": str(d_last), "sessions": len(rows) - 1,
             "book": {"return": book_ret, "level": book_lv.get(d_last)}, "benchmark": {"return": bench_ret, "level": float(last[1]), "weights_start_of_day": w["start"],
                                                                                  "weights_now": w["end"], "source": last[3], "target_id": last[4], "labels": dict(LABELS)},
             "excess": None if book_ret is None else book_ret - bench_ret, "monthly": cur, "latest_month": cur[-1] if cur else None, "stale_classes": stale,
             "worst_fall_book": worst,
             "notes": ["returns are time-weighted with top-ups taken out (outside money is not a gain)", "tax is an estimate (FIFO lots, cess and surcharge not added)",
                       "residual = untracked cash effects + the compounding between daily and monthly returns"]}
+    if market == "IN":                                   # S82 (A57): the whole book is the rupee book plus the US sub-book in rupees; its own value and return, not recomputed here
+        try:
+            from pflab.us import wholebook
+            res["whole_book"] = {**wholebook.whole_book_inr(con, day or d_last), "return": wholebook.returns(con)}
+            if (res["whole_book"]["return"] or {}).get("twr") is not None:
+                res["whole_book"]["excess"] = res["whole_book"]["return"]["twr"] - bench_ret       # the whole book against the same benchmark
+        except Exception as e:
+            res["whole_book"] = {"error": f"{type(e).__name__}: {str(e)[:120]}"}
+    return res
 
-
-def dossier_text(con, day: Optional[date] = None, market: str = "IN") -> str:
-    """One block for the weekly review: the result against its own benchmark and last month's split. Empty when there is nothing recorded."""
-    try:
-        s = status(con, market, day)
-    except Exception:
-        return ""
-    if not s.get("started") or s.get("book", {}).get("return") is None:
-        return ""
-    lm = s.get("latest_month")
-    bit = ""
-    if lm:
-        bit = (f" Month {lm['month'][:7]}{' (so far)' if lm['partial'] else ''}: book {lm['book_return']:+.2%} vs benchmark {lm['bench_return']:+.2%}; allocation {lm['allocation']:+.2%}, "
-               f"selection {lm['selection']:+.2%}, timing {lm['timing']:+.2%}, costs {lm['costs']:+.2%}, tax (estimate) {lm['tax']:+.2%}, residual {lm['residual']:+.2%}.")
-    return (f"RESULT VS ITS OWN BENCHMARK (the blend of its allocation target: {s['benchmark']['source']}): since {s['since']} the book {s['book']['return']:+.2%} vs the benchmark "
-            f"{s['benchmark']['return']:+.2%} (excess {s['excess']:+.2%}).{bit} Read it for what the allocation and the selection each added or cost.")

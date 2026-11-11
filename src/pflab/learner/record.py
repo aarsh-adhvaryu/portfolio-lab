@@ -1,56 +1,26 @@
 """The learner's second input (S62, PLAN A22): the system's own record -> dated proposals, each with its evidence and n.
 
-Weekly (Saturday, after the brain's reflection), or sooner when NEW_OUTCOMES outcomes were scored since the last run.
-Rules in code; no conclusion under MIN_N (the small-numbers rule); nothing here retires a kind of suggestion.
+Weekly (Saturday). S82: the rules that read the brain's suggestion and prediction record, its Wilson/bootstrap helpers, the "sooner when outcomes were scored"
+trigger and the model's instruction proposals were deleted: nothing writes or scores a suggestion or a prediction any more (their tables stay for the record).
+Rules in code; no conclusion under MIN_N (the small-numbers rule).
 
     rule                      evidence                                         passes ->
-    suggestion record         a kind's good rate, Wilson 95% interval, n>=20   a lesson (live at once)
-    declined record           a kind he declined in >=70% of n>=20 answers     a lesson (live at once)
-    prediction calibration    Brier against the base rate, paired bootstrap    a lesson (live at once)
     tool errors               a tool failing >=20% of n>=20 calls in 30 days   a lesson (live) and a fix for the investor
     his marks                 passes marked 'did not matter' >=60% of n>=20    a lower tell_investor limit: asked
     limits reached            an action held at its limit on >=8 of 30 days    a higher limit (at most double): asked
-    brain model               rival's Brier lower by >=0.01, P>=0.9, n>=20     cheaper: applied (his Settings win);
-                                                                               dearer: asked
-    instructions (a model)    weekly, after >=5 passes: up to 2 changes worded asked (no code rule can pass free text)
-                              from the record by the learner_proposals model
 Asked = a question under Needs from you; his yes applies it, his no declines it. Money limits are never changed here.
 """
 from __future__ import annotations
 
 import json
-import math
 import re
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
-import numpy as np
-
 from pflab.learner import live
 
 MIN_N = 20
-NEW_OUTCOMES = 20
 DAY, AT = 5, (10, 0)                     # Saturday 10:00, after the reflection (9:00)
-WILSON_Z = 1.96
-BOOT, SEED = 2000, 7
-P_SURE = 0.9
-
-
-def wilson(k: int, n: int, z: float = WILSON_Z) -> tuple:
-    if n == 0:
-        return 0.0, 1.0
-    p = k / n
-    d = 1 + z * z / n
-    c = (p + z * z / (2 * n)) / d
-    h = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
-    return c - h, c + h
-
-
-def p_better(a: np.ndarray, b: np.ndarray, boot: int = BOOT, seed: int = SEED) -> float:
-    """Share of paired bootstrap draws in which the mean of `a` (a loss, e.g. Brier) is below `b`'s."""
-    rng = np.random.default_rng(seed)
-    idx = rng.integers(0, len(a), (boot, len(a)))
-    return float(np.mean(a[idx].mean(axis=1) < b[idx].mean(axis=1)))
 
 
 # --- when ----------------------------------------------------------------------------------------------------------------
@@ -59,17 +29,8 @@ def last_run(con) -> Optional[datetime]:
     return con.execute("SELECT max(made_at) FROM learn_proposals WHERE kind='run'").fetchone()[0]
 
 
-def new_outcomes(con, since: Optional[datetime]) -> int:
-    since = since or datetime(2000, 1, 1)
-    a = con.execute("SELECT count(*) FROM hq_suggestions WHERE scored_at >= ? AND outcome IN ('good','bad')", [since]).fetchone()[0]
-    b = con.execute("SELECT count(*) FROM hq_predictions WHERE scored_at >= ? AND outcome IS NOT NULL", [since]).fetchone()[0]
-    return int(a + b)
-
-
 def due(con, now: datetime) -> Optional[str]:
     last = last_run(con)
-    if new_outcomes(con, last) >= NEW_OUTCOMES:
-        return "outcomes"
     if now.weekday() == DAY and (now.hour, now.minute) >= AT and (last is None or last.date() < now.date()):
         return "weekly"
     return None
@@ -122,35 +83,6 @@ def limit_rules(con, now: datetime) -> List[dict]:
 
 
 # --- the model's part: instructions -------------------------------------------------------------------------------------
-
-PROPOSE_SYSTEM = (
-    "You improve how a portfolio system's brain works, from its own record. You see the brain's current instructions and "
-    "a record built by code: its suggestions and predictions with outcomes and n, the investor's answers and marks, tool "
-    "errors, and recent journal notes. Propose at most 2 changes to the brain's instructions, each a short instruction it "
-    "would follow, with the evidence from the record (copy its numbers and n) and why. Rules: nothing may trade, move "
-    "money, or change targets or limits; under 20 observations a pattern is a count, not a conclusion, so propose from "
-    "those only if the change is cautious; one failure never retires a kind of suggestion. If nothing in the record calls "
-    "for a change, return no changes. Reply with JSON only.")
-PROPOSE_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["changes"],
-                  "properties": {"changes": {"type": "array", "items": {
-                      "type": "object", "additionalProperties": False, "required": ["instruction", "evidence", "n", "why"],
-                      "properties": {"instruction": {"type": "string"}, "evidence": {"type": "string"},
-                                     "n": {"type": "integer"}, "why": {"type": "string"}}}}}}
-MIN_PASSES = 5
-
-
-def record_text(con, model: str, now: datetime) -> str:
-    from pflab.hq import keeper, passes
-    notes = [p for p in passes.journal(con, 40) if p["model"] == model and p["status"] == "done"][:10]
-    errs = con.execute("SELECT tool, count(*) FROM hq_tool_calls WHERE status='error' AND called_at >= ? GROUP BY tool",
-                       [now - timedelta(days=30)]).fetchall()
-    m = passes.marks(con)
-    return "\n".join([keeper.scorecard_text(con, model),
-                      f"MARKS by the investor: {sum(m.values())} mattered, {len(m) - sum(m.values())} did not",
-                      "TOOL ERRORS (30 days): " + (", ".join(f"{t} {n}" for t, n in errs) or "none"),
-                      live.brain_text(con), "RECENT NOTES:"] + [f"- {str(p['at'])[:10]} {p['trigger']}: {(p['note'] or '')[:300]}"
-                                                                 for p in notes])
-
 
 def _same_pending(con, p: dict) -> bool:
     return bool(con.execute("SELECT 1 FROM learn_proposals WHERE kind=? AND coalesce(target,'')=? AND coalesce(value,'')=? "
@@ -215,19 +147,15 @@ def answers(con, now: datetime) -> Dict[str, int]:
 
 
 def run(con, now: datetime, draft=None, why: str = "weekly") -> dict:
-    """One reading of the record: the code rules, then (weekly) the model's instruction changes."""
-    from pflab.hq import passes
+    """One reading of the record: the code rules (tool errors, limits reached). S82: no model part (the brain's instructions are cut) and no suggestion or prediction rules."""
     from pflab.pm.store import next_id
-    main, rival = passes.pair()
-    props = tool_rules(con, now) + limit_rules(con, now)                      # S81: the suggestion and prediction rules went with the brain's passes
+    props = tool_rules(con, now) + limit_rules(con, now)
     props = [p for p in props if not (p["kind"] == "model" and _settings_chose("brain"))]
-    model_props: List[dict] = []                      # S80 phase 4: the brain's instructions are cut, so the model proposes none
     kept = [k for p in props if (k := keep(con, p, now)) is not None]
-    kept += [k for p in model_props if (k := keep(con, p, now, by_model="learner_proposals")) is not None]
     rid = next_id(con, "learn_proposals", "prop_id")
     con.execute("INSERT INTO learn_proposals (prop_id, made_at, kind, text, evidence_json, n, rule, passed, status) VALUES "
                 "(?,?,?,?,?,?,?,?,?)", [rid, now, "run", f"record read ({why})",
-                                        json.dumps({"proposals": kept, "rules_checked": len(props)}), new_outcomes(con, None),
+                                        json.dumps({"proposals": kept, "rules_checked": len(props)}), len(props),
                                         "the run itself", True, "done"])
     return {"proposals": len(kept), "applied": sum(1 for k in kept if con.execute(
         "SELECT status FROM learn_proposals WHERE prop_id=?", [k]).fetchone()[0] == "applied"), "why": why}
