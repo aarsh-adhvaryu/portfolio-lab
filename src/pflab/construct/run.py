@@ -166,7 +166,7 @@ def build(con, now: datetime, root=None, closes: Optional[Dict[str, pd.Series]] 
     # bounds, groups
     buyable = np.array([(info[i]["asset_class"] or "") in book.BUYABLE for i in names])
     is_etf = np.array([(info[i]["asset_class"] or "") == "etf" for i in names])
-    ub = np.where(is_etf, rails.MAX_ETF, rails.MAX_STOCK)
+    ub = np.array([rails.limit_of(info[i]["asset_class"], info[i].get("symbol")) for i in names])      # S82 (A56): a broad-market index ETF 60%, another ETF 35%, a stock 10%
     no_buy = ~buyable
     frozen = ~buyable                                                  # funds, SGBs and gold are neither added to nor sized here
     if st.get("freeze_no_forecast", True):                              # no forecast: zero expected excess AND no view, so no trade either way (it still counts in the risk)

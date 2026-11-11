@@ -82,7 +82,7 @@ def test_the_path_is_gradual_and_tax_aware_cash_goes_to_the_core_and_no_stock_is
     inc = {k: w - cur[k] for k, w in d["weights"].items()}
     assert all(v >= -1e-12 for v in inc.values())                                   # no sale at all
     free = (s["cash"] + s["bank"]) / s["value"]
-    assert sum(v for v in inc.values()) <= free - s["sleeve_target"]["swing"] + 1e-9    # new cash less the swing share held back
+    assert sum(v for v in inc.values()) <= free + 1e-9                              # no more than the new cash (the longterm sleeve's last 5 points wait as cash: A60, `longterm_buy_pct`)
     core_buy = sum(v for k, v in inc.items() if k in {r["isin"] for r in s["rows"] if r["sleeve"] == "core"})
     assert core_buy > 0.5 * free                                                    # and it all goes to the core first
     assert any("longterm names wait" in n or "cash is" in n for n in d["notes"])
@@ -139,9 +139,9 @@ def test_a_core_etf_the_store_does_not_know_is_named_not_guessed(con, monkeypatc
     assert any("no international ETF has a price" in n for n in d["notes"])
 
 
-def test_the_default_target_is_core_60_longterm_35_swing_5_with_gold_and_international_10_each():
+def test_the_default_target_is_core_60_longterm_40_with_gold_and_international_10_each():
     sh = sleeves.default_shares(core.settings())
-    assert (sh["core"], sh["longterm"], sh["swing"], sh["gold"], sh["international"]) == (0.60, 0.35, 0.05, 0.10, 0.10) and sh["index"] == pytest.approx(0.40)
+    assert (sh["core"], sh["longterm"], sh["gold"], sh["international"]) == (0.60, 0.40, 0.10, 0.10) and "swing" not in sh and sh["index"] == pytest.approx(0.40)
 
 
 # --- sleeves -----------------------------------------------------------------------------------------------------------------------------------
@@ -149,36 +149,37 @@ def test_the_default_target_is_core_60_longterm_35_swing_5_with_gold_and_interna
 def test_sleeves_default_by_instrument_stick_once_and_add_up(con):
     isin_stock, isin_etf = STOCKS[0][0], ETFS["GOLDBEES"][0]
     assert sleeves.sleeve_of(con, isin_stock) == "longterm" and sleeves.sleeve_of(con, isin_etf) == "core"
-    assert sleeves.set_sleeve(con, isin_stock, "swing", DAYS[-1]) == "swing"
-    assert sleeves.set_sleeve(con, isin_stock, "longterm", DAYS[-1]) == "swing"             # the first record stays
+    assert sleeves.set_sleeve(con, isin_stock, "core", DAYS[-1]) == "core"
+    assert sleeves.set_sleeve(con, isin_stock, "longterm", DAYS[-1]) == "core"              # the first record stays
     assert sleeves.set_sleeve(con, isin_stock, "longterm", DAYS[-1], force=True) == "longterm"
-    with pytest.raises(ValueError):
-        sleeves.set_sleeve(con, isin_stock, "intraday")
+    for gone in ("swing", "intraday"):                                                       # the swing sleeve is deleted (A60); intraday was dropped (A48)
+        with pytest.raises(ValueError):
+            sleeves.set_sleeve(con, isin_stock, gone)
     w = sleeves.sleeve_weights(con, "IN", DAYS[-1])
-    assert w["longterm"] == pytest.approx(0.47, abs=0.03) and w["core"] == 0 and w["swing"] == 0
+    assert w["longterm"] == pytest.approx(0.47, abs=0.03) and w["core"] == 0 and "swing" not in w
     assert sum(w.values()) == pytest.approx(1.0, abs=1e-3)
 
 
 # --- B2: the strategist's proposal and the sleeve caps -------------------------------------------------------------------------------------------
 
 GOOD_CLASSES = {"equity": 70, "gold": 15, "international": 10, "cash": 5}
-GOOD_SLEEVES = {"core": 55, "longterm": 40, "swing": 5}
+GOOD_SLEEVES = {"core": 60, "longterm": 40}
 REASONS = "A larger core with some gold, because the longterm names are concentrated and the index owns the market after tax; re-examined weekly."
 
 
 def test_the_sleeve_caps_refuse_a_bad_proposal_and_a_good_one_is_stored_as_a_lab_policy(con, tmp_path):
-    for bad, why in (({"core": 50, "longterm": 30, "swing": 20.5}, "swing at 20.5% is over the 20% cap"), ({"core": 30, "longterm": 60.5, "swing": 9.5}, "longterm at 60.5% is over the 60% cap"),
-                     ({"core": 29, "longterm": 60, "swing": 11}, "core at 29% is under the 30% floor"), ({"core": 50, "longterm": 40, "swing": 5}, "add up to 95%"),
-                     ({"core": 20, "longterm": 60, "swing": 20}, "under the 30% floor")):
+    for bad, why in (({"core": 50, "longterm": 30, "swing": 20.5}, "the swing sleeve is deleted"), ({"core": 39, "longterm": 60.5}, "longterm at 60.5% is over the 60% cap"),
+                     ({"core": 29, "longterm": 71}, "core at 29% is under the 30% floor"), ({"core": 50, "longterm": 45}, "add up to 95%"),
+                     ({"core": 20, "longterm": 60, "swing": 20}, "the swing sleeve is deleted")):
         r = alloc_lab.propose(con, tmp_path, NOW, {"equity": 100, "gold": 0, "international": 0, "cash": 0}, bad, REASONS)
         assert r["ok"] is False and why in r["problem"], (bad, r)
     r = alloc_lab.propose(con, tmp_path, NOW, {"equity": 70, "gold": 20, "international": 20, "cash": -10}, GOOD_SLEEVES, REASONS)           # a class below zero is refused by the rails
     assert r["ok"] is False and "below zero" in r["problem"]
     r = alloc_lab.propose(con, tmp_path, NOW, {"equity": 75, "gold": 15, "international": 10, "cash": 0}, {"core": 20, "longterm": 60, "swing": 20}, REASONS)
-    assert r["ok"] is False
+    assert r["ok"] is False and "swing sleeve is deleted" in r["problem"]
     r = alloc_lab.propose(con, tmp_path, NOW, {"equity": 50, "gold": 30, "international": 25, "cash": -5}, GOOD_SLEEVES, REASONS)
     assert r["ok"] is False
-    r = alloc_lab.propose(con, tmp_path, NOW, {"equity": 60, "gold": 30, "international": 30, "cash": 0}, {"core": 55, "longterm": 40, "swing": 5}, REASONS)       # gold + international exceed the core
+    r = alloc_lab.propose(con, tmp_path, NOW, {"equity": 30, "gold": 40, "international": 30, "cash": 0}, {"core": 60, "longterm": 40}, REASONS)       # gold + international exceed the core
     assert r["ok"] is False and "core holdings" in r["problem"]
     assert allocation.pending(con) == []                                           # nothing was stored for a bad proposal
     r = alloc_lab.propose(con, tmp_path, NOW, {"equity": 85, "gold": 5, "international": 5, "cash": 5}, GOOD_SLEEVES, REASONS, sectors={"Banks": 30})            # the 25% sector rail
@@ -186,9 +187,9 @@ def test_the_sleeve_caps_refuse_a_bad_proposal_and_a_good_one_is_stored_as_a_lab
     ok = alloc_lab.propose(con, tmp_path, NOW, GOOD_CLASSES, GOOD_SLEEVES, REASONS, sectors={"Banks": 20})
     assert ok["ok"] and ok["status"] == "proposed" and ok["variant"] == f"alloc_t{ok['target_id']}"
     assert allocation.active_target(con) is None and len(allocation.pending(con)) == 1          # a proposal is not active: adoption is the A50 rule
-    assert sleeves.stored(con, ok["target_id"])["sleeves"] == {"core": 55.0, "longterm": 40.0, "swing": 5.0}
+    assert sleeves.stored(con, ok["target_id"])["sleeves"] == {"core": 60.0, "longterm": 40.0}
     p = service.get(con, ok["variant"])
-    assert p["status"] == "draft" and "'idx': 0.25" in p["code"] and "'longterm': 0.4" in p["code"]       # index = core 55 - gold 15 - international 10 - cash 5 = 25
+    assert p["status"] == "draft" and "'idx': 0.3" in p["code"] and "'longterm': 0.4" in p["code"]       # index = core 60 - gold 15 - international 10 - cash 5 = 30
     again = alloc_lab.propose(con, tmp_path, NOW, {"equity": 70, "gold": 15, "international": 10, "cash": 5}, GOOD_SLEEVES, REASONS + " (again)", sectors={"Banks": 20})
     assert again["ok"] and again["target_id"] != ok["target_id"] or again.get("reaffirmed")
 
@@ -199,7 +200,7 @@ def test_the_strategist_tool_stores_the_proposal_and_his_targets_are_never_touch
     assert not is_err and json.loads(text)["ok"] is True
     assert "propose_allocation" in {d["name"] for d in tools.definitions()} and all(len(d["description"]) < 480 for d in tools.definitions())
     text, is_err = tools.run(ctx, "propose_allocation", {"classes": GOOD_CLASSES, "sleeves": {"core": 40, "longterm": 30, "swing": 30}, "reasons": REASONS})
-    assert is_err and "swing at 30%" in json.loads(text)["problem"]
+    assert is_err and "swing sleeve is deleted" in json.loads(text)["problem"]
     import inspect
     assert "targets.toml" not in inspect.getsource(alloc_lab) .replace("his `targets.toml`", "")   # the module never reads or writes his targets file
 
@@ -207,7 +208,7 @@ def test_the_strategist_tool_stores_the_proposal_and_his_targets_are_never_touch
 def test_the_first_message_of_a_session_shows_the_allocation_to_re_examine(con, tmp_path):
     alloc_lab.seed(con, tmp_path, NOW)
     msg = strategist._first_message(con, "the weekly session (re-examine the allocation)", 300.0)
-    assert "ALLOCATION IN FORCE" in msg and "propose_allocation" in msg and "index_hold" in msg and "alloc_default" in msg and "swing <= 20%" in msg
+    assert "ALLOCATION IN FORCE" in msg and "propose_allocation" in msg and "index_hold_s82" in msg and "alloc_default" in msg and "core >= 30%" in msg and "swing" not in msg
 
 
 # --- B3: the two-dimension index rule ------------------------------------------------------------------------------------------------------------
@@ -267,14 +268,18 @@ def test_both_sides_are_compared_after_tax_and_charges():
 
 def test_the_index_candidates_are_seeded_once_and_are_valid_lab_policies(con, tmp_path):
     first = alloc_lab.seed(con, tmp_path, NOW)
-    assert set(first) == {"index_hold", "alloc_default"}
+    assert set(first) == {"index_hold_s82", "alloc_default"}
     assert alloc_lab.seed(con, tmp_path, NOW) == [] and alloc_lab.seed(con, tmp_path, NOW) == []
-    assert con.execute("SELECT count(*) FROM core_policies_s80 WHERE policy_id IN ('index_hold','alloc_default')").fetchone()[0] == 2
+    assert con.execute("SELECT count(*) FROM core_policies_s80 WHERE policy_id IN ('index_hold_s82','alloc_default')").fetchone()[0] == 2
     from pflab.lab import policy_api
-    for pid in ("index_hold", "alloc_default"):
+    for pid in ("index_hold_s82", "alloc_default"):
         p = service.get(con, pid)
         assert policy_api.validate(p["code"]) == [] and p["status"] == "draft"
-    assert "'JUNIORBEES'" in service.get(con, "index_hold")["code"] and "'idx': 0.98" in service.get(con, "index_hold")["code"]
+    code = service.get(con, "index_hold_s82")["code"]                                    # S82 C3: the India core as the two broad index ETFs; JUNIORBEES is not broad; sleeves and international kept
+    defaults_line = [ln for ln in code.splitlines() if ln.startswith("DEFAULTS =")][0]
+    assert "'idx_syms': ['NIFTYBEES', 'MONIFTY500']" in defaults_line
+    assert "'idx': 0.5" in code and "'gold': 0.0" in code
+    assert "'intl': 0.1" in code and "'longterm': 0.4" in code
     assert "'idx': 0.4" in service.get(con, "alloc_default")["code"]
 
 
@@ -290,15 +295,16 @@ def test_the_allocation_variants_replay_in_the_lab_and_buy_the_core_etfs(con, tm
     d2 = {**data, "px": px, "turnover": to, "meta": meta}
     alloc_lab.seed(con, tmp_path, NOW)
     from pflab.lab import policy_api
-    for pid in ("index_hold", "alloc_default"):
+    for pid in ("index_hold_s82", "alloc_default"):
         fn, _ = policy_api.load(service.get(con, pid)["code"])
         run = engine.replay(fn, {}, d2, "2012-01-02", "2015-12-31")
         held = {k for k in run["book"].lots if run["book"].qty(k) > 0}
         assert run["failures"] == 0 and "ETF:MONIFTY500" in held
         sc = engine.score(run, d2, {})
         assert sc["cagr_liq"] is not None and sc["bench_cagr_liq"] is not None
-    run = engine.replay(policy_api.load(service.get(con, "index_hold")["code"])[0], {}, d2, "2012-01-02", "2015-12-31")
-    assert not [k for k in run["book"].lots if run["book"].qty(k) > 0 and not k.startswith("ETF:")]      # index only: no stock
+    pure = alloc_lab.render_code({"idx": 0.98, "gold": 0.0, "intl": 0.0, "longterm": 0.0, "idx_syms": alloc_lab.broad_syms()})
+    run = engine.replay(policy_api.load(pure)[0], {}, d2, "2012-01-02", "2015-12-31")
+    assert not [k for k in run["book"].lots if run["book"].qty(k) > 0 and not k.startswith("ETF:")]      # a pure index book holds no stock
 
 
 # --- adoption by the A50 rule --------------------------------------------------------------------------------------------------------------------
@@ -317,7 +323,7 @@ FAIL = {**_score(0.08, 0.13, -0.45, -0.40), "cagr": 0.09, "sharpe_daily": 0.03, 
 def test_a_proposal_that_passes_the_index_rule_and_the_final_check_is_adopted(con, tmp_path, monkeypatch):
     alloc_lab.seed(con, tmp_path, NOW)
     _hist(con, "alloc_default", PASS)
-    _hist(con, "index_hold", PASS)
+    _hist(con, "index_hold_s82", PASS)
     ok = alloc_lab.propose(con, tmp_path, NOW, GOOD_CLASSES, GOOD_SLEEVES, REASONS)
     _hist(con, ok["variant"], BETTER)
     monkeypatch.setattr(promotion, "final_run", lambda *a, **k: {"score": BETTER, "baseline": {}})
@@ -326,7 +332,7 @@ def test_a_proposal_that_passes_the_index_rule_and_the_final_check_is_adopted(co
     act = allocation.active_target(con)
     assert act["target_id"] == ok["target_id"] and alloc_lab.current_variant(con) == ok["variant"]
     sh = sleeves.target_shares(con, core.settings(), {"id": act["target_id"], "classes": act["classes"], "sectors": act["sectors"]})
-    assert (sh["core"], sh["longterm"], sh["swing"], sh["gold"], sh["international"], sh["cash"]) == (0.55, 0.40, 0.05, 0.15, 0.10, 0.05) and sh["index"] == pytest.approx(0.25)
+    assert (sh["core"], sh["longterm"], sh["gold"], sh["international"], sh["cash"]) == (0.60, 0.40, 0.15, 0.10, 0.05) and sh["index"] == pytest.approx(0.30)
     s = _state(con)
     assert s["sleeve_target"]["source"].startswith("allocation target")                 # baseline_v2 now holds the adopted target
     assert con.execute("SELECT outcome FROM alloc_verdicts_s81").fetchone()[0] == "adopted"
@@ -335,17 +341,17 @@ def test_a_proposal_that_passes_the_index_rule_and_the_final_check_is_adopted(co
 def test_a_proposal_that_fails_or_is_not_above_the_current_allocation_is_not_adopted(con, tmp_path, monkeypatch):
     alloc_lab.seed(con, tmp_path, NOW)
     _hist(con, "alloc_default", PASS)
-    _hist(con, "index_hold", PASS)
+    _hist(con, "index_hold_s82", PASS)
     monkeypatch.setattr(promotion, "final_run", lambda *a, **k: {"score": BETTER, "baseline": {}})
     a = alloc_lab.propose(con, tmp_path, NOW, GOOD_CLASSES, GOOD_SLEEVES, REASONS)
     _hist(con, a["variant"], FAIL)
     out = alloc_lab.tick(con, tmp_path, None, NOW)
     assert out["verdicts"][0]["outcome"] == "not adopted" and allocation.active_target(con) is None
-    b = alloc_lab.propose(con, tmp_path, NOW, {"equity": 60, "gold": 20, "international": 15, "cash": 5}, {"core": 60, "longterm": 35, "swing": 5}, REASONS + " variant two")
+    b = alloc_lab.propose(con, tmp_path, NOW, {"equity": 60, "gold": 20, "international": 15, "cash": 5}, {"core": 65, "longterm": 35}, REASONS + " variant two")
     _hist(con, b["variant"], {**PASS, "cagr_liq": 0.120})                              # passes the rule but is below the current allocation's 12.5%
     out = alloc_lab.tick(con, tmp_path, None, NOW)
     assert out["verdicts"][0]["outcome"] == "not adopted" and any("not above the current" in r for r in out["verdicts"][0]["reasons"])
-    c = alloc_lab.propose(con, tmp_path, NOW, {"equity": 60, "gold": 22, "international": 13, "cash": 5}, {"core": 60, "longterm": 35, "swing": 5}, REASONS + " variant three")
+    c = alloc_lab.propose(con, tmp_path, NOW, {"equity": 60, "gold": 22, "international": 13, "cash": 5}, {"core": 65, "longterm": 35}, REASONS + " variant three")
     _hist(con, c["variant"], BETTER)
     monkeypatch.setattr(promotion, "final_run", lambda *a, **k: {"score": FAIL, "baseline": {}})   # passes the history, fails the once-only final check
     out = alloc_lab.tick(con, tmp_path, None, NOW)
@@ -353,18 +359,20 @@ def test_a_proposal_that_fails_or_is_not_above_the_current_allocation_is_not_ado
     assert allocation.active_target(con) is None
 
 
-def test_when_the_current_allocation_fails_the_index_rule_and_the_index_passes_the_system_owns_the_index(con, tmp_path):
+def test_when_the_current_allocation_fails_the_index_rule_and_the_index_passes_the_system_owns_the_india_core_only(con, tmp_path):
     alloc_lab.seed(con, tmp_path, NOW)
     _hist(con, "alloc_default", FAIL)
-    _hist(con, "index_hold", PASS)
+    _hist(con, "index_hold_s82", PASS)
     out = alloc_lab.tick(con, tmp_path, None, NOW)
     assert out["adopted_index_only"]["adopted"] is True
     act = allocation.active_target(con)
-    assert act["classes"]["equity"] == 100.0 and sleeves.stored(con, act["target_id"])["sleeves"] == {"core": 100.0, "longterm": 0.0, "swing": 0.0}
-    assert alloc_lab.current_variant(con) == "index_hold" and "owns the index" in act["reasons"]
+    assert act["classes"] == {"equity": 90.0, "gold": 0.0, "international": 10.0, "cash": 0.0}      # gold moved into the index ETFs; the international share is KEPT (held in the US sub-book)
+    assert sleeves.stored(con, act["target_id"])["sleeves"] == {"core": 60.0, "longterm": 40.0}     # the sleeve shares are KEPT: the longterm stocks are not sold for a sleeve share
+    assert alloc_lab.current_variant(con) == "index_hold_s82" and "owns the index for the India core" in act["reasons"]
     assert alloc_lab.tick(con, tmp_path, None, NOW).get("adopted_index_only") is None       # once: the next tick finds the index already owned
     s = _state(con)
-    assert s["sleeve_target"]["core"] == 1.0 and s["sleeve_target"]["index"] == 1.0 and s["sleeve_target"]["longterm"] == 0.0
+    sh = s["sleeve_target"]
+    assert (sh["core"], sh["longterm"], sh["gold"], sh["international"]) == (0.60, 0.40, 0.0, 0.10) and sh["index"] == pytest.approx(0.50)
 
 
 # --- B3: probation slices ------------------------------------------------------------------------------------------------------------------------

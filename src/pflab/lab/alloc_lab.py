@@ -3,7 +3,8 @@
     propose(...)     the strategist's `propose_allocation` tool: classes, sectors, sleeve shares and reasons. Code checks the rails (`paper/allocation.validate_target`) and the sleeve caps of his
                      answer (`core/sleeves.check_proposal`: longterm at most 60%, core at least 30%, summing to 100; the swing sleeve is deleted, A60); a good proposal is stored as a PROPOSED target
                      (`paper/allocation.propose_allocation`) with its sleeve shares, and stands in the lab as an allocation VARIANT (`alloc_t<id>`).
-    seed(...)        the always-present candidates (idempotent): `index_hold` (the index ETFs only: "hold the index") and `alloc_default` (the system's starting target)
+    seed(...)        the always-present candidates (idempotent): `index_hold_s82` (S82 C3: the INDIA CORE as broad-market index ETFs only, the sleeves and the international share kept: "hold the
+                     index") and `alloc_default` (the system's starting target). The S81 `index_hold` (whole book) is retired for the record.
     tick(...)        runs the candidates' history replays, then adopts by the A50 rule: a proposal becomes the ACTIVE target when its history passes the two-dimension index rule (after tax and
                      charges on both sides) and is not below the current allocation's, and its once-only 2018-2021 check passes the same rule. When the current allocation itself fails the index
                      rule and the index-only variant passes, the system owns the index: an index-only target is adopted by code. Every verdict is stored with its figures.
@@ -22,9 +23,17 @@ from pflab import core
 from pflab.core import sleeves
 from pflab.lab import promotion, service
 
-INDEX_HOLD, DEFAULT_ID = "index_hold", "alloc_default"
-IDX_SYMS = ("MONIFTY500", "NIFTYBEES", "JUNIORBEES")         # the live baseline's index ETFs (configs/core.toml [baseline_v2] index_etfs): three, so the 35% ETF rail lets the whole book sit in the index
-INDEX_ONLY_SYMS = IDX_SYMS
+INDEX_HOLD, DEFAULT_ID = "index_hold_s82", "alloc_default"
+OLD_INDEX_HOLD = "index_hold"                                  # S81's index-only variant (core 100, three index ETFs, no international and no longterm): kept for the record, retired by `tick` (S82 C3)
+OLD_ADOPTER = "the lab (A50 index rule)"                       # who adopted the S81-style index-only target
+ADOPTER = "the lab (A50 index rule, S82 scope)"
+IDX_SYMS = ("MONIFTY500", "NIFTYBEES", "JUNIORBEES")         # the live baseline's index ETFs (configs/core.toml [baseline_v2] index_etfs)
+
+
+def broad_syms(cfg: Optional[dict] = None) -> list:
+    """The broad-market index ETFs (Nifty 50 and Nifty 500; A56: each may hold up to 60% of the book), from `configs/core.toml [rails] broad_index_etfs`. JUNIORBEES is not one of them."""
+    r = (cfg or core.settings())["rails"]
+    return [str(x).upper() for x in r.get("broad_index_etfs", ["NIFTYBEES", "MONIFTY500"])]
 
 TEMPLATE = '''"""An allocation variant: a fixed split of the book (S81). Index ETFs, a gold ETF, an international ETF, risk-sized liquid stocks for the longterm sleeve;
 the fall gauge cuts equity; nothing is sold to reach the split (a position above its share is held), as the live baseline does."""
@@ -83,10 +92,19 @@ def default_params(cfg: Optional[dict] = None) -> dict:
             "idx_syms": list(b["index_etfs"]), "gold_syms": list(b["gold_etfs"]), "intl_syms": list(b["international_etfs"])}
 
 
+def index_only_params(cfg: Optional[dict] = None) -> dict:
+    """S82 (C3): "the India core is index ETFs only": the starting allocation with the core's gold weight moved into the broad-market index ETFs (each at most 60% of the book through the
+    lab's caps). The sleeve shares (core 60 / longterm 40) and the international share are KEPT (the international share is held in the US sub-book; the replay models it by its ETF proxy)."""
+    p = default_params(cfg)
+    p["idx"] = round(p["idx"] + p["gold"], 4)
+    p["gold"] = 0.0
+    p["idx_syms"] = broad_syms(cfg)
+    return p
+
+
 def candidates(cfg: Optional[dict] = None) -> Dict[str, dict]:
-    idx_syms = list((cfg or core.settings())["baseline_v2"]["index_etfs"])
-    return {INDEX_HOLD: {"params": {"idx": 0.98, "gold": 0.0, "intl": 0.0, "longterm": 0.0, "idx_syms": idx_syms},
-                         "hypothesis": "Hold the index ETFs only (Nifty 500, Nifty 50 and Next 50 index ETFs), nothing else: the A50 benchmark made a candidate, so when nothing beats the index the system owns it."},
+    return {INDEX_HOLD: {"params": index_only_params(cfg),
+                         "hypothesis": "The India core as index ETFs only (the Nifty 500 and Nifty 50 index ETFs; the gold share moves into them), keeping the sleeve shares and the international share: the A50 benchmark made a candidate, so when nothing beats the index the system owns it."},
             DEFAULT_ID: {"params": default_params(cfg),
                          "hypothesis": "The system's starting allocation (core 60 with gold 10 and international 10, longterm 40), as a variant the lab can score like any policy."}}
 
@@ -175,23 +193,66 @@ def run_candidates(con, pm_dir: Path, root, now: datetime, data=None, box=None) 
     return ran
 
 
-def adopt_index_only(con, now: datetime, why: str) -> dict:
-    """The system owns the index: an index-only target (core 100) becomes the ACTIVE target, by code, with the figures as its reasons."""
+def _scoped_shares(con) -> dict:
+    """The shares an index-only target keeps: the active target's (sleeves, international, cash) or the starting default; an S81-style index-only target (core 100, longterm 0) is not a
+    split to keep, so it reads as the starting default."""
     from pflab.paper import allocation
-    cls = {"equity": 100.0, "gold": 0.0, "international": 0.0, "cash": 0.0}
-    sl = {"core": 100.0, "longterm": 0.0}
-    r = allocation.propose_allocation(con, cls, why, now, sectors={}, by="the lab (A50 index rule)")
+    cfg = core.settings()
+    act = allocation.active_target(con)
+    sh = sleeves.target_shares(con, cfg, {"id": act["target_id"], "classes": act["classes"], "sectors": act["sectors"]} if act else None)
+    if sh["core"] >= 0.999 and sh["longterm"] <= 0.001:
+        sh = sleeves.default_shares(cfg)
+    return sh
+
+
+def adopt_index_only(con, now: datetime, why: str, by: str = ADOPTER) -> dict:
+    """The system owns the index (S82, C3): the INDIA CORE becomes index ETFs only. The target KEEPS the sleeve shares (core 60 / longterm 40 from the active target or the starting default)
+    and the international share (held in the US sub-book: it is not moved into index ETFs); only the core's gold weight moves into the broad-market index ETFs. It becomes the ACTIVE target by
+    code, with the figures as its reasons. Held stocks are still sold only for an A51 reason: the baseline never sells for a sleeve share."""
+    from pflab.paper import allocation
+    sh = _scoped_shares(con)
+    intl, cash = round(sh["international"] * 100.0, 4), round(sh["cash"] * 100.0, 4)
+    cls = {"equity": round(100.0 - intl - cash, 4), "gold": 0.0, "international": intl, "cash": cash}
+    sl = {"core": round(sh["core"] * 100.0, 4), "longterm": round(sh["longterm"] * 100.0, 4)}
+    r = allocation.propose_allocation(con, cls, why, now, sectors={}, by=by)
     if not r.get("stored") or r.get("reaffirmed"):
         return {"adopted": False, "problem": r.get("problem") or "an index-only target is already active"}
     con.execute("INSERT OR REPLACE INTO allocation_sleeves_s81 VALUES (?,?,?,?,?)", [r["target_id"], "IN", json.dumps(sl, sort_keys=True), INDEX_HOLD, now])
     a = allocation.review_target(con, r["target_id"], "approve", "adopted by code: the A50 rule (nothing else passes the index rule)", now)
-    return {"adopted": bool(a.get("done")), "target_id": r["target_id"]}
+    return {"adopted": bool(a.get("done")), "target_id": r["target_id"], "classes": cls, "sleeves": sl}
+
+
+def rescope_old_index_only(con, now: datetime) -> dict:
+    """S82 (C3) repair, idempotent. The app ran S81 code, whose fallback adopted an index-only target for the WHOLE book (by 'the lab (A50 index rule)': sleeves core 100 / longterm 0, no
+    international, no gold). If such a target is the active one, it is replaced by the scoped one (core 60 / longterm 40 kept, international kept, gold into the broad-index ETFs), with a
+    dated note that says why. Any other active target, or none, is left alone; once repaired, the next call finds nothing to do."""
+    from pflab.paper import allocation
+    act = allocation.active_target(con)
+    if not act or act.get("proposed_by") != OLD_ADOPTER:
+        return {"rescoped": False}
+    s = sleeves.stored(con, act["target_id"])
+    c = act["classes"]
+    old = bool(s) and float(s["sleeves"].get("core", 0.0)) >= 99.9 and float(s["sleeves"].get("longterm", 0.0)) <= 0.1 and float(c.get("international", 0.0)) <= 0.05
+    if not old:
+        return {"rescoped": False}
+    why = (f"{now.date()}: scoped to the India core. The index-only target #{act['target_id']} adopted before S82 held the WHOLE book in index ETFs (core 100, no longterm stocks, no international "
+           "share), which would have emptied the US sub-book's share and the stock sleeve. This target keeps the sleeve shares (core 60 / longterm 40) and the international share (held in the "
+           "US sub-book) and moves only the core's gold into the broad-market index ETFs; held stocks are sold only for an A51 reason.")
+    out = adopt_index_only(con, now, why)
+    out["rescoped"] = bool(out.get("adopted"))
+    out["replaced"] = act["target_id"]
+    if out["rescoped"]:
+        _verdict(con, now, out["target_id"], INDEX_HOLD, "adopted", [f"replaces the index-only target #{act['target_id']} of S81 (whole book): scoped to the India core"], {})
+    return out
 
 
 def tick(con, pm_dir: Path, root, now: datetime, data=None, box=None, run_final: bool = True) -> dict:
     """Seed, replay what has no run, adopt by the A50 rule. Cheap when nothing is pending (a few queries); idempotent."""
     from pflab.paper import allocation
     out: dict = {"seeded": seed(con, pm_dir, now)}
+    con.execute("UPDATE core_policies_s80 SET status='retired', note='S82 C3: replaced by index_hold_s82 (the old variant held the whole book in three index ETFs; kept for the record)' "
+                "WHERE policy_id=? AND status <> 'retired'", [OLD_INDEX_HOLD])
+    out["rescoped"] = rescope_old_index_only(con, now)
     out["ran"] = run_candidates(con, pm_dir, root, now, data=data, box=box)
     cur_id = current_variant(con)
     cur = _hist(con, cur_id)
@@ -202,8 +263,8 @@ def tick(con, pm_dir: Path, root, now: datetime, data=None, box=None, run_final:
         out["current_vs_index"] = {"ok": ir["ok"], "via": ir.get("via"), **ir.get("figures", {})}
         if (not ir["ok"] and idx is not None and cur_id != INDEX_HOLD and service.index_rule(idx["score"])["ok"]
                 and core.settings()["baseline_v2"].get("index_fallback", True)):
-            why = (f"After tax and charges the current allocation ({cur_id}) fails the index rule over 2005-2017 ({'; '.join(ir['failed'])}) while holding the index ETFs passes it: "
-                   "the system owns the index until a proposal beats it.")
+            why = (f"After tax and charges the current allocation ({cur_id}) fails the index rule over 2005-2017 ({'; '.join(ir['failed'])}) while holding the India core as index ETFs passes it: "
+                   "the system owns the index for the India core (the sleeves and the international share stay) until a proposal beats it.")
             out["adopted_index_only"] = adopt_index_only(con, now, why)
             _verdict(con, now, (out["adopted_index_only"] or {}).get("target_id"), INDEX_HOLD, "adopted", [why], ir.get("figures", {}))
             cur_id = current_variant(con)

@@ -97,8 +97,8 @@ target_reward = 0.0
 time_stop_days = 0
 thesis_break = false
 
-[exits.longterm]              # stock picks held months to years: a stop at a risk-sized distance from the stock's own volatility, no target, no time stop, thesis break on
-stop = true
+[exits.longterm]              # stock picks held months to years: no stop since S82 C4b (the registered study: the risk-sized stops cut the worst fall by 10%, not the 20% the rule asks, and cost 1.05 points a year of return, over the 1.0 limit); no target, no time stop, thesis break on
+stop = false                  # S82 C4b: OFF by the pre-registered rule (docs/protocols/s82_harvest_stops_protocol.md, result docs/research/c4_study_results_s82.json). The thesis-break sale, the rail trims and the fall gauge stay. The numbers below stay for the record and for a later study.
 stop_sigmas = 2.0             # stop distance = this many standard deviations of the stock's move over stop_horizon_days (its own annual volatility scaled)
 stop_horizon_days = 63
 stop_min_pct = 0.12           # ... never closer than this (a share of the price) ...

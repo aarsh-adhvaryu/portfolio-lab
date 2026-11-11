@@ -1,0 +1,57 @@
+{
+ "alloc_default": {
+  "index_rule_ok": false,
+  "failed": [
+   "it trails the index by 3.5% a year, more than the 2% allowed unless its worst fall is a third smaller than the index's (it is -51.6% against -63.8%)"
+  ],
+  "figures": {
+   "policy_return_after_tax": 0.1086,
+   "index_return_after_tax": 0.1432,
+   "lag": 0.0345,
+   "policy_worst_fall": -0.516,
+   "index_worst_fall": -0.6377,
+   "fall_vs_index": 0.809,
+   "index_etf_cost": 0.002,
+   "index_tax_at_end": 623519,
+   "index_charges": 9416,
+   "policy_tax_at_end": 192609
+  }
+ },
+ "index_hold_s82": {
+  "index_rule_ok": false,
+  "failed": [
+   "it trails the index by 3.5% a year, more than the 2% allowed unless its worst fall is a third smaller than the index's (it is -51.2% against -63.8%)"
+  ],
+  "figures": {
+   "policy_return_after_tax": 0.1078,
+   "index_return_after_tax": 0.1432,
+   "lag": 0.0354,
+   "policy_worst_fall": -0.5125,
+   "index_worst_fall": -0.6377,
+   "fall_vs_index": 0.804,
+   "index_etf_cost": 0.002,
+   "index_tax_at_end": 623519,
+   "index_charges": 9416,
+   "policy_tax_at_end": 188088
+  }
+ },
+ "pure_index_history": {
+  "index_rule_ok": false,
+  "failed": [
+   "it trails the index by 2.3% a year, more than the 2% allowed unless its worst fall is a third smaller than the index's (it is -58.1% against -63.8%)"
+  ],
+  "figures": {
+   "policy_return_after_tax": 0.1205,
+   "index_return_after_tax": 0.1432,
+   "lag": 0.0226,
+   "policy_worst_fall": -0.5806,
+   "index_worst_fall": -0.6377,
+   "fall_vs_index": 0.911,
+   "index_etf_cost": 0.002,
+   "index_tax_at_end": 623519,
+   "index_charges": 9416,
+   "policy_tax_at_end": 292138
+  }
+ },
+ "_note": "S82 C3.3: 2005-2017 history, Docker sandbox, real panel, after tax, charges and slippage, with the 60% broad-index limit. The 2018-2021 final window was NOT run: no variant passed the history screen. pure_index_history is a diagnostic (the whole book in the two broad index ETFs, not stored as a variant, not a trial)."
+}
