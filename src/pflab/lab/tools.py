@@ -204,21 +204,19 @@ def issue_view(ctx, a):
 LIMITS = {"screen_stocks": 30000, "company_card": 16000}        # a result is cut at 9,000 characters unless named here (a 40-row screen is longer)
 
 
-@tool("screen_stocks", "A screen of up to 40 stocks for the PICKS sleeve (India: the liquid listed shares, floor Rs 5 crore a day; US: names that clear the A62 floor, bars downloaded on demand). Every number is code, "
-      "public data, point in time: trend and momentum (63/126/252-session returns, vs the 200-day average), volatility, traded value, size, sector, index membership, shareholding changes, insider and bulk deals, "
-      "results and graph events, red flags, the stored price range, storylines that name it, P/E and growth where filed. LABELS: the figures describe the past and no rule on them is a signal; only 'below its 200-day "
-      "average earns less' passed its test (an avoid reading); insider and bulk-deal rows are context, never a signal; US history is survivorship-biased and never evidence for a pick. Sorts: momentum_63/126/252, "
-      "low_volatility, traded_value, market_cap, promoter_change (India), near_52w_high.",
+@tool("screen_stocks", "Up to 40 stocks for the picks sleeve (IN: liquid shares, floor Rs 5 crore a day; US: the A62 floor, bars fetched on demand). Every number is code, point in time: returns, 200-day average, volatility, "
+      "traded value, size, sector, indices, shareholding, deals, events, red flags, price range, storylines, P/E. Figures describe the past; only 'below its 200-day average earns less' passed a test; deals are context; "
+      "US history is survivorship-biased.",
       {"market": S("IN or US"), "filters": O("optional: min_traded_value_inr, min_momentum (126-session return as a fraction), max_volatility (fraction), sector, in_index (NIFTY500, NIFTY200, NIFTY100, NIFTY_MIDCAP100), "
-                                             "exclude_held, exclude_flagged, symbols (list), and for the US grow_universe / fetch_cap (download more SEC-listed names)"),
-       "sort": S("default momentum_126"), "n": I("rows, at most 40")}, ["market"])
+                                             "exclude_held, exclude_flagged, symbols (list), include_suspect_prices; US: grow_universe, fetch_cap"),
+       "sort": S("momentum_63, momentum_126 (default), momentum_252, low_volatility, traded_value, market_cap, promoter_change, near_52w_high"), "n": I("rows, at most 40")}, ["market"])
 def screen_stocks(ctx, a):
     from pflab.lab import screen
     return screen.screen_stocks(ctx.con, ctx.now, str(a.get("market") or "IN"), a.get("filters") or None, str(a.get("sort") or "momentum_126"), int(a.get("n") or 40), root=ctx.root, detail="brief")
 
 
-@tool("company_card", "One page for one name: price and 52-week range, liquidity, size, sector and indices, shareholding, insider and bulk deals (context, never a signal), results and graph events, red flags, price range, "
-      "storylines, filed fundamentals (India) or SEC company facts and filings (US), whether it clears the floor, and what the rails would allow. Every number is code; same labels as screen_stocks.",
+@tool("company_card", "One page for one name: price, 52-week range, liquidity, size, shareholding, deals (context only), results and graph events, red flags, price range, storylines, filed fundamentals (IN) or SEC facts and "
+      "filings (US), the A62 floor, and what the rails allow. Every number is code; the same labels as screen_stocks.",
       {"market": S("IN or US"), "symbol": S("the stock's symbol")}, ["market", "symbol"])
 def company_card(ctx, a):
     from pflab.lab import screen

@@ -51,6 +51,9 @@ Branch `s83/tools` (from `pm/s82-gaps` 1960e33). Migration 190 (`pm/mig_s79/m_to
 - `src/pflab/lab/tools.py`: two `@tool` registrations, `LIMITS`, `text[:LIMITS.get(name, 9000)]`.
 - `src/pflab/data/us_prices.py`: `held_symbols`, `picked_symbols`, `tracked_symbols`, `PICK_TABLES` added (nothing existing changed).
 - `src/pflab/service/tasks_s79_us.py`: `_prices` uses `tracked_symbols` and refreshes the SEC universe weekly.
+- `tests/test_s80_strategist.py` (two assertions) and `tests/test_s80_tactical.py` (one): the cap on the number of strategist tools raised from 17 to 19 (two tools added; the strategist agent adds `propose_picks`,
+  `withdraw_pick`, `skip_idea` and will raise it again: expect a one-line merge conflict). The 480-character limit on a description is kept: the full legend of labels is in each result's `labels`, not in the description.
+- Baseline check: at `1960e33` `tests/test_s81_core_lab.py` (9) and `tests/test_s81_drills_fixes.py` (1) already fail (the S82 WIP, swing sleeve deleted); the same 10 fail on this branch, nothing else I ran does.
 - New: `lab/screen.py`, `us/picks_floor.py`, `pm/mig_s79/m_tools83.py`, `tests/test_s83_tools.py`, this file.
 
 ## Tests (`tests/test_s83_tools.py`, 24, synthetic, no network)

@@ -150,7 +150,7 @@ def test_the_strategist_can_open_adjust_and_read_storylines_and_issue_a_view_thr
     v, err3 = tools.run(ctx, "issue_view", {"direction": -1, "symbols": ["AAA"], "share_of_budget": 0.3, "horizon_sessions": 10, "storyline_id": sid,
                                              "reason": "crude and the rupee point to pressure on oil-importing names"})
     assert err3 is False or json.loads(v).get("ok") is not None
-    assert len(tools.definitions()) <= 17                                 # S81: propose_allocation
+    assert len(tools.definitions()) <= 19                                 # S81: propose_allocation; S83: screen_stocks, company_card
 
 
 # --- the reader when the local model is down, and the daily job --------------------------------------------------------------------

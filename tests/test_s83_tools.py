@@ -460,8 +460,7 @@ def test_the_tools_are_registered_run_and_return_valid_json(con, root, tmp_path)
     assert not ({"propose_picks", "withdraw_pick", "skip_idea"} & set(tools.REGISTRY))                                                # the strategist agent writes those
     for n in ("screen_stocks", "company_card"):
         d = tools.REGISTRY[n][0]
-        assert "every number is code" in d["description"].lower() or "every number is code" in d["description"]
-        assert "signal" in d["description"]
+        assert "every number is code" in d["description"].lower() and len(d["description"]) < 480               # the strategist's rule: short descriptions; the full legend is in each result's `labels`
     ctx = tools.make_ctx(con, tmp_path, root, NOW, 1)
     text, err = tools.run(ctx, "screen_stocks", {"market": "IN", "n": 40, "sort": "momentum_63"})
     out = json.loads(text)
