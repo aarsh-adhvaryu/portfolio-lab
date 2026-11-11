@@ -140,9 +140,27 @@ def read_notes(ctx, a):
     return {"notes": service.notes(ctx.con, int(a.get("limit") or 5))}
 
 
-@tool("write_note", "Write this session's note: what you tried, what won, what you learned. It is the next session's memory. Write it before you finish.", {"text": S("the note")}, ["text"])
+def _learned_needed(con) -> list:
+    """The markets whose picks sleeve is on and has five scored picks: the note must then say what the scorecard taught (S83 L3)."""
+    from pflab.core import picks
+    out = []
+    for m in ("IN", "US"):
+        try:
+            if picks.on(m) and picks.needs_learned(con, m):
+                out.append(m)
+        except Exception:
+            pass
+    return out
+
+
+@tool("write_note", "Write this session's note: what you tried, what won, what you learned. It is the next session's memory. Write it before you finish. `learned` (40+ characters: what the picks scorecard "
+      "taught you and what you do differently) is REQUIRED once five picks of a market have a score.", {"text": S("the note"), "learned": S("what the picks scorecard taught you (required once five picks have a score)")}, ["text"])
 def write_note(ctx, a):
-    r = service.write_note(ctx.con, ctx.now, ctx.session_id, str(a.get("text", "")))
+    learned = " ".join(str(a.get("learned") or "").split())
+    need = _learned_needed(ctx.con)
+    if need and len(learned) < 40:
+        return {"ok": False, "problem": f"five picks have a score ({', '.join(need)}): add `learned`, 40+ characters, what the scorecard taught you and what you do differently, then write the note again"}
+    r = service.write_note(ctx.con, ctx.now, ctx.session_id, str(a.get("text", "")), learned=learned or None)
     if r.get("ok"):
         ctx.stats["notes"] += 1
     return r
@@ -223,9 +241,69 @@ def company_card(ctx, a):
     return screen.fit_card(screen.company_card(ctx.con, ctx.now, str(a.get("market") or "IN"), str(a.get("symbol") or ""), root=ctx.root), LIMITS["company_card"] - 500)
 
 
+# --- S83 L3: the picks sleeve (core/picks.py): the strategist names stocks and writes reasons; code makes every number (A63) ---------------------------------------------------
+
+ITEM = {"type": "object", "properties": {"symbol": {"type": "string"}, "thesis": {"type": "string", "description": "why, 60+ characters"}, "break_condition": {"type": "string", "description": "what would break it"},
+                                         "storylines": {"type": "array", "items": {"type": "integer"}, "description": "storyline ids it rests on, may be empty"}}, "required": ["symbol", "thesis", "break_condition"]}
+
+
+def _session_ref(ctx) -> str:
+    return f"strategist session {ctx.session_id}"
+
+
+@tool("propose_picks", "Name stocks for the picks sleeve of ONE market (IN or US), each with a thesis (60+ characters), what would break it and the storylines it rests on. You never give a size, a price or a weight: code "
+      "checks the rails and floors, sizes by risk inside the sleeve's share and buys slowly. Once five picks have a score, `learned_from` (40+ characters: what the scorecard taught you) is required. Refusals come back with the reason.",
+      {"market": S("IN or US"), "items": {"type": "array", "items": ITEM, "description": "the stocks"}, "learned_from": S("what the scorecard taught you; required once five picks have a score")}, ["market", "items"])
+def propose_picks(ctx, a):
+    from pflab.core import picks
+    market = str(a.get("market") or "").upper()
+    if market not in ("IN", "US"):
+        return {"ok": False, "problem": "market must be IN or US"}
+    items = [i for i in (a.get("items") or []) if isinstance(i, dict)]
+    if not items:
+        return {"ok": False, "problem": "name at least one stock: items is a list of {symbol, thesis, break_condition, storylines}"}
+    learned = " ".join(str(a.get("learned_from") or "").split())
+    if picks.on(market) and picks.needs_learned(ctx.con, market) and len(learned) < picks.MIN_LEARNED:
+        return {"ok": False, "problem": f"five picks in {market} have a score now: give `learned_from`, {picks.MIN_LEARNED}+ characters, what the scorecard taught you and what you do differently, then name them again"}
+    r = picks.propose(ctx.con, ctx.now, market, items[:12], session_ref=_session_ref(ctx), learned_from=learned or None)
+    ctx.stats["picks"] = ctx.stats.get("picks", 0) + len(r["accepted"])
+    out = {"ok": bool(r["accepted"]), "market": market, "accepted": r["accepted"], "refused": r["refused"],
+           "says": "accepted names are bought slowly by code inside the sleeve's share and the turnover caps; you wrote no size"}
+    if not r["accepted"]:
+        out["problem"] = "; ".join(f"{x['symbol']}: {x['reason']}" for x in r["refused"])[:900] or "nothing was accepted"
+    return out
+
+
+@tool("withdraw_pick", "You no longer believe a pick's thesis: withdraw it (a reason of 20+ characters). A pick not bought yet is dropped; a held one is sold by code at a close as a 'withdraw' sale, unless the "
+      "12-month tax guard makes it wait (a stop or thesis break would not wait), and the sale is scored after tax against holding.",
+      {"market": S("IN or US"), "symbol": S("the pick's symbol"), "reason": S("why you no longer believe it")}, ["market", "symbol", "reason"])
+def withdraw_pick(ctx, a):
+    from pflab.core import picks
+    market = str(a.get("market") or "").upper()
+    if market not in ("IN", "US"):
+        return {"ok": False, "problem": "market must be IN or US"}
+    r = picks.withdraw(ctx.con, ctx.now, market, str(a.get("symbol") or ""), str(a.get("reason") or ""), session_ref=_session_ref(ctx))
+    if r.get("ok"):
+        ctx.stats["picks"] = ctx.stats.get("picks", 0) + 1
+    return r
+
+
+@tool("skip_idea", "Record a stock you looked at and decided NOT to pick, with why (20+ characters). It is never bought: only its price is followed so the scorecard can show whether skipping was right.",
+      {"market": S("IN or US"), "symbol": S("the stock's symbol"), "why": S("why you skipped it")}, ["market", "symbol", "why"])
+def skip_idea(ctx, a):
+    from pflab.core import picks
+    market = str(a.get("market") or "").upper()
+    if market not in ("IN", "US"):
+        return {"ok": False, "problem": "market must be IN or US"}
+    r = picks.skip_idea(ctx.con, ctx.now, market, str(a.get("symbol") or ""), str(a.get("why") or ""), session_ref=_session_ref(ctx))
+    if r.get("ok"):
+        ctx.stats["skips"] = ctx.stats.get("skips", 0) + 1
+    return r
+
+
 def make_ctx(con, pm_dir, root, now, session_id, data=None, box=None) -> SimpleNamespace:
     return SimpleNamespace(con=con, pm_dir=pm_dir, root=root, now=now, session_id=session_id, data=data, box=box, finished=None,
-                           stats={"lab_runs": 0, "variants": 0, "challengers": 0, "notes": 0})
+                           stats={"lab_runs": 0, "variants": 0, "challengers": 0, "notes": 0, "picks": 0, "skips": 0})
 
 
 def run(ctx, name: str, args: dict) -> tuple:

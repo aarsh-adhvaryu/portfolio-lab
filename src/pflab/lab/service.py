@@ -295,19 +295,30 @@ def retire(con, now: datetime, policy_id: str, why: str) -> dict:
     return {"ok": True, "policy_id": policy_id, "status": "retired"}
 
 
-def write_note(con, now: datetime, session_id: Optional[int], text: str) -> dict:
+def write_note(con, now: datetime, session_id: Optional[int], text: str, learned: Optional[str] = None) -> dict:
+    """The session's note. `learned` (S83 L3): what the picks scorecard taught it (kept beside the note; the strategist tool requires it once five picks of a market have a score)."""
     from pflab.pm.store import next_id
     text = " ".join((text or "").split())
     if len(text) < 20:
         return {"ok": False, "problem": "the note must say what was tried, what won and what was learned"}
+    learned = " ".join((learned or "").split()) or None
     nid = next_id(con, "core_notes_s80", "note_id")
-    con.execute("INSERT INTO core_notes_s80 VALUES (?,?,?,?)", [nid, session_id, now, text[:2500]])
+    con.execute("INSERT INTO core_notes_s80 (note_id, session_id, written_at, text, learned) VALUES (?,?,?,?,?)", [nid, session_id, now, text[:2500], learned[:1500] if learned else None])
     return {"ok": True, "note_id": nid}
 
 
 def notes(con, limit: int = 5) -> List[dict]:
-    return [{"note_id": a, "session_id": b, "at": str(c)[:16], "text": d} for a, b, c, d in con.execute(
-        "SELECT note_id, session_id, written_at, text FROM core_notes_s80 ORDER BY note_id DESC LIMIT ?", [limit]).fetchall()]
+    return [{"note_id": a, "session_id": b, "at": str(c)[:16], "text": d, "learned": e} for a, b, c, d, e in con.execute(
+        "SELECT note_id, session_id, written_at, text, learned FROM core_notes_s80 ORDER BY note_id DESC LIMIT ?", [limit]).fetchall()]
+
+
+def last_learned(con) -> Optional[dict]:
+    """The newest note that has a `learned` part: {'when', 'learned', 'session_id'} or None (S83 L3: the card's 'what I learned')."""
+    try:
+        r = con.execute("SELECT written_at, learned, session_id FROM core_notes_s80 WHERE learned IS NOT NULL AND length(learned) > 0 ORDER BY note_id DESC LIMIT 1").fetchone()
+    except Exception:
+        return None
+    return {"when": str(r[0])[:16], "learned": r[1], "session_id": r[2]} if r else None
 
 
 # --- what Today and the self-report show of the strategist (S82 C9) -------------------------------------------------------------------------------
