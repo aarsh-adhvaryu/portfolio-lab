@@ -640,6 +640,13 @@ def report_day(con, day: date, market: str = MARKET) -> str:
     notes = [r[0] for r in con.execute("SELECT what FROM session_log_s81 WHERE day=? AND kind='degrade' ORDER BY log_id", [day]).fetchall()]
     if notes:
         L.append("Did not run as planned: " + " | ".join(dict.fromkeys(n[:160] for n in notes[:4])))
+    try:                                                                                # S83 L5: a move of the picks sleeve's share, in plain words
+        from pflab.core import pick_share
+        share_line = pick_share.report_line(con, day)
+        if share_line:
+            L.append(share_line)
+    except Exception:
+        pass
     core = con.execute("SELECT status, orders_json FROM core_runs_s80 WHERE day=?", [day]).fetchone()
     tail = [strategist_line(con, day)] if strategist_line(con, day) else []                        # S82 C9: one plain line on the strategist's newest note
     tail.append("Post-close loop: " + (f"{core[0]} ({len(json.loads(core[1] or '[]'))} order(s))." if core else "not yet; it runs when NSE's closing files arrive this evening."))

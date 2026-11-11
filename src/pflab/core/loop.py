@@ -118,6 +118,11 @@ def run(con, now: datetime, root=None, index: Optional[pd.Series] = None, live_d
     ensure_policy(con, now)
     index = index if index is not None else manager._index(root)
     cfg = core.settings()
+    try:                                                                   # S83 L1/L5: his Kite stocks are adopted as picks and the picks sleeve's share is judged if it is due (core/picks.py)
+        from pflab.core import picks
+        picks.prepare(con, now, day, "IN")
+    except Exception as e:
+        cadence.act(con, now, "core_loop", f"the picks could not be prepared: {type(e).__name__}: {str(e)[:160]}", False)
     s = st.build(con, day, root, index, cfg)
     pid, dec = policy.active_id(), None
     champ = _lab_champion(con)
@@ -153,6 +158,11 @@ def run(con, now: datetime, root=None, index: Optional[pd.Series] = None, live_d
                 dec = {**dec, "weights": blended, "notes": list(dec["notes"]) + [f"probation slice(s) trade their share: {names}"]}
     except Exception as e:
         cadence.act(con, now, "core_loop", f"the probation slices could not be applied: {type(e).__name__}: {str(e)[:160]}", False)
+    try:                                                                   # S83 L1: a lab policy never sells a pick to reach a weight: the pick names get the picks' sizing (a baseline already used it)
+        from pflab.core import picks
+        dec = picks.merge(s, dec, pid)
+    except Exception as e:
+        cadence.act(con, now, "core_loop", f"the picks' sizing could not be merged: {type(e).__name__}: {str(e)[:160]}", False)
     views_note = None
     if cfg["tactical"]["on"]:                                              # the tactical lane: active views adjust the target weights BEFORE the rails (every cap and limit still applies)
         try:
@@ -202,6 +212,11 @@ def run(con, now: datetime, root=None, index: Optional[pd.Series] = None, live_d
         con.execute("INSERT INTO core_runs_s80 VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                     [day, now, pid, status, round(time.time() - t0, 3), json.dumps(brief, default=str), json.dumps({k: round(v, 5) for k, v in dec["weights"].items()}),
                      json.dumps(chk["clipped"], default=str), json.dumps(placed), json.dumps(chk["skipped"], default=str), note[:900]])
+    try:                                                                  # S83 L1: the picks move along their states (proposed -> buying -> held; stopped, broken) from what the book shows
+        from pflab.core import picks
+        picks.sync(con, day, "IN", s)
+    except Exception as e:
+        cadence.act(con, now, "core_loop", f"the picks' states could not be updated: {type(e).__name__}: {str(e)[:160]}", False)
     card_tokens = None
     try:                                                                  # the book card for the strategist: never allowed to fail the loop
         from pflab.core import card

@@ -59,7 +59,7 @@ def build(con, day: date, root=None, index: Optional[pd.Series] = None, cfg: Opt
     from pflab.paper import allocation, book, cadence
     cfg = cfg or core.settings()
     h = book.holdings(con, day)
-    extra_isins = list(dict.fromkeys(list(extra_isins) + policy.universe(con, day, cfg)))      # S81: the core ETFs the active baseline may buy enter as rows with no quantity
+    extra_isins = list(dict.fromkeys(list(extra_isins) + policy.universe(con, day, cfg) + _picks_universe(con, day)))      # S81: the core ETFs the active baseline may buy enter as rows with no quantity; S83: so do the picks not yet held
     rows = []
     for r in h["rows"]:
         buyable = (r["asset_class"] or "") in book.BUYABLE and r["price"] is not None
@@ -82,5 +82,19 @@ def build(con, day: date, root=None, index: Optional[pd.Series] = None, cfg: Opt
            "target": tgt, "sleeve_target": sleeves.target_shares(con, cfg, tgt),
            "vol": volatilities(panel, day, int(cfg["baseline"]["vol_window"])), "gauge": fall_gauge(index, day, cfg["baseline"]),
            "breaker": cadence.breaker(con), "cfg": cfg}
+    try:                                                     # S83 L1: the picks' sizing (state["picks"]), merged into the baseline's targets before the rails (core/picks.py)
+        from pflab.core import picks
+        picks.attach(con, out, "IN")
+    except Exception:
+        out.pop("picks", None)
     from pflab.us import wholebook                       # S82 (A57): the whole book beside the rupee book: `whole_value`, `us_book_inr`; `value` stays the rupee book's (the weights are its own)
     return wholebook.attach(con, out, root)
+
+
+def _picks_universe(con, day) -> list:
+    """S83: the picked names the book does not hold yet (they enter as rows with no quantity); none when the picks are off or the table is not there."""
+    try:
+        from pflab.core import picks
+        return picks.universe(con, day, "IN")
+    except Exception:
+        return []

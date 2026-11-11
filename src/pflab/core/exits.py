@@ -10,7 +10,10 @@
     A60 (2026-11-10)  the swing sleeve is deleted (its study failed); exemption and loss harvesting act only in a sleeve whose switch (`harvest_core`, `harvest_longterm`) is on, and both
                are OFF until the narrower registered study (C4a) passes for that sleeve.
 
-An order is `{"market","isin","side":"sell"|"buy","qty","fraction","kind":"stop"|"target"|"time"|"thesis"|"harvest"|"trim","reason","plan_id"}` plus `symbol`, `price`, `value`,
+    S83 (L1)   a pick the strategist has withdrawn is sold as kind `withdraw` (`_withdrawals`: weighed against the 12-month guard like any sale; inside it the sale waits, unless the stop or a
+               thesis-break event fires, which they do first), scored after tax against holding like every sale.
+
+An order is `{"market","isin","side":"sell"|"buy","qty","fraction","kind":"stop"|"target"|"time"|"thesis"|"harvest"|"trim"|"withdraw","reason","plan_id"}` plus `symbol`, `price`, `value`,
 `est_tax`, `est_charges`, `event_id` for the caller's convenience. The reason is a sentence written by code with the numbers. Orders are paper orders: nothing here reaches a broker.
 """
 from __future__ import annotations
@@ -27,7 +30,7 @@ from pflab.core import tax_rows as tr
 from pflab.tax import rules
 
 MARKET = "IN"
-KINDS = ("target", "stop", "time", "thesis", "harvest", "trim")
+KINDS = ("target", "stop", "time", "thesis", "harvest", "trim", "withdraw")
 SEVERITY_WORDS = {"low": 0.25, "minor": 0.25, "medium": 0.5, "moderate": 0.5, "high": 0.75, "major": 0.75, "severe": 0.9, "critical": 1.0}
 REBUY_WAIT_DAYS = 10                    # a harvest sale whose buy-back has not happened in this many days: the plan is closed instead of waiting
 
@@ -490,6 +493,31 @@ def _level_checks(con, now: datetime, day: date, plan: dict, price: float, held:
     return None
 
 
+def _withdrawals(con, now: datetime, day: date, plans: Dict[str, dict], pos: Dict[str, float], used: set, prices: Optional[dict], cfg: dict, market: str) -> List[dict]:
+    """Sale orders for the picks the strategist has withdrawn (state 'withdrawn' in `picks_s83`) that the book still holds. `_sell` weighs each against the 12-month guard (a guarded sale
+    is recorded and waits; the order comes back the day the guard lets it go) and the same-day round trip rule."""
+    try:
+        rows = con.execute("SELECT isin, symbol, thesis, state_reason, state_changed_on FROM picks_s83 WHERE market=? AND state='withdrawn' ORDER BY pick_id", [market]).fetchall()
+    except Exception:
+        return []
+    out = []
+    for isin, sym, thesis, why, since in rows:
+        held, p = pos.get(isin, 0.0), plans.get(isin)
+        if p is None or isin in used or held <= 1e-9:
+            continue
+        px = _px(prices, con, isin, day)
+        if px is None:
+            continue
+        ent = float(p["entry_price"] or 0)
+        gain = f"{(px / ent - 1) * 100:+.1f}% on the average entry Rs {ent:,.2f}" if ent else "entry not on record"
+        what = f"Withdrawn pick: the strategist no longer believes the thesis for {sym} ({str(why or '')[:200]}); {gain}."
+        o = _sell(con, now, day, p, isin, "withdraw", held, held, px, what, cfg)
+        if o:
+            out.append(o)
+            used.add(isin)
+    return out
+
+
 def check_quote(con, now: datetime, quotes: dict, state: Optional[dict] = None, market: str = MARKET) -> List[dict]:
     """The session checks on live quotes (`quotes`: {isin: ltp} or {isin: {"ltp": ...}}): stop, target and time stop of every open plan. A plan opened or added to today waits for
     the next session unless its stop fires (no same-day round trip)."""
@@ -708,6 +736,7 @@ def check_close(con, day: date, prices: Optional[dict], state: Optional[dict], m
         if o:
             orders.append(o)
             used.add(isin)
+    orders += _withdrawals(con, now, day, plans, pos, used, prices, cfg, market)
     for o in _trims(con, now, day, rows, total, plans, used, cfg):
         orders.append(o)
     orders += _harvests(con, now, day, rows, total, plans, used, prices, cfg, breaker, market)

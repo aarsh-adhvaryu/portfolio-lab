@@ -172,3 +172,31 @@ slippage_bps = 5.0            # ESTIMATE: a buy fills this much above the next o
 min_trade_usd = 25.0
 band_pts = 1.5                # rebalance a name only when it is this many points of the sub-book from its target
 w8ben = true                  # a valid W-8BEN is on file: US dividend withholding 25% (the treaty rate for an individual); false: 30%
+
+# S83 L1/L5 (A61-A63): the picks sleeve (core/picks.py, core/pick_share.py; protocol docs/protocols/s83_picks_live_protocol.md). The numbers of the share rule are pinned to the protocol's
+# text by tests/test_s83_picks.py: change one without the other and the test fails. `on` per market: a market's picks work only when both [picks] on and its own on are true.
+[picks]
+on = true
+judge_every_sessions = 60     # the share is judged every this many sessions of record, once 60 exist
+window_sessions = 120         # the sleeve against the index over the last this many sessions (or all there is)
+behind_points = 2.0           # behind by more than this many points a year: the share falls a step
+min_liquidity_inr = 50000000  # India: median daily traded value over 60 sessions at least Rs 5 crore
+us_floor_price = 5            # US (A62): price at least USD 5
+us_floor_value_usd = 2000000  # US: median daily traded value over 60 sessions at least USD 2 million
+us_max_stocks = 12            # US: at most this many stocks
+us_stock_cap = 0.10           # US: a stock at most this share of the sub-book
+us_spy_floor = 0.30           # US: SPY at least this share of the sub-book
+
+[picks.in]
+on = true
+start_share = 0.40            # the sleeve starts at 40% of the India part
+min_share = 0.20
+max_share = 0.60
+step = 0.05
+
+[picks.us]
+on = false                    # OFF until the US wiring lands (the coordinator turns it on)
+start_share = 0.50            # the picks' share of the sub-book (SPY keeps at least 30% of it)
+min_share = 0.30
+max_share = 0.70
+step = 0.05
