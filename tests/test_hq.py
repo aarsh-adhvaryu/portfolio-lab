@@ -8,7 +8,6 @@ import time
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 
-import numpy as np
 import pytest
 
 from pflab.agents import analyst as an
@@ -266,28 +265,18 @@ def test_drop_folder_files_reach_the_inbox_once_settled(con, tmp_path, monkeypat
 
 # --- memory keeper -------------------------------------------------------------------------------------------------------
 
-def test_predictions_scored_after_they_were_made(con):
-    _prices(con, AAA, date(2026, 10, 1), [100.0] * 18 + [110.0] * 8)
-    pid = keeper.add_prediction(con, 1, gv.OPUS, {"isin": AAA, "symbol": "AAA", "kind": "return_above", "level": 5.0,
-                                                   "due": date(2026, 11, 2), "confidence": 0.7, "claim": "AAA +5%"},
-                                datetime(2026, 10, 20, 18, 0))
-    row = con.execute("SELECT base_rate, check_json FROM hq_predictions WHERE pred_id=?", [pid]).fetchone()
-    assert row[0] is None and json.loads(row[1])["ref_close"] == 100.0          # under 250 windows: no base rate
-    assert keeper.score_due(con, datetime(2026, 10, 30)) == 0                   # not due yet
-    assert keeper.score_due(con, datetime(2026, 11, 3)) == 1
-    out, detail = con.execute("SELECT outcome, detail FROM hq_predictions").fetchone()
-    assert out is True and "+10.00%" in detail
-    sc = keeper.scorecard(con)["models"][gv.OPUS]
-    assert sc["n"] == 1 and sc["brier"] == pytest.approx(0.09)
-    assert "1 of 1" in keeper.scorecard_text(con, gv.OPUS) and "too few" in keeper.scorecard_text(con, gv.OPUS)
-
-
-def test_base_rate_counts_the_stocks_own_history():
-    import pandas as pd
-    s = pd.Series(np.r_[np.full(300, 100.0), np.full(300, 120.0)], index=pd.bdate_range("2023-01-02", periods=600))
-    br = keeper.base_rate(s, 5, "return_above", 10.0)
-    assert br == pytest.approx(5 / 595)                                          # only the 5 windows over the jump
-    assert keeper.base_rate(s[:200], 5, "return_above", 10.0) is None
+def test_the_old_predictions_record_is_still_read_but_nothing_writes_or_scores_one(con):
+    """S82: the brain's passes are gone, so the keeper's prediction writer and scorer were deleted; the rows already on record are read as they are
+    (the Agent HQ screen) and nothing re-scores them."""
+    assert not hasattr(keeper, "add_prediction") and not hasattr(keeper, "score_due") and not hasattr(keeper, "scorecard_text")
+    con.execute("INSERT INTO hq_predictions (pred_id, pass_id, model, made_at, claim, check_json, due, confidence, base_rate, outcome, scored_at, detail) "
+                "VALUES (1, 1, ?, ?, 'AAA +5%', '{}', ?, 0.7, NULL, true, ?, 'AAA +10.00%')", [gv.OPUS, datetime(2026, 10, 20, 18, 0), date(2026, 11, 2), datetime(2026, 11, 3)])
+    con.execute("INSERT INTO hq_predictions (pred_id, pass_id, model, made_at, claim, check_json, due, confidence, base_rate) "
+                "VALUES (2, 1, ?, ?, 'AAA +9%', '{}', ?, 0.6, 0.3)", [gv.OPUS, datetime(2026, 10, 21, 18, 0), date(2026, 11, 2)])
+    sc = keeper.scorecard(con)
+    assert sc["models"][gv.OPUS]["n"] == 1 and sc["models"][gv.OPUS]["brier"] == pytest.approx(0.09) and sc["open"] == {gv.OPUS: 1}
+    out = keeper.run(con, datetime(2026, 11, 20))
+    assert "scored" not in out and con.execute("SELECT count(*) FROM hq_predictions WHERE outcome IS NULL").fetchone()[0] == 1    # the open one stays open
 
 
 def test_decisions_followed_up_and_notes_tidied(con):
@@ -383,7 +372,7 @@ def test_round_runs_orders_and_free_work_without_paid_agents(con, tmp_path, monk
     out = service.round_(rt, attended=False)
     assert out["board"] == 1 and "readers" not in out and "brain" not in out
     assert con.execute("SELECT text FROM hq_reminders").fetchone()[0] == "check AAA in 1 hour"
-    assert out["keeper"]["scored"] == 0
+    assert "scored" not in out["keeper"]
 
 
 def test_settings_brain_switch_and_light_preset(tmp_path):

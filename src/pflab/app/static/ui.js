@@ -47,7 +47,7 @@ function threadHtml(msgs) {
       'Compare putting 10 lakh in now, in 10 monthly parts, or keeping cash until a fall.', 'What does history say about selling an IPO allotment on listing day?'];
     return `<div style="margin:auto;display:flex;flex-direction:column;gap:12px;align-items:center;max-width:560px;text-align:center">
       <b style="font-size:17px">Talk to it like a colleague who never sleeps.</b>
-      <span class="muted">It discusses ideas, answers from your reconciled record, runs calculations and scenarios, and starts investigations that research, quant and review workers carry out in the background. Their progress and results come back here.</span>
+      <span class="muted">It discusses ideas, answers from your reconciled record, runs calculations and scenarios, and can ask the strategist to look into something. What it finds comes back here.</span>
       <div class="row wrapr" style="gap:6px;justify-content:center">${asks.map((a) => `<button class="btn" data-sugg="${esc(a)}" style="font-size:12px;padding:5px 10px;text-align:left">${esc(a)}</button>`).join('')}</div></div>`;
   }
   return msgs.map((m) => bubble(m)).join('');
@@ -295,7 +295,7 @@ function renderInvestigations(d) {
     <section class="stack" style="flex:2 1 520px">
       <div class="card"><div class="row" style="justify-content:space-between"><span class="lbl">Investigations</span><span class="small muted">${inv.length}</span></div>
         <div class="row"><input class="inp" id="invGoal" placeholder="Something to investigate, in your words…"><button class="btn primary" id="invGo">Investigate</button></div>
-        <span class="tiny muted">A coordinator plans it, research and quant workers do it, an independent reviewer checks it. It runs in the background and reports in the Assistant.</span></div>
+        <span class="tiny muted">Old investigations are kept here for the record. New questions go through the Assistant, which can ask the strategist; the answer comes back in the Assistant.</span></div>
       ${inv.map(missionCard).join('') || '<div class="card"><span class="small muted">None yet.</span></div>'}
     </section>
     <section class="stack" style="flex:1 1 380px">

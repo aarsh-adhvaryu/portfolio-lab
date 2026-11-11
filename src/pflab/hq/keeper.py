@@ -1,14 +1,12 @@
-"""The memory keeper (S59): the system's memory and journal stay correct, and the brain is held to its word.
+"""The memory keeper (S59): the system's memory and journal stay correct.
 
-    predictions   each kept with the reference close and its base rate (how often the stock's own history made such a
-                  move over the same number of sessions, the last three years, at least 250 windows); scored by code when
-                  due on the close on or just before the due date (Brier score, the brain against its base rate)
     decisions     every decision in memory about a company is followed up: what its price did since ("we decided X; the
-                  stock then fell 8%; what now"), for the journal screen and the brain's reflection
-    suggestions   the suggestion ledger (S60, `hq/suggestions.py`) scored at each horizon against the Nifty 500
+                  stock then fell 8%; what now"), for the journal screen
     outcomes      a decision followed for 30 days gets its outcome written back as an `outcome` row (S60)
     memory        the analyst's notes: one current note per company (an older one still open is ended); a decision whose
                   subject the system does not know is listed for the investor
+    predictions   (S82) only READ: the brain's old predictions and their scores stay on the record and on the Agent HQ screen (`scorecard`); nothing
+                  writes or scores one any more (the brain's passes are gone), so the writer and the scorer were deleted
 
 All code, no model, nothing leaves the PC.
 """
@@ -22,9 +20,6 @@ import numpy as np
 import pandas as pd
 
 HISTORY_DAYS = 3 * 365
-MIN_WINDOWS = 250                    # PLAN A9 small numbers: fewer windows -> no base rate
-SCORE_SLACK_DAYS = 6                 # the close used may be at most this many days before the due date
-MIN_SCORED = 20                      # under this, the scorecard shows counts only
 
 
 def closes(con, isin: str, upto: date, days: int = HISTORY_DAYS) -> pd.Series:
@@ -34,61 +29,6 @@ def closes(con, isin: str, upto: date, days: int = HISTORY_DAYS) -> pd.Series:
         return pd.Series(dtype=float)
     df = df.drop_duplicates("date", keep="first")
     return pd.Series(df["close"].values, index=pd.to_datetime(df["date"]))
-
-
-def sessions_between(a: date, b: date) -> int:
-    return max(1, int(np.busday_count(a, b)))
-
-
-def hit(kind: str, change_pct: float, level: float) -> bool:
-    return change_pct > level if kind == "return_above" else change_pct < level
-
-
-def base_rate(s: pd.Series, h: int, kind: str, level: float) -> Optional[float]:
-    if len(s) <= h:
-        return None
-    r = (s.shift(-h) / s - 1).dropna() * 100
-    if len(r) < MIN_WINDOWS:
-        return None
-    return float(np.mean([hit(kind, x, level) for x in r.values]))
-
-
-def add_prediction(con, pass_id: int, model: str, p: dict, now: datetime) -> Optional[int]:
-    from pflab.pm.store import next_id
-    s = closes(con, p["isin"], now.date())
-    if s.empty:
-        return None
-    ref_date, ref = s.index[-1].date(), float(s.iloc[-1])
-    br = base_rate(s, sessions_between(ref_date, p["due"]), p["kind"], p["level"])
-    pid = next_id(con, "hq_predictions", "pred_id")
-    check = {"isin": p["isin"], "symbol": p["symbol"], "kind": p["kind"], "level": p["level"], "ref_date": str(ref_date),
-             "ref_close": ref}
-    con.execute("INSERT INTO hq_predictions (pred_id, pass_id, model, made_at, claim, check_json, due, confidence, base_rate) "
-                "VALUES (?,?,?,?,?,?,?,?,?)", [pid, pass_id, model, now, p["claim"] or f"{p['symbol']} {p['kind']} "
-                                               f"{p['level']}% by {p['due']}", json.dumps(check), p["due"],
-                                               p["confidence"], br])
-    return pid
-
-
-def score_due(con, now: datetime) -> int:
-    """Score every open prediction whose due date has a close (outcomes made after the prediction, never before)."""
-    n = 0
-    for pid, check, due in con.execute("SELECT pred_id, check_json, due FROM hq_predictions WHERE outcome IS NULL AND due <= ?",
-                                       [now.date()]).fetchall():
-        c = json.loads(check)
-        s = closes(con, c["isin"], due, days=SCORE_SLACK_DAYS + 5)
-        s = s[s.index.date >= due - timedelta(days=SCORE_SLACK_DAYS)] if len(s) else s
-        if s.empty or s.index[-1].date() <= date.fromisoformat(c["ref_date"]):
-            if (now.date() - due).days > 10:                  # no close came: void, never guessed
-                con.execute("UPDATE hq_predictions SET scored_at=?, detail=? WHERE pred_id=?",
-                            [now, "void: no close near the due date", pid])
-            continue
-        ch = (float(s.iloc[-1]) / c["ref_close"] - 1) * 100
-        con.execute("UPDATE hq_predictions SET outcome=?, scored_at=?, detail=? WHERE pred_id=?",
-                    [hit(c["kind"], ch, c["level"]), now, f"{c['symbol']} {ch:+.2f}% from {c['ref_date']} to "
-                                                          f"{s.index[-1].date()}", pid])
-        n += 1
-    return n
 
 
 def scorecard(con, model: Optional[str] = None) -> dict:
@@ -110,18 +50,6 @@ def scorecard(con, model: Optional[str] = None) -> dict:
     open_ = dict(con.execute("SELECT model, count(*) FROM hq_predictions WHERE outcome IS NULL AND scored_at IS NULL "
                              "GROUP BY model").fetchall())
     return {"models": out, "open": open_}
-
-
-def scorecard_text(con, model: str) -> str:
-    sc = scorecard(con, model)["models"].get(model)
-    if not sc or not sc["n"]:
-        return "YOUR SCORECARD: nothing scored yet."
-    if sc["n"] < MIN_SCORED:
-        return f"YOUR SCORECARD: {sc['hits']} of {sc['n']} predictions came true (too few to score; {MIN_SCORED} needed)."
-    s = f"YOUR SCORECARD: {sc['hits']} of {sc['n']} came true; Brier {sc['brier']:.3f} (lower is better)"
-    if sc.get("brier_base") is not None:
-        s += f"; on the {sc['n_base']} with a base rate: yours {sc['brier_model_on_base']:.3f}, base rate {sc['brier_base']:.3f}"
-    return s + "."
 
 
 # --- decisions followed up; memory kept tidy -------------------------------------------------------------------------------
@@ -191,6 +119,6 @@ def run(con, now: datetime, root=None) -> dict:
         hyp = {"error": f"{type(e).__name__}: {str(e)[:100]}"}
     from pflab.hq import board, cases
     return {"held_expired": board.expire_held(con, now), "case_outcomes": cases.link_outcomes(con, now),
-            "hypotheses": hyp, "scored": score_due(con, now),
+            "hypotheses": hyp,
             "notes_ended": tidy_notes(con, now), "outcomes_written": write_outcomes(con, now, fu),
             "decisions_followed": sum(1 for f in fu if f["since"]), "unknown_subjects": sum(1 for f in fu if f.get("unknown_subject"))}

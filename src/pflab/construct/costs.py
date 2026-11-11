@@ -43,7 +43,7 @@ def lots_tax(lots: List[Tuple[date, float, float, Optional[str]]], px: float, qt
     after = dict(before)
     for k, v in gains.items():
         after[k] = after.get(k, 0.0) + v
-    return float(book.tax_of(after) - book.tax_of(before)), gains
+    return float(book.tax_of(after, day) - book.tax_of(before, day)), gains
 
 
 def tax_rate(lots, px: float, day: date, asset_class: Optional[str], tax_class: Optional[str] = None) -> float:
