@@ -1,7 +1,8 @@
 """The strategist's S81 triggers (B6): reasons for a session that come from the S81 pieces, each by code, each a sentence with the numbers.
 
     a thesis-break event on a held name      the exit manager emitted a thesis exit since the last session
-    the harvesting window opening            a tax-harvest sale or buy-back was emitted since the last session, or the last quarter of the financial year began
+    the harvesting window opening            a tax-harvest sale or buy-back was emitted since the last session, or the last quarter of the financial year began; ONLY while
+                                             harvesting is on in some sleeve (`[exits] harvest_core` or `harvest_longterm`, both false since A60: no paid session every January)
     a probation slice to grow or withdraw    `probation_s81` recorded a growth or a withdrawal since the last session
     an allocation drift beyond its band      the book is further from the active allocation target than its band (`paper/allocation.drift`)
 
@@ -18,6 +19,16 @@ def _since(con, now: datetime):
     return last or datetime(1970, 1, 1)
 
 
+def harvesting_on() -> bool:
+    """A60: exemption and loss harvesting is OFF in the live book (`[exits] harvest_core`, `harvest_longterm`); the window is a reason for a paid session only when one is on."""
+    try:
+        from pflab.core import exits
+        s = exits.settings()
+        return bool(s.get("harvest_core", False) or s.get("harvest_longterm", False))
+    except Exception:
+        return False
+
+
 def reasons(con, now: datetime) -> List[str]:
     out: List[str] = []
     since = _since(con, now)
@@ -28,10 +39,11 @@ def reasons(con, now: datetime) -> List[str]:
     except Exception:
         pass
     try:
-        n = con.execute("SELECT count(*) FROM exit_events_s81 WHERE kind='harvest' AND emitted_at > ? AND status IN ('emitted','filled')", [since]).fetchone()[0]
-        q4 = now.month in (1, 2, 3) and since.date() < now.date().replace(month=1, day=1)
-        if n or q4:
-            out.append("the tax-harvesting window is open" + (f": {n} harvest order(s) since the last session" if n else " (the last quarter of the financial year began)"))
+        if harvesting_on():
+            n = con.execute("SELECT count(*) FROM exit_events_s81 WHERE kind='harvest' AND emitted_at > ? AND status IN ('emitted','filled')", [since]).fetchone()[0]
+            q4 = now.month in (1, 2, 3) and since.date() < now.date().replace(month=1, day=1)
+            if n or q4:
+                out.append("the tax-harvesting window is open" + (f": {n} harvest order(s) since the last session" if n else " (the last quarter of the financial year began)"))
     except Exception:
         pass
     try:

@@ -40,7 +40,8 @@ FRESH_DAYS = 7                   # a turnover forecast older than this is not us
 
 PRICE_H = (21, 63, 252)
 PRICE_USES = tuple(f"price{h}" for h in PRICE_H)
-METHODS = ("stats_ewma", "stats_plain")
+METHODS = ("stats_ewma", "stats_plain")           # the two methods the S64 calibration study compared (quant/ranges_eval.py and its tests still use both)
+LIVE_METHODS = ("stats_plain",)                    # A60: what is computed and stored live; the EWMA scaling failed the study (plain passes) and is no longer drawn
 SAMPLE_SESSIONS, MIN_SESSIONS, MEAN_BLOCK, PATHS, LAMBDA = 750, 250, 10, 10_000, 0.94
 LEVELS = (0.1, 0.5, 0.9)
 COVER_LAST = 60
@@ -304,7 +305,7 @@ def store_prices(con, root: Path, asof: date, universe: pd.DataFrame, now: datet
         lr = np.diff(np.log(c.to_numpy(float)))
         drift, _how = drift_for(root, isin, asof, table, erp)
         rng = np.random.default_rng([asof.toordinal(), zlib.crc32(isin.encode())])
-        res = price_ranges(lr, float(c.iloc[-1]), drift, paths=paths, rng=rng)
+        res = price_ranges(lr, float(c.iloc[-1]), drift, paths=paths, rng=rng, methods=LIVE_METHODS)
         last = pd.Timestamp(c.index[-1]).date()
         for m, by_h in res.items():
             for h, q in by_h.items():
