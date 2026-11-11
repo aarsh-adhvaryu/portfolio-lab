@@ -9,7 +9,7 @@ from pflab.lab import strategist
 from pflab.pm import store
 
 from tests.test_s80_core import DAYS, NOW as CORE_NOW, calm_index, con, con as core_con  # noqa: F401  (the synthetic book of the core tests)
-from tests.test_s81_session import CCC, MON, bars_dir, db, run_day, write_bars  # noqa: F401  (the session tests' book, bars and replay)
+from tests.test_s81_session import CCC, MON, bars_dir, db, issue_view, plan_after_entry, run_day, write_bars  # noqa: F401  (the session tests' book, bars and replay)
 
 NOW = datetime(2026, 11, 9, 1, 0)
 
@@ -128,16 +128,15 @@ def test_the_graph_and_us_jobs_skip_softly_when_their_inputs_are_absent(bare_con
     assert r.status in ("offline", "skipped"), r
 
 
-def test_a_swing_trigger_stop_and_target_become_the_exit_plans_levels(db, bars_dir, tmp_path):
-    """Merged-tree drill (S81): the session loop handed the exit manager `stop_price` / `target_price`, whose override keys are `stop` and `target`: the trigger's own levels were
-    ignored and the plan carried the defaults. Both names are passed now."""
-    from datetime import datetime as _dt
-    from pflab.core import session
-    session.add_trigger(db, _dt(2026, 10, 30, 16, 0), CCC, "above", 101.0, amount=50000.0, valid_from=MON, stop_price=97.0, target_price=111.0, reason="breakout above its range")
-    write_bars(bars_dir, "CCC", 100.0, {MON: lambda i: 100.0 if i < 3 else 102.0})
-    run_day(db, MON, bars_dir, tmp_path, isins=[CCC])
+def test_a_plans_own_stop_and_target_become_the_exit_plans_levels(db, bars_dir, tmp_path):
+    """Merged-tree drill (S81): the session loop handed the exit manager `stop_price` / `target_price`, whose override keys are `stop` and `target`: the levels given were ignored and the
+    plan carried the defaults. The swing trigger that gave them is deleted (A60); what stays is the exit manager's contract, here on a position a tactical view carried in: the levels
+    given in `plan` are the plan's levels, and the plan is in the longterm sleeve."""
+    issue_view(db)
+    write_bars(bars_dir, "CCC", 100.0, {MON: lambda i: 100.0})
+    run_day(db, MON, bars_dir, tmp_path, isins=[CCC], on_step=plan_after_entry(db, 97.0, 111.0))
     plan = db.execute("SELECT sleeve, stop, target FROM exit_plans_s81 WHERE isin=? ORDER BY plan_id DESC LIMIT 1", [CCC]).fetchone()
-    assert plan is not None and plan[0] == "swing" and plan[1] == 97.0 and plan[2] == 111.0
+    assert plan is not None and plan[0] == "longterm" and plan[1] == 97.0 and plan[2] == 111.0
 
 
 def test_what_the_exit_manager_trades_counts_against_the_days_turnover_cap_and_the_rebalance_gives_way(core_con):
