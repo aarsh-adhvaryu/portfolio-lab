@@ -229,14 +229,24 @@ def test_the_tax_rate_is_the_month_end_before_the_event():
     assert usfx.tax_date(date(2026, 3, 1)) == date(2026, 2, 28)
 
 
-def test_the_start_converts_five_percent_of_the_book_at_the_stated_rate(con):
+def _rupee_cash(c, amount, day=date(2026, 10, 1)):
+    """The rupee paper book's cash (the paper-only mode: `paper_cash`), so there is rupee money to move."""
+    c.execute("INSERT INTO paper_cash VALUES (?,?,?,?,?,?)", [store.next_id(c, "paper_cash", "entry_id"), day, amount, "seed", "test cash", NOW])
+
+
+def test_the_start_is_a_transfer_out_of_the_rupee_books_cash_at_the_stated_rate(con):
+    """(S82, A57: this replaces the S81 test of a 5% seed from nothing.) The account opens by moving rupees out of the rupee book's cash, never by new money."""
     fxr = {"rate": 90.0, "source": "FBIL", "rate_day": date(2026, 11, 2), "label": "FBIL reference rate"}
-    a = book.open_account(con, NOW, date(2026, 11, 2), 2_000_000.0, fxr, 0.05)
-    # 5% of 20,00,000 = 1,00,000 rupees; at 90.0 with the 0.4% funding markup: 100000 / (90 x 1.004)
+    _rupee_cash(con, 2_000_000.0)
+    a = book.open_account(con, NOW, date(2026, 11, 2), 100_000.0, fxr, 0.10)
+    # 1,00,000 rupees at 90.0 with the 0.4% funding markup: 100000 / (90 x 1.004) dollars
     assert a["start_inr"] == pytest.approx(100_000.0) and a["start_usd"] == pytest.approx(100_000.0 / (90.0 * 1.004)) and a["fx_source"] == "FBIL"
-    assert book.cash(con) == pytest.approx(a["start_usd"]) and "FBIL reference rate" in a["note"] and "0.40%" in a["note"]
+    assert book.cash(con) == pytest.approx(a["start_usd"]) and "FBIL reference rate" in a["note"] and "0.40%" in a["note"] and "transfer" in a["note"]
+    assert con.execute("SELECT kind FROM us_cash_s81").fetchall() == [("transfer",)]
+    from pflab.paper import book as pb
+    assert pb.cash(con) == pytest.approx(1_900_000.0)                        # the rupee book paid for it
     with pytest.raises(ValueError):
-        book.open_account(con, NOW, date(2026, 11, 2), 2_000_000.0, fxr, 0.05)
+        book.open_account(con, NOW, date(2026, 11, 2), 100_000.0, fxr, 0.10)
 
 
 # ---------------------------------------------------------------- phase B: costs, a US buy and sale, tax and withholding
@@ -305,7 +315,8 @@ def test_a_us_buy_a_dividend_and_a_long_term_sale_with_the_tax_and_credit_worked
     bars = data.load(["SPY"], root)
     for d, r in ((date(2024, 12, 31), 85.0), (date(2025, 5, 31), 86.0), (date(2025, 6, 12), 87.0), (date(2027, 1, 31), 90.0), (b_sell, 91.0)):
         _fx(con, "USDINR_FBIL", d, r)
-    book.open_account(con, NOW, b_buy, 1_000_000.0, {"rate": 90.0, "source": "FBIL", "rate_day": b_buy, "label": "FBIL reference rate"}, 0.01)
+    _rupee_cash(con, 5_000_000.0)
+    book.open_account(con, NOW, b_buy, 10_000.0, {"rate": 90.0, "source": "FBIL", "rate_day": b_buy, "label": "FBIL reference rate"}, 0.01)
     con.execute("DELETE FROM us_cash_s81")                              # only the cash below matters: start the test with exactly USD 5,000
     book.add_cash(con, NOW, date(2025, 1, 10), 5000.0, "seed", "test")
     # BUY: an order of USD 1,000 placed the day before fills at the open of 2025-01-15 (slippage 0): value + charges = 1,000, charges = 0.123% of the value (0.1% + 18% IGST + 0.005%)
@@ -434,24 +445,25 @@ def test_close_us_runs_two_sessions_end_to_end(con, tmp_path):
     _synthetic_us(root, days)
     for d in (date(2026, 10, 31), date(2026, 11, 2), date(2026, 11, 3), date(2026, 11, 4)):
         _fx(con, "USDINR_FBIL", d, 90.0)
+    _rupee_cash(con, 2_000_000.0)
     # session 1: Monday 2026-11-02 closes 02:30 IST on the 3rd (EST); the loop runs in the IST morning
-    r1 = adapter.close_us(con, datetime(2026, 11, 3, 7, 0), root, CFG, book_value_inr=2_000_000.0)
+    r1 = adapter.close_us(con, datetime(2026, 11, 3, 7, 0), root, CFG)
     assert r1["day"] == "2026-11-02" and r1["fx"]["source"] == "FBIL" and r1["fx"]["rate"] == 90.0
-    start_usd = 100_000.0 / (90.0 * 1.004)                                          # 5% of the system's book, at the stated rate, less the funding markup
-    assert r1["opened"]["start_usd"] == pytest.approx(start_usd, abs=0.01) and r1["value_usd"] == pytest.approx(start_usd, abs=0.01)
-    assert {o["symbol"] for o in r1["orders"]} == {"SPY", "QQQ"} and all(o["side"] == "buy" for o in r1["orders"])
-    assert all("us_baseline_v1" in o["reason"] for o in r1["orders"]) and r1["fills"] == []
-    assert sum(o["usd"] for o in r1["orders"]) == pytest.approx(0.70 * start_usd, abs=0.02)   # a fresh account deploys at once: 35% in each ETF (the ETF rail), the rest stays cash
+    first = 0.05 * 2_000_000.0                                                       # a tranche is at most 5% of the whole book a day (the target is 10%)
+    start_usd = first / (90.0 * 1.004)                                               # moved out of the rupee book's cash at the stated rate, less the funding markup
+    assert r1["opened"]["start_usd"] == pytest.approx(start_usd, abs=0.01) and r1["value_usd"] == pytest.approx(start_usd, abs=0.01) and r1["opened"]["from"].startswith("a transfer")
+    assert {o["symbol"] for o in r1["orders"]} == {"SPY"} and all(o["side"] == "buy" for o in r1["orders"])
+    assert all("us_core_v2" in o["reason"] for o in r1["orders"]) and r1["fills"] == []
+    assert sum(o["usd"] for o in r1["orders"]) == pytest.approx(0.95 * start_usd, abs=0.02)   # SPY may be all of the sub-book: 95% in it, the rest stays dollars
     assert adapter.close_us(con, datetime(2026, 11, 3, 8, 0), root, CFG)["skipped"] == "US session 2026-11-02 already done"
-    # session 2: the orders fill at Tuesday's open plus 5 bps; never better than the open
+    # session 2: the order fills at Tuesday's open plus 5 bps; never better than the open
     r2 = adapter.close_us(con, datetime(2026, 11, 4, 7, 0), root, CFG)
-    assert r2["day"] == "2026-11-03" and len(r2["fills"]) == 2
-    opens = {"SPY": 101.0 - 0.4, "QQQ": 202.0 - 0.8}
-    for f in r2["fills"]:
-        assert f["price"] == pytest.approx(opens[f["symbol"]] * 1.0005, abs=1e-4) and f["charges_usd"] > 0
+    assert r2["day"] == "2026-11-03" and len(r2["fills"]) == 1
+    f = r2["fills"][0]
+    assert f["symbol"] == "SPY" and f["price"] == pytest.approx((101.0 - 0.4) * 1.0005, abs=1e-4) and f["charges_usd"] > 0
     assert book.cash(con) >= 0 and set(book.positions(con).values()) != {0}
     st = adapter.state_us(con, date(2026, 11, 3))
-    assert st["open"] and st["marked"]["day"] == "2026-11-03" and {p["symbol"] for p in st["positions"]} == {"SPY", "QQQ"}
+    assert st["open"] and st["marked"]["day"] == "2026-11-03" and {p["symbol"] for p in st["positions"]} == {"SPY"}
     assert st["fx"]["source"] == "FBIL" and st["account"]["fx_source"] == "FBIL" and "estimates" in st["label"]
     assert con.execute("SELECT count(*) FROM us_runs_s81").fetchone()[0] == 2
     # a session with no bars yet is waited for, not guessed
@@ -474,21 +486,24 @@ def test_a_settled_book_keeps_the_churn_caps_and_a_fresh_account_does_not(con):
     out = policy.check(con, settled, {"weights": {"US:SPY": 0.35, "US:QQQ": 0.35}})
     assert sum(o["value"] for o in out["orders"]) == pytest.approx(0.10 * total, rel=1e-6)      # the 10%-a-day turnover cap applies
     assert any("turnover cap" in o["note"] for o in out["orders"])
-    assert out["orders"][0]["side"] == "sell" and "us_baseline_v1" in out["orders"][0]["reason"]   # sells first
+    assert out["orders"][0]["side"] == "sell" and "us_core_v2" in out["orders"][0]["reason"]   # sells first
     fresh = state(0.0, 10_000.0)                                         # nothing invested yet: the whole 35% + 35% goes in at once
     out = policy.check(con, fresh, {"weights": {"US:SPY": 0.35, "US:QQQ": 0.35}})
     assert sum(o["value"] for o in out["orders"]) == pytest.approx(0.70 * total, rel=1e-6) and all(o["side"] == "buy" for o in out["orders"])
 
 
-def test_the_indian_paper_book_tables_are_not_touched_by_the_us_close(con, tmp_path):
+def test_the_indian_paper_book_changes_only_by_the_transfer_cash_row(con, tmp_path):
+    """(S82: the rupee book now pays for the sub-book: its cash falls by the transfer, by a `paper_cash` row of kind us_transfer; its lots, orders and trades are untouched.)"""
     root = tmp_path / "data"
     _synthetic_us(root, [date(2026, 11, 2)])
     _fx(con, "USDINR_FBIL", date(2026, 11, 2), 90.0)
     _fx(con, "USDINR_FBIL", date(2026, 10, 31), 90.0)
+    _rupee_cash(con, 1_000_000.0)
     before = {t: con.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in ("paper_trades", "paper_lots", "paper_cash", "paper_orders", "us_trades", "lots")}
-    adapter.close_us(con, datetime(2026, 11, 3, 7, 0), root, CFG, book_value_inr=1_000_000.0)
+    adapter.close_us(con, datetime(2026, 11, 3, 7, 0), root, CFG)
     after = {t: con.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in before}
-    assert before == after
+    assert after.pop("paper_cash") == before.pop("paper_cash") + 1 and before == after
+    assert con.execute("SELECT kind, amount FROM paper_cash WHERE kind='us_transfer'").fetchone() == ("us_transfer", -50_000.0)
 
 
 def test_every_us_row_has_a_source_a_date_and_a_level():

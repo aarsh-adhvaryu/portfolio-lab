@@ -66,9 +66,22 @@ def run(con, root: Path, now: datetime) -> dict:
             con.execute("UPDATE catchup_s79 SET state='failed', stage='scoring', finished_at=?, detail=? WHERE catch_id=?", [now, f"{type(e).__name__}: {e}"[:300], cid])
             out[market] = {"failed": f"{type(e).__name__}: {e}"[:300]}
             continue
+        if market == "US":                                       # S82 (A59): the US sub-book's step runs for every missed US session, oldest first, once each (the `us_close` job is the same step)
+            try:
+                from pflab import us
+                if us.on():
+                    ub = us_adapter_close(con, now, root)
+                    res = {**res, "us_book": {k: ub[k] for k in ("day", "status", "caught_up", "waiting", "skipped") if k in ub}}
+            except Exception as e:                               # never stops the catch-up: the `us_close` job tries again
+                res = {**res, "us_book": {"failed": f"{type(e).__name__}: {str(e)[:160]}"}}
         con.execute("UPDATE catchup_s79 SET state='done', stage='done', finished_at=?, detail=? WHERE catch_id=?", [now, json.dumps(res, default=str)[:900], cid])
         out[market] = {"done": str(closed), "new": True, **({"scoring": res} if res else {})}
     return out
+
+
+def us_adapter_close(con, now: datetime, root: Path) -> dict:
+    from pflab.us import adapter
+    return adapter.close_us(con, now, root)
 
 
 def status(con) -> dict:

@@ -78,7 +78,9 @@ def build(con, day: date, root=None, index: Optional[pd.Series] = None, cfg: Opt
     panel = closes_panel(con, [r["isin"] for r in rows if r["buyable"]], day, int(cfg["baseline"]["vol_window"]))
     act = allocation.active_target(con)
     tgt = {"classes": act["classes"], "sectors": act["sectors"], "id": act["target_id"]} if act else None
-    return {"day": day, "value": h["value"], "cash": h["cash"], "bank": h.get("bank", 0.0), "rows": rows,
-            "target": tgt, "sleeve_target": sleeves.target_shares(con, cfg, tgt),
-            "vol": volatilities(panel, day, int(cfg["baseline"]["vol_window"])), "gauge": fall_gauge(index, day, cfg["baseline"]),
-            "breaker": cadence.breaker(con), "cfg": cfg}
+    out = {"day": day, "value": h["value"], "cash": h["cash"], "bank": h.get("bank", 0.0), "rows": rows,
+           "target": tgt, "sleeve_target": sleeves.target_shares(con, cfg, tgt),
+           "vol": volatilities(panel, day, int(cfg["baseline"]["vol_window"])), "gauge": fall_gauge(index, day, cfg["baseline"]),
+           "breaker": cadence.breaker(con), "cfg": cfg}
+    from pflab.us import wholebook                       # S82 (A57): the whole book beside the rupee book: `whole_value`, `us_book_inr`; `value` stays the rupee book's (the weights are its own)
+    return wholebook.attach(con, out, root)

@@ -1,47 +1,71 @@
-"""The entry points the close loop calls for the US leg (S81 B8 phase B). Thin: everything is in the modules beside this one.
+"""The entry points the close loop calls for the US leg (S81 B8 phase B; S82: one book with the rupee book). Thin: everything is in the modules beside this one.
 
-    close_us(con, now, root=None, cfg=None, book_value_inr=None) -> dict
-        Handles the latest US session that has closed (settle_minutes after its close, in the IST morning): splits, dividends, fills of yesterday's orders at the open, the mark at the
-        close, the baseline's decision through the rails, and the new orders. Once per session (`us_runs_s81`). Never raises for a missing input: it says what it is waiting for.
-        Returns {"off": True} while `[us] on = false` (the default), {"waiting": ...}, {"skipped": ...} or the run's summary.
+    close_us(con, now, root=None, cfg=None) -> dict
+        Handles every US session that has closed (settle_minutes after its close, in the IST morning) and has not been handled yet, oldest first: a catch-up after days off runs each
+        missed session once, in order (the first ever run handles the latest session only). Per session: the pre-S82 seed is converted into a transfer if there is one, the account is
+        OPENED BY A TRANSFER out of the rupee book's cash when it is not open, splits, dividends, fills of the earlier orders at this session's open, a funding tranche when the
+        international share of the WHOLE book is under its target (one transfer a day at most), the mark at the close, the core policy's decision through the rails, and the new orders
+        (they fill at the NEXT US open; a stop acts at the next open too, so a gap can pass it). Once per session (`us_runs_s81`). Never raises for a missing input: it says what it is
+        waiting for. Returns {"off": True} while `[us] on = false`, {"waiting": ...}, {"skipped": ...} or the last session's summary (`caught_up` lists all the sessions run).
     state_us(con, day, root=None) -> dict
         The sub-book on `day` for screens, the card and the morning note: account, cash, positions in USD and rupees (the FX rate and its source stated), the financial year's
-        realised gains, tax and dividend figures, open orders and the last run. JSON-safe. `{"open": False}` before the account exists.
+        realised gains, tax and dividend figures, open orders and the last run. JSON-safe. `{"open": False}` before the account exists. `us/report.py` is the fuller JSON for screens.
 
-The loop's wiring (coordinator): after the Indian close loop, `if us.on(): adapter.close_us(con, now)`; call it again on every tick in the IST morning (it is idempotent per session).
-Nothing in the Indian paper book reads these tables; the `market="IN"` code paths are unchanged.
+The job `us_close` (service/tasks_s79_us.py) calls it, and the missed-session catch-up of the app runs the same job. The `market="IN"` code paths are unchanged.
 """
 from __future__ import annotations
 
 import json
 import time
-from datetime import date, datetime
-from typing import Optional
+from datetime import date, datetime, timedelta
+from typing import List, Optional
 
 from pflab import us
-from pflab.us import book, clock, data, fx as usfx, instruments as uins, policy
+from pflab.us import book, clock, data, fx as usfx, instruments as uins, policy, transfer, wholebook
+
+MAX_CATCHUP_SESSIONS = 40
+GAP_RISK = ("Decisions use the last US close and orders fill at the NEXT US open (plus a few basis points). A stop acts at the next open, so a gap can pass it: "
+            "the price can open well beyond the stop and the loss is then taken at that price, not at the stop.")
 
 
-def _system_book_value(con, now: datetime) -> Optional[float]:
-    """The rupee paper book's value on the last Indian close, or None when it cannot be read (the caller then uses the configured fallback and says so)."""
-    try:
-        from pflab import markets
-        from pflab.paper import book as inbook
-        day = markets.get("IN").session_closed_by(now)
-        v = inbook.holdings(con, day)["value"]
-        return float(v) if v and v > 0 else None
-    except Exception:
-        return None
+def pending_sessions(con, now: datetime, settle_minutes: int = 30) -> List[date]:
+    """The US sessions closed by `now` that the close function has not handled: after the last handled one up to the latest closed. None handled yet: the latest only."""
+    latest = clock.session_closed_by(now, int(settle_minutes))
+    last = con.execute("SELECT max(day) FROM us_runs_s81").fetchone()[0]
+    if last is None:
+        return [latest]
+    return clock.market().sessions_between(last + timedelta(days=1), latest)[-MAX_CATCHUP_SESSIONS:]
 
 
-def close_us(con, now: datetime, root=None, cfg: Optional[dict] = None, book_value_inr: Optional[float] = None) -> dict:
+def close_us(con, now: datetime, root=None, cfg: Optional[dict] = None) -> dict:
     s = us.settings(cfg)
     if not s["on"]:
         return {"off": True}
-    day = clock.session_closed_by(now, int(s["settle_minutes"]))
-    if con.execute("SELECT 1 FROM us_runs_s81 WHERE day=?", [day]).fetchone():
-        return {"skipped": f"US session {day} already done"}
-    universe = [x.upper() for x in s["universe"]]
+    todo = pending_sessions(con, now, int(s["settle_minutes"]))
+    if not todo:
+        latest = clock.session_closed_by(now, int(s["settle_minutes"]))
+        return {"skipped": f"US session {latest} already done"}
+    try:
+        uins.map_symbol_keys(con, uins.load_ciks(root), now=now)               # US:SYMBOL keys -> ZZ+CIK keys by alias, once a CIK map is cached (idempotent)
+    except Exception:
+        pass
+    done, last = [], None
+    for day in todo:
+        r = _session(con, now, day, s, cfg, root)
+        if "waiting" in r:
+            if last is None:
+                return r
+            last = dict(last, waiting=r["waiting"])
+            break
+        last = r
+        done.append(r["day"])
+    if len(done) > 1:
+        last = dict(last, caught_up=done)
+    return last
+
+
+def _session(con, now: datetime, day: date, s: dict, cfg: Optional[dict], root) -> dict:
+    universe = [x.upper() for x in s["broad_index_etfs"]]
     held = [uins.symbol_of(con, k) for k in book.positions(con, day)]
     syms = list(dict.fromkeys(universe + [h for h in held if h]))
     bars = data.load(syms, root)
@@ -51,17 +75,34 @@ def close_us(con, now: datetime, root=None, cfg: Optional[dict] = None, book_val
     if fx is None:
         return {"waiting": f"no USD/INR rate within 4 days of {day}"}
     t0 = time.time()
-    opened = None
+    rupee_day = now.date()
+    converted = transfer.convert_seed(con, now, root) if book.account(con) else []
+    opened, funding = None, None
     if book.account(con) is None:
-        v, how = (book_value_inr, "given") if book_value_inr else (_system_book_value(con, now), "the rupee paper book")
-        if not v:
-            v, how = float(s["start_inr_fallback"]) / float(s["start_share"]), "the configured fallback (the system's book could not be read)"
-        acct = book.open_account(con, now, day, float(v), fx, float(s["start_share"]))
-        opened = {"start_usd": round(acct["start_usd"], 2), "start_inr": round(acct["start_inr"], 2), "book_value_from": how}
+        plan = wholebook.plan_tranche(con, rupee_day, now, root, us_cfg=cfg)
+        if plan["inr"] <= 0:
+            return {"waiting": "the account opens by a transfer out of the rupee book's cash, and none is due: " + plan["reason"]}
+        try:
+            acct = book.open_account(con, now, day, plan["inr"], fx, plan["share_target"], plan["reason"])
+        except ValueError as e:
+            return {"waiting": f"the opening transfer could not be made: {e}"}
+        opened = {"start_usd": round(acct["start_usd"], 2), "start_inr": round(acct["start_inr"], 2), "from": "a transfer out of the rupee book's cash",
+                  "transfer_id": acct["transfer"]["transfer_id"]}
+        funding = acct["transfer"]
     splits = book.detect_splits(con, now, day, bars)
     dividends = book.apply_dividends(con, now, day, bars, w8ben=bool(s["w8ben"]), root=root)
     fills = book.fill_orders(con, now, day, bars, float(s["slippage_bps"]), root)
+    if funding is None:
+        plan = wholebook.plan_tranche(con, rupee_day, now, root, us_cfg=cfg)
+        if plan["inr"] > 0:
+            try:
+                funding = transfer.fund(con, now, day, plan["inr"], fx, "topup" if plan["phase"] == "topup" else "build", plan["reason"], rupee_day=rupee_day)
+            except ValueError as e:
+                funding = {"failed": str(e)}
     marked = book.mark(con, now, day, bars, fx)
+    if funding and "transfer_id" in funding:                               # the share reached once this tranche is in (it decides "settled" later)
+        after = wholebook.international_share(con, rupee_day, now, root, us_cfg=cfg)
+        con.execute("UPDATE us_transfers_s82 SET share_after=? WHERE transfer_id=?", [after["share"], funding["transfer_id"]])
     state = policy.build(con, day, bars, cfg, root, now)
     dec = policy.decide(state)
     chk = policy.check(con, state, dec)
@@ -69,13 +110,13 @@ def close_us(con, now: datetime, root=None, cfg: Optional[dict] = None, book_val
     for o in chk["orders"]:
         oid = book.place(con, now, day, o["isin"], o["symbol"], o["side"], qty=o["qty"], amount_usd=o["amount"], reason=o["reason"])
         placed.append({"order_id": oid, "symbol": o["symbol"], "side": o["side"], "usd": round(o["value"], 2), "reason": o["reason"]})
-    status = "traded" if (placed or fills) else "held"
-    note = "; ".join(dec["notes"])
+    status = "traded" if (placed or fills or (funding and "transfer_id" in funding)) else "held"
+    note = "; ".join(dec["notes"] + ([f"transfer Rs {funding['inr']:,.0f}"] if funding and "inr" in funding else []))
     con.execute("INSERT INTO us_runs_s81 VALUES (?,?,?,?,?,?,?,?)", [day, now, status, round(time.time() - t0, 3), json.dumps({k: round(v, 5) for k, v in dec["weights"].items()}),
                 json.dumps(placed), json.dumps(fills), note[:400]])
-    return {"day": str(day), "status": status, "opened": opened, "fills": fills, "orders": placed, "dividends": dividends, "splits": splits, "value_usd": round(marked["value_usd"], 2),
-            "cash_usd": round(marked["cash_usd"], 2), "fx": {"rate": fx["rate"], "source": fx["source"], "label": fx["label"]}, "skipped": len(chk["skipped"]),
-            "seconds": round(time.time() - t0, 3)}
+    return {"day": str(day), "status": status, "opened": opened, "funding": funding, "converted_seed": converted, "fills": fills, "orders": placed, "dividends": dividends, "splits": splits,
+            "value_usd": round(marked["value_usd"], 2), "cash_usd": round(marked["cash_usd"], 2), "fx": {"rate": fx["rate"], "source": fx["source"], "label": fx["label"]},
+            "skipped": len(chk["skipped"]), "gap_risk": GAP_RISK, "seconds": round(time.time() - t0, 3)}
 
 
 def state_us(con, day: date, root=None) -> dict:
