@@ -61,7 +61,8 @@ def test_a_step_that_waits_for_a_module_says_exactly_which(D):
     assert not ok and "pflab.no_such_module" in why and "B9 something" in why
     names = [n for n, _fn, _ap in D.ACCELERATED_STEPS]
     assert names[0] == "standing" and len(names) == len(set(names))
-    for want in ("allocation_proposed_and_adopted", "core_etfs_bought", "exit_plan_fires", "harvest_sale_and_buyback", "view_entry_exit_closed", "thesis_break_sale", "us_subbook_close", "session_replay"):
+    for want in ("allocation_proposed_and_adopted", "core_etfs_bought", "exit_plan_fires", "harvest_sale_and_buyback", "view_entry_exit_closed", "thesis_break_sale", "us_subbook_close", "session_replay",
+                 "picks_learning_book"):
         assert want in names
     for _n, _fn, ap in D.ACCELERATED_STEPS:
         ok, why = ap(None)
@@ -116,3 +117,51 @@ def test_the_counting_client_counts_a_paid_request_and_the_network_is_down(D):
         assert net.blocked and "example.com" in net.blocked[0]
     finally:
         net.uninstall()
+
+
+# --- S83: the picks step (20 sessions, a scripted strategist) ------------------------------------------------------------------------------------------------
+
+def test_the_picks_step_needs_twenty_sessions_and_is_off_in_a_shorter_run_and_the_accelerated_alias_runs_both_drills(D):
+    from types import SimpleNamespace
+    assert D.step_picks.sessions == D.PICKS_SESSIONS == 20 and D.step_picks.ticks
+    assert D.ALIASES["accelerated"] == ["accelerated", "accelerated_picks"] and "accelerated_picks" in D.DRILLS and "accelerated_long" not in D.ALIASES["accelerated"]
+    assert len(D._picks_days(SimpleNamespace(start=D.DEFAULT_START))) == 20
+
+
+def test_the_scripted_model_answers_turn_by_turn_then_done_and_a_failing_one_raises_and_is_not_counted(D):
+    counter = {}
+    m = D.ScriptedModel([[("write_note", {"text": "x"})]], counter)
+    one = m.beta.messages.create(messages=[{"content": [{"text": "hello"}]}])
+    assert one.stop_reason == "tool_use" and one.content[0].name == "write_note" and m.first == "hello"
+    two = m.beta.messages.create(messages=[{"content": [{"text": "hello"}]}])
+    assert two.stop_reason == "end_turn" and two.content[0].text == "Done." and counter["answers"] == 2
+    bad = D.ScriptedModel([], counter, fail="the API is down")
+    with pytest.raises(RuntimeError):
+        bad.beta.messages.create(messages=[{"content": [{"text": "hello"}]}])
+    assert counter["answers"] == 2 and m.messages.count_tokens().input_tokens > 0
+
+
+def test_the_pick_names_are_in_the_profile_and_the_benchmark_does_not_move_for_them(D, tmp_path, monkeypatch):
+    import pandas as pd
+    from pflab.pm import store
+    monkeypatch.setenv("PFLAB_PM_DIR", str(tmp_path))
+    b_rows, _a = D.synth_prices(D.DEFAULT_START)
+    assert {s[1] for s in D.PICK_STOCKS} <= {r[0] for r in b_rows} and len({s[1] for s in D.PICK_STOCKS} & {s[1] for s in D.STOCKS}) == 0 and all(len(s[1]) == 12 for s in D.PICK_STOCKS)
+    con = store.connect(tmp_path / "l.duckdb")
+    for s in D.STOCKS + D.PICK_STOCKS:
+        con.execute("INSERT INTO instruments (isin, key_kind, asset_class, tax_class, listed, symbol, name, sector, source, built_at) VALUES (?, 'isin', 'equity', 'EQUITY', TRUE, ?, ?, ?, 's', now())", [s[1], s[0], s[0], s[2]])
+    for e in D.ETFS:
+        con.execute("INSERT INTO instruments (isin, key_kind, asset_class, tax_class, listed, symbol, name, source, built_at) VALUES (?, 'isin', 'etf', ?, TRUE, ?, ?, 's', now())", [e[1], e[5], e[0], e[2]])
+    for i, d, px, series, src in b_rows:
+        con.execute("INSERT INTO prices VALUES (?,?,?,?,?, now())", [i, d, px, series, src])
+    D.sync_data_files(con, tmp_path / "data")
+    full = pd.read_parquet(tmp_path / "data" / "indices" / "NIFTY500_TRI.parquet")
+    con.execute("DELETE FROM prices WHERE isin IN (%s)" % ",".join("?" for _ in D.PICK_STOCKS), [s[1] for s in D.PICK_STOCKS])
+    D.sync_data_files(con, tmp_path / "data2")
+    plain = pd.read_parquet(tmp_path / "data2" / "indices" / "NIFTY500_TRI.parquet")
+    assert full["close"].round(9).tolist() == plain["close"].round(9).tolist()                    # the pick names do not move the benchmark: the other drills' numbers are as they were
+    panel = pd.read_parquet(tmp_path / "data" / "panel" / "prices.parquet")
+    thin = panel[panel["isin"] == D.PICK_STOCKS[2][1]]["turnover"].unique().tolist()
+    assert thin == [1.0e7] and set(panel[panel["isin"] == D.PICK_STOCKS[0][1]]["turnover"]) == {8e7}
+    us = pd.read_parquet(tmp_path / "data" / "us" / "raw" / f"{D.US_PICKS[0][0]}.parquet")
+    assert (us["close"] > 5).all() and (us["close"] * us["volume"]).median() > 2e6

@@ -248,19 +248,24 @@ def _holding_fall(con, h: dict, name: str, a: date, b: date, day: date, ref: Dic
 
 
 def _scenario_result(name: str, items: List[dict], total: float, fall_of) -> dict:
-    """The book's fall from the holdings' falls (cash and holdings with no figure count as no fall)."""
-    rows, loss = [], 0.0
+    """The book's fall from the holdings' falls. Cash does not fall. A holding with no figure (no own history and no market series for the window) adds no loss, but it is NOT read as "no fall":
+    `coverage_pct` is the share of the book whose fall is known, `value_without_figure_inr` the rest, and when no holding has a figure at all `book_fall_pct` is None (drill accelerated_picks:
+    a profile with no 2008 history stored "0.0" for every scenario, which reads as "this scenario does not hurt")."""
+    rows, loss, unknown = [], 0.0, 0.0
     for h in items:
         f = fall_of(h)
         rows.append({"symbol": h["symbol"], "market": h["market"], "value_inr": round(h["value_inr"], 2), "fall_pct": None if f["fall_pct"] is None else round(f["fall_pct"], 2),
                      "basis": f["basis"], "detail": f.get("detail")})
         if f["fall_pct"] is not None:
             loss += h["value_inr"] * f["fall_pct"] / 100.0
+        else:
+            unknown += h["value_inr"]
     known = [r for r in rows if r["fall_pct"] is not None]
     worst = min(known, key=lambda r: r["fall_pct"]) if known else None
-    return {"scenario": name, "book_fall_pct": round(loss / total * 100.0, 3) if total > 0 else 0.0, "holdings": rows,
+    none_known = bool(rows) and not known
+    return {"scenario": name, "book_fall_pct": None if none_known else (round(loss / total * 100.0, 3) if total > 0 else 0.0), "holdings": rows,
             "worst_holding": None if worst is None else {"symbol": worst["symbol"], "fall_pct": worst["fall_pct"], "basis": worst["basis"], "loss_inr": round(worst["value_inr"] * worst["fall_pct"] / 100.0, 2)},
-            "book_value_inr": round(total, 2), "loss_inr": round(loss, 2)}
+            "book_value_inr": round(total, 2), "loss_inr": round(loss, 2), "value_without_figure_inr": round(unknown, 2), "coverage_pct": round(100.0 * (1.0 - unknown / total), 1) if total > 0 else None}
 
 
 def run(con, day: date, market: str = "ALL", root=None) -> dict:
@@ -306,7 +311,7 @@ def run(con, day: date, market: str = "ALL", root=None) -> dict:
                 r["window"] = f"{a}..{b}"
                 per.append(r)
             usable = [r for r in per if any(h["fall_pct"] is not None for h in r["holdings"])] or per
-            head = dict(min(usable, key=lambda r: r["book_fall_pct"]))
+            head = dict(min(usable, key=lambda r: 0.0 if r["book_fall_pct"] is None else r["book_fall_pct"]))
             head["windows"] = [{"window": r["window"], "book_fall_pct": r["book_fall_pct"], "worst_holding": r["worst_holding"],
                                 "holdings_without_a_figure": [h["symbol"] for h in r["holdings"] if h["fall_pct"] is None]} for r in per]
             head["note"] = (f"the worse of {len(per)} windows is shown" if len(per) > 1 else None)
@@ -326,7 +331,8 @@ def store(con, day: date, result: dict) -> int:
         for r in sc["scenarios"]:
             con.execute("DELETE FROM stress_s83 WHERE day=? AND scope=? AND scenario=?", [day, scope, r["scenario"]])
             detail = {"holdings": r["holdings"], "worst_holding": r["worst_holding"], "window": r.get("window"), "windows": r.get("windows"), "book_value_inr": r["book_value_inr"],
-                      "loss_inr": r["loss_inr"], "whole_book_source": result["whole_book_source"], "label": LABEL}
+                      "loss_inr": r["loss_inr"], "coverage_pct": r.get("coverage_pct"), "value_without_figure_inr": r.get("value_without_figure_inr"),
+                      "whole_book_source": result["whole_book_source"], "label": LABEL}
             con.execute("INSERT INTO stress_s83 VALUES (?,?,?,?,?,?)", [next_id(con, "stress_s83", "stress_id"), day, scope, r["scenario"], r["book_fall_pct"], json.dumps(detail, default=str)])
             n += 1
     return n
@@ -349,5 +355,5 @@ def latest(con, scope: Optional[str] = None) -> dict:
         det = json.loads(dj or "{}")
         scopes.setdefault(sc, {"value_inr": det.get("book_value_inr"), "scenarios": []})["scenarios"].append(
             {"scenario": name, "book_fall_pct": fall, "worst_holding": det.get("worst_holding"), "holdings": det.get("holdings"), "window": det.get("window"), "windows": det.get("windows"),
-             "loss_inr": det.get("loss_inr")})
+             "loss_inr": det.get("loss_inr"), "coverage_pct": det.get("coverage_pct"), "value_without_figure_inr": det.get("value_without_figure_inr")})
     return {"day": str(d), "scopes": scopes, "label": LABEL, "sign": "negative = a fall"}

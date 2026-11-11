@@ -21,6 +21,12 @@ def _one_line(s: Optional[str], n: int = 140) -> str:
     return t if len(t) <= n else t[: n - 1].rstrip() + "…"
 
 
+def _sentence(s: str) -> str:
+    """A line ends like a sentence, so the text that follows it does not run on (a thesis from his Kite portfolio has no full stop of its own)."""
+    t = str(s or "").rstrip()
+    return t if not t or t[-1] in ".!?…" else t + "."
+
+
 def _vs_index(con, market: str) -> dict:
     """{pick_id: longest scored horizon against the index} from `pick_scores_s83` (empty when the table is absent or nothing is scored)."""
     try:
@@ -47,7 +53,7 @@ def market_block(con, market: str, day: date) -> dict:
                       "days_held": p["days_held"], "weight": p["weight"], "vs_index": scored.get(int(p["pick_id"]))})
     ceiling = share_ceiling(market, float(sh["share"]))
     room = max(0.0, ceiling - occupied)
-    return {"market": market, "on": bool(st["on"]), "share": float(sh["share"]), "share_why": sh.get("source"), "room": round(room, 4), "no_new_picks": bool(sh.get("no_new_picks")),
+    return {"market": market, "on": bool(st["on"]), "share": float(sh["share"]), "share_why": sh.get("source"), "holds": round(occupied, 4), "room": round(room, 4), "no_new_picks": bool(sh.get("no_new_picks")),
             "system_picks_bought": sh.get("system_picks_bought"), "next_judgment_at_sessions": sh.get("next_judgment_at_sessions"), "picks": plist, "needs_learned": bool(st["needs_learned"])}
 
 
@@ -66,8 +72,9 @@ def _market_text(m: dict) -> str:
     nm = NAMES[m["market"]]
     if not m["on"]:
         return f"PICKS, {nm}: switched off for now (the book holds its core and what it holds)."
-    head = (f"PICKS, {nm}: the sleeve's share is {m['share']:.0%} ({m['share_why']}); the picks hold {m['share'] - m['room']:.0%}"
-            + (", room left under the share " + f"{m['room']:.0%}" if m["room"] > 0.005 else ", no room left under the share") + "."
+    holds = float(m["holds"]) if m.get("holds") is not None else m["share"] - m["room"]               # what the picks and his stocks in the sleeve really hold (it can be over the share: nothing is sold to reach it)
+    head = (f"PICKS, {nm}: the sleeve's share is {m['share']:.0%} ({m['share_why']}); the picks hold {holds:.1%}"
+            + (", room left under the share " + f"{m['room']:.0%}" if m["room"] > 0.005 else ", no room left under the share" + (" (they hold more than the share: nothing is sold to reach it)" if holds > m["share"] + 0.005 else "")) + "."
             + (" The share was just lowered: no new picks until the next judgment." if m["no_new_picks"] else ""))
     if not m["picks"]:
         return head + " No picks yet."
@@ -76,7 +83,7 @@ def _market_text(m: dict) -> str:
         v = p["vs_index"]
         vs = (f"{v['excess_pct']:+.1f} points against the index at {v['horizon_months']} month(s)" if v and v.get("excess_pct") is not None else "not scored yet (first score at 1 month)")
         who = "his Kite stock" if p["source"] == "kite" else "system pick"
-        lines.append(f"  - {p['symbol']} ({who}, {p['state']}, {p['days_held']} days in the book, {float(p['weight'] or 0) * 100:.1f}% of the book): {vs}. Thesis: {p['thesis']} Breaks if: {p['break_condition']}")
+        lines.append(f"  - {p['symbol']} ({who}, {p['state']}, {p['days_held']} days in the book, {float(p['weight'] or 0) * 100:.1f}% of the book): {vs}. Thesis: {_sentence(p['thesis'])} Breaks if: {p['break_condition']}")
     return "\n".join(lines)
 
 

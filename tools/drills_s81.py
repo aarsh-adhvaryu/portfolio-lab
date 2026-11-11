@@ -1557,6 +1557,15 @@ def _picks_check(env: "Env", c: Check) -> None:
          f"after the failed session the system had named no pick and the US sub-book held what it held (system picks {pk.get('fail_system_picks')})", "lab/strategist.py, core/picks.py")
     line = pk.get("fail_today") or ""
     c.ok(line.startswith("no picks yet:") and "holds what it holds" in line, f"Today (/api/core) said: {line[:230]!r}", "core/card.py today_extras, lab/first_session_s82.py picks_line")
+    # what the strategist was shown (the first message of each scripted session, kept in the drill's folder): the scorecard and the PICKS section, readable
+    for name, m in pk["models"]:
+        if m.first is not None:
+            (env.dir / f"strategist_{name}_first_message.txt").write_text(m.first, encoding="utf-8")
+    msgs = {n: (m.first or "") for n, m in pk["models"]}
+    msgs = {n: x for n, x in msgs.items() if n != "fail"}                       # (the failed session's model never answered: it saw nothing)
+    c.ok(all("PICKS SCORE" in x and "PICKS, India" in x and "PICKS, US" in x and "unreadable" not in x.replace("FORECAST: unreadable", "") for x in msgs.values()) and len(msgs) == 2,
+         f"each scripted session was shown the scorecard and the PICKS section of both markets, readable ({ {n: len(x) for n, x in msgs.items()} } characters)", "lab/strategist.py _first_message, core/picks_card.py")
+    c.ok("SYNPICK1" in msgs.get("s2", "") and "UPICKA" in msgs.get("s2", ""), "the second session's message names the two picks the first one made", "core/picks_card.py")
     # 2. the first picks session: one session for both once-only reasons; the thin name refused with the reason, the others accepted
     keys = [first.state(cur, k) for k in (first.KEY, first.KEY_PICKS)]
     c.ok(all(k and k["status"] == "done" for k in keys) and keys[0]["session_id"] == keys[1]["session_id"],
@@ -1601,6 +1610,9 @@ def _picks_check(env: "Env", c: Check) -> None:
     c.ok(not hi, f"UPICKA was never over 10% of the sub-book by more than the 1.5-point band (a price drift inside the band is not traded): {hi[:3]}", "us/policy.py check")
     c.ok(cur.execute("SELECT state FROM picks_s83 WHERE symbol='UPICKA'").fetchone()[0] in ("buying", "held") and "held" in pk["seen"].get("UPICKA/US", []),
          f"UPICKA states seen {pk['seen'].get('UPICKA/US')}", "core/picks.py sync (US)")
+    from pflab.data import us_prices
+    tracked = us_prices.tracked_symbols(cur)
+    c.ok("UPICKA" in tracked and "SPY" in tracked, f"the US price collector's list carries the 13 ETFs and the picked stock ({len(tracked)} symbols, UPICKA in it)", "data/us_prices.py tracked_symbols")
     nap = cur.execute("SELECT day, note FROM us_runs_s81 WHERE note LIKE '%not applied%'").fetchall()
     c.ok(not nap, f"no US close fell back from its picks part: {nap[:2]}", "us/adapter.py _session")
     # 5. the withdrawals: a fresh pick goes at once, an inherited stock inside the 12-month guard waits and is sold after it, a thesis break does not wait
