@@ -433,6 +433,7 @@ def test_the_daily_us_collection_includes_held_and_picked_symbols(con, monkeypat
     assert "SPY" in base and "NVDA" not in base                                                                                      # no table yet: nothing else, no error
     con.execute("INSERT INTO us_lots_s81 VALUES (1, 'ZZ0000789019', 'MSFT', ?, 3, 400.0, NULL, NULL, 'test')", [DAY])
     con.execute("INSERT INTO us_lots_s81 VALUES (2, 'ZZ0001045810', 'SOLD', ?, 0, 100.0, NULL, NULL, 'test')", [DAY])                   # a closed lot: no longer held
+    con.execute("DROP TABLE picks_s83")                                                                                                  # the migrated table is empty; a narrower one stands in for the contract
     con.execute("CREATE TABLE picks_s83 (pick_id INTEGER, market VARCHAR, isin VARCHAR, symbol VARCHAR, state VARCHAR)")
     con.execute("INSERT INTO picks_s83 VALUES (1, 'US', 'ZZ0001045810', 'NVDA', 'proposed'), (2, 'US', 'ZZ0000320193', 'BRK.B', 'withdrawn'), (3, 'IN', 'INE0INDC0101', 'INDCO', 'held')")
     syms = us_prices.tracked_symbols(con)
@@ -448,6 +449,7 @@ def test_the_daily_us_collection_includes_held_and_picked_symbols(con, monkeypat
 
 
 def test_a_picks_table_with_no_market_column_is_read_by_the_key(con):
+    con.execute("DROP TABLE picks_s83")
     con.execute("CREATE TABLE picks_s83 (pick_id INTEGER, isin VARCHAR, symbol VARCHAR)")
     con.execute("INSERT INTO picks_s83 VALUES (1, 'ZZ0001045810', 'NVDA'), (2, 'INE0INDC0101', 'INDCO')")
     assert us_prices.picked_symbols(con) == ["NVDA"]
@@ -457,7 +459,7 @@ def test_a_picks_table_with_no_market_column_is_read_by_the_key(con):
 
 def test_the_tools_are_registered_run_and_return_valid_json(con, root, tmp_path):
     assert {"screen_stocks", "company_card"} <= set(tools.REGISTRY)
-    assert not ({"propose_picks", "withdraw_pick", "skip_idea"} & set(tools.REGISTRY))                                                # the strategist agent writes those
+    assert {"propose_picks", "withdraw_pick", "skip_idea"} <= set(tools.REGISTRY)                                                       # the strategist agent's three (S83 L3)
     for n in ("screen_stocks", "company_card"):
         d = tools.REGISTRY[n][0]
         assert "every number is code" in d["description"].lower() and len(d["description"]) < 480               # the strategist's rule: short descriptions; the full legend is in each result's `labels`
