@@ -131,7 +131,7 @@ def check(con, state: dict, decision: dict) -> dict:
         r = rows[k]
         cur = r["value"] / total
         gap = c["target"] - cur
-        if abs(gap) < band:
+        if abs(gap) < band and not (c["target"] <= 1e-9 and float(r["qty"]) > 1e-9):          # a name wanted at zero is sold whatever is left of it: dust inside the band would stay for ever
             skipped.append({"isin": k, "symbol": r["symbol"], "why": f"within the band ({gap * 100:+.1f} points)"})
             continue
         px = float(r["price"])
@@ -139,8 +139,9 @@ def check(con, state: dict, decision: dict) -> dict:
             val = gap * total
             orders.append({"isin": k, "symbol": r["symbol"], "side": "buy", "qty": None, "amount": round(val, 2), "value": val, "note": "; ".join(c["why"]), "from_w": cur, "to_w": c["target"]})
         else:
-            qty = float(r["qty"]) if c["target"] <= 1e-9 else min(float(r["qty"]), round(-gap * total / px, 6))
-            if qty * px < float(s["min_trade_usd"]):
+            full = c["target"] <= 1e-9                                       # a full exit (a withdrawn pick): never left as dust under the minimum trade or the cost filter (drill accelerated_picks)
+            qty = float(r["qty"]) if full else min(float(r["qty"]), round(-gap * total / px, 6))
+            if qty * px < float(s["min_trade_usd"]) and not full:
                 skipped.append({"isin": k, "symbol": r["symbol"], "why": "below the minimum trade"})
                 continue
             ch = costs.charges("sell", qty, px, day)["total"]
@@ -149,13 +150,13 @@ def check(con, state: dict, decision: dict) -> dict:
             except Exception:
                 tax_est = 0.0
             orders.append({"isin": k, "symbol": r["symbol"], "side": "sell", "qty": qty, "amount": None, "value": qty * px, "note": "; ".join(c["why"]), "from_w": cur, "to_w": c["target"],
-                           "charges_usd": ch, "tax_inr": tax_est})
+                           "charges_usd": ch, "tax_inr": tax_est, "full_exit": full, "held_qty": float(r["qty"]), "price": px})
     keep = []
     for o in orders:
-        if o["value"] < float(s["min_trade_usd"]):
+        if o["value"] < float(s["min_trade_usd"]) and not o.get("full_exit"):
             skipped.append({"isin": o["isin"], "symbol": o["symbol"], "why": f"USD {o['value']:,.0f} is below the minimum trade"})
             continue
-        if o["side"] == "sell" and o["charges_usd"] > float(cfg["max_cost_share"]) * o["value"]:
+        if o["side"] == "sell" and not o.get("full_exit") and o["charges_usd"] > float(cfg["max_cost_share"]) * o["value"]:
             skipped.append({"isin": o["isin"], "symbol": o["symbol"], "why": f"charges USD {o['charges_usd']:,.2f} are {o['charges_usd'] / o['value']:.1%} of the trade"})
             continue
         keep.append(o)
@@ -172,10 +173,13 @@ def check(con, state: dict, decision: dict) -> dict:
         for o in keep:
             px = float(rows[o["isin"]]["price"])
             if o["side"] == "sell":
-                o = dict(o, qty=round(o["qty"] * f, 6), value=o["value"] * f)
+                q = round(o["qty"] * f, 6)
+                if o.get("full_exit") and (o["held_qty"] - q) * o["price"] < float(s["min_trade_usd"]):
+                    q = o["held_qty"]                                        # scaling a full exit must not leave dust the minimum trade would never sell: it goes whole (the dust is under the minimum trade)
+                o = dict(o, qty=q, value=q * o["price"])
             else:
                 o = dict(o, amount=round(o["amount"] * f, 2), value=o["value"] * f)
-            if o["value"] < float(s["min_trade_usd"]):
+            if o["value"] < float(s["min_trade_usd"]) and not o.get("full_exit"):
                 skipped.append({"isin": o["isin"], "why": "dropped by the turnover cap"})
                 continue
             o["note"] = (o["note"] + "; " if o["note"] else "") + f"scaled to {f:.0%} by the turnover cap (USD {cap:,.0f})"

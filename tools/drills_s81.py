@@ -1357,6 +1357,7 @@ SCRIPT_BREAK = {"SYNPICK1": "the company cuts its guidance for the year, or two 
                 "UPICKA": "recurring revenue growth under 10% for two quarters, or a close under its 200-day average",
                 "SYNTHIN1": "a second result with falling orders",
                 "SYNPICK2": "the next result shows margins still falling"}
+SCRIPT_LEARNED_3 = "A US pick I named on a growth story slowed within weeks of my naming it, so I now write the number that would break the story and check it at every result."
 SCRIPT_LEARNED = "At one month my first picks trailed the index a little: I now ask for a margin trend and a clean balance sheet before I name a stock, and I wait for the next results."
 
 
@@ -1531,6 +1532,12 @@ def _picks_tick(env: "Env", c: Check) -> None:
     if at(16) and once("us_raise"):
         pk["judged"].append(("US", "raise", pick_share.judge(cur, t, "US", day_closed, record_fn=_record_fn(120, 4.0))))
         return
+    if at(16) and "us_raise" in fl and once("arm_s3"):                                            # a third session withdraws the US pick: the sub-book has no exit manager, so the sale goes through its own caps at the next US open
+        turns = [[("withdraw_pick", {"market": "US", "symbol": "UPICKA", "reason": "recurring revenue growth has slowed under the 10% I set as the break, so I no longer believe the thesis"})],
+                 [("write_note", {"text": "Third session: withdrew the US pick whose growth slowed.", "learned": SCRIPT_LEARNED_3}), ("finish", {"summary": "withdrew the US pick"})]]
+        pk["queue"].append(("s3", lambda: ScriptedModel(turns, pk["counter"])))
+        pk["us_withdraw_at"] = t
+        return
     if at(15) and once("fallback"):                                          # the index fallback is adopted (the lab's A50 rule): both picks sleeves and their positions stay as they are
         from pflab.lab import alloc_lab
         pk["fb_before"] = _picks_snapshot(env)
@@ -1563,9 +1570,9 @@ def _picks_check(env: "Env", c: Check) -> None:
             (env.dir / f"strategist_{name}_first_message.txt").write_text(m.first, encoding="utf-8")
     msgs = {n: (m.first or "") for n, m in pk["models"]}
     msgs = {n: x for n, x in msgs.items() if n != "fail"}                       # (the failed session's model never answered: it saw nothing)
-    c.ok(all("PICKS SCORE" in x and "PICKS, India" in x and "PICKS, US" in x and "unreadable" not in x.replace("FORECAST: unreadable", "") for x in msgs.values()) and len(msgs) == 2,
+    c.ok(all("PICKS SCORE" in x and "PICKS, India" in x and "PICKS, US" in x and "unreadable" not in x.replace("FORECAST: unreadable", "") for x in msgs.values()) and len(msgs) == 3,
          f"each scripted session was shown the scorecard and the PICKS section of both markets, readable ({ {n: len(x) for n, x in msgs.items()} } characters)", "lab/strategist.py _first_message, core/picks_card.py")
-    c.ok("SYNPICK1" in msgs.get("s2", "") and "UPICKA" in msgs.get("s2", ""), "the second session's message names the two picks the first one made", "core/picks_card.py")
+    c.ok("SYNPICK1" in msgs.get("s2", "") and "UPICKA" in msgs.get("s2", "") and "withdrawn" in msgs.get("s3", ""), "the second session's message names the two picks the first one made, the third one sees the withdrawn ones", "core/picks_card.py")
     # 2. the first picks session: one session for both once-only reasons; the thin name refused with the reason, the others accepted
     keys = [first.state(cur, k) for k in (first.KEY, first.KEY_PICKS)]
     c.ok(all(k and k["status"] == "done" for k in keys) and keys[0]["session_id"] == keys[1]["session_id"],
@@ -1608,8 +1615,8 @@ def _picks_check(env: "Env", c: Check) -> None:
             hi.append((str(d), round(stk[0], 3)))
     c.ok(n_spy >= 5 and not low, f"SPY was at least 30% of the sub-book on every one of the {n_spy} days it was held: under 30% on {low[:3]}", "us/picks_wire.py, core/picks.py target_weights")
     c.ok(not hi, f"UPICKA was never over 10% of the sub-book by more than the 1.5-point band (a price drift inside the band is not traded): {hi[:3]}", "us/policy.py check")
-    c.ok(cur.execute("SELECT state FROM picks_s83 WHERE symbol='UPICKA'").fetchone()[0] in ("buying", "held") and "held" in pk["seen"].get("UPICKA/US", []),
-         f"UPICKA states seen {pk['seen'].get('UPICKA/US')}", "core/picks.py sync (US)")
+    c.ok(pk["seen"].get("UPICKA/US", [])[:3] == ["proposed", "buying", "held"] and pk["seen"]["UPICKA/US"][-1] == "withdrawn",
+         f"UPICKA went proposed -> buying -> held, then withdrawn: {pk['seen'].get('UPICKA/US')}", "core/picks.py sync (US)")
     from pflab.data import us_prices
     tracked = us_prices.tracked_symbols(cur)
     c.ok("UPICKA" in tracked and "SPY" in tracked, f"the US price collector's list carries the 13 ETFs and the picked stock ({len(tracked)} symbols, UPICKA in it)", "data/us_prices.py tracked_symbols")
@@ -1641,7 +1648,12 @@ def _picks_check(env: "Env", c: Check) -> None:
     bad = cur.execute(f"SELECT t.day, t.symbol, substr(d.reason, 1, 90) FROM paper_trades t LEFT JOIN paper_decisions d ON d.decision_id=t.decision_id WHERE t.side='sell' AND t.isin IN ({ph}) AND coalesce(d.reason, '') NOT LIKE 'exit manager%'", list(pick_all)).fetchall() if pick_all else []
     c.ok(not bad, f"no sale of a pick or of one of his stocks came from a rebalance (every sale of them was the exit manager's, for a reason): {bad[:3]}", "core/picks.py target_weights, core/baseline_v2.py, core/rails.py")
     usells = cur.execute("SELECT count(*) FROM us_trades_s81 WHERE side='sell' AND isin=?", [k_us]).fetchone()[0]
-    c.ok(usells == 0, f"UPICKA was never sold ({usells} sells), through a US share change as well", "us/policy.py, us/picks_wire.py")
+    c.ok(usells >= 1 and not usbook.positions(cur).get(k_us) and cur.execute("SELECT state FROM picks_s83 WHERE symbol='UPICKA'").fetchone()[0] == "withdrawn",
+         f"the withdrawn US pick UPICKA was sold at US opens ({usells} sell fill(s)) and is gone from the sub-book; it was not sold by the US share changes before the withdrawal", "us/picks_wire.py, us/policy.py check")
+    wd = cur.execute("SELECT min(placed_at) FROM us_orders_s81 WHERE isin=? AND side='sell'", [k_us]).fetchone()[0]
+    sold_px = cur.execute("SELECT day, price_usd FROM us_trades_s81 WHERE isin=? AND side='sell' ORDER BY trade_id", [k_us]).fetchall()
+    c.ok(wd is not None and wd >= pk["us_withdraw_at"] and all(d in opens and opens[d] * 0.998 <= p_ <= opens[d] for d, p_ in sold_px),
+         f"no sell order for UPICKA was placed before the withdrawal ({pk['us_withdraw_at']:%d %b %H:%M}; first sell order placed {wd:%d %b %H:%M}), and the sells filled at each open less a few basis points: {[(str(d), round(p_, 3), round(opens.get(d, 0), 3)) for d, p_ in sold_px][:3]}", "us/book.py fill_orders")
     pre, post = pk.get("pre_shrink", {}), None
     rf = (pk.get("shrink_refusal") or {}).get("refused") or []
     c.ok(rf and "no new picks" in rf[0]["reason"] and not (pk["shrink_refusal"].get("accepted")), f"while the India share was lowered, a new pick was refused: {rf[0]['reason'][:150] if rf else pk.get('shrink_refusal')}", "core/picks.py propose, core/pick_share.py shrinking")
@@ -1669,7 +1681,8 @@ def _picks_check(env: "Env", c: Check) -> None:
     lr = (pk.get("learned_refusal") or {}).get("refused") or []
     c.ok(pk.get("needs_learned") and lr and "scorecard" in lr[0]["reason"] and not pk["learned_refusal"].get("accepted"), f"five picks had a score at the second session: a batch with no `learned_from` was refused: {lr[0]['reason'][:130] if lr else pk.get('learned_refusal')}", "core/picks.py needs_learned, propose")
     ll = lab.last_learned(cur)
-    c.ok(ll is not None and ll["learned"] == SCRIPT_LEARNED, f"the second session's note kept its `learned` part: {ll}", "lab/tools.py write_note, lab/service.py")
+    kept = [n["learned"] for n in lab.notes(cur, 10) if n.get("learned")]
+    c.ok(ll is not None and ll["learned"] == SCRIPT_LEARNED_3 and SCRIPT_LEARNED in kept, f"the sessions' notes kept their `learned` parts (the newest is the third session's): {len(kept)} kept, newest {ll['learned'][:60] if ll else None}", "lab/tools.py write_note, lab/service.py")
     s2 = cur.execute("SELECT status, lab_runs FROM core_sessions_s80 ORDER BY session_id DESC LIMIT 1").fetchone()
     c.ok(s2 is not None and s2[0] == "done", f"the second session (withdraw, skip) was not 'wasted': {s2}", "lab/strategist.py run_session")
     # 10. the index fallback: both picks sleeves and their positions untouched
