@@ -59,7 +59,7 @@ the Nasdaq as the market series for every share (the 2000-03-10..2002-10-09 Nasd
 | 2020 | -21.9% | -29.3% | -22.6% |
 | the dollar falls 10% | 0.0% | -10.0% | -0.9% |
 
-With the US sub-book empty (as in the app's store today) the US column is 0 and the whole equals India. In the 2008 and 2020 windows 5 and 4 of the 8 Indian holdings had their own history; the others
+With the US sub-book empty (as in the app's store today) the US column is 0 and the whole equals India. In the 2008 and 2020 windows 3 and 5 of the 8 Indian holdings had their own history; the others
 (shares listed after those dates) are labelled `estimate` (beta to the Nifty 500 of 0.8 to 1.6, or 1.0 where too little history). The worst holding in 2008 and 2020 is a recently listed share whose
 estimate is the straight-line beta (about -98% in 2008): this overstates a deep fall for a high beta (the floor at -100% never bites), it is the stated method and labelled estimate.
 Also on the copy: `update_sleeve_daily` stored 3 India days (sleeve since 2026-11-06: +0.42% after estimated tax against +0.40% for the index, 2 sessions, too early to annualise), `score_all` scored nothing
