@@ -388,6 +388,9 @@ def test_ai_bubble_uses_the_worse_window_and_says_which(scon, sroot):
 
 
 def test_the_dollar_scenario_hits_only_the_us_sub_book(scon, sroot, monkeypatch):
+    import sys
+    monkeypatch.delattr("pflab.us.wholebook", raising=False)
+    monkeypatch.setitem(sys.modules, "pflab.us.wholebook", None)                       # the fallback path (S82 has since added the real module: its own tests are in test_s82_us)
     xyz = _daily({"2021-06-01": 50.0, "2026-10-30": 100.0}, "2021-06-01")
     spy = _daily({"1999-01-01": 100.0, "2008-01-01": 150.0, "2009-03-09": 80.0, "2026-10-30": 600.0})
     fx = _daily({"1999-01-01": 40.0, "2026-10-30": 85.0})
