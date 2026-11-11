@@ -44,6 +44,15 @@ def register_swing(con, now: datetime) -> List[str]:
     return done
 
 
+def register_c4(con, now: datetime) -> List[str]:
+    """S82 C4: harvesting where it can help (two arms) and stops on long-term stocks, three tests in the counter (once; idempotent by note key; the protocol's SHA is taken with line ends
+    normalised). The run for the record is written onto this store once (its verdicts)."""
+    from pflab.lab import c4_study
+    done = c4_study.register(con, now)
+    c4_study.apply_recorded(con, now)
+    return done
+
+
 def register_seats(con, now: datetime) -> List[str]:
     """S79b item 17: the FAST and THINKER seat picks, each one test in the counter (once; idempotent by note key)."""
     return register_all(con, now, SEATS_STUDIES)

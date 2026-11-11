@@ -91,6 +91,19 @@ stops) <= 1.0` percentage point a year (the stops cost at most 1 point a year of
 (`[exits.longterm] stop = false`; a risk exit by thesis break, the rail trims and the fall gauge stay). Both numbers (worst fall with and without; yearly return after tax with and without)
 are reported in plain words.
 
+## 4a. Amendment A1 (2026-11-11 night, after the code was written and tried on a four-year sample, BEFORE any registration and before the run for the record)
+
+Two things the first text left open, fixed here; no pass line, window, arm, parameter of the rule or claim changed. (1) **The stock book invests 98% of its capital** (weights sum to 0.98 after the
+10% cap; the other 2% stays cash earning the cash rate) so that every buy is funded after its charges and slippage in both arms of every claim. (2) **A buy-and-hold book is deployed ONCE:** the
+replay's turnover-cap exemption of "the first deployment" applies to the first decision that names a holding (the engine otherwise counts an empty early decision, before 300 sessions of
+history exist, as the first deployment and would then spread the purchase over months); after the book is bought no month-end decision is taken (`deploy_once`). Disclosure: a four-year sample
+(2005-01-01 to 2008-12-31) was run on the real panel to find a bug in the deployment (the first try bought only 10% of the capital) before this amendment; the bug was in the code, not the rule,
+and the sample's verdicts were not used to choose any number.
+
+```json rule
+{"stock_book_invested": 0.98, "deploy_once": true}
+```
+
 ## 5. Counting
 
 The three registrations above are three tests in the learner's counter (the bar for every later test rises). Claim A's arms are scored through the paired t against `counter.t_needed(N)`;

@@ -557,7 +557,7 @@ def _trims(con, now: datetime, day: date, rows: List[dict], total: float, plans:
         ac = meta[isin]["asset_class"] or ""
         if ac not in book.BUYABLE:
             continue
-        cap = hard.MAX_ETF if ac == "etf" else hard.MAX_STOCK
+        cap = hard.limit_of(ac, meta[isin].get("symbol"))
         w = value[isin] / total
         if w > cap + over:
             target = cap - buf

@@ -10,6 +10,8 @@ turnover_day = 0.10           # at most this share of the book's value traded in
 turnover_month = 0.40         # ... and in a calendar month
 min_trade_rupees = 2000.0     # a smaller order is not worth its charges
 max_cost_share = 0.02         # skip a rebalance trade whose charges plus tax exceed this share of its value (a risk cut is exempt)
+broad_index_etfs = ["NIFTYBEES", "MONIFTY500"]   # A56 (his decision 2026-11-10): the Nifty 50 and Nifty 500 index ETFs (by symbol; JUNIORBEES, the Nifty Next 50, is NOT broad) ...
+broad_index_cap = 0.60        # ... may hold up to this share of the book; every other ETF stays at 35%, a stock at 10%, a sector at 25%
 
 [baseline]
 band_pts = 1.5                # rebalance a name only when it is this many points of the book away from its target weight
