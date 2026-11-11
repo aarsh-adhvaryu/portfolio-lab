@@ -21,7 +21,7 @@ from datetime import date, datetime, timedelta
 from typing import List, Optional
 
 from pflab import us
-from pflab.us import book, clock, data, fx as usfx, instruments as uins, policy, transfer, wholebook
+from pflab.us import book, clock, data, fx as usfx, instruments as uins, picks_wire, policy, transfer, wholebook
 
 MAX_CATCHUP_SESSIONS = 40
 GAP_RISK = ("Decisions use the last US close and orders fill at the NEXT US open (plus a few basis points); a stop acts at the next open, so a gap can pass it: "
@@ -67,7 +67,8 @@ def close_us(con, now: datetime, root=None, cfg: Optional[dict] = None) -> dict:
 def _session(con, now: datetime, day: date, s: dict, cfg: Optional[dict], root) -> dict:
     universe = [x.upper() for x in s["broad_index_etfs"]]
     held = [uins.symbol_of(con, k) for k in book.positions(con, day)]
-    syms = list(dict.fromkeys(universe + [h for h in held if h]))
+    pick_syms = picks_wire.symbols(con)                                    # S83 L8: the US picks (loaded, rows of the state)
+    syms = list(dict.fromkeys(universe + [h for h in held if h] + pick_syms))
     bars = data.load(syms, root)
     if not any(data.bar_on(bars.get(x), day) for x in universe):
         return {"waiting": f"no US bars for {day} yet (tools/backfill_us.py / data/us_prices.py collect them)"}
@@ -103,13 +104,29 @@ def _session(con, now: datetime, day: date, s: dict, cfg: Optional[dict], root) 
     if funding and "transfer_id" in funding:                               # the share reached once this tranche is in (it decides "settled" later)
         after = wholebook.international_share(con, rupee_day, now, root, us_cfg=cfg)
         con.execute("UPDATE us_transfers_s82 SET share_after=? WHERE transfer_id=?", [after["share"], funding["transfer_id"]])
-    state = policy.build(con, day, bars, cfg, root, now)
-    dec = policy.decide(state)
+    pick_note = []
+    try:                                                                   # S83 L8: the picks sleeve in the sub-book (judge the share, size the picks by code); a failure leaves the core decision as it was
+        from pflab.core import picks
+        picks.prepare(con, now, day, "US")
+        state = picks.attach(con, policy.build(con, day, bars, cfg, root, now, pick_syms=pick_syms), "US")
+        pw = picks_wire.extra_weights(con, state)
+        dec = policy.decide(state, extra=pw["extra"], core_total=pw["core_total"] if pw["extra"] else None)
+        pick_note = pw["notes"]
+    except Exception as e:
+        pick_note = [f"picks sleeve not applied this session ({type(e).__name__}: {str(e)[:120]})"]
+        state = policy.build(con, day, bars, cfg, root, now)
+        dec = policy.decide(state)
+    dec["notes"] = list(dec["notes"]) + pick_note
     chk = policy.check(con, state, dec)
     placed = []
     for o in chk["orders"]:
         oid = book.place(con, now, day, o["isin"], o["symbol"], o["side"], qty=o["qty"], amount_usd=o["amount"], reason=o["reason"])
         placed.append({"order_id": oid, "symbol": o["symbol"], "side": o["side"], "usd": round(o["value"], 2), "reason": o["reason"]})
+    try:
+        from pflab.core import picks
+        picks.sync(con, day, "US", state)                                   # S83 L8: proposed -> buying -> held, stopped, broken (outside the orders' transaction; never raises)
+    except Exception:
+        pass
     status = "traded" if (placed or fills or (funding and "transfer_id" in funding)) else "held"
     note = "; ".join(dec["notes"] + ([f"transfer Rs {funding['inr']:,.0f}"] if funding and "inr" in funding else []))
     con.execute("INSERT INTO us_runs_s81 VALUES (?,?,?,?,?,?,?,?)", [day, now, status, round(time.time() - t0, 3), json.dumps({k: round(v, 5) for k, v in dec["weights"].items()}),

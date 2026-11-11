@@ -44,7 +44,8 @@ def cap_for(sym: str, etf: bool, s: dict) -> float:
     return float(s["etf_cap"]) if etf else float(s["stock_cap"])
 
 
-def build(con, day: date, bars: Dict[str, object], cfg: Optional[dict] = None, root=None, now=None, market: str = "US") -> dict:
+def build(con, day: date, bars: Dict[str, object], cfg: Optional[dict] = None, root=None, now=None, market: str = "US", pick_syms=()) -> dict:
+    """`pick_syms` (S83 L8): the symbols of the picks the sub-book holds or waits to hold: rows of the state (buyable with a bar today, so they can be bought and a withdrawn one sold)."""
     s = us.settings(cfg)
     core_syms = [x.upper() for x in s["broad_index_etfs"]]
     pos = book.positions(con, day)
@@ -53,10 +54,12 @@ def build(con, day: date, bars: Dict[str, object], cfg: Optional[dict] = None, r
         sym = uins.symbol_of(con, k)
         if sym and q > 1e-9:
             held_syms[sym] = k
-    keys = {**universe_keys(con, core_syms, root, now), **{k: v for k, v in held_syms.items() if k not in core_syms}}
+    picks_set = [x.upper() for x in pick_syms if x and x.upper() not in core_syms]
+    keys = {**universe_keys(con, core_syms + [x for x in picks_set if x not in held_syms], root, now), **{k: v for k, v in held_syms.items() if k not in core_syms}}
     cash = book.cash(con, day)
     rows, total, caps = [], 0.0, {}
-    for sym in dict.fromkeys(core_syms + list(held_syms)):
+    vol = {}
+    for sym in dict.fromkeys(core_syms + list(held_syms) + picks_set):
         key = uins.canonical(con, keys.get(sym) or held_syms[sym], day)
         q = pos.get(key, 0.0)
         last = data.last_on_or_before(bars.get(sym), day)
@@ -67,7 +70,9 @@ def build(con, day: date, bars: Dict[str, object], cfg: Optional[dict] = None, r
         etf = sym in us_prices.ETFS or sym in core_syms
         caps[key] = cap_for(sym, etf, s)
         rows.append({"isin": key, "symbol": sym, "sector": None, "asset_class": "etf" if etf else "equity", "qty": q, "price": px, "value": value, "weight": 0.0,
-                     "buyable": bool(today) and sym in core_syms, "klass": "us_equity", "price_date": str(last["date"]) if last else None})
+                     "buyable": bool(today) and (sym in core_syms or sym in picks_set), "klass": "us_equity", "price_date": str(last["date"]) if last else None})
+        if sym in picks_set:
+            vol[key] = _vol(bars.get(sym), day)
     value = total + cash
     for r in rows:
         r["weight"] = r["value"] / value if value > 0 else 0.0
@@ -76,20 +81,30 @@ def build(con, day: date, bars: Dict[str, object], cfg: Optional[dict] = None, r
         funded_today = bool(con.execute("SELECT 1 FROM us_transfers_s82 WHERE us_day=? AND phase <> 'converted_seed' LIMIT 1", [day]).fetchone())
     except Exception:
         funded_today = False
-    return {"day": day, "market": market, "funded_today": funded_today, "currency": "USD" if market == "US" else "INR", "value": value, "cash": cash, "bank": 0.0, "rows": rows, "target": None, "vol": {},
+    return {"day": day, "market": market, "funded_today": funded_today, "currency": "USD" if market == "US" else "INR", "value": value, "cash": cash, "bank": 0.0, "rows": rows, "target": None, "vol": {k: v for k, v in vol.items() if v},
             "gauge": {"fired": False, "why": "no fall gauge for the US sub-book"}, "breaker": {"on": _breaker(con, value)}, "caps": caps,
             "cfg": {"rails": cc["rails"], "baseline": {**cc["baseline"], "band_pts": float(s["band_pts"])}}, "settings": s}
 
 
-def decide(state: dict, extra: Optional[Dict[str, float]] = None) -> dict:
+def _vol(df, day: date, n: int = 250) -> Optional[float]:
+    """Annual volatility of a name from its last `n` daily closes up to `day` (None under 60 closes: the picks sizing then uses its default)."""
+    try:
+        c = df[df["date"] <= day]["close"].astype(float).tail(n + 1)
+        r = c.pct_change().dropna()
+        return float(r.std() * (252 ** 0.5)) if len(r) >= 60 else None
+    except Exception:
+        return None
+
+
+def decide(state: dict, extra: Optional[Dict[str, float]] = None, core_total: Optional[float] = None) -> dict:
     """The broad index ETF(s) at equal weights, `invested_share` of the sub-book in all. `extra`: {symbol: weight} for names a later policy adds (S83); they meet their own caps in `check`."""
     s = state["settings"]
     members = [r for r in state["rows"] if r["buyable"] and r["symbol"].upper() in roles(s)["broad"]]
     notes: List[str] = []
     if not members or state["value"] <= 0:
         return {"weights": {}, "notes": ["nothing to hold or no value"], "classes": {}}
-    w = float(s["invested_share"]) / len(members)
-    notes.append(f"core: {', '.join(r['symbol'] for r in members)} at {float(s['invested_share']):.0%} of the sub-book (a broad index ETF may be all of it), the rest in dollars")
+    w = (float(s["invested_share"]) if core_total is None else float(core_total)) / len(members)
+    notes.append(f"core: {', '.join(r['symbol'] for r in members)} at {w * len(members):.0%} of the sub-book (a broad index ETF may be all of it), the rest in dollars")
     weights = {r["isin"]: w for r in members}
     for sym, x in (extra or {}).items():
         row = next((r for r in state["rows"] if r["symbol"].upper() == sym.upper() and r["buyable"]), None)

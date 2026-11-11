@@ -88,9 +88,28 @@ def stored(con, target_id: int) -> Optional[dict]:
     return None if r is None else {"sleeves": json.loads(r[0]), "variant_policy": r[1]}
 
 
+def with_pick_share(con, sh: dict) -> dict:
+    """S83 L5/L6: the longterm share is the picks rule's (`pick_share.share(con, "IN")`), not a proposal's: the core is what is left (the index ETFs take what gold and international leave).
+    Unchanged when the picks are off for India or the share cannot be read."""
+    try:
+        from pflab.core import pick_share
+        if con is None or not pick_share.on("IN"):
+            return sh
+        lt = float(pick_share.share(con, "IN")["share"])
+    except Exception:
+        return sh
+    core = 1.0 - lt
+    return {**sh, "longterm": lt, "core": core, "index": max(0.0, core - sh["gold"] - sh["international"] - sh["cash"]),
+            "source": f"{sh['source']}; longterm {lt:.0%} from the picks rule (S83 L5)"}
+
+
 def target_shares(con, cfg: dict, target: Optional[dict]) -> dict:
     """The shares the baseline holds the book to, as fractions of the book: the active allocation's (classes plus its sleeve shares) or the starting default when there is none
-    (or the active one has no sleeve shares: an older, class-only target is not guessed at)."""
+    (or the active one has no sleeve shares: an older, class-only target is not guessed at). The longterm share is the picks rule's (S83 L5): `with_pick_share`."""
+    return with_pick_share(con, _target_shares(con, cfg, target))
+
+
+def _target_shares(con, cfg: dict, target: Optional[dict]) -> dict:
     if target and target.get("id") is not None:
         s = stored(con, target["id"])
         if s:

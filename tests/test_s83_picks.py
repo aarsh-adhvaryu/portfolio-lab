@@ -118,10 +118,9 @@ def test_a_sector_rail_refuses_a_pick_in_a_full_sector_and_a_thin_record_cannot_
 
 def test_learned_from_is_required_once_five_picks_have_a_score(con):
     assert picks.needs_learned(con, "IN") is False                      # the score agent's table is absent: read defensively
-    con.execute("CREATE TABLE IF NOT EXISTS pick_scores_s83 (pick_id BIGINT, horizon_months INTEGER, excess DOUBLE)")
     for i in range(1, 6):
         con.execute("INSERT INTO picks_s83 (pick_id, market, isin, symbol, source, state, proposed_on) VALUES (?, 'IN', ?, ?, 'system', 'held', ?)", [100 + i, f"X{i}", f"X{i}", START])
-        con.execute("INSERT INTO pick_scores_s83 VALUES (?, 1, 0.01)", [100 + i])
+        con.execute("INSERT INTO pick_scores_s83 (score_id, kind, ref_id, market, isin, horizon_months, excess_pct) VALUES (?, 'pick', ?, 'IN', ?, 1, 0.01)", [900 + i, 100 + i, f"X{i}"])
     assert picks.needs_learned(con, "IN") is True
     out = picks.propose(con, NOW, "IN", [item("CCC")], session_ref="s9")
     assert out["accepted"] == [] and "scorecard" in out["refused"][0]["reason"]
@@ -358,7 +357,7 @@ def test_us_picks_obey_the_floor_the_stock_count_and_the_spy_floor(con, monkeypa
     _bars(tmp_path, "SPY", 500.0, 5_000_000)
     out = picks.propose(con, NOW, "US", [item("NOBARS"), item("SPY"), item("PENNY"), item("THIN"), item("GOOD")], session_ref="u1")
     why = {r["symbol"]: r["reason"] for r in out["refused"]}
-    assert "no stored daily bars" in why["NOBARS"] and "a fund" in why["SPY"] and "USD 5" in why["PENNY"] and "USD 2,000,000" in why["THIN"]
+    assert "no stored daily bars" in why["NOBARS"] and "a fund" in why["SPY"] and "USD 5" in why["PENNY"] and "USD 2 million" in why["THIN"]
     assert [a["symbol"] for a in out["accepted"]] == ["GOOD"]
     assert con.execute("SELECT isin, source, state FROM picks_s83 WHERE symbol='GOOD'").fetchone()[1:] == ("system", "proposed")
     for i in range(11):                                                   # 12 stocks in all

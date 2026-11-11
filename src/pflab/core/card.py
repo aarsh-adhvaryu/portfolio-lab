@@ -185,7 +185,20 @@ def build(con, state: dict, decision: dict, placed: list, prev: Optional[dict] =
     if ps:
         facts["picks_score"] = ps["json"]
         lines.append("PICKS SCORE (after estimated tax, against the index):\n" + ps["text"])
+    pk = _picks(con, day)                                        # S83 L3: the PICKS section (each pick, the sleeve's share and why, the last "what I learned")
+    if pk:
+        facts["picks"] = {k: v for k, v in pk.items() if k != "text"}
+        lines.append(pk["text"])
     return "\n".join(lines)[:MAX_CHARS], facts
+
+
+def _picks(con, day) -> Optional[dict]:
+    """The PICKS section (`core/picks_card.build`); None when it cannot be read (the card never fails for it)."""
+    try:
+        from pflab.core import picks_card
+        return picks_card.build(con, day)
+    except Exception:
+        return None
 
 
 def _picks_score(con, day) -> Optional[dict]:
@@ -220,6 +233,13 @@ def today_extras(con) -> dict:
             out[key] = fn()
         except Exception:
             out[key] = None
+    try:                                                                    # S83 L8: "no picks yet: <reason>" until the system has named a pick; the sleeve's share and its picks per market
+        from pflab.core import picks_card
+        from pflab.lab import first_session_s82
+        b = picks_card.build(con, date.today())
+        out["picks"] = {"line": first_session_s82.picks_line(con), "IN": b["IN"], "US": b["US"], "learned": b["learned"]}
+    except Exception:
+        out["picks"] = None
     return out
 
 

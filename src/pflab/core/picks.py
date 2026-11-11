@@ -79,9 +79,9 @@ def _set_state(con, pick_id: int, state: str, day: date, why: str) -> None:
 
 
 def needs_learned(con, market: str = "IN") -> bool:
-    """True once five picks of the market have a score in `pick_scores_s83` (the score agent's table; read defensively, absent = False)."""
+    """True once five picks of the market have a score in `pick_scores_s83` (the score agent's table: kind 'pick', `ref_id` = the pick id; read defensively, absent = False)."""
     try:
-        return int(con.execute("SELECT count(DISTINCT s.pick_id) FROM pick_scores_s83 s JOIN picks_s83 p ON p.pick_id = s.pick_id WHERE p.market=?", [market]).fetchone()[0] or 0) >= SCORED_FOR_LEARNED
+        return int(con.execute("SELECT count(DISTINCT s.ref_id) FROM pick_scores_s83 s JOIN picks_s83 p ON p.pick_id = s.ref_id WHERE s.kind='pick' AND p.market=?", [market]).fetchone()[0] or 0) >= SCORED_FOR_LEARNED
     except Exception:
         return False
 

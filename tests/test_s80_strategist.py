@@ -80,7 +80,7 @@ def test_a_session_writes_runs_keeps_a_challenger_and_leaves_a_note(con, tmp_pat
     assert first["model"] == gv.OPUS and "STRATEGIST" in first["system"][0]["text"] and first["system"][0]["cache_control"] == {"type": "ephemeral"}
     sent = json.dumps(first["messages"])
     assert "BOOK CARD" in sent or "no book card yet" in sent
-    assert {t["name"] for t in first["tools"]} >= {"write_policy", "run_lab", "make_challenger", "write_note", "finish", "compare"} and len(first["tools"]) <= 19
+    assert {t["name"] for t in first["tools"]} >= {"write_policy", "run_lab", "make_challenger", "write_note", "finish", "compare"} and len(first["tools"]) <= 22
 
 
 def test_the_model_never_gets_raw_output_only_small_scorecards(con, tmp_path, data):
@@ -167,5 +167,5 @@ def test_spend_report_ties_money_to_outcomes(con, tmp_path, data):
 
 def test_every_tool_description_is_short_and_the_set_is_small():
     ds = tools.definitions()
-    assert 10 <= len(ds) <= 19                                                  # S81: propose_allocation is the seventeenth; S83: screen_stocks and company_card (the picks tools come later)
+    assert 10 <= len(ds) <= 22                                                  # S81: propose_allocation is the seventeenth; S83: screen_stocks and company_card ; the picks tools: propose_picks, withdraw_pick, skip_idea
     assert all(len(d["description"]) < 480 for d in ds)
