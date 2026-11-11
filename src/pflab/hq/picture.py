@@ -3,7 +3,7 @@
 Everything the system knows, laid side by side by CODE in one structure before any model thinks: the market's state and the
 crash-risk gauges, the mood of the news, where the portfolio stands against its targets, each holding (price against its own
 history, valuation in plain words, news mood, warnings), the themes against their limits, the cash and the dip reserve, what
-is on offer (buy zones, scans, new listings, the opportunity pot), what could hurt (scenarios, warnings), what changed, what is
+is on offer (scans, new listings, the opportunity pot), what could hurt (scenarios, warnings), what changed, what is
 waiting for him, and what the system has learned. Each section is built on its own: one that cannot be built says why and the
 rest stand. Every number is a stored or computed fact with its date; nothing here is a forecast and nothing is a model's.
 
@@ -183,8 +183,7 @@ def themes_block(con, root: Path, asof: date) -> dict:
 
 def on_offer(con, root: Path, asof: date, rows: List[dict], pm_dir: Optional[Path]) -> dict:
     import json
-    out = {"in_buy_zone_and_guard_ok": [r["symbol"] for r in rows if r.get("zone") == "IN ZONE" and r.get("guard") == "ok"],
-           "open_pot_ideas": [dict(zip(("symbol", "buy_below", "exit_above", "stop_below", "amount"), x)) for x in con.execute(
+    out = {"open_pot_ideas": [dict(zip(("symbol", "buy_below", "exit_above", "stop_below", "amount"), x)) for x in con.execute(
                "SELECT symbol, buy_below, exit_above, stop_below, amount FROM pot_ideas WHERE status='open'").fetchall()]}
     try:
         from pflab.plan import pot
@@ -319,8 +318,7 @@ def headline(p: dict) -> List[str]:
     h = p.get("holdings")
     if isinstance(h, list):
         flagged = [r["symbol"] for r in h if r.get("held") and (r.get("warnings") or r.get("guard") not in ("ok", "not checked", None))]
-        zone = p.get("on_offer", {}).get("in_buy_zone_and_guard_ok") or []
-        lines.append(f"Holdings: {sum(1 for r in h if r.get('held'))} held; warnings on {flagged or 'none'}; in buy zone: {zone or 'none'}.")
+        lines.append(f"Holdings: {sum(1 for r in h if r.get('held'))} held; warnings on {flagged or 'none'}.")
     w = p.get("waiting_for_him", {})
     if w:
         lines.append(f"Waiting for him: {w['open_questions']} questions; {w['held_messages']} held messages.")

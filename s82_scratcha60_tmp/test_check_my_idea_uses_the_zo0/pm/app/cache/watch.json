@@ -1,0 +1,23 @@
+{
+ "at": "2026-10-22T16:00:00",
+ "paths": 100000,
+ "rows": [
+  {
+   "isin": "INE000A01011",
+   "symbol": "AAA",
+   "on_list": true,
+   "reasons": [],
+   "zone": {
+    "verdict": "IN ZONE",
+    "headline": "in the zone 90-100",
+    "price": 95.0,
+    "bottom": 90.0,
+    "top": 100.0,
+    "horizon": 126,
+    "touch_top": {
+     "text": "60.0% \u00b1 0.15 pp"
+    }
+   }
+  }
+ ]
+}

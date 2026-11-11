@@ -135,3 +135,13 @@ def test_watch_and_research_endpoints(rt):
     d = c.get("/api/research").json()
     assert d["plans"] == [] and d["hold_off"] == [] and d["technicals"] is None
     assert c.post("/api/plan", json={"amount": 0}).status_code == 400
+
+
+def test_a_price_above_its_zone_is_no_reason_to_hold_off(rt):
+    """A60: the buy-zone test failed (S54c), so only a guard or results due keep a name off the list of buys."""
+    w = {"rows": [{"isin": "INE000A01011", "symbol": "AAA", "on_list": True, "reasons": [], "scrip": None,
+                   "zone": {"verdict": "ABOVE ZONE", "headline": "above its zone", "price": 120.0}},
+                  {"isin": "INE000B01011", "symbol": "BBB", "on_list": True, "reasons": ["surveillance: block"], "scrip": None,
+                   "zone": {"verdict": "NO", "headline": "a guard blocks it", "price": 50.0}}]}
+    out = rs.hold_off(w, rt.cursor(), NOW)
+    assert [(o["symbol"], o["kind"]) for o in out] == [("BBB", "guard")]
