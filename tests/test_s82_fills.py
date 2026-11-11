@@ -247,7 +247,7 @@ def tick(con, tmp_path, now, client_fn=lambda: object()):
 
 
 def test_the_first_session_fires_once_and_a_second_open_does_not(con, tmp_path, scripted, monkeypatch):
-    monkeypatch.setattr(strategist, "due", lambda c, n: first.reasons(c, n))              # isolate the trigger from the weekly one
+    monkeypatch.setattr(strategist, "due", lambda c, n: [])                                  # isolate the trigger from the weekly one
     a = tick(con, tmp_path, T0)
     assert scripted["n"] == 1 and a["first_session_s82"] == "done"
     st = first.state(con)
@@ -260,11 +260,11 @@ def test_the_first_session_fires_once_and_a_second_open_does_not(con, tmp_path, 
 def test_the_first_session_with_the_weekly_one_is_still_one_session(con, tmp_path, scripted):
     out = tick(con, tmp_path, T0)
     assert scripted["n"] == 1 and out["first_session_s82"] == "done"
-    assert strategist.due(con, T0 + timedelta(hours=2)) == [] or first.REASON not in strategist.due(con, T0 + timedelta(hours=2))
+    assert first.REASON not in strategist.due(con, T0 + timedelta(hours=2)) and first.reasons(con, T0 + timedelta(hours=2)) == []
 
 
 def test_a_missing_key_records_waiting_and_tries_again_at_the_next_open(con, tmp_path, scripted, monkeypatch):
-    monkeypatch.setattr(strategist, "due", lambda c, n: first.reasons(c, n))
+    monkeypatch.setattr(strategist, "due", lambda c, n: [])
     def no_key():
         raise RuntimeError("no API key in secrets.toml")
     out = tick(con, tmp_path, T0, client_fn=no_key)
@@ -279,7 +279,7 @@ def test_a_missing_key_records_waiting_and_tries_again_at_the_next_open(con, tmp
 
 def test_an_exhausted_cap_records_waiting_and_never_calls_the_model(con, tmp_path, scripted, monkeypatch):
     from pflab.agents import analyst as an
-    monkeypatch.setattr(strategist, "due", lambda c, n: first.reasons(c, n))
+    monkeypatch.setattr(strategist, "due", lambda c, n: [])
     monkeypatch.setattr(an, "config", lambda path=None: _api_cfg(cap=500.0))
     con.execute("INSERT INTO api_calls (call_id, created_at, mode, model, topic, question, request_sha, request_json, status, cost_inr, agent, turn) VALUES (1, ?, 'live', 'm', 't', 'q', 's', '{}', 'done', 490.0, 'strategist', 1)", [T0])
     made = []
@@ -292,7 +292,7 @@ def test_an_exhausted_cap_records_waiting_and_never_calls_the_model(con, tmp_pat
 
 
 def test_a_failed_session_after_spending_is_retried_at_most_twice(con, tmp_path, monkeypatch, paid):
-    monkeypatch.setattr(strategist, "due", lambda c, n: first.reasons(c, n))
+    monkeypatch.setattr(strategist, "due", lambda c, n: [])
     monkeypatch.setattr(strategist, "run_session", lambda con, *a, **k: {"session_id": 9, "status": "failed", "cost_inr": 3.0})
     for k in range(4):
         tick(con, tmp_path, T0 + timedelta(days=k))
@@ -309,7 +309,7 @@ def test_the_kill_switch_and_the_strategist_switch_stop_it(con, tmp_path, script
 def test_the_real_session_path_with_a_scripted_model_writes_a_note_and_the_trigger_records_done(con, tmp_path, paid, monkeypatch):
     """The real run_session, llm.call, governor and egress check; only the SDK client is scripted."""
     from pflab import core
-    monkeypatch.setattr(strategist, "due", lambda c, n: first.reasons(c, n))
+    monkeypatch.setattr(strategist, "due", lambda c, n: [])
     cl = FakeClient()
     out = strategist.tick(con, tmp_path, tmp_path, T0, lambda: cl, data={}, box=None)
     s = out["session"]

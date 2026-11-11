@@ -93,11 +93,6 @@ def due(con, now: datetime) -> List[str]:
         out += ondemand.reasons(con) + triggers_s81.reasons(con, now)
     except Exception:
         pass
-    try:                                                                    # S82 C9: the once-only first real session in the app
-        from pflab.lab import first_session_s82
-        out += first_session_s82.reasons(con, now)
-    except Exception:
-        pass
     last = con.execute("SELECT max(started_at) FROM core_sessions_s80").fetchone()[0]
     if last is None or (now - last) >= timedelta(days=int(st["weekly_days"])):
         out.append("the weekly session (re-examine the allocation)")
@@ -260,6 +255,11 @@ def tick(con, pm_dir: Path, root, now: datetime, client_fn, data=None, box=None)
     except Exception as e:
         out["allocation"] = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
     reasons = due(con, now)
+    try:                                                                    # S82 C9: the once-only first real session in the app (kept out of `due`, which is the weekly rule's own)
+        from pflab.lab import first_session_s82
+        reasons = reasons + first_session_s82.reasons(con, now)
+    except Exception:
+        pass
     if not reasons:
         return {**out, "nothing_due": True}
     try:                                                                    # S82 C9: the first session waits (recorded, tried at a later open) when the paid cap has no room
