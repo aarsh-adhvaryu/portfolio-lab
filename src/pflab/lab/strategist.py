@@ -93,6 +93,11 @@ def due(con, now: datetime) -> List[str]:
         out += ondemand.reasons(con) + triggers_s81.reasons(con, now)
     except Exception:
         pass
+    try:                                                                    # S82 C9: the once-only first real session in the app
+        from pflab.lab import first_session_s82
+        out += first_session_s82.reasons(con, now)
+    except Exception:
+        pass
     last = con.execute("SELECT max(started_at) FROM core_sessions_s80").fetchone()[0]
     if last is None or (now - last) >= timedelta(days=int(st["weekly_days"])):
         out.append("the weekly session (re-examine the allocation)")
@@ -257,13 +262,37 @@ def tick(con, pm_dir: Path, root, now: datetime, client_fn, data=None, box=None)
     reasons = due(con, now)
     if not reasons:
         return {**out, "nothing_due": True}
+    try:                                                                    # S82 C9: the first session waits (recorded, tried at a later open) when the paid cap has no room
+        from pflab.lab import first_session_s82 as first
+        if first.REASON in reasons:
+            rm = first.room(con, now)
+            if not rm["ok"]:
+                reasons = [r for r in reasons if r != first.REASON]
+                first.waiting(con, now, rm["why"])
+                out["first_session_s82"] = "waiting: " + rm["why"]
+                if not reasons:
+                    return out
+    except Exception:
+        pass
     out["reasons"] = reasons
     try:                                                                    # no client (the workshop's paid-call guard, no key, a bad key): the session waits and says why; the job does not fail
         client = client_fn()
     except Exception as e:
         out["skipped"] = f"no cloud client, so no session now ({type(e).__name__}: {str(e)[:200]})"
+        try:
+            from pflab.lab import first_session_s82 as first
+            if first.REASON in reasons:
+                first.waiting(con, now, "no cloud client (no API key, or the workshop's paid-call guard)")
+        except Exception:
+            pass
         return out
     out["session"] = run_session(con, pm_dir, root, now, "; ".join(reasons)[:280], client=client, data=data, box=box)
+    try:
+        from pflab.lab import first_session_s82 as first
+        if first.REASON in reasons:
+            out["first_session_s82"] = first.after_session(con, now, out["session"])
+    except Exception:
+        pass
     return out
 
 

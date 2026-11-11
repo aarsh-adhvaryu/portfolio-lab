@@ -323,7 +323,7 @@ def _carry_out(con, now: datetime, o: dict, ctx: dict, results: dict) -> Optiona
     elif qty is None:
         qty = math.floor(float(o.get("amount") or 0.0) / px)
     r = fills.execute(con, now, isin, side, quote=px, qty=qty, kind=kind, reason=o.get("reason", ""), plan_id=o.get("plan_id"), root=ctx.get("root"), liq=(ctx.get("liq") or {}).get(isin),
-                      bypass_guard=(kind == "stop"))
+                      bypass_guard=(kind == "stop"), source=str(ctx.get("source") or "injected"))
     return _record(con, now, o, r, qty, results)
 
 
@@ -431,7 +431,8 @@ def run_once(con, now: datetime, quotes: Optional[Dict[str, float]] = None, bars
                 log(con, now, "degrade", f"minute bars of today could not be read ({type(e).__name__}): entries wait for them")
     bars = bars or {}
     br = cadence.breaker(con)
-    ctx = {"quotes": quotes, "bars": bars, "breaker": br, "cfg": cfg, "minutes_in": minutes_in, "root": root, "liq": liq or {}}
+    ctx = {"quotes": quotes, "bars": bars, "breaker": br, "cfg": cfg, "minutes_in": minutes_in, "root": root, "liq": liq or {},
+           "source": "live" if live else "injected"}            # S82 C8: only a fill at a live Kite quote counts as a real fill for the fill-cost calibration
     res = {"fills": out["fills"], "queued": out["queued"], "blocked": out["blocked"]}
     checks = {"exit_plans": 0, "orders_due": 0, "triggers": 0, "views": 0, "queued": 0, "events": 0}
 
@@ -720,5 +721,24 @@ def report_day(con, day: date, market: str = MARKET) -> str:
     if notes:
         L.append("Did not run as planned: " + " | ".join(dict.fromkeys(n[:160] for n in notes[:4])))
     core = con.execute("SELECT status, orders_json FROM core_runs_s80 WHERE day=?", [day]).fetchone()
-    L.append("Post-close loop: " + (f"{core[0]} ({len(json.loads(core[1] or '[]'))} order(s))." if core else "not yet; it runs when NSE's closing files arrive this evening."))
-    return "\n".join(L[:15])
+    tail = [strategist_line(con, day)] if strategist_line(con, day) else []                        # S82 C9: one plain line on the strategist's newest note
+    tail.append("Post-close loop: " + (f"{core[0]} ({len(json.loads(core[1] or '[]'))} order(s))." if core else "not yet; it runs when NSE's closing files arrive this evening."))
+    return "\n".join(L[:15 - len(tail)] + tail)
+
+
+def strategist_line(con, day: date) -> Optional[str]:
+    """One plain line for the self-report: the strategist's newest note when it was written in the last 3 days (what it concluded, any allocation it put forward, what the session cost)."""
+    try:
+        from pflab.lab import service as lab
+        n = lab.latest_strategist_note(con)
+        if not n["note"] or str(n["when"])[:10] < str(day - timedelta(days=3)):
+            return None
+        p = n["proposal"]
+        prop = ""
+        if p:
+            mix = ", ".join(f"{k} {v:g}%" for k, v in sorted(p["classes"].items(), key=lambda kv: -kv[1]) if v)
+            prop = f" It {'kept the allocation as it stands' if p.get('reaffirmed') else 'proposed an allocation'}" + (f" ({mix})" if mix else "") + "."
+        cost = f" The session cost Rs {n['cost_rupees']:,.0f}." if n["cost_rupees"] is not None else ""
+        return f"Strategist ({n['when']}): {' '.join(str(n['note']).split())[:220]}{prop}{cost}"
+    except Exception:
+        return None

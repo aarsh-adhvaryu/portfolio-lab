@@ -85,4 +85,9 @@ def view(con, now: datetime) -> dict:
         except Exception as e:
             out[name] = None
             out["left_out"].append(f"{name} ({type(e).__name__})")
+    try:                                                                    # S82: the fill-cost calibration and the strategist's newest note
+        from pflab.core import card
+        out.update(card.today_extras(con))
+    except Exception:
+        pass
     return out

@@ -308,3 +308,34 @@ def write_note(con, now: datetime, session_id: Optional[int], text: str) -> dict
 def notes(con, limit: int = 5) -> List[dict]:
     return [{"note_id": a, "session_id": b, "at": str(c)[:16], "text": d} for a, b, c, d in con.execute(
         "SELECT note_id, session_id, written_at, text FROM core_notes_s80 ORDER BY note_id DESC LIMIT ?", [limit]).fetchall()]
+
+
+# --- what Today and the self-report show of the strategist (S82 C9) -------------------------------------------------------------------------------
+
+def latest_strategist_note(con) -> dict:
+    """The strategist's newest note, JSON-able: {'when', 'note', 'proposal', 'cost_rupees', 'session_id', 'status'}. `proposal` is the allocation the same session put forward or re-affirmed
+    ({'target_id', 'classes', 'sectors', 'reasons', 'status', 'reaffirmed'}) or None. Everything is None when no session ever wrote a note."""
+    empty = {"when": None, "note": None, "proposal": None, "cost_rupees": None, "session_id": None, "status": None}
+    try:
+        n = con.execute("SELECT note_id, session_id, written_at, text FROM core_notes_s80 ORDER BY note_id DESC LIMIT 1").fetchone()
+    except Exception:
+        return empty
+    if not n:
+        return empty
+    out = {"when": str(n[2])[:16], "note": n[3], "proposal": None, "cost_rupees": None, "session_id": n[1], "status": None}
+    if n[1] is None:
+        return out
+    s = con.execute("SELECT started_at, finished_at, cost_inr, status FROM core_sessions_s80 WHERE session_id=?", [n[1]]).fetchone()
+    if not s:
+        return out
+    out["cost_rupees"], out["status"] = (round(float(s[2]), 2) if s[2] is not None else None), s[3]
+    try:
+        lo, hi = s[0], s[1] or n[2]
+        r = con.execute("SELECT target_id, classes_json, sectors_json, reasons, status, proposed_at, reexamined_at FROM system_allocation_s79 WHERE "
+                        "((proposed_by = 'the strategist' AND proposed_at >= ? AND proposed_at <= ?) OR (reexamined_at >= ? AND reexamined_at <= ?)) ORDER BY target_id DESC LIMIT 1", [lo, hi, lo, hi]).fetchone()
+        if r:
+            out["proposal"] = {"target_id": r[0], "classes": json.loads(r[1] or "{}"), "sectors": json.loads(r[2] or "{}"), "reasons": (r[3] or "")[:600], "status": r[4],
+                               "reaffirmed": not (r[5] is not None and lo <= r[5] <= hi)}
+    except Exception:
+        pass
+    return out

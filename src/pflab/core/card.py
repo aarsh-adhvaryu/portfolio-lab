@@ -168,6 +168,20 @@ def write(con, now: datetime, state: dict, decision: dict, placed: list) -> dict
     return {"tokens": len(text) // 4}
 
 
+def today_extras(con) -> dict:
+    """S82: the two small JSON blocks Today shows beside the book: `fills` (is the fill-cost model calibrated from real fills, or the defaults: `core.fills.calibration_status`) and
+    `strategist` (its newest note, any allocation it put forward and the session's cost: `lab.service.latest_strategist_note`). Each is None when unreadable; never raises."""
+    from pflab.core import fills
+    from pflab.lab import service
+    out: dict = {}
+    for key, fn in (("fills", lambda: fills.calibration_status(con)), ("strategist", lambda: service.latest_strategist_note(con))):
+        try:
+            out[key] = fn()
+        except Exception:
+            out[key] = None
+    return out
+
+
 def latest(con) -> Optional[str]:
     r = con.execute("SELECT text FROM core_cards_s80 ORDER BY day DESC LIMIT 1").fetchone()
     return r[0] if r else None
