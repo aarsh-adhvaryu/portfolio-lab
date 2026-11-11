@@ -59,6 +59,13 @@ ETFS = [("NIFTYBEES", "INF9S1B01011", "Synthetic Nifty 50 Index ETF", 0.009, 0.0
         ("GOLDBEES", "INF9S2B01011", "Synthetic Gold ETF", 0.007, 0.0003, "LISTED_NONEQUITY", 70.0, 1500, 60.0),
         ("MON100", "INF9S3B01011", "Synthetic Nasdaq 100 International ETF", 0.011, 0.0004, "LISTED_NONEQUITY", 100.0, 500, 90.0),
         ("JUNIORBEES", "INF9S4B01011", "Synthetic Nifty Next 50 Index ETF", 0.010, 0.0004, "EQUITY", 240.0, 0, 0.0)]
+# S83: names the strategist's picks step (step_picks) can look at: in the store with prices, never in the book. SYNPICK1 is the India pick, SYNPICK2 the idea it skips, SYNTHIN1 trades too thinly for the
+# liquidity floor (Rs 5 crore a day): propose refuses it with the reason. Same tuple shape as STOCKS; their prices come after the ETFs' in synth_prices, so no earlier series changes.
+PICK_STOCKS = [("SYNPICK1", "INE9S7A01011", "Pharma", 0.014, 0.0006, 1800.0, 0, 0.0, None),
+               ("SYNPICK2", "INE9S8A01011", "Chemicals", 0.017, 0.0003, 640.0, 0, 0.0, None),
+               ("SYNTHIN1", "INE9S9A01011", "Textiles", 0.020, 0.0002, 320.0, 0, 0.0, None)]
+THIN_TURNOVER = {"INE9S9A01011": 1.0e7}       # rupees a day (the panel's turnover); every other name has 5e7 (Rs 5 crore: exactly the floor) or 8e7 for the pick names
+US_PICKS = [("UPICKA", 42.0, 0.0006, 0.013)]  # a synthetic US stock: symbol, price at the seed, drift, daily vol (bars in data/us/raw with volume: the A62 floor passes)
 N_HISTORY = 330                               # sessions before the start
 N_AHEAD = 60                                  # sessions after it, held back until they "arrive"
 
@@ -353,7 +360,7 @@ def synth_prices(start: date) -> Tuple[list, list]:
     days = back + ahead
     rng = np.random.default_rng(81)
     rows_b, rows_a = [], []
-    specs = [(s[1], s[3], s[4], s[5], "EQ") for s in STOCKS] + [(e[1], e[3], e[4], e[6], "EQ") for e in ETFS]
+    specs = [(s[1], s[3], s[4], s[5], "EQ") for s in STOCKS] + [(e[1], e[3], e[4], e[6], "EQ") for e in ETFS] + [(s[1], s[3], s[4], s[5], "EQ") for s in PICK_STOCKS]
     for isin, vol, drift, p_seed, series in specs:
         r = rng.normal(drift, vol, len(days))
         lvl = np.exp(np.cumsum(r))
@@ -381,7 +388,7 @@ def build_base(base: Path, start: date) -> dict:
     os.environ["PFLAB_DATA_DIR"] = str(base / "data")
     con = store.connect(base / "pm" / "ledger.duckdb")
     now0 = datetime.now()
-    for sym, isin, sector, *_ in STOCKS:
+    for sym, isin, sector, *_ in STOCKS + PICK_STOCKS:
         con.execute("INSERT INTO instruments (isin, key_kind, asset_class, tax_class, listed, symbol, name, sector, source, built_at) VALUES (?, 'isin', 'equity', 'EQUITY', TRUE, ?, ?, ?, 'synthetic drills', ?)",
                     [isin, sym, f"{sym} Limited", sector, now0])
     for sym, isin, name, _v, _d, tc, *_ in ETFS:
@@ -432,7 +439,8 @@ def sync_data_files(con, data: Path) -> None:
     df = pd.DataFrame(rows, columns=["date", "isin", "close", "symbol", "kind"])
     df["date"] = pd.to_datetime(df["date"])
     wide = df.pivot_table(index="date", columns="isin", values="close", aggfunc="last").sort_index()
-    idx = (wide / wide.iloc[0]).mean(axis=1) * 1000.0
+    base_isins = {s[1] for s in STOCKS} | {e[1] for e in ETFS}                   # the benchmark is made from the original names only: the S83 pick names do not move it
+    idx = (wide[[c for c in wide.columns if c in base_isins]] / wide[[c for c in wide.columns if c in base_isins]].iloc[0]).mean(axis=1) * 1000.0
     (data / "indices").mkdir(parents=True, exist_ok=True)
     for key, scale in (("NIFTY50_PRICE", 20.0), ("NIFTY50_TRI", 25.0), ("NIFTY500_TRI", 30.0), ("NIFTY500_PRICE", 15.0)):
         s = idx * scale / 1000.0
@@ -450,12 +458,17 @@ def sync_data_files(con, data: Path) -> None:
         close = (50.0 + 30 * k) * np.exp(np.cumsum(r))
         div = np.where(us_days == pd.Timestamp("2026-10-22"), 1.2 if sym == "SPY" else 0.0, 0.0)           # one dividend on SPY: the withholding and its credit
         pd.DataFrame({"date": us_days, "open": close * 0.999, "high": close * 1.006, "low": close * 0.994, "close": close, "adj_close": close, "volume": 5e6, "dividend": div}).to_parquet(data / "us" / "raw" / f"{sym}.parquet")
+    for k, (sym, p0, drift, vol) in enumerate(US_PICKS):                      # the US stocks the picks step can name: bars with volume (traded value far over the A62 floor), price over USD 5
+        r = np.random.default_rng(300 + k).normal(drift, vol, len(us_days))
+        close = p0 * np.exp(np.cumsum(r))
+        pd.DataFrame({"date": us_days, "open": close * 0.998, "high": close * 1.008, "low": close * 0.992, "close": close, "adj_close": close, "volume": 4e6, "dividend": 0.0}).to_parquet(data / "us" / "raw" / f"{sym}.parquet")
     fxs = 83.0 * np.exp(np.cumsum(rng.normal(0.0001, 0.002, len(us_days))))
     pd.DataFrame({"date": us_days, "open": fxs, "high": fxs, "low": fxs, "close": fxs}).to_parquet(data / "global" / "FX_USDINR.parquet")
     st = df[(df["kind"] == "equity") | df["symbol"].isin(("NIFTYBEES", "JUNIORBEES", "BANKBEES", "GOLDBEES"))].copy()          # the lab's panel knows these four ETFs by name
     (data / "panel").mkdir(parents=True, exist_ok=True)
     pd.DataFrame({"date": st["date"], "isin": st["isin"], "symbol": st["symbol"], "instrument_type": np.where(st["kind"] == "etf", "ETF", "STK"), "series": "EQ",
-                  "adj_close": st["close"].astype(float), "close": st["close"].astype(float), "turnover": np.float64(5e7)}).to_parquet(data / "panel" / "prices.parquet")
+                  "adj_close": st["close"].astype(float), "close": st["close"].astype(float),
+                  "turnover": st["isin"].map(lambda i: THIN_TURNOVER.get(i, 8e7 if i in {s[1] for s in PICK_STOCKS} else 5e7)).astype(float)}).to_parquet(data / "panel" / "prices.parquet")
 
 
 def process_setup(run_dir: Path) -> None:
@@ -676,6 +689,7 @@ def run_real_job(env: "Env", name: str, data_root: Optional[Path] = None):
 
 DRILLS: Dict[str, Callable] = {}
 ORDER: List[str] = []
+ALIASES = {"accelerated": ["accelerated", "accelerated_picks"]}        # `--only accelerated` is the ten-session run and the S83 twenty-session picks run (accelerated_long stays its own name)
 
 
 def drill(name: str, minutes: float = 20.0, connect: bool = True):
@@ -949,7 +963,8 @@ def step_main_assertions(env: "Env", c: Check, phase: str) -> None:
     claims = cur.execute("SELECT count(*), count(*) FILTER (WHERE outcome IS NOT NULL) FROM paper_claims").fetchone()
     c.ok(claims[0] >= n_dec * 1 and claims[1] >= 1 if n_dec else True, f"scoring registered: {claims[0]} claims for {n_dec} decisions, {claims[1]} already scored by the 7-day horizon", "paper/manager.py register, score_due")
     api = cur.execute("SELECT count(*) FROM api_calls WHERE status IN ('done','submitted','running','sending')").fetchone()[0]
-    c.ok(api == 0, f"no paid call was made ({api})", "hq/governor.py, guard.py")
+    scripted = int(getattr(env, "pk", {}).get("counter", {}).get("answers", 0))             # S83 picks step: the strategist's answers are SCRIPTED (a fake model: nothing is sent); their priced rows are the only ones allowed
+    c.ok(api == scripted, f"no paid call was made ({api} priced rows, {scripted} answers of the scripted model)", "hq/governor.py, guard.py")
     jobs_not_failed(cur, c)
 
 
@@ -1331,6 +1346,369 @@ def step_session_replay(env: "Env", c: Check, phase: str) -> None:
     c.ok(card["runs"] >= 50 and card["fills"], f"the Today card shows {card['runs']} checks and {len(card['fills'])} fills", "core/session.py card")
 
 
+# --- S83: the learning book (picks, the share rule, the scorecard, the US picks, the strategist's session) over 20 sessions ---------------------------------------------------------------
+
+PICKS_SESSIONS = 20
+SCRIPT_THESIS = {"SYNPICK1": "SYNPICK1 is a drill pharma maker with a steady order book and a clean balance sheet; I expect its margins to hold while the index's earnings slow, so I would hold it for a year.",
+                 "UPICKA": "UPICKA is a drill US software stock with recurring revenue and net cash; I expect it to keep growing faster than the index and I would hold it beside SPY for a year or more.",
+                 "SYNTHIN1": "SYNTHIN1 is a drill textile name with a recovering order book; I would hold it for a year if only it traded more.",
+                 "SYNPICK2": "SYNPICK2 is a drill chemicals name with a margin story I could not tie to results in two quarters; I would look again after the next results."}
+SCRIPT_BREAK = {"SYNPICK1": "the company cuts its guidance for the year, or two quarters of falling margins",
+                "UPICKA": "recurring revenue growth under 10% for two quarters, or a close under its 200-day average",
+                "SYNTHIN1": "a second result with falling orders",
+                "SYNPICK2": "the next result shows margins still falling"}
+SCRIPT_LEARNED = "At one month my first picks trailed the index a little: I now ask for a margin trend and a clean balance sheet before I name a stock, and I wait for the next results."
+
+
+class ScriptMsg:
+    def __init__(self, blocks, stop="end_turn"):
+        from types import SimpleNamespace
+        self.content, self.stop_reason, self.model = blocks, stop, "claude-opus-5-5"
+        self.usage = SimpleNamespace(input_tokens=2000, output_tokens=400, cache_read_input_tokens=0, cache_creation_input_tokens=0)
+
+
+class ScriptedModel:
+    """Stands in for the strategist's model (no network, no paid call): each create() returns the next scripted turn, a list of (tool, input) pairs, then plain text 'Done.'. `fail`: every create()
+    raises (the model API is down). `counter` counts the answers given (the standing check on paid calls lets exactly these through: they are scripted, nothing is sent)."""
+
+    def __init__(self, turns, counter: dict, fail: Optional[str] = None):
+        from types import SimpleNamespace
+        self.turns, self.n, self.fail, self.counter = list(turns), 0, fail, counter
+        self.messages = SimpleNamespace(count_tokens=lambda **k: SimpleNamespace(input_tokens=3000))
+        self.beta = SimpleNamespace(messages=SimpleNamespace(create=self._create))
+        self.first = None
+
+    def _create(self, **p):
+        from types import SimpleNamespace
+        if self.fail:
+            raise RuntimeError(self.fail)
+        if self.first is None:
+            self.first = p["messages"][0]["content"][0]["text"]
+        t = self.turns[self.n] if self.n < len(self.turns) else None
+        self.n += 1
+        self.counter["answers"] = self.counter.get("answers", 0) + 1
+        if t is None:
+            return ScriptMsg([SimpleNamespace(type="text", text="Done.")])
+        return ScriptMsg([SimpleNamespace(type="tool_use", id=f"tu{self.n}_{i}", name=name, input=inp) for i, (name, inp) in enumerate(t)], "tool_use")
+
+
+def _item(sym: str) -> dict:
+    return {"symbol": sym, "thesis": SCRIPT_THESIS[sym], "break_condition": SCRIPT_BREAK[sym], "storylines": []}
+
+
+def _picks_days(env: "Env") -> list:
+    from pflab import markets
+    m, d, out = markets.get("IN"), env.start, []
+    for _ in range(PICKS_SESSIONS):
+        out.append(d)
+        d = m.next_session(d)
+    return out
+
+
+def _picks_setup(env: "Env", c: Check) -> None:
+    from pflab.agents import analyst as an
+    from pflab.core import pick_score, tax_rows
+    from pflab.hq import llm
+    from datetime import timedelta as td
+    S = _picks_days(env)
+    pk = env.pk = {"days": S, "queue": [], "counter": {}, "seen": {}, "flags": set(), "judged": [], "models": []}
+    cfg = {"model": "claude-opus-5-5", "cap": 500.0, "ask_above": 1000.0, "usd_inr": 90.0, "adopted": True, "policy": {}, "acceptance": {}, "paper": {}, "tijori_to_analyst": True, "counted_since": None}
+    an.config = lambda path=None: dict(cfg)                                    # a cap with room (the real governor, the real egress gate and the real run_session all run; only the model is scripted)
+
+    def client_factory(secrets=None):                                         # the strategist job asks for a client only when a session will run: none armed = no cloud client, as in the workshop
+        if not pk["queue"]:
+            raise RuntimeError("no cloud client (the drill's workshop has no API key and no script is armed)")
+        name, maker = pk["queue"].pop(0)                                      # the queue holds (name, maker): a maker returns a ScriptedModel
+        m = maker()
+        pk["models"].append((name, m))
+        return m
+    llm.client = client_factory
+    # a horizon of "h months" is shortened to 7 days a month in this run (a skip or a pick would otherwise be scored a month after the run ends); the scorer's own rule is unchanged
+    pick_score._target = lambda start, h: start + td(days=7 * int(h))
+    # two of his Kite stocks get a lot bought 11 months and 3 weeks ago: they turn long-term during the run (the 12-month guard window is 21 days). The seed lots of the synthetic profile are rewritten once.
+    cur = env.cur()
+    pk["lt"] = {}
+    from pflab.ledger import system
+    for sym, isin, acq in (("SYNFMCG1", STOCKS[0][1], date(2025, 11, 3)), ("SYNCAPG1", STOCKS[2][1], date(2025, 11, 5))):
+        cur.execute("UPDATE events SET trade_date=? WHERE kind='buy' AND account_id='SYSBROKER' AND isin=? AND ref LIKE 'seed:%'", [acq, isin])     # the lots are derived from the events: the date is changed at the source
+        pk["lt"][sym] = tax_rows.long_term_from(acq)
+    system.derive(cur, env.clock.t)
+    c.note(f"setup: a strategist job with no client until a script is armed; horizons shortened to 7 days a month; long-term dates {({k: str(v) for k, v in pk['lt'].items()})}")
+
+
+def _pick_isins(cur, market: str = "IN") -> list:
+    return [r[0] for r in cur.execute("SELECT DISTINCT isin FROM picks_s83 WHERE market=?", [market]).fetchall()]
+
+
+def _picks_snapshot(env: "Env") -> dict:
+    from pflab.core import pick_share
+    from pflab.paper import book
+    from pflab.us import book as usbook
+    cur = env.cur()
+    held = book.positions(cur)
+    names = _pick_isins(cur, "IN")
+    return {"picks": cur.execute("SELECT pick_id, market, isin, symbol, source FROM picks_s83 ORDER BY pick_id").fetchall(),
+            "in_qty": {i: round(held.get(i, 0.0), 6) for i in names if held.get(i, 0.0) > 1e-9}, "us_qty": {k: round(q, 6) for k, q in usbook.positions(cur).items()},
+            "shares": {m: pick_share.share(cur, m)["share"] for m in ("IN", "US")}, "n_trades": cur.execute("SELECT count(*) FROM paper_trades").fetchone()[0],
+            "n_us_trades": cur.execute("SELECT count(*) FROM us_trades_s81").fetchone()[0]}
+
+
+def _record_fn(sessions: int, points: float):
+    def fn(con, market, day, window=None):
+        return {"market": market, "sessions": sessions, "points_a_year": points, "sleeve_return_after_tax": 0.01, "index_return": 0.03, "worst_fall_sleeve": -0.05, "worst_fall_index": -0.04}
+    return fn
+
+
+def _picks_tick(env: "Env", c: Check) -> None:
+    from pflab import markets
+    from pflab.core import pick_share, picks
+    pk, cur, t = env.pk, env.cur(), env.clock.t
+    S, fl = pk["days"], pk["flags"]
+    for sym, st in cur.execute("SELECT symbol || '/' || market, state FROM picks_s83 ORDER BY pick_id").fetchall():          # every state a pick passes through, as the ticks see it
+        seen = pk["seen"].setdefault(sym, [])
+        if not seen or seen[-1] != st:
+            seen.append(st)
+
+    def at(i: int, h: int = 16) -> bool:
+        return t >= dt(S[i], h)
+
+    def once(name: str) -> bool:
+        if name in fl:
+            return False
+        fl.add(name)
+        return True
+    day_closed = markets.get("IN").session_closed_by(t)
+    if at(0) and once("arm_fail"):                                           # the model API is down at the first strategist session of the run: it must fail soft
+        pk["queue"].append(("fail", lambda: ScriptedModel([], pk["counter"], fail="the model API answered 529: overloaded (drill)")))
+        pk["before_fail"] = _picks_snapshot(env)
+        return
+    if "arm_fail" in fl and "fail_seen" not in fl and cur.execute("SELECT count(*) FROM core_sessions_s80 WHERE status='failed'").fetchone()[0] >= 1:
+        fl.add("fail_seen")
+        snap = _picks_snapshot(env)
+        try:
+            body = env.client().get("/api/core").json()
+            pk["fail_today"] = (body.get("picks") or {}).get("line")
+        except Exception as e:
+            pk["fail_today"] = f"(the Today endpoint failed: {type(e).__name__}: {str(e)[:100]})"
+        pk["fail_snapshot"] = snap
+        pk["fail_system_picks"] = cur.execute("SELECT count(*) FROM picks_s83 WHERE source='system'").fetchone()[0]
+        return
+    if "fail_seen" in fl and t >= dt(S[0], 23) and once("arm_s1"):           # the model is back: the first picks session (both once-only reasons are pending: one session serves both)
+        turns = [[("propose_picks", {"market": "IN", "items": [_item("SYNPICK1"), _item("SYNTHIN1")]}), ("propose_picks", {"market": "US", "items": [_item("UPICKA")]})],
+                 [("write_note", {"text": "First picks: SYNPICK1 in India and UPICKA in the US beside SPY; SYNTHIN1 was refused by the liquidity floor."}), ("finish", {"summary": "named two picks"})]]
+        pk["queue"].append(("s1", lambda: ScriptedModel(turns, pk["counter"])))
+        return
+    if at(6) and once("shrink"):                                             # a share-rule step (the registered rule: 60 sessions of record: a synthetic record stands in, 20 sessions cannot reach it)
+        pk["pre_shrink"] = _picks_snapshot(env)
+        pk["judged"].append(("IN", "shrink", pick_share.judge(cur, t, "IN", day_closed, record_fn=_record_fn(60, -5.0))))
+        pk["shrink_refusal"] = picks.propose(cur, t, "IN", [_item("SYNPICK2")], session_ref="drill: during a shrink")
+        pk["post_shrink_day"] = day_closed
+        return
+    if at(8) and once("arm_s2"):                                             # five picks have a one-month score: a batch without `learned_from` is refused; the weekly session withdraws and skips
+        pk["needs_learned"] = picks.needs_learned(cur, "IN")
+        pk["learned_refusal"] = picks.propose(cur, t, "IN", [_item("SYNPICK2")], session_ref="drill: no learned_from")
+        w = lambda s, why: ("withdraw_pick", {"market": "IN", "symbol": s, "reason": why})
+        turns = [[w("SYNPICK1", "the margin trend I leaned on has turned down in the last results, so I no longer believe the thesis"),
+                  w("SYNFMCG1", "I no longer believe the story for this inherited stock; it is a drill and should wait for the 12-month date"),
+                  w("SYNCAPG1", "I no longer believe the story for this inherited stock either; a thesis break may come before the guard lets it go"),
+                  ("skip_idea", {"market": "IN", "symbol": "SYNPICK2", "why": "a margin story I could not tie to results in two quarters"})],
+                 [("write_note", {"text": "Second session: withdrew the pick whose margin trend turned, withdrew two inherited stocks, skipped SYNPICK2.", "learned": SCRIPT_LEARNED}), ("finish", {"summary": "withdrew and skipped"})]]
+        pk["queue"].append(("s2", lambda: ScriptedModel(turns, pk["counter"])))
+        return
+    if at(10) and once("thesis_event"):                                      # a filing on a withdrawn Kite stock released at 15:10: the thesis break sells it although the guard would hold a withdrawal
+        if cur.execute("SELECT 1 FROM information_schema.tables WHERE table_name='kg2_event'").fetchone():
+            cur.execute("INSERT INTO kg2_event (event_id, isin, source, ref, ts, event_date, kind, severity, headline, link_rule, link_proof, dedupe_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                        ["drill-picks-thesis-1", STOCKS[2][1], "bse_announcement", "drill:bse:picks1", dt(S[10], 15, 10), S[10], "guidance_cut", "high",
+                         "SYNCAPG1 cuts its revenue guidance for the year and a large client leaves (drill)", "isin_in_filing", "drill: the filing names the ISIN", "drill:thesis:picks1"])
+            pk["thesis_event"] = str(S[10])
+        return
+    if at(11) and once("raise"):                                             # the record is ahead of the index: +5 points (sessions 120: the next judgment after 60 more)
+        pk["judged"].append(("IN", "raise", pick_share.judge(cur, t, "IN", day_closed, record_fn=_record_fn(120, 4.0))))
+        return
+    if at(12) and once("us_shrink"):                                         # the US pick is first bought in November (the sub-book's build used October's turnover cap): a judgment needs a bought pick
+        pk["judged"].append(("US", "shrink", pick_share.judge(cur, t, "US", day_closed, record_fn=_record_fn(60, -5.0))))
+        return
+    if at(16) and once("us_raise"):
+        pk["judged"].append(("US", "raise", pick_share.judge(cur, t, "US", day_closed, record_fn=_record_fn(120, 4.0))))
+        return
+    if at(15) and once("fallback"):                                          # the index fallback is adopted (the lab's A50 rule): both picks sleeves and their positions stay as they are
+        from pflab.lab import alloc_lab
+        pk["fb_before"] = _picks_snapshot(env)
+        pk["fb_out"] = alloc_lab.adopt_index_only(cur, t, "drill: after tax and charges the current allocation fails the index rule; holding the index passes it (the fallback of the lab's A50 rule)")
+        pk["fb_after"] = _picks_snapshot(env)
+        pk["fb_at"] = t
+        return
+
+
+def _picks_check(env: "Env", c: Check) -> None:
+    from pflab import markets
+    from pflab.core import pick_share, pick_score, picks
+    from pflab.lab import first_session_s82 as first, service as lab
+    from pflab.paper import book
+    from pflab.us import book as usbook, instruments as uins
+    import pandas as pd
+    pk, cur = env.pk, env.cur()
+    S = pk["days"]
+    in_syms = {r[0]: r[1] for r in cur.execute("SELECT symbol, isin FROM instruments").fetchall()}
+    # 1. a strategist session that FAILS leaves the book unchanged and Today says so
+    s0 = cur.execute("SELECT status, cost_inr, started_at FROM core_sessions_s80 ORDER BY session_id LIMIT 1").fetchone()
+    c.ok(s0 is not None and s0[0] == "failed" and float(s0[1]) == 0.0, f"the first strategist session of the run (model API down, scripted) ended 'failed' at no cost: {s0}", "lab/strategist.py run_session")
+    c.ok(pk.get("fail_system_picks") == 0 and pk.get("fail_snapshot", {}).get("us_qty") == pk.get("before_fail", {}).get("us_qty"),
+         f"after the failed session the system had named no pick and the US sub-book held what it held (system picks {pk.get('fail_system_picks')})", "lab/strategist.py, core/picks.py")
+    line = pk.get("fail_today") or ""
+    c.ok(line.startswith("no picks yet:") and "holds what it holds" in line, f"Today (/api/core) said: {line[:230]!r}", "core/card.py today_extras, lab/first_session_s82.py picks_line")
+    # 2. the first picks session: one session for both once-only reasons; the thin name refused with the reason, the others accepted
+    keys = [first.state(cur, k) for k in (first.KEY, first.KEY_PICKS)]
+    c.ok(all(k and k["status"] == "done" for k in keys) and keys[0]["session_id"] == keys[1]["session_id"],
+         f"the S82 first session and the S83 first picks moved together to done in one session: {[(k['status'], k['session_id']) if k else None for k in keys]}", "lab/first_session_s82.py")
+    sid = keys[1]["session_id"] if keys[1] else None
+    trs = cur.execute("SELECT transcript_json, status FROM core_sessions_s80 WHERE session_id=?", [sid]).fetchone() if sid else None
+    c.ok(trs is not None and trs[1] == "done" and "SYNTHIN1" in (trs[0] or "") and "liquidity floor" in (trs[0] or ""), f"the first picks session is 'done' and the thin name SYNTHIN1 was refused with the liquidity floor in the tool result ({trs[1] if trs else None})", "core/picks.py _in_floor")
+    c.ok(cur.execute("SELECT count(*) FROM picks_s83 WHERE symbol='SYNTHIN1'").fetchone()[0] == 0, "the refused name has no pick row", "core/picks.py propose")
+    ps = {r[0]: r for r in cur.execute("SELECT symbol, market, source, state, proposed_on, thesis, break_condition, pick_id FROM picks_s83 WHERE source='system'").fetchall()}
+    c.ok(set(ps) == {"SYNPICK1", "UPICKA"} and len(ps["SYNPICK1"][5]) >= 60 and len(ps["UPICKA"][6]) >= 15, f"two system picks, one per market, each with its thesis and break condition: {[(k, v[1], v[3], str(v[4])) for k, v in ps.items()]}", "core/picks.py propose")
+    # 3. the India pick: bought over several sessions inside the turnover caps, held
+    isin1 = in_syms["SYNPICK1"]
+    buys = cur.execute("SELECT t.day, t.qty, t.price FROM paper_trades t WHERE t.isin=? AND t.side='buy' ORDER BY t.day", [isin1]).fetchall()
+    seen = pk["seen"].get("SYNPICK1/IN", [])
+    c.ok(len(buys) >= 1 and buys[0][0] > S[1], f"SYNPICK1 was bought on {len(buys)} session(s) {[str(b[0]) for b in buys]}, the first after it was named on {S[1]}", "core/picks.py, core/baseline_v2.py, core/rails.py")
+    c.note(f"SYNPICK1 bought for Rs {sum(b[1] * b[2] for b in buys):,.0f} in total; the states the ticks saw: {seen}")
+    c.ok("held" in seen and seen.index("held") > (seen.index("buying") if "buying" in seen else -1), f"SYNPICK1 went proposed -> buying -> held before it was withdrawn: {seen}", "core/picks.py sync")
+    # 4. the US pick: bought at US opens, SPY at least 30% of the sub-book, the stock at most 10%
+    k_us = cur.execute("SELECT isin FROM picks_s83 WHERE symbol='UPICKA'").fetchone()[0]
+    ub = cur.execute("SELECT day, qty, price_usd, order_id FROM us_trades_s81 WHERE isin=? AND side='buy' ORDER BY trade_id", [k_us]).fetchall()
+    us_cal = markets.get("US")
+    bars = pd.read_parquet(env.data / "us" / "raw" / "UPICKA.parquet")
+    bars["date"] = pd.to_datetime(bars["date"]).dt.date
+    opens = dict(zip(bars["date"], bars["open"]))
+    okpx = all(d in opens and opens[d] <= p <= opens[d] * 1.0015 for d, _q, p, _o in ub)
+    c.ok(len(ub) >= 1 and all(us_cal.is_session(d) for d, *_ in ub) and okpx, f"UPICKA was bought on {len(ub)} US session(s) {[str(u[0]) for u in ub]}, each fill at that session's open plus a few basis points {[(round(opens.get(u[0], 0), 3), round(u[2], 3)) for u in ub][:3]}", "us/book.py fill_orders, us/adapter.py")
+    rows = cur.execute("SELECT day, value_usd, holdings_json FROM us_days_s81 ORDER BY day").fetchall()
+    low, hi, n_spy = [], [], 0
+    spy_seen = False
+    for d, v, hj in rows:
+        h = json.loads(hj or "{}")
+        spy = sum(x["value_usd"] for x in h.values() if x.get("symbol") == "SPY")
+        stk = [x["value_usd"] / v for x in h.values() if x.get("symbol") == "UPICKA"]
+        spy_seen = spy_seen or spy > 0
+        if spy_seen and v > 0:
+            n_spy += 1
+            if spy / v < 0.30 - 1e-9:
+                low.append((str(d), round(spy / v, 3)))
+        if stk and stk[0] > 0.10 + 0.015:
+            hi.append((str(d), round(stk[0], 3)))
+    c.ok(n_spy >= 5 and not low, f"SPY was at least 30% of the sub-book on every one of the {n_spy} days it was held: under 30% on {low[:3]}", "us/picks_wire.py, core/picks.py target_weights")
+    c.ok(not hi, f"UPICKA was never over 10% of the sub-book by more than the 1.5-point band (a price drift inside the band is not traded): {hi[:3]}", "us/policy.py check")
+    c.ok(cur.execute("SELECT state FROM picks_s83 WHERE symbol='UPICKA'").fetchone()[0] in ("buying", "held") and "held" in pk["seen"].get("UPICKA/US", []),
+         f"UPICKA states seen {pk['seen'].get('UPICKA/US')}", "core/picks.py sync (US)")
+    nap = cur.execute("SELECT day, note FROM us_runs_s81 WHERE note LIKE '%not applied%'").fetchall()
+    c.ok(not nap, f"no US close fell back from its picks part: {nap[:2]}", "us/adapter.py _session")
+    # 5. the withdrawals: a fresh pick goes at once, an inherited stock inside the 12-month guard waits and is sold after it, a thesis break does not wait
+    ev = lambda isin, kind, status: cur.execute("SELECT day, filled_on, reason FROM exit_events_s81 WHERE isin=? AND kind=? AND status=? ORDER BY event_id", [isin, kind, status]).fetchall()
+    ids = {s: in_syms[s] for s in ("SYNPICK1", "SYNFMCG1", "SYNCAPG1")}
+    held = book.positions(cur)
+    w1 = ev(ids["SYNPICK1"], "withdraw", "filled")
+    c.ok(len(w1) == 1 and ids["SYNPICK1"] not in held and cur.execute("SELECT state FROM picks_s83 WHERE symbol='SYNPICK1'").fetchone()[0] == "withdrawn",
+         f"the withdrawn pick SYNPICK1 (fresh lots: no tax guard applies) was sold by the exit manager as a 'withdraw' sale: {[(str(w[0]), str(w[1])) for w in w1]}, state withdrawn, position gone", "core/exits.py _withdrawals")
+    lt = pk["lt"]["SYNFMCG1"]
+    g = ev(ids["SYNFMCG1"], "withdraw", "guarded")
+    sells = cur.execute("SELECT t.day, d.reason FROM paper_trades t LEFT JOIN paper_decisions d ON d.decision_id=t.decision_id WHERE t.isin=? AND t.side='sell' AND d.reason LIKE 'exit manager (withdraw)%' ORDER BY t.day", [ids["SYNFMCG1"]]).fetchall()
+    c.ok(len(g) >= 1 and all(x[0] < lt for x in g) and "12-month guard" in g[0][2], f"the withdrawn SYNFMCG1 (a lot turning long-term on {lt}) waited inside the guard: held back {len(g)} close(s) from {g[0][0] if g else None}: {g[0][2][:140] if g else ''}", "core/exits.py guard_hold, _withdrawals")
+    c.ok(sells != [] and all(s_[0] > lt - timedelta(days=1) for s_ in sells) and "Withdrawn pick" in (sells[0][1] or ""), f"... and was sold only after the guard let go ({lt}): sell fills {[(str(s_[0]), (s_[1] or '')[:60]) for s_ in sells]}", "core/exits.py")
+    lt2 = pk["lt"]["SYNCAPG1"]
+    g2 = ev(ids["SYNCAPG1"], "withdraw", "guarded")
+    th = ev(ids["SYNCAPG1"], "thesis", "filled")
+    tsell = cur.execute("SELECT t.day FROM paper_trades t WHERE t.isin=? AND t.side='sell' ORDER BY t.day", [ids["SYNCAPG1"]]).fetchall()
+    if pk.get("thesis_event"):
+        c.ok(len(g2) >= 1 and len(th) == 1 and th[0][1] < lt2 and tsell and tsell[0][0] < lt2, f"SYNCAPG1 (withdrawn, guard until {lt2}) was held back {len(g2)} close(s), then a thesis break sold it on {[str(x[1]) for x in th]}: the guard does not hold a thesis break", "core/exits.py check_thesis, _sell override_guard")
+    else:
+        c.off("the thesis-break part needs the graph's kg2_event table")
+    # 6. a pick is never sold to reach a share; nothing is sold by a share change; a proposal during a shrink is refused
+    pick_all = set(_pick_isins(cur, "IN"))
+    ph = ",".join("?" for _ in pick_all)
+    bad = cur.execute(f"SELECT t.day, t.symbol, substr(d.reason, 1, 90) FROM paper_trades t LEFT JOIN paper_decisions d ON d.decision_id=t.decision_id WHERE t.side='sell' AND t.isin IN ({ph}) AND coalesce(d.reason, '') NOT LIKE 'exit manager%'", list(pick_all)).fetchall() if pick_all else []
+    c.ok(not bad, f"no sale of a pick or of one of his stocks came from a rebalance (every sale of them was the exit manager's, for a reason): {bad[:3]}", "core/picks.py target_weights, core/baseline_v2.py, core/rails.py")
+    usells = cur.execute("SELECT count(*) FROM us_trades_s81 WHERE side='sell' AND isin=?", [k_us]).fetchone()[0]
+    c.ok(usells == 0, f"UPICKA was never sold ({usells} sells), through a US share change as well", "us/policy.py, us/picks_wire.py")
+    pre, post = pk.get("pre_shrink", {}), None
+    rf = (pk.get("shrink_refusal") or {}).get("refused") or []
+    c.ok(rf and "no new picks" in rf[0]["reason"] and not (pk["shrink_refusal"].get("accepted")), f"while the India share was lowered, a new pick was refused: {rf[0]['reason'][:150] if rf else pk.get('shrink_refusal')}", "core/picks.py propose, core/pick_share.py shrinking")
+    # 7. the share rule: +5 and -5 in both markets, each judgment a dated row with its figures, no sale
+    for m, a, b in (("IN", 0.40, 0.35), ("US", 0.50, 0.45)):
+        rows = cur.execute("SELECT old_share, new_share, reason, figures_json FROM sleeve_share_s83 WHERE market=? ORDER BY change_id", [m]).fetchall()
+        steps = [(round(r[0], 3), round(r[1], 3)) for r in rows]
+        c.ok(steps == [(a, b), (b, a)] and all(json.loads(r[3]).get("sessions") for r in rows), f"{m}: the sleeve's share fell {a:.0%} -> {b:.0%} (behind) then rose back (ahead) as two dated rows with their figures: {steps}", "core/pick_share.py judge")
+    c.ok(all(j[2].get("judged") for j in pk["judged"]), f"every synthetic judgment was made: {[(j[0], j[1], j[2].get('result') or j[2].get('why')) for j in pk['judged']]}", "core/pick_share.py judge (it needs a system pick bought)")
+    rec = pick_score.sleeve_record(cur, "IN", markets.get("IN").session_closed_by(env.clock.t))
+    c.note(f"the real sleeve record at the end: {rec.get('sessions')} session(s) of record, points a year {rec.get('points_a_year')} (the registered rule needs 60: the synthetic record above stood in)")
+    # 8. the scorecard: a pick after tax, a sale, a skip price only
+    sc = cur.execute("SELECT kind, ref_id, market, horizon_months, after_tax, return_pct, index_return_pct, scored_on, start_on FROM pick_scores_s83 ORDER BY score_id").fetchall()
+    kinds = {k: [r for r in sc if r[0] == k] for k in ("pick", "sale", "skip")}
+    sk = cur.execute("SELECT skip_id, symbol, skipped_on FROM skips_s83").fetchall()
+    c.ok(len(sk) == 1 and sk[0][1] == "SYNPICK2" and not cur.execute("SELECT count(*) FROM picks_s83 WHERE symbol='SYNPICK2'").fetchone()[0], f"the skipped idea is a row of its own and never a pick: {[(s_[1], str(s_[2])) for s_ in sk]}", "core/picks.py skip_idea")
+    sks = [r for r in kinds["skip"] if sk and r[1] == sk[0][0]]
+    c.ok(bool(sks) and all(not r[4] and r[5] is not None for r in sks), f"the skip was scored once its (shortened) horizon passed, on price only: {[(r[3], r[4], round(r[5], 2), str(r[7])) for r in sks]}", "core/pick_score.py _score_picks_and_skips")
+    p1 = [r for r in kinds["pick"] if r[1] == ps["SYNPICK1"][7]]
+    c.ok(bool(p1) and all(r[4] for r in p1), f"the pick SYNPICK1 was scored after estimated tax against the index at {[r[3] for r in p1]} month(s): {[(round(r[5], 2), round(r[6], 2)) for r in p1][:2]}", "core/pick_score.py")
+    c.note(f"scores stored: {len(kinds['pick'])} pick, {len(kinds['sale'])} sale, {len(kinds['skip'])} skip")
+    n_sale = len(kinds["sale"])
+    c.ok(n_sale >= 1, f"the withdraw sale of SYNPICK1 was scored against holding ({n_sale} sale score(s))", "core/pick_score.py _score_sales_in")
+    # 9. five scored picks: what the scorecard taught is required and kept
+    lr = (pk.get("learned_refusal") or {}).get("refused") or []
+    c.ok(pk.get("needs_learned") and lr and "scorecard" in lr[0]["reason"] and not pk["learned_refusal"].get("accepted"), f"five picks had a score at the second session: a batch with no `learned_from` was refused: {lr[0]['reason'][:130] if lr else pk.get('learned_refusal')}", "core/picks.py needs_learned, propose")
+    ll = lab.last_learned(cur)
+    c.ok(ll is not None and ll["learned"] == SCRIPT_LEARNED, f"the second session's note kept its `learned` part: {ll}", "lab/tools.py write_note, lab/service.py")
+    s2 = cur.execute("SELECT status, lab_runs FROM core_sessions_s80 ORDER BY session_id DESC LIMIT 1").fetchone()
+    c.ok(s2 is not None and s2[0] == "done", f"the second session (withdraw, skip) was not 'wasted': {s2}", "lab/strategist.py run_session")
+    # 10. the index fallback: both picks sleeves and their positions untouched
+    fo = pk.get("fb_out") or {}
+    c.ok(fo.get("adopted"), f"the index-only fallback was adopted by code on {pk.get('fb_at')}: {str(fo)[:140]}", "lab/alloc_lab.py adopt_index_only")
+    if fo.get("adopted"):
+        after = pk["fb_after"]                                           # taken the moment the fallback was adopted; the later closes are judged by the trades below
+        before = pk["fb_before"]
+        later = cur.execute("SELECT count(*) FROM paper_trades t LEFT JOIN paper_decisions d ON d.decision_id=t.decision_id WHERE t.day > ? AND t.isin IN (%s) AND t.side IN ('sell','buy') AND coalesce(d.reason,'') NOT LIKE 'exit manager%%'" % ",".join("?" for _ in before["in_qty"]) if before["in_qty"] else "SELECT 0", [pk["fb_at"].date(), *before["in_qty"]] if before["in_qty"] else []).fetchone()[0]
+        same_picks = before["picks"] == after["picks"][:len(before["picks"])] and len(after["picks"]) == len(before["picks"])
+        c.ok(same_picks and before["shares"] == after["shares"] and before["us_qty"] == after["us_qty"] and before["in_qty"] == after["in_qty"] and later == 0,
+             f"adopting the fallback left both picks sleeves ({len(after['picks'])} picks), their shares {after['shares']} and every position untouched, and no rebalance trade touched an India pick or one of his stocks in the closes after it ({later})", "lab/alloc_lab.py, core/baseline_v2.py")
+        sl = cur.execute("SELECT sleeves_json FROM allocation_sleeves_s81 WHERE target_id=?", [fo["target_id"]]).fetchone()
+        c.ok(sl and abs(json.loads(sl[0])["longterm"] - 100.0 * pick_share.share(cur, "IN")["share"]) < 1e-6, f"the fallback's target keeps the picks rule's longterm share ({sl[0] if sl else None})", "lab/alloc_lab.py _scoped_shares")
+    # 11. what Today, the card and the 15:45 report say, and nothing the picks code reported as failing
+    try:
+        body = env.client().get("/api/core").json()
+        end_line = (body.get("picks") or {}).get("line")
+        usyms = [p["symbol"] for p in body["picks"]["US"]["picks"]]
+        c.ok(end_line is None and (body["picks"]["IN"]["share"] == 0.40) and "UPICKA" in usyms and "SYNPICK1" in [p["symbol"] for p in body["picks"]["IN"]["picks"]],
+             f"once the system had named picks, Today no longer says 'no picks yet' (line {end_line!r}), it shows the India share {body['picks']['IN']['share']} and both markets' picks {usyms}", "core/card.py today_extras, core/picks_card.py")
+    except Exception as e:
+        c.ok(False, f"the Today endpoint failed at the end: {type(e).__name__}: {str(e)[:120]}", "core/screens.py")
+    from pflab.core import card as core_card, session as core_session
+    ctext = core_card.latest(cur) or ""
+    c.ok("PICKS, India" in ctext and "SYNPICK1" in ctext and "WHAT I LEARNED" in ctext and "PICKS SCORE" in ctext, f"the book card has the PICKS section, the last 'what I learned' and the scorecard ({len(ctext)} characters)", "core/card.py, core/picks_card.py")
+    jd = cur.execute("SELECT decided_on FROM sleeve_share_s83 WHERE market='IN' ORDER BY change_id LIMIT 1").fetchone()
+    nxt = markets.get("IN").next_session(jd[0]) if jd else None
+    rep = core_session.report_day(cur, nxt) if nxt else ""
+    c.ok("India picks share lowered from 40% to 35%" in rep, f"the 15:45 report of {nxt} told the lowered share in plain words: {[l for l in rep.splitlines() if 'picks share' in l][:1]}", "core/pick_share.py report_line, core/session.py report_day")
+    acts = cur.execute("SELECT logged_at, what FROM paper_acts WHERE loop='core_loop' AND useful=FALSE AND (what LIKE 'the picks%' OR what LIKE '%picks%could not%')").fetchall()
+    c.ok(not acts, f"the close loop never reported a picks part that failed: {acts[:2]}", "core/loop.py")
+    fj = cur.execute("SELECT job, detail FROM job_runs WHERE job IN ('pick_score','stress_daily','strategist') AND status='failed'").fetchall()
+    c.ok(not fj, f"the pick_score, stress_daily and strategist jobs never failed: {fj[:2]}", "service/tasks_s79_pickscore.py")
+    c.note(f"scripted answers given: {env.pk['counter'].get('answers', 0)} (no network: nothing was sent)")
+
+
+def step_picks(env: "Env", c: Check, phase: str) -> None:
+    """S83: the learning book over 20 sessions of the drill's book, with TWO strategist sessions driven by a scripted model (the real strategist job, tick, run_session, governor, egress gate and tools run).
+    A failed session first, then session 1 names an India pick and a US pick, session 2 withdraws the India pick (and two of his stocks) and skips an idea. See `_picks_check` for each claim."""
+    if phase == "setup":
+        return _picks_setup(env, c)
+    if phase == "tick":
+        return _picks_tick(env, c)
+    return _picks_check(env, c)
+
+
+step_picks.ticks = True
+step_picks.sessions = PICKS_SESSIONS
+
+
 ACCELERATED_STEPS: List[Tuple[str, Callable, Callable]] = [
     ("standing", step_main_assertions, lambda env=None: (True, "")),
     ("tactical_view_issued_executed_scored", step_tactical_view, needs("pflab.core.views", why="the tactical lane")),
@@ -1343,6 +1721,7 @@ ACCELERATED_STEPS: List[Tuple[str, Callable, Callable]] = [
     ("us_subbook_close", step_us_book, needs("pflab.us.adapter", why="B8 phase B, the US sub-book")),
     ("session_replay", step_session_replay, needs("pflab.core.session", why="B6b session loop")),
     ("view_entry_exit_closed", step_view_entry, needs("pflab.core.session", "pflab.core.exits", "pflab.core.sleeves", why="B5/B6b: entries by the session loop's tactical views, exits and scores by the exit manager")),   # after the replay it reads
+    ("picks_learning_book", step_picks, needs("pflab.core.picks", "pflab.core.pick_share", "pflab.core.pick_score", "pflab.us.picks_wire", why="S83: the picks, the share rule, the scorecard, the US picks; 20 sessions: the accelerated_picks drill")),
 ]
 
 
@@ -1362,6 +1741,10 @@ def run_accelerated(env: "Env", c: Check, steps: Optional[List[Tuple[str, Callab
         sub = Check(f"{c.name}.{name}")
         if not ok:
             sub.off(why)
+            c.steps.append({"name": name, "status": "OFF", "evidence": sub.evidence, "findings": []})
+            continue
+        if int(getattr(fn, "sessions", 0)) > n_sessions:                 # a step that needs a longer run (S83 picks: 20 sessions) is reported OFF in a shorter one, never half-run
+            sub.off(f"this step needs {fn.sessions} sessions and this run has {n_sessions}: it runs in the accelerated_picks drill")
             c.steps.append({"name": name, "status": "OFF", "evidence": sub.evidence, "findings": []})
             continue
         active.append((name, fn, sub))
@@ -1408,6 +1791,16 @@ def run_accelerated(env: "Env", c: Check, steps: Optional[List[Tuple[str, Callab
 @drill("accelerated", 20)
 def drill_accelerated(env: "Env", c: Check) -> None:
     run_accelerated(env, c)
+    bad = [s for s in c.steps if s["status"] in ("FAIL", "ERROR")]
+    c.note(f"steps: {[(s['name'], s['status']) for s in c.steps]}")
+    if not any(e.startswith("FAIL:") for e in c.evidence) and bad:
+        c.ok(False, f"steps failed: {[s['name'] for s in bad]}", "tools/drills_s81.py ACCELERATED_STEPS")
+
+
+@drill("accelerated_picks", 25)
+def drill_accelerated_picks(env: "Env", c: Check) -> None:
+    """S83: the standing assertions and the picks step over 20 sessions (India and US, a weekend and a holiday inside) with two scripted strategist sessions."""
+    run_accelerated(env, c, steps=[s for s in ACCELERATED_STEPS if s[0] in ("standing", "picks_learning_book")], n_sessions=PICKS_SESSIONS)
     bad = [s for s in c.steps if s["status"] in ("FAIL", "ERROR")]
     c.note(f"steps: {[(s['name'], s['status']) for s in c.steps]}")
     if not any(e.startswith("FAIL:") for e in c.evidence) and bad:
@@ -2322,7 +2715,8 @@ def parent_run(a) -> int:
         return 2
     print(f"[drills] base ready in {time.time() - t0:.0f} s", flush=True)
     names = [n for n in (a.only.split(",") if a.only else list(ORDER))]
-    names = [n for n in names if n in DRILLS]
+    names = [m for n in names for m in ALIASES.get(n, [n])]
+    names = [n for n in dict.fromkeys(names) if n in DRILLS]
 
     def one(n: str) -> dict:
         out = run_root / f"{n}.json"
