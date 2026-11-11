@@ -14,8 +14,10 @@ def _enabled(ctx):
 
 
 def _run(ctx) -> dict:
-    from pflab.us import adapter
-    return adapter.close_us(ctx.con, ctx.now, ctx.data_root)
+    from pflab.us import adapter, instruments as uins
+    sec = uins.refresh_if_due(ctx.data_root, now=ctx.now)          # S82: SEC's ticker file with the contact User-Agent, once a month; without it the US:SYMBOL keys stay (said in the result)
+    out = adapter.close_us(ctx.con, ctx.now, ctx.data_root)
+    return {**out, "sec_ciks": sec} if isinstance(out, dict) else out
 
 
 register(Job("us_close", Interval(120, weekdays_only=False), _run, "the paper US sub-book's close on the latest US session (S81; code, free; OFF until switched on)", cooldown_minutes=60, enabled_fn=_enabled))

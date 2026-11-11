@@ -40,15 +40,16 @@ def month_traded(con, day: date) -> float:
     return float(r[0] or 0.0)
 
 
-def clip_weights(state: dict, targets: Dict[str, float]) -> Dict[str, dict]:
-    """Rails on the weights: returns {isin: {'target': clipped weight, 'was': policy weight, 'why': [...]}}."""
+def clip_weights(state: dict, targets: Dict[str, float], caps: Dict[str, float] = None) -> Dict[str, dict]:
+    """Rails on the weights: returns {isin: {'target': clipped weight, 'was': policy weight, 'why': [...]}}. `caps` (S82, the US sub-book): {isin: cap} replaces the one-name cap of
+    those names (the sub-book's broad index ETF may be all of it); None, as for the rupee book, changes nothing."""
     from pflab.paper import rails as hard
     total = float(state["value"])
     rows = {r["isin"]: r for r in state["rows"] if r["buyable"]}
     cur = {k: r["value"] / total for k, r in rows.items()}
     out = {k: {"target": float(targets.get(k, cur[k])), "was": float(targets.get(k, cur[k])), "why": []} for k in rows}
     for k, r in rows.items():                                           # one company / one ETF: never above its rail, and an over-rail holding is never bought
-        lim = policy.cap_of(r)
+        lim = (caps or {}).get(k, policy.cap_of(r))
         hi = max(lim, cur[k])
         if out[k]["target"] > hi + 1e-12:
             out[k]["target"] = hi

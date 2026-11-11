@@ -1,7 +1,8 @@
 """The paper US sub-book (S81 B8 phase B, amendment A53). OFF by default (`[us] on = false` in configs/core.toml): nothing else depends on it.
 
-A separate paper account in DOLLARS beside the rupee paper book: it starts as `start_share` (5%) of the system's book at the start FX rate, holds US ETFs the repo already
-collects (data/us), is decided once per US session by code (an equal-weight baseline inside the same rails), and fills at the NEXT session's open plus slippage. Costs are the
+A separate paper account in DOLLARS that is part of ONE book with the rupee paper book (S82, A57): it is funded by a TRANSFER out of the rupee book's cash (never new money; `us/transfer.py`),
+sized to the international share of the WHOLE book (`us/wholebook.py`), holds SPY as its core (a broad US index ETF may be the whole sub-book), is decided once per US session by code on the
+last US close, and fills at the NEXT session's open plus slippage. Costs are the
 GIFT City route's (us/costs.py), the Indian tax on foreign shares and the US dividend withholding with its credit are dated rows (configs/us/tax_s81.toml, each labelled primary,
 secondary or estimate; the research is docs/US_LEG_S81.md). Every rupee figure is an ESTIMATE until the SBI TT buying rate series is wired. It trades nothing real.
 
@@ -12,7 +13,10 @@ secondary or estimate; the research is docs/US_LEG_S81.md). Every rupee figure i
     instruments  the key of a US instrument: its real ISIN, else "ZZ" + the 10-digit CIK from a date (CLAUDE.md rule 3), else the symbol key the panel already uses
     data         daily bars from data/us/raw (open, close, dividend)
     book         the account, lots, orders, fills, dividends and the daily mark
-    policy       the baseline (equal weights), rails reused from core/rails.py
+    policy       the core-ETF policy (SPY), rails reused from core/rails.py with the sub-book's own caps
+    transfer     the transfer out of the rupee book's cash (funding, top-up, conversion of an old seed)
+    wholebook    the whole book (rupee book + sub-book in rupees) and the international share of it
+    report       plain JSON for the screens: holdings, cash, orders, funding, gap risk
     adapter      the entry points for the close loop: `close_us(con, now)` and `state_us(con, day)`
 """
 from __future__ import annotations
@@ -22,8 +26,9 @@ from pathlib import Path
 MARKET = "US"
 CONFIG = Path(__file__).resolve().parents[3] / "configs" / "core.toml"
 DEFAULTS = {
-    "on": False, "start_share": 0.05, "start_inr_fallback": 100000.0,
-    "universe": ["SPY", "QQQ", "XLC", "XLY", "XLP", "XLE", "XLF", "XLV", "XLI", "XLB", "XLRE", "XLK", "XLU"],
+    "on": False, "fund_day_share": 0.05, "topup_below_share": 0.08,
+    "universe": ["SPY", "QQQ", "XLC", "XLY", "XLP", "XLE", "XLF", "XLV", "XLI", "XLB", "XLRE", "XLK", "XLU"],      # the list the collector tracks; NOT a holding list since S82
+    "broad_index_etfs": ["SPY"], "broad_index_cap": 1.0, "etf_cap": 0.35, "stock_cap": 0.10,
     "invested_share": 0.95, "deploy_turnover_day": 1.0, "settle_minutes": 30, "slippage_bps": 5.0, "min_trade_usd": 25.0, "band_pts": 1.5, "w8ben": True,
 }
 

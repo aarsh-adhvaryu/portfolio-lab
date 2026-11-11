@@ -127,6 +127,29 @@ def _changed(con, facts: dict, prev: Optional[dict]) -> str:
     return "; ".join(out)
 
 
+def _us(con, day) -> Optional[dict]:
+    """S82 (A57): the US sub-book and the whole book for the card (`pflab.us.report.card_summary`); None when unreadable."""
+    try:
+        from pflab.us import report
+        return report.card_summary(con, day)
+    except Exception:
+        return None
+
+
+def _us_lines(us: Optional[dict]) -> tuple:
+    if not us:
+        return "WHOLE BOOK: unreadable", "US SUB-BOOK: unreadable"
+    w, ish = us.get("whole_book") or {}, us.get("international_share") or {}
+    whole = (f"WHOLE BOOK (rupee book + US sub-book in rupees): Rs {w['whole_inr']:,.0f} = rupee book Rs {w['rupee_book_inr']:,.0f} + US sub-book Rs {w['us_book_inr']:,.0f}"
+             + (f" at USD/INR {w['fx']:.2f} ({w['fx_source']})" if w.get("fx") else "") + f"; international share {_pct(ish.get('share'))} of the whole book, target {_pct(ish.get('target'), 0)}: {ish.get('reason') or 'n/a'}"
+             if w.get("whole_inr") is not None else "WHOLE BOOK: unreadable")
+    if not us.get("open"):
+        return whole, "US SUB-BOOK: not open yet (it opens by a transfer out of the rupee book's cash)"
+    hs = "; ".join(f"{h['symbol']} {h['shares']:g} shares USD {h['value_usd'] or 0:,.0f}" for h in us.get("holdings", [])) or "no shares yet"
+    cash = us.get("cash") or {}
+    return whole, f"US SUB-BOOK: {hs}; cash USD {cash.get('usd', 0):,.0f}; {us.get('open_orders', 0)} open order(s); {us.get('gap_risk')}"
+
+
 def build(con, state: dict, decision: dict, placed: list, prev: Optional[dict] = None) -> tuple:
     """-> (text, facts). `state` is `core.state.build`, `decision` the policy's output, `placed` the orders of this close."""
     from pflab.paper import book
@@ -139,9 +162,14 @@ def build(con, state: dict, decision: dict, placed: list, prev: Optional[dict] =
     tgt = state["target"]
     ret = book.returns(con)
     vol = portfolio_vol(state)
+    us = _us(con, day)
+    facts["us"] = us
+    whole_line, us_line = _us_lines(us)
     lines = [
         f"BOOK CARD, close of {day} (written by code; the same layout every day)",
         f"BOOK: value Rs {total:,.0f}; cash and bank {cash * 100:.1f}%; holdings: {held}",
+        whole_line,
+        us_line,
         "ALLOCATION TARGET: " + (f"#{tgt['id']} " + ", ".join(f"{k} {v:g}%" for k, v in tgt["classes"].items()) + (("; sectors " + ", ".join(f"{k} {v:g}%" for k, v in tgt["sectors"].items())) if tgt["sectors"] else "")
                                 if tgt else "none active: the baseline holds the class mix the book has"),
         f"RISK: book volatility {_pct(vol)} a year (shrunk covariance of daily returns); worst fall so far {_pct(ret['worst_fall'] if ret else None)}; "

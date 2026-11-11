@@ -1,6 +1,7 @@
 """The US sub-book's own record (tables `us_*_s81`, migrations 131-135): a paper account in DOLLARS. Nothing here touches `paper_*`, `us_trades` (his real record) or a rupee lot.
 
-Start    the account opens once with `start_share` of the system's book (rupees) converted at the start FX rate (source stated) less the funding markup (an estimate).
+Start    the account opens once with a TRANSFER out of the rupee book's cash (S82; `us/transfer.py`): the rupees at the day's FX rate (source stated) less the funding markup (an estimate).
+         Later tranches and top-ups are transfers too. The cash kind of a transfer is 'transfer'; 'seed' is the pre-S82 start from nothing, converted by `transfer.convert_seed`.
 Orders   placed at a US close for the NEXT session; they fill at that session's open plus (buy) or minus (sell) the slippage, never better than the open; charges from `us/costs.py`.
          A buy never spends more than the cash (no borrowing); a sale never exceeds the shares held (no shorting); shares may be fractional (the GIFT City route allows it).
 Lots     first in, first out, each with its dollar cost per share (charges in) and the tax FX rate of its purchase.
@@ -48,21 +49,24 @@ def cash(con, upto: Optional[date] = None) -> float:
     return float(r[0])
 
 
-def open_account(con, now: datetime, day: date, book_value_inr: float, fx: dict, share: float) -> dict:
-    """Open the account (once). `fx` is `usfx.rate_for(...)`: the start rate and its source are stored with the account."""
+def open_account(con, now: datetime, day: date, first_inr: float, fx: dict, share: float, reason: str = "") -> dict:
+    """Open the account (once) with its FIRST TRANSFER out of the rupee book's cash (S82, A57: never new money). `first_inr` is the rupees of that first tranche, `share` the target
+    share of the whole book the sub-book is being built to; `fx` is `usfx.rate_for(...)`: the rate and its source are stored with the account and the transfer. The account's
+    `start_inr` / `start_usd` are that first tranche; every later tranche is a row of `us_transfers_s82`. Raises ValueError (and writes nothing) if the rupee cash is not there."""
+    from pflab.us import transfer
     if account(con):
         raise ValueError("the US sub-book is already open")
-    if book_value_inr <= 0 or not 0 < share <= 1:
-        raise ValueError("a positive book value and a share between 0 and 1 are needed")
-    start_inr = book_value_inr * share
+    if first_inr <= 0 or not 0 < share <= 1:
+        raise ValueError("a positive first tranche and a target share between 0 and 1 are needed")
     markup = costs.fx_markup_funding()
-    start_usd = start_inr / (fx["rate"] * (1.0 + markup))
-    aid = 1
-    note = (f"start {start_inr:,.0f} rupees = {share:.1%} of the system's book of {book_value_inr:,.0f}; converted at {fx['rate']:.4f} ({fx['label']}, {fx['rate_day']}); "
-            f"funding markup {markup:.2%} ({costs.label()})")
-    con.execute("INSERT INTO us_account_s81 VALUES (?,?,?,?,?,?,?,?,?)", [aid, day, start_inr, fx["rate"], fx["source"], start_usd, share, note, now])
-    add_cash(con, now, day, start_usd, "seed", "start")
-    return account(con)
+    start_usd = first_inr / (fx["rate"] * (1.0 + markup))
+    note = (f"opened by a transfer of {first_inr:,.0f} rupees out of the rupee book's cash, the first tranche of the {share:.1%} international share of the whole book; converted at "
+            f"{fx['rate']:.4f} ({fx['label']}, {fx['rate_day']}); funding markup {markup:.2%} ({costs.label()})")
+    t = transfer.fund(con, now, day, first_inr, fx, "open", reason or "the first tranche of the international share", share_after=None)       # raises before the account row if the rupee cash is short
+    con.execute("INSERT INTO us_account_s81 VALUES (?,?,?,?,?,?,?,?,?)", [1, day, first_inr, fx["rate"], fx["source"], start_usd, share, note, now])
+    acct = account(con)
+    acct["transfer"] = t
+    return acct
 
 
 # --- lots and positions ---------------------------------------------------------------------------------------------------------------------------------------------
@@ -284,6 +288,7 @@ def detect_splits(con, now: datetime, day: date, bars: Dict[str, "object"]) -> L
     out = []
     stored = json.loads(last[1] or "{}")
     for canon, info in stored.items():
+        canon = uins.canonical(con, canon, date.max)                   # a symbol key mapped to its ZZ key since the mark still counts as the same position
         sym, old = info.get("symbol"), info.get("close")
         bar = data.bar_on(bars.get(sym or ""), last[0])
         if not bar or not old or bar["close"] <= 0 or positions(con).get(canon, 0.0) <= EPS:
@@ -297,7 +302,7 @@ def detect_splits(con, now: datetime, day: date, bars: Dict[str, "object"]) -> L
             con.execute("INSERT INTO us_events_s81 VALUES (?,?,?,?,?,?)", [eid, day, canon, "unexplained_revision", json.dumps({"symbol": sym, "was": old, "now": bar["close"], "on": str(last[0])}), now])
             out.append({"symbol": sym, "kind": "unexplained_revision", "ratio": round(r, 4)})
             continue
-        for l in _lots_of(con, canon, last[0]):
+        for l in _lots_of(con, canon, date.max):
             con.execute("UPDATE us_lots_s81 SET qty = qty * ?, cost_usd_per_share = cost_usd_per_share / ? WHERE lot_id=?", [k, k, l["lot_id"]])
         con.execute("INSERT INTO us_events_s81 VALUES (?,?,?,?,?,?)", [eid, day, canon, "split", json.dumps({"symbol": sym, "ratio": k, "was": old, "now": bar["close"], "on": str(last[0]),
                     "note": "inferred from the data re-stating history: an estimate"}), now])

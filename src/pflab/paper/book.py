@@ -420,6 +420,7 @@ def catch_up(con, upto: date, now: datetime) -> dict:
     if last is None:
         return {"skipped": "not started"}
     days, filled, actions = [], [], []
+    prev = last
     for d in sessions_after(con, last, upto):
         if _own():                                              # S79b 18E: the session's splits, bonuses, dividends and ISIN changes reach the ledger BEFORE its fills and its mark
             try:
@@ -431,6 +432,9 @@ def catch_up(con, upto: date, now: datetime) -> dict:
         flow = 0.0
         if _own():
             flow = float(con.execute("SELECT coalesce(sum(amount), 0) FROM events WHERE kind='deposit' AND account_id='SYSBANK' AND trade_date = ? AND ref LIKE 'topup:%'", [d]).fetchone()[0])
+        from pflab.us import transfer                           # S82 (A57): rupees moved to the US sub-book since the last marked day are money OUT of the rupee book (inside the whole book)
+        flow += transfer.rupee_flows(con, prev, d)
+        prev = d
         mark(con, d, flow)
         days.append(str(d))
     return {"days": days, "filled": filled, "corporate_actions": actions}
