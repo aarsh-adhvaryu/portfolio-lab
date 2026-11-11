@@ -57,7 +57,7 @@ My tests in `tests/test_s82_fills.py` import `CCC, MON, day_bars, db, no_exits, 
 Nothing is behind a switch. The calibration only starts moving numbers after 30 real fills. Left: show `fills.text` and the strategist note on the Today page (UI is the redesign's).
 
 ## The real run (the one paid run), 2026-11-11 23:26 IST
-- On a COPY of `D:\PL_backup\s82_pre_20261111` in `D:\s82_scratchills\store` (schema 102, migrated to 151 by this tree). Scratch `api_budget.toml` only: `dev_monthly_cap_rupees = 430`
+- On a COPY of `D:\PL_backup\s82_pre_20261111` in `D:/s82_scratch/fills/store` (schema 102, migrated to 151 by this tree). Scratch `api_budget.toml` only: `dev_monthly_cap_rupees = 430`
   (the strategist layer's 70% share = Rs 301), `counted_since` = 23:00 so only this run counted; `PFLAB_PAID=1`; the real key from `secrets.toml` (never printed); the real Docker sandbox
   (`pflab-sandbox:2`) and the real panel under `D:\portfolio_lab\data` (read only).
 - It went through the real path: `strategist.tick` with the real `llm.client`, real governor, egress gate, `run_session`. The tick found the first-session reason (plus "the book is far from its allocation
