@@ -241,8 +241,10 @@ def _holding_fall(con, h: dict, name: str, a: date, b: date, day: date, ref: Dic
         beta, n = _beta(series, ref[rk], day, weekly)
     note = f"beta {beta:.2f} to {rk} over {n} {'weekly' if weekly else 'daily'} returns" if beta is not None else f"beta 1.0 assumed: under the minimum history to measure it ({n} returns)"
     beta = 1.0 if beta is None else beta
-    usd = m * beta
-    return {"fall_pct": ((1.0 + usd) * fxr - 1.0) * 100.0, "basis": "estimate", "detail": {"market_series": rk, "market_return_pct": m * 100.0, "beta": beta, "beta_note": note, "fx": fx_note}}
+    raw = m * beta
+    usd = max(raw, -1.0)                                      # a share cannot lose more than all of it: the straight-line estimate overstates a deep fall for a high beta
+    return {"fall_pct": ((1.0 + usd) * fxr - 1.0) * 100.0, "basis": "estimate", "detail": {"market_series": rk, "market_return_pct": m * 100.0, "beta": beta, "beta_note": note, "fx": fx_note,
+                                                                                              "straight_line_pct": raw * 100.0, "floored_at_total_loss": raw < -1.0}}
 
 
 def _scenario_result(name: str, items: List[dict], total: float, fall_of) -> dict:
