@@ -67,4 +67,4 @@ Nothing is behind a switch. The calibration only starts moving numbers after 30 
   `screens.view` (`fills`: "defaults, 0 of 30 real fills"; `strategist`) read them from the real store copy.
 - The note (the model's own words, sourced from lab runs): index plus 10% gold without the fall gauge lagged the index by about 1.2 points a year after tax; the allocation template inherits the gauge
   drag so its proposal (alloc_t3) likely fails the index rule; the index-only target in force stands; next: test gold with rebalancing. Nothing was adopted (code decides, by the A50 rule), no live store was touched.
-- The scratch store copy was deleted afterwards; the log is `D:\s82_scratchillseal_run.log`.
+- The scratch store copy was deleted afterwards; the log is `D:/s82_scratch/fills/real_run.log`.
