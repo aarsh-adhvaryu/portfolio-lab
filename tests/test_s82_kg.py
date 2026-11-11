@@ -248,3 +248,24 @@ def test_the_new_scripts_have_no_control_characters():
     for rel in ("src/pflab/kg2/filing_time.py", "src/pflab/kg2/build.py", "src/pflab/kg2/audit.py", "src/pflab/kg/events.py", "src/pflab/pm/mig_s79/m_kg82.py", "tests/test_s82_kg.py"):
         text = (Path(__file__).resolve().parents[1] / rel).read_text(encoding="utf-8")
         assert not [ch for ch in text if ord(ch) < 32 and ch not in "\n\r\t"], rel
+
+
+# ------------------------------------------------------------------ the study readers
+
+def test_stamp_missing_fills_only_rows_with_no_time():
+    df = pd.DataFrame({"t": [pd.Timestamp("2026-06-10 10:00"), pd.NaT, pd.NaT], "filename": ["x/2026/2026-06-10.parquet", "x/2026/2026-06-12.parquet", "x/odd.parquet"]})
+    out = ft.stamp_missing(df)
+    assert list(out.columns) == ["t"]
+    assert out["t"].iloc[0] == pd.Timestamp("2026-06-10 10:00")                                       # a row with a time is untouched
+    assert out["t"].iloc[1] == pd.Timestamp("2026-06-15 09:15")                                       # Friday's file -> Monday's open
+    assert pd.isna(out["t"].iloc[2])                                                                  # no file day: stays null
+    assert ft.file_day_of("D:/data/bse_announcements/2026/2026-06-12.parquet") == date(2026, 6, 12)
+
+
+def test_event_study_events_includes_a_no_time_filing_at_the_next_open(root):
+    from pflab.quant import event_study as es
+    _add_file(root, date(2026, 6, 12), [_filing("500001", "Forensic audit appointed by the board", pd.NaT, news_dt=pd.NaT, sub="Forensic Audit")])
+    ev = es.events(root, "2026-06-01", "2026-06-30", headline_regex="forensic audit")
+    row = ev[ev["headline"].str.contains("appointed by the board")]
+    assert len(row) == 1 and row["t"].iloc[0] == pd.Timestamp("2026-06-15 09:15")
+    assert len(es.events(root, "2026-06-01", "2026-06-14", headline_regex="forensic audit")) == 0       # not before its time

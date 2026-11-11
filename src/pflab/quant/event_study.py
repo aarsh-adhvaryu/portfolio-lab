@@ -35,10 +35,15 @@ def events(root: Path, start: str, end: str, subcategories: Sequence[str] = (), 
     if headline_regex:
         conds.append("regexp_matches(lower(headline), '" + headline_regex.lower().replace("'", "''") + "')")
     where = " or ".join(conds) or "true"
-    df = _duck.sql(f"""select scrip_code, headline, subcategory, coalesce(dissem_dt, news_dt) t
-                        from read_parquet({fs!r}, union_by_name=true)
-                        where coalesce(dissem_dt, news_dt) between TIMESTAMP '{start}' and TIMESTAMP '{end} 23:59:59'
+    # A58 (S82): a filing with neither time is used from the next trading open after its file's day (`filing_time.stamp_missing`); the others keep DissemDT-else-NEWS_DT
+    from pflab.kg2 import filing_time as ft
+    df = _duck.sql(f"""select scrip_code, headline, subcategory, coalesce(dissem_dt, news_dt) t, filename
+                        from read_parquet({fs!r}, union_by_name=true, filename=true)
+                        where (coalesce(dissem_dt, news_dt) between TIMESTAMP '{start}' and TIMESTAMP '{end} 23:59:59' or coalesce(dissem_dt, news_dt) is null)
                           and ({where})""").df()
+    if len(df):
+        df = ft.stamp_missing(df)
+        df = df[(df["t"] >= pd.Timestamp(start)) & (df["t"] <= pd.Timestamp(f"{end} 23:59:59"))]
     if df.empty:
         return pd.DataFrame(columns=["isin", "t", "headline", "subcategory"])
     df["isin"] = resolve_isins(df.rename(columns={"t": "t"}), bse_scrip_isin.load(root))

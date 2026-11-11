@@ -10,6 +10,10 @@ so the point-in-time rule is implemented in exactly one place.
 -------------------------------
     DissemDT where present, NEWS_DT otherwise, declared per row.
 
+S82 (A58, 2026-11-10): a row with NEITHER time (it was `unresolved` and dropped from every use) is keyed to the END of the day of the file it came from
+(`key_source = "FileDay_next_open"`), which the after-15:30 rule below turns into the NEXT trading session: used from the next session's open, never the same day.
+Rows built before this change keep their `unresolved` label until the table is rebuilt; no verdict is re-run because of it.
+
 BSE returns `DissemDT` as null for every announcement before 2016 -- the
 source, not the collector -- which is why the fallback exists. Over 222,419
 announcements in the 2016-2022 overlap where both exist, the two differ by a
@@ -116,6 +120,10 @@ def build(root: Optional[Path] = None, start_year: int = 2010,
             d["scrip_code"] = d["scrip_code"].astype(str).str.strip()
             d["dissem_dt"] = pd.to_datetime(d["dissem_dt"], errors="coerce")
             d["news_dt"] = pd.to_datetime(d["news_dt"], errors="coerce")
+            try:
+                file_day = pd.Timestamp(f.stem)
+            except ValueError:
+                file_day = pd.NaT
             for r in d.itertuples(index=False):
                 flags = red_flags.classify(r.headline or "", r.category or "",
                                            r.subcategory or "")
@@ -126,6 +134,8 @@ def build(root: Optional[Path] = None, start_year: int = 2010,
                     key_dt, src = r.dissem_dt, "DissemDT"
                 elif pd.notna(r.news_dt):
                     key_dt, src = r.news_dt, "NEWS_DT"
+                elif pd.notna(file_day):
+                    key_dt, src = file_day + pd.Timedelta(hours=23, minutes=59, seconds=59), "FileDay_next_open"       # A58: after 15:30 -> the next session
                 else:
                     key_dt, src = pd.NaT, "unresolved"
                 isin = _resolve_isin(r.scrip_code, key_dt, by_scrip) \
