@@ -90,7 +90,9 @@ def decide(state: dict) -> dict:
             elif t > cur[k]:
                 inc_core[k] = t - cur[k]
     # --- longterm: the held names; bought toward their risk size while the sleeve is under its share, never sold for a sleeve share ---------------------------------------------
-    lt = [r for r in rows if r["sleeve"] == "longterm" and r["buyable"]]
+    pk = state.get("picks") or {}                                  # S83 (core/picks.py): the picks (his Kite stocks included) are sized by the picks rule, not by this sleeve rule
+    owned = set(pk.get("managed") or ())
+    lt = [r for r in rows if r["sleeve"] == "longterm" and r["buyable"] and r["isin"] not in owned]
     lt_now = sum(cur[r["isin"]] for r in lt)
     if lt:
         lt_share = min(max(sh["longterm"], 0.0), float(cfg["baseline_v2"].get("longterm_buy_pct", 100.0)) / 100.0)   # the held names are sized on this share until S83's picks exist
@@ -112,6 +114,13 @@ def decide(state: dict) -> dict:
                 weights[k] = max(cur[k], t if lt_now < lt_share else cur[k])
                 if weights[k] > cur[k]:
                     inc_lt[k] = weights[k] - cur[k]
+    for k, w in (pk.get("weights") or {}).items():                  # S83: the picks' target weights join the policy's, before the rails (new cash goes to the core first, as for the other names)
+        if k in cur:
+            weights[k] = w
+            if not gauge and w > cur[k] + 1e-12:
+                inc_lt[k] = w - cur[k]
+    if pk.get("weights"):
+        notes.append(f"picks sleeve ({pk['share']['share']:.0%} share, {pk['share']['source']}): {len(pk['weights'])} name(s) sized by the picks rule")
     if gauge:
         notes.append(f"fall gauge fired ({state['gauge']['why']}): equity cut by {cut:.0%}, the difference kept in cash; no buying")
         return {"weights": weights, "notes": notes, "classes": _classes(sh), "sleeves": _sleeves(sh)}

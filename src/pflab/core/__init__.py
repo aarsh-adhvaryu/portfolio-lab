@@ -27,6 +27,11 @@ DEFAULTS = {
     "tactical": {"on": True, "start_share": 0.10, "high_share": 0.20, "low_share": 0.05, "views_to_judge": 20},
     "rails": {"turnover_day": 0.10, "turnover_month": 0.40, "min_trade_rupees": 2000.0, "max_cost_share": 0.02},
     "baseline": {"band_pts": 1.5, "vol_window": 250, "gauge_drawdown": 0.10, "gauge_below_ma": 200, "gauge_cut": 0.25},
+    # S83 L1/L5 (A61-A63): the picks sleeve; read through `core.picks.settings()` (it merges the nested market tables, which `settings()` here would replace whole)
+    "picks": {"on": True, "judge_every_sessions": 60, "window_sessions": 120, "behind_points": 2.0, "min_liquidity_inr": 50000000, "us_floor_price": 5, "us_floor_value_usd": 2000000,
+              "us_max_stocks": 12, "us_stock_cap": 0.10, "us_spy_floor": 0.30,
+              "in": {"on": True, "start_share": 0.40, "min_share": 0.20, "max_share": 0.60, "step": 0.05},
+              "us": {"on": False, "start_share": 0.50, "min_share": 0.30, "max_share": 0.70, "step": 0.05}},
 }
 
 
