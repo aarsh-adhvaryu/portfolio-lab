@@ -146,11 +146,15 @@ def test_relations_only_by_named_rules(root):
 
 # ------------------------------------------------------------------ events: confident-rule linking and the unlinked remainder
 
-def test_filing_without_dissemination_time_is_left_out_of_everything(root):
+def test_filing_without_dissemination_time_is_used_from_the_next_trading_open(root):
+    """A58 (S82) replaces the S81 rule "left out": a filing dated 2026-06-10 (a Wednesday) with no release time enters at 2026-06-11 09:15, its time stored as derived."""
     g = G(root)
-    assert g["stats"]["no_dissem_time"] == 1
-    assert not g["event"]["headline"].str.contains("no dissemination time").any()
-    assert not g["unlinked"]["ref"].astype(str).str.contains("no dissemination").any() and len(g["unlinked"]) >= 1
+    assert g["stats"]["no_dissem_time"] == 1 and g["stats"]["derived_time_used"] == 1
+    ev = g["event"]
+    row = ev[ev["headline"].str.contains("no dissemination time")].iloc[0]
+    assert row["ts"] == datetime(2026, 6, 11, 9, 15) and row["ts_rule"] == "next_open_no_release_time" and row["event_date"] == date(2026, 6, 10)
+    assert row["link_rule"] == "filing:scrip_isin_on_filing_date_no_release_time"
+    assert set(ev[ev["source"] == "bse_announcement"]["ts_rule"]) <= {"release_time", "next_open_no_release_time"}
 
 
 def test_filing_links_by_scrip_isin_on_the_dissemination_date(root):
@@ -366,7 +370,7 @@ def test_material_events_reads_thesis_breaks(root, con, monkeypatch):
     kinds = {e["kind"] for e in ev}
     assert "auditor_resignation" in kinds and "dividend" not in kinds and "results" not in kinds
     e = ev[0]
-    assert set(e) == {"isin", "kind", "severity", "ts", "source", "ref", "text"} and isinstance(e["ts"], datetime)
+    assert set(e) == {"isin", "kind", "severity", "ts", "source", "ref", "text", "ts_rule"} and isinstance(e["ts"], datetime)
     assert kev.material_events(con, [A], date(2026, 6, 11)) == [e2 for e2 in ev if e2["isin"] == A and e2["ts"] >= datetime(2026, 6, 11)]
     assert kev.material_events(con, [], date(2026, 1, 1)) == []
     assert not [e for e in ev if e["source"] == "gdelt_gkg1"]                           # a news keyword is a lead (severity low), never a thesis break by itself
@@ -437,7 +441,7 @@ def test_position_layer_shows_the_exit_plan_and_events_when_they_exist(con):
     day = date(2026, 6, 30)
     con.execute("INSERT INTO paper_lots VALUES (1, ?, 'ALPHA', ?, 10, 100.0, 'EQUITY', 'test')", [A, date(2025, 1, 10)])
     con.execute("INSERT INTO exit_plans_s81 (plan_id, market, isin, sleeve, opened_on, stop, status) VALUES (1, 'IN', ?, 'longterm', ?, 90.0, 'open')", [A, date(2025, 1, 10)])      # the exit manager's real table
-    con.execute("INSERT INTO kg2_event VALUES ('e1', ?, 'bse_announcement', 'r', ?, ?, 'regulatory_action', 'high', 'Show cause notice', 'filing:scrip_isin_on_dissem_date', 'p', 'k')",
+    con.execute("INSERT INTO kg2_event VALUES ('e1', ?, 'bse_announcement', 'r', ?, ?, 'regulatory_action', 'high', 'Show cause notice', 'filing:scrip_isin_on_dissem_date', 'p', 'k', 'release_time')",
                 [A, datetime(2026, 6, 20, 10), date(2026, 6, 20)])
     h = position.positions(con, day)["holdings"][0]
     assert h["exit_plan"]["stop"] == 90.0 and h["events"][0]["kind"] == "regulatory_action"
