@@ -30,7 +30,7 @@ DEFAULTS = {
     "taper_from_pct": 1.0,           # between this and the limit the purchase is scaled down linearly to zero
     "max_nav_age_days": 5,           # a NAV older than this (calendar days before `day`) is unknown
     "unknown": "skip",               # 'skip': no buying while the premium is unknown; 'allow': buy as the policy says
-    "classes": ["international"],    # the policy classes the rail looks at; add "gold" to hold gold ETFs to the same limit (gold ETFs ran 5-12% over NAV in Oct 2025 and Jan 2026: secondary)
+    "classes": ["international", "gold"],    # the policy classes the rail looks at; add "gold" to hold gold ETFs to the same limit (gold ETFs ran 5-12% over NAV in Oct 2025 and Jan 2026: secondary)
 }
 INTERNATIONAL = "international"
 

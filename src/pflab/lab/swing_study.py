@@ -1,10 +1,8 @@
-"""The registered swing / harvesting study (S81 B5; protocol `docs/protocols/s81_selling_swing_protocol.md`, with its amendment A1).
+"""The registered swing / harvesting study, now a RECORD (S81 B5; protocol `docs/protocols/s81_selling_swing_protocol.md`, with its amendment A1).
 
     register(con, now)                        count the four tests in the learner's counter (idempotent; the protocol's SHA is stored; called from `learner.s79.register_all`)
     protocol_ok(con)                          {registered, unchanged}: was it counted, and is the file the one that was counted
-    seed_variants(con, pm_dir, now)           the three variants as lab drafts (candidates only: they never act without the A50 promotion)
-    run(con, pm_dir, root, now, box=None)     THE run for the record: refuses unless registered and unchanged, and refuses a second run (a changed rerun is a new registered study)
-    final_check(...)                          the 2018-2021 check, once per variant, only for a variant that passed; the strategist is told "cleared" or "did not clear"
+    apply_recorded(con, now)                  the verdicts of THE run (2026-11-09, recorded in `docs/research/swing_study_results_s81.json`) written onto a store once
     screen_variant / harvest_verdict          the rule of the protocol in code (a test pins the numbers to the protocol's text)
 """
 from __future__ import annotations
@@ -17,15 +15,9 @@ from typing import Dict, List, Optional
 
 REPO = Path(__file__).resolve().parents[3]
 PROTOCOL = REPO / "docs" / "protocols" / "s81_selling_swing_protocol.md"
-POLICIES = Path(__file__).resolve().parent / "policies"
 TEMPLATE = "swing_s81"
 VARIANTS = {"swing_momentum_continuation": "s81:swing:momentum_continuation", "swing_pullback_in_uptrend": "s81:swing:pullback_in_uptrend", "swing_post_results_drift": "s81:swing:post_results_drift"}
 HARVEST_NOTE = "s81:harvest"
-HYPOTHESES = {
-    "swing_momentum_continuation": "a liquid share closing at a new 55-session high with a positive 126-session return runs further; stop 8%, target 16%, time exit 30 sessions",
-    "swing_pullback_in_uptrend": "in an uptrend a sharp 5-session fall (-5% or worse) is bought back; stop 7%, target 10%, time exit 15 sessions",
-    "swing_post_results_drift": "a share up 4% or more on its results day on twice its usual traded value keeps drifting up for weeks; stop 8%, target 15%, time exit 30 sessions",
-}
 
 # The rule of the protocol, in code (docs/protocols/s81_selling_swing_protocol.md section 6 and A1). tests/test_s81_swing.py reads the protocol's JSON blocks and compares.
 RULE = {
@@ -161,28 +153,6 @@ def harvest_verdict(h: dict) -> dict:
     return {"ok": not failed and bool(h), "verdict": "pass" if (not failed and h) else "fail", "failed": failed}
 
 
-# --- candidates -------------------------------------------------------------------------------------------------------------------
-
-def variant_code(vid: str) -> str:
-    return (POLICIES / f"{vid}.py").read_text(encoding="utf-8")
-
-
-def seed_variants(con, pm_dir: Path, now: datetime) -> List[str]:
-    """The three variants as lab drafts (idempotent). Candidates only: a variant enters live shadow only through `make_challenger` after a scored history run, and acts only after the
-    A50 promotion."""
-    from pflab.lab import service
-    added = []
-    for vid in VARIANTS:
-        if service.get(con, vid):
-            continue
-        r = service.add_variant(con, Path(pm_dir), now, vid, variant_code(vid), HYPOTHESES[vid])
-        if r.get("ok"):
-            added.append(vid)
-    return added
-
-
-# --- the run ----------------------------------------------------------------------------------------------------------------------
-
 def _store(con, now: datetime, kind: str, subject: str, span: str, verdict: str, summary: dict) -> int:
     from pflab.pm.store import next_id
     rid = next_id(con, "swing_study_s81", "run_id")
@@ -199,56 +169,6 @@ def _mark(con, note: str, passed: bool, score: Optional[dict] = None) -> None:
     s = score or {}
     con.execute("UPDATE learn_tests SET passed=?, n_dev=?, t_dev=?, sr_dev=?, dsr=?, threshold_dev=? WHERE note=? AND passed IS NULL",
                 [bool(passed), int(s["n_obs"]) if s.get("n_obs") else None, s.get("t_vs_index"), s.get("sharpe_daily"), s.get("dsr"), s.get("_t_bar"), note])
-
-
-def run(con, pm_dir: Path, root, now: datetime, box=None, data: Optional[dict] = None, n_shuffles: Optional[int] = None, time_limit: int = 4 * 3600) -> dict:
-    """THE run for the record. Refuses unless the protocol is registered and unchanged, and refuses a second run. The three variants go through the lab's runner (sandbox) and are
-    recorded in `lab_runs_s80` (so every one is a trial in the deflated Sharpe); the harvesting arms are one more job. Returns the verdict of each claim."""
-    from pflab.learner import counter
-    from pflab.lab import runner, service
-    ok = protocol_ok(con)
-    if not (ok["registered"] and ok["unchanged"]):
-        raise RuntimeError(f"the swing study will not run: {ok['why']}")
-    if con.execute("SELECT 1 FROM swing_study_s81 WHERE kind='history' LIMIT 1").fetchone():
-        raise RuntimeError("the swing study has already been run; a rerun with changed parameters is a new registered study")
-    data = data if data is not None else runner.panel_data(root, Path(pm_dir), swing_study=True)
-    service.ensure_baseline(con, now)
-    seed_variants(con, Path(pm_dir), now)
-    cfg = study_cfg()
-    window = (RULE["history"][0], RULE["history"][1])
-    nsh = RULE["n_shuffles"] if n_shuffles is None else n_shuffles
-    out: Dict[str, dict] = {"variants": {}, "errors": {}}
-    for vid in VARIANTS:
-        res = runner.run(data, [{"id": vid, "code": variant_code(vid)}], window, {vid: [{}]}, cfg, n_shuffles=nsh, n_mc=500, seed=RULE["shuffle_seed"], time_limit=time_limit, box=box)
-        if res.get("error") or vid in res.get("errors", {}):
-            out["errors"][vid] = res.get("error") or res["errors"][vid][-600:]
-            continue
-        service.record_rows(con, now, vid, "history", res["results"][vid], None, bool(res.get("contained")), float(res.get("seconds") or 0.0))
-        out["variants"][vid] = {"contained": bool(res.get("contained")), "seconds": res.get("seconds")}
-        out.setdefault("assumptions", {k: res["results"][vid].get(k) for k in ("notes", "slippage", "sizing", "tax")})        # the fill model and its parameters, recorded with the result
-    for vid in list(out["variants"]):
-        service.redeflate(con, vid)                                               # the bar rose with every variant tried: the deflated Sharpe is over all of them
-    n = counter.n_tests(con)
-    for vid in list(out["variants"]):
-        r = service.latest_run(con, vid, "history")
-        sc = screen_variant(r["score"], r["shuffled"], n)
-        r["score"]["_t_bar"] = sc["t_bar"]
-        out["variants"][vid].update({"screen": sc, "score": r["score"], "shuffled": r["shuffled"], "mc": r["mc"]})
-        _store(con, now, "history", vid, "2005-2017", sc["verdict"], {"screen": sc, "score": r["score"], "shuffled": r["shuffled"], "mc": r["mc"]})
-        _mark(con, VARIANTS[vid], sc["ok"], r["score"])
-    hres = runner.run(data, [{"id": service.BASELINE_ID, "code": service.baseline_code()}], window, {}, cfg, n_shuffles=0, n_mc=0, seed=RULE["shuffle_seed"], time_limit=time_limit, box=box,
-                      now_spec={"mode": "harvest"})
-    if hres.get("error") or hres.get("errors"):
-        out["errors"]["harvest"] = hres.get("error") or str(hres.get("errors"))[:600]
-    else:
-        h = hres["results"]["harvest"]
-        hv = harvest_verdict(h)
-        out["harvest"] = {"arms": h, "verdict": hv}
-        _store(con, now, "harvest", "harvest", "2005-2017", hv["verdict"], {"arms": h, "verdict": hv})
-        _mark(con, HARVEST_NOTE, hv["ok"])
-    out["claim_a"] = "supported" if any(v["screen"]["ok"] for v in out["variants"].values()) else "not supported"
-    out["n_tests"] = n
-    return out
 
 
 RESULTS = REPO / "docs" / "research" / "swing_study_results_s81.json"
@@ -279,21 +199,3 @@ def apply_recorded(con, now: datetime, path: Optional[Path] = None) -> int:
         _mark(con, HARVEST_NOTE, bool(h["verdict"]["ok"]))
         n += 1
     return n
-
-
-def final_check(con, pm_dir: Path, root, now: datetime, variant: str, data: Optional[dict] = None, box=None) -> dict:
-    """The 2018-2021 check of ONE variant, once, by code, only if it passed the history screen. The strategist's answer is `cleared` or not; the numbers stay in the store."""
-    from pflab.lab import runner
-    h = stored(con, "history", variant)
-    if h is None or h["verdict"] != "pass":
-        return {"ran": False, "why": "the variant has not passed the history screen"}
-    if stored(con, "final", variant) is not None:
-        return {"ran": False, "why": "the final check was already run once", "cleared": stored(con, "final", variant)["verdict"] == "cleared"}
-    data = data if data is not None else runner.panel_data(root, Path(pm_dir), swing_study=True)
-    res = runner.run(data, [{"id": variant, "code": variant_code(variant)}], tuple(RULE["final"]), {variant: [{}]}, study_cfg(), n_shuffles=0, n_mc=0, time_limit=3600, box=box)
-    if res.get("error") or variant in res.get("errors", {}):
-        return {"ran": False, "why": "the final check could not run: " + str(res.get("error") or res["errors"][variant])[-300:]}
-    score = res["results"][variant]["runs"][0]["score"]
-    fs = final_screen(score)
-    _store(con, now, "final", variant, "2018-2021", "cleared" if fs["ok"] else "did_not_clear", {"screen": fs, "score": score})
-    return {"ran": True, "cleared": fs["ok"]}

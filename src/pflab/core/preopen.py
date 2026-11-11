@@ -3,7 +3,7 @@
     global close   the latest closes before today's open of a few world series (`PFLAB_DATA_DIR/global`): the US index, the Nikkei, the Hang Seng, USD/INR, Brent, gold, the dollar
     expected gap   the Nifty 50's gap (open against the last close) regressed on the S&P 500's last return over the last 250 sessions (numpy least squares); an ESTIMATE with its
                    fit, shown for information: it moves no order and no trigger (a rule that used it would first be a registered study, rule 10)
-    orders         the exit plans' stop, target and time-stop levels (`exit_plans_s81`, or the session fallback's table), the swing entry triggers (`session_triggers_s81`), the
+    orders         the exit plans' stop, target and time-stop levels (`exit_plans_s81`, or the session fallback's table), the
                    orders held over from the last session (`session_queue_s81`) and the active tactical views; each with its trigger in words
     text           written by code, with the numbers; stored in `session_plans_s81` (one row per market and session day)
 
@@ -132,10 +132,6 @@ def build(con, now: datetime, market: str = "IN", day: Optional[date] = None, da
                                "text": f"sell {sym(e['isin'])} if it {op} {float(e[key]):,.2f}" + (f" (last close {px:,.2f}, {float(e[key]) / px - 1:+.1%} away)" if px else "") + " [exit plan]"})
         if e.get("time"):
             orders.append({"kind": "exit_time", "isin": e["isin"], "symbol": sym(e["isin"]), "side": "sell", "level": None, "plan_id": e["plan_id"], "text": f"sell {sym(e['isin'])} at the time stop of {e['time']}"})
-    for t in session.swing_triggers(con, day, market):
-        orders.append({"kind": "swing_entry", "isin": t["isin"], "symbol": sym(t["isin"]), "side": "buy", "level": t["level"], "trigger_id": t["trigger_id"],
-                       "text": f"buy about Rs {t['amount']:,.0f} of {sym(t['isin'])} if it {'rises to' if t['direction'] == 'above' else 'falls to'} {t['level']:,.2f}, after 09:30, near VWAP, on volume"
-                               + (f" (stop {t['stop_price']:,.2f})" if t.get("stop_price") else "") + (f" [{t['reason']}]" if t.get("reason") else "")})
     for qid, isin, side, qty, kind, run_on in con.execute("SELECT queue_id, isin, side, qty, kind, run_on FROM session_queue_s81 WHERE market=? AND status='queued' AND run_on <= ?", [market, day]).fetchall():
         orders.append({"kind": "queued", "isin": isin, "symbol": sym(isin), "side": side, "level": None, "queue_id": qid,
                        "text": f"{side} {qty:,.0f} {sym(isin)} held over from an earlier session ({kind}), after 09:30"})

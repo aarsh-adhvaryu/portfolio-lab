@@ -1,15 +1,14 @@
 """Allocation in the lab (S81, A49-A50): the strategist OWNS the system's allocation; code checks it and the lab judges it like any policy.
 
     propose(...)     the strategist's `propose_allocation` tool: classes, sectors, sleeve shares and reasons. Code checks the rails (`paper/allocation.validate_target`) and the sleeve caps of his
-                     answer (`core/sleeves.check_proposal`: swing at most 20%, longterm at most 60%, core at least 30%, summing to 100); a good proposal is stored as a PROPOSED target
+                     answer (`core/sleeves.check_proposal`: longterm at most 60%, core at least 30%, summing to 100; the swing sleeve is deleted, A60); a good proposal is stored as a PROPOSED target
                      (`paper/allocation.propose_allocation`) with its sleeve shares, and stands in the lab as an allocation VARIANT (`alloc_t<id>`).
     seed(...)        the always-present candidates (idempotent): `index_hold` (the index ETFs only: "hold the index") and `alloc_default` (the system's starting target)
     tick(...)        runs the candidates' history replays, then adopts by the A50 rule: a proposal becomes the ACTIVE target when its history passes the two-dimension index rule (after tax and
                      charges on both sides) and is not below the current allocation's, and its once-only 2018-2021 check passes the same rule. When the current allocation itself fails the index
                      rule and the index-only variant passes, the system owns the index: an index-only target is adopted by code. Every verdict is stored with its figures.
 
-An allocation variant is one fixed-split policy (`render_code`): the index ETFs, the gold ETF, the international ETF and risk-sized liquid stocks for the longterm sleeve, the swing share held
-as cash, the fall gauge, and no sale for the sake of the split (positions above their share are held: the gradual, tax-aware path of baseline_v2). Replay models each ETF as its index
+An allocation variant is one fixed-split policy (`render_code`): the index ETFs, the gold ETF, the international ETF and risk-sized liquid stocks for the longterm sleeve, the fall gauge, and no sale for the sake of the split (positions above their share are held: the gradual, tax-aware path of baseline_v2). Replay models each ETF as its index
 total-return series less a stated yearly cost where the ETF did not exist (`runner.CORE_SYNTH`).
 """
 from __future__ import annotations
@@ -27,7 +26,7 @@ INDEX_HOLD, DEFAULT_ID = "index_hold", "alloc_default"
 IDX_SYMS = ("MONIFTY500", "NIFTYBEES", "JUNIORBEES")         # the live baseline's index ETFs (configs/core.toml [baseline_v2] index_etfs): three, so the 35% ETF rail lets the whole book sit in the index
 INDEX_ONLY_SYMS = IDX_SYMS
 
-TEMPLATE = '''"""An allocation variant: a fixed split of the book (S81). Index ETFs, a gold ETF, an international ETF, risk-sized liquid stocks for the longterm sleeve, the swing share kept as cash;
+TEMPLATE = '''"""An allocation variant: a fixed split of the book (S81). Index ETFs, a gold ETF, an international ETF, risk-sized liquid stocks for the longterm sleeve;
 the fall gauge cuts equity; nothing is sold to reach the split (a position above its share is held), as the live baseline does."""
 from toolkit import inverse_vol, volatility, cap_and_fill, fall_gauge, rank_top
 
@@ -66,7 +65,7 @@ def decide(state, forecasts, sims, storylines, params=None):
     return out
 '''
 
-BASE = {"idx": 0.40, "gold": 0.10, "intl": 0.10, "longterm": 0.35, "swing": 0.05, "n_stocks": 30, "gauge_cut": 0.25, "drift_only": True,
+BASE = {"idx": 0.40, "gold": 0.10, "intl": 0.10, "longterm": 0.40, "n_stocks": 30, "gauge_cut": 0.25, "drift_only": True,
         "idx_syms": list(IDX_SYMS), "gold_syms": ["GOLDBEES"], "intl_syms": ["MON100"]}
 
 
@@ -80,16 +79,16 @@ def default_params(cfg: Optional[dict] = None) -> dict:
     cfg = cfg or core.settings()
     sh = sleeves.default_shares(cfg)
     b = cfg["baseline_v2"]
-    return {"idx": round(sh["index"], 4), "gold": round(sh["gold"], 4), "intl": round(sh["international"], 4), "longterm": round(sh["longterm"], 4), "swing": round(sh["swing"], 4),
+    return {"idx": round(sh["index"], 4), "gold": round(sh["gold"], 4), "intl": round(sh["international"], 4), "longterm": round(sh["longterm"], 4),
             "idx_syms": list(b["index_etfs"]), "gold_syms": list(b["gold_etfs"]), "intl_syms": list(b["international_etfs"])}
 
 
 def candidates(cfg: Optional[dict] = None) -> Dict[str, dict]:
     idx_syms = list((cfg or core.settings())["baseline_v2"]["index_etfs"])
-    return {INDEX_HOLD: {"params": {"idx": 0.98, "gold": 0.0, "intl": 0.0, "longterm": 0.0, "swing": 0.0, "idx_syms": idx_syms},
+    return {INDEX_HOLD: {"params": {"idx": 0.98, "gold": 0.0, "intl": 0.0, "longterm": 0.0, "idx_syms": idx_syms},
                          "hypothesis": "Hold the index ETFs only (Nifty 500, Nifty 50 and Next 50 index ETFs), nothing else: the A50 benchmark made a candidate, so when nothing beats the index the system owns it."},
             DEFAULT_ID: {"params": default_params(cfg),
-                         "hypothesis": "The system's starting allocation (core 60 with gold 10 and international 10, longterm 35, swing 5 held as cash), as a variant the lab can score like any policy."}}
+                         "hypothesis": "The system's starting allocation (core 60 with gold 10 and international 10, longterm 40), as a variant the lab can score like any policy."}}
 
 
 def seed(con, pm_dir: Path, now: datetime) -> list:
@@ -115,7 +114,7 @@ def proposal_params(classes: dict, sleeves_pct: dict) -> dict:
     gold, intl, cash = (float(classes.get(k, 0.0)) for k in ("gold", "international", "cash"))
     core_pct = float(sleeves_pct["core"])
     return {"idx": round(max(0.0, core_pct - gold - intl - cash) / 100.0, 4), "gold": round(gold / 100.0, 4), "intl": round(intl / 100.0, 4),
-            "longterm": round(float(sleeves_pct["longterm"]) / 100.0, 4), "swing": round(float(sleeves_pct["swing"]) / 100.0, 4)}
+            "longterm": round(float(sleeves_pct["longterm"]) / 100.0, 4)}
 
 
 def propose(con, pm_dir: Path, now: datetime, classes: dict, sleeves_pct: dict, reasons: str, sectors: Optional[dict] = None, market: str = "IN", by: str = "the strategist") -> dict:
@@ -180,7 +179,7 @@ def adopt_index_only(con, now: datetime, why: str) -> dict:
     """The system owns the index: an index-only target (core 100) becomes the ACTIVE target, by code, with the figures as its reasons."""
     from pflab.paper import allocation
     cls = {"equity": 100.0, "gold": 0.0, "international": 0.0, "cash": 0.0}
-    sl = {"core": 100.0, "longterm": 0.0, "swing": 0.0}
+    sl = {"core": 100.0, "longterm": 0.0}
     r = allocation.propose_allocation(con, cls, why, now, sectors={}, by="the lab (A50 index rule)")
     if not r.get("stored") or r.get("reaffirmed"):
         return {"adopted": False, "problem": r.get("problem") or "an index-only target is already active"}
@@ -251,8 +250,8 @@ def status_text(con, now: datetime) -> str:
     act = allocation.active_target(con)
     cfg = core.settings()
     sh = sleeves.target_shares(con, cfg, {"id": act["target_id"], "classes": act["classes"], "sectors": act["sectors"]} if act else None)
-    lines = [f"ALLOCATION IN FORCE ({sh['source']}): core {sh['core']:.0%} (index {sh['index']:.0%}, gold {sh['gold']:.0%}, international {sh['international']:.0%}), longterm {sh['longterm']:.0%}, "
-             f"swing {sh['swing']:.0%}. Caps: swing <= {sleeves.CAPS['swing_max']:g}%, longterm <= {sleeves.CAPS['longterm_max']:g}%, core >= {sleeves.CAPS['core_min']:g}%. "
+    lines = [f"ALLOCATION IN FORCE ({sh['source']}): core {sh['core']:.0%} (index {sh['index']:.0%}, gold {sh['gold']:.0%}, international {sh['international']:.0%}), longterm {sh['longterm']:.0%}. "
+             f"Caps: longterm <= {sleeves.CAPS['longterm_max']:g}%, core >= {sleeves.CAPS['core_min']:g}%. "
              "You own it: re-examine it this week; call propose_allocation to change it, or the same split again to record that it stands."]
     for pid in family(con):
         h = _hist(con, pid)

@@ -6,8 +6,9 @@
                target and time stop), `check_thesis` (events from the knowledge graph on a held name). Each returns ORDER DICTS and records an event, so an exit fires once and only once.
     tax        the 12-month guard (a winner within `guard_days` of turning long-term is not sold unless its stop fires); exemption harvesting and loss harvesting (`core/harvest.py`);
                the exemption and the rates come from the tax engine's dated rows (`core/tax_rows.py`), never from this file.
-    scoring    every sale is scored after tax against holding the same shares over the same sessions, at 20 and 60 sessions (`exit_scores_s81`); `record` is the summary by kind;
-               `swing_score` tells the swing agent and the strategist whether the swing sleeve grows or shrinks.
+    scoring    every sale is scored after tax against holding the same shares over the same sessions, at 20 and 60 sessions (`exit_scores_s81`); `record` is the summary by kind.
+    A60 (2026-11-10)  the swing sleeve is deleted (its study failed); exemption and loss harvesting act only in a sleeve whose switch (`harvest_core`, `harvest_longterm`) is on, and both
+               are OFF until the narrower registered study (C4a) passes for that sleeve.
 
 An order is `{"market","isin","side":"sell"|"buy","qty","fraction","kind":"stop"|"target"|"time"|"thesis"|"harvest"|"trim","reason","plan_id"}` plus `symbol`, `price`, `value`,
 `est_tax`, `est_charges`, `event_id` for the caller's convenience. The reason is a sentence written by code with the numbers. Orders are paper orders: nothing here reaches a broker.
@@ -37,10 +38,10 @@ DEFAULTS = {
     "trim_over_pts": 0.5, "trim_buffer_pts": 1.0, "min_trim_rupees": 2000.0, "stop_vol_window": 250, "fallback_vol": 0.30,
     "harvest_quarter_months": [1, 2, 3], "harvest_off_quarter_share": 0.34, "harvest_margin": 0.90, "harvest_min_gain": 5000.0, "harvest_cost_multiple": 3.0,
     "harvest_max_book_share": 0.05, "loss_harvest": True, "loss_min_saving": 1000.0, "rebuy": True,
+    "harvest_core": False, "harvest_longterm": False,          # A60: harvesting is OFF per sleeve until the narrower study (C4a) passes for that sleeve
     "core": {"stop": False, "target_reward": 0.0, "time_stop_days": 0, "thesis_break": False},
     "longterm": {"stop": True, "stop_sigmas": 2.0, "stop_horizon_days": 63, "stop_min_pct": 0.12, "stop_max_pct": 0.35, "target_reward": 0.0, "time_stop_days": 0, "thesis_break": True},
-    "swing": {"stop": True, "stop_sigmas": 2.0, "stop_horizon_days": 10, "stop_min_pct": 0.04, "stop_max_pct": 0.12, "target_reward": 2.0, "time_stop_days": 21, "thesis_break": True},
-    "score": {"horizons": [20, 60], "min_n": 20, "swing_grow_min_excess_pct": 0.0},
+    "score": {"horizons": [20, 60], "min_n": 20},
 }
 
 
@@ -615,10 +616,13 @@ def _harvests(con, now: datetime, day: date, rows: List[dict], total: float, pla
     from pflab.paper import book
     out: List[dict] = []
     cands = []
+    live = {s for s in ("core", "longterm") if cfg.get(f"harvest_{s}", False)}          # A60: harvesting acts only in a sleeve whose study passed
+    if not live:
+        return out
     for r in rows:
         isin = r["isin"]
         p = plans.get(isin)
-        if p is None or isin in used or p["sleeve"] not in ("core", "longterm") or (r["asset_class"] or "") not in book.BUYABLE:
+        if p is None or isin in used or p["sleeve"] not in live or (r["asset_class"] or "") not in book.BUYABLE:
             continue
         px = _px(prices, con, isin, day)
         if px is None or _open_sides(con, isin) or _pending_sells(con, isin, market):
@@ -821,18 +825,3 @@ def record(con, horizon: Optional[int] = None) -> dict:
     return {"by_kind": by_kind, "actions": actions, "open_plans": int(n_plans or 0),
             "summary": (f"{int(n_plans or 0)} open exit plan(s); {sum(v.get('filled', 0) for v in actions.values())} exit sale/buy fill(s); {total} sale(s) scored after tax at {hs[0]} sessions"
                         + (" (under 20 per kind: counts, not conclusions)" if total < min_n else ""))}
-
-
-def swing_score(con) -> dict:
-    """What the swing sleeve's sales did against holding the same shares after tax, 20 sessions on: {"n", "excess" (mean difference, % of the sale), "grow"}. The sleeve grows only
-    from `min_n` scored sales with a positive average and a Laplace-smoothed hit rate of at least one half; under that it keeps its base share (`grow` False, `why` says so)."""
-    cfg = settings()["score"]
-    h = int(cfg["horizons"][0])
-    n, good, mean = con.execute("SELECT count(*), count(*) FILTER (WHERE outcome='good'), avg(diff_pct) FROM exit_scores_s81 WHERE sleeve='swing' AND horizon_sessions=?", [h]).fetchone()
-    n, good, mean = int(n or 0), int(good or 0), float(mean or 0.0)
-    min_n = int(cfg["min_n"])
-    rate = (good + 1) / (n + 2)
-    grow = n >= min_n and mean > float(cfg["swing_grow_min_excess_pct"]) and rate >= 0.5
-    why = (f"{n} swing sale(s) scored at {h} sessions: they beat holding by {mean:+.2f}% on average after tax, {good} of {n} better (smoothed rate {rate:.0%})"
-           + ("" if n >= min_n else f"; under {min_n} sales is a count, not a conclusion: the sleeve keeps its base share"))
-    return {"n": n, "excess": round(mean, 3), "grow": bool(grow), "hit_rate": round(rate, 3), "why": why}

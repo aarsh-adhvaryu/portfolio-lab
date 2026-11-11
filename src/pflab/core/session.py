@@ -4,9 +4,6 @@
     exits      the exit plans are checked at the live quote (`core.exits.check_quote`; a tiny fallback for stop, target and time only while that module is missing: it says so)
     thesis     a filing released DURING the session on a held name (`kg.events.material_events`, else the BSE announcements' dissemination times) goes to the exit manager's
                thesis check (a fallback rule while `core.exits` is missing); a sale, if any, fills at the live quote
-    swing      a swing entry trigger (`session_triggers_s81`, written by the policies at the close) fires when its level is hit AND the minute data say the moment is right:
-               never in the first `no_entry_minutes` minutes, within `vwap_band` of the day's VWAP, with the last `volume_minutes` trading at least `volume_fraction` of the name's
-               typical minute volume (no minute data: the entry waits and says so)
     views      the tactical views are carried out here, once per name, under the same timing rules (the close loop then does not buy them a second time)
     breaker    `paper.cadence.breaker`: no buy of any kind while it is on; sells go on
     fills      `core.fills.execute`: the quote plus a spread and slippage by liquidity, never better than the quote; the no-same-day-round-trip guard queues an exit to the next
@@ -76,18 +73,6 @@ def _exits():
         return None
 
 
-def _fb_open_plan(con, now: datetime, isin: str, entry_price: float, qty: float, market: str = MARKET) -> int:
-    from pflab import markets
-    from pflab.pm.store import next_id
-    c = fills.session_settings()
-    pid = next_id(con, "session_exit_fb_s81", "plan_id")
-    stop = round(entry_price * (1 - float(c["fallback_stop_pct"]) / 100), 2)
-    target = round(entry_price * (1 + float(c["fallback_target_pct"]) / 100), 2)
-    due = markets.get(market).session_after(now.date(), int(c["fallback_time_sessions"]))
-    con.execute("INSERT INTO session_exit_fb_s81 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", [pid, market, isin, now.date(), entry_price, qty, stop, target, due, "open", None, "fallback plan (core.exits missing)"])
-    return pid
-
-
 def _fb_orders(con, now: datetime, quotes: Dict[str, float], market: str = MARKET) -> List[dict]:
     out = []
     for pid, isin, stop, target, due in con.execute("SELECT plan_id, isin, stop_price, target_price, time_stop_on FROM session_exit_fb_s81 WHERE market=? AND status='open' ORDER BY plan_id", [market]).fetchall():
@@ -108,48 +93,6 @@ def _fb_orders(con, now: datetime, quotes: Dict[str, float], market: str = MARKE
 
 def _fb_close(con, plan_id: int, day: date) -> None:
     con.execute("UPDATE session_exit_fb_s81 SET status='closed', closed_on=? WHERE plan_id=?", [day, plan_id])
-
-
-def _open_plan(con, now: datetime, isin: str, price: float, qty: float, plan: Optional[dict], market: str = MARKET) -> Optional[int]:
-    """The exit plan of a position the session opened: the exit manager's, else the fallback's. Also the sleeve (`sleeves_s81`) when that table exists."""
-    try:
-        con.execute("INSERT INTO sleeves_s81 (market, isin, sleeve, opened_on) VALUES (?,?,?,?) ON CONFLICT DO NOTHING", [market, isin, "swing", now.date()])
-    except Exception:
-        pass
-    ex = _exits()
-    if ex is not None and hasattr(ex, "open_plan"):
-        try:
-            return int(ex.open_plan(con, now, market, isin, "swing", price, qty, plan))
-        except Exception as e:
-            log(con, now, "degrade", f"the exit manager could not open a plan ({type(e).__name__}: {str(e)[:120]}): the fallback plan stands", isin)
-    return _fb_open_plan(con, now, isin, price, qty, market)
-
-
-# --- triggers (the plain table the policies write) ------------------------------------------------------------------------------------------------
-
-def add_trigger(con, now: datetime, isin: str, direction: str, level: float, *, amount: float, valid_from: date, valid_until: Optional[date] = None, stop_price: Optional[float] = None,
-                target_price: Optional[float] = None, sleeve: str = "swing", policy_id: Optional[str] = None, reason: str = "", plan: Optional[dict] = None, market: str = MARKET) -> int:
-    """A swing entry trigger: buy about `amount` rupees of `isin` when the live price is at or above (`direction` 'above', a breakout) or at or below (`below`, a pullback)
-    `level`, between `valid_from` and `valid_until` (default the same day). The policies write these at the close for the next session."""
-    from pflab.pm.store import next_id
-    assert direction in ("above", "below")
-    tid = next_id(con, "session_triggers_s81", "trigger_id")
-    con.execute("INSERT INTO session_triggers_s81 (trigger_id, market, isin, kind, direction, level, amount, stop_price, target_price, sleeve, policy_id, reason, plan_json, valid_from, valid_until, status, created_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [tid, market, isin, "swing_entry", direction, float(level), float(amount), stop_price, target_price, sleeve, policy_id, reason[:500],
-                                                              json.dumps(plan) if plan else None, valid_from, valid_until or valid_from, "armed", now])
-    return tid
-
-
-def swing_triggers(con, day: date, market: str = MARKET) -> List[dict]:
-    """The armed swing entry triggers valid on `day` (the table `session_triggers_s81`; the policies write it, `add_trigger` is the writer)."""
-    cols = ["trigger_id", "isin", "direction", "level", "amount", "stop_price", "target_price", "sleeve", "policy_id", "reason", "plan_json", "valid_from", "valid_until"]
-    rows = con.execute(f"SELECT {', '.join(cols)} FROM session_triggers_s81 WHERE market=? AND status='armed' AND valid_from <= ? AND valid_until >= ? ORDER BY trigger_id", [market, day, day]).fetchall()
-    out = []
-    for r in rows:
-        d = dict(zip(cols, r))
-        d["plan"] = json.loads(d.pop("plan_json")) if d.get("plan_json") else None
-        out.append(d)
-    return out
 
 
 # --- the timing of an entry, from the minute data -------------------------------------------------------------------------------------------------
@@ -372,10 +315,9 @@ def _views(con, day: date) -> List[dict]:
 def _wanted(con, day: date, market: str) -> Dict[str, set]:
     from pflab.paper import book
     held = {i for i, q in book.positions(con).items() if q > 1e-9}
-    trig = {t["isin"] for t in swing_triggers(con, day, market)}
     queue = {r[0] for r in con.execute("SELECT isin FROM session_queue_s81 WHERE market=? AND status='queued' AND run_on <= ?", [market, day]).fetchall()}
     views_ = {i for v in _views(con, day) for i in v["names"]}
-    return {"held": held, "triggers": trig, "queue": queue, "views": views_}
+    return {"held": held, "queue": queue, "views": views_}
 
 
 def run_once(con, now: datetime, quotes: Optional[Dict[str, float]] = None, bars: Optional[Dict[str, pd.DataFrame]] = None, *, kite=None, events: Optional[List[dict]] = None,
@@ -424,16 +366,16 @@ def run_once(con, now: datetime, quotes: Optional[Dict[str, float]] = None, bars
                          + ": the session loop checks no live quotes from here and only the work that needs none runs. Log in to Kite to switch it back on.")
                 out["degraded"] = "Kite login lost" if lost else f"quotes failed: {type(e).__name__}"
                 quotes = {}
-        if bars is None and kite is not None and quotes and (want["triggers"] | want["views"] | want["queue"]):
+        if bars is None and kite is not None and quotes and (want["views"] | want["queue"]):
             try:
-                bars = kite_bars(con, kite, want["triggers"] | want["views"] | want["queue"], day, market)
+                bars = kite_bars(con, kite, want["views"] | want["queue"], day, market)
             except Exception as e:
                 log(con, now, "degrade", f"minute bars of today could not be read ({type(e).__name__}): entries wait for them")
     bars = bars or {}
     br = cadence.breaker(con)
     ctx = {"quotes": quotes, "bars": bars, "breaker": br, "cfg": cfg, "minutes_in": minutes_in, "root": root, "liq": liq or {}}
     res = {"fills": out["fills"], "queued": out["queued"], "blocked": out["blocked"]}
-    checks = {"exit_plans": 0, "orders_due": 0, "triggers": 0, "views": 0, "queued": 0, "events": 0}
+    checks = {"exit_plans": 0, "orders_due": 0, "views": 0, "queued": 0, "events": 0}
 
     def liquidity(isin):
         if isin not in ctx["liq"]:
@@ -506,40 +448,7 @@ def run_once(con, now: datetime, quotes: Optional[Dict[str, float]] = None, bars
             for o in th:
                 o.setdefault("kind", "thesis")
                 _carry_out(con, now, o, ctx, res)
-        # 4. the swing entries on their triggers, timed by the minute data
-        for t in swing_triggers(con, day, market):
-            checks["triggers"] += 1
-            px = quotes.get(t["isin"])
-            if px is None:
-                continue
-            if not ((px >= t["level"]) if t["direction"] == "above" else (px <= t["level"])):
-                continue
-            tm = timing(bars.get(t["isin"]), px, now, liquidity(t["isin"]).get("typical_minute_volume"), cfg, market)
-            if not tm["ok"]:
-                out["waiting"].append({"isin": t["isin"], "why": tm["reasons"]})
-                if said(con, now, f"wait:{t['trigger_id']}:{tm['reasons'][0][:40]}"):
-                    log(con, now, "wait", f"swing trigger #{t['trigger_id']} hit ({px:,.2f} {'>=' if t['direction'] == 'above' else '<='} {t['level']:,.2f}) but the moment is not right: {'; '.join(tm['reasons'])}",
-                        t["isin"], detail={"trigger_id": t["trigger_id"]})
-                continue
-            qty = math.floor(float(t["amount"]) / px)
-            r = _carry_out(con, now, {"market": market, "isin": t["isin"], "side": "buy", "qty": qty, "kind": "swing_entry", "plan_id": None,
-                                     "reason": f"swing trigger #{t['trigger_id']} ({t['reason'] or t['policy_id'] or 'policy'}): the price {px:,.2f} reached {t['level']:,.2f}; VWAP {tm['vwap']:,.2f} ({tm['dev']:+.2%}), volume {tm['vol_ratio']:.0%} of typical"},
-                           ctx, res)
-            if r is not None and r["status"] in ("filled", "partial"):
-                plan = dict(t["plan"] or {})
-                if t.get("stop_price"):
-                    plan.setdefault("stop_price", t["stop_price"])
-                    plan.setdefault("stop", t["stop_price"])           # drill (S81): the exit manager's override keys are `stop` and `target`; with only the `_price` names the trigger's own levels were ignored
-                if t.get("target_price"):
-                    plan.setdefault("target_price", t["target_price"])
-                    plan.setdefault("target", t["target_price"])
-                pid = _open_plan(con, now, t["isin"], r["price"], r["qty"], plan or None, market)
-                con.execute("UPDATE session_triggers_s81 SET status='fired', fired_at=?, fired_price=? WHERE trigger_id=?", [now, r["price"], t["trigger_id"]])
-                if pid and t.get("stop_price") and _exits() is None:
-                    con.execute("UPDATE session_exit_fb_s81 SET stop_price=?, target_price=coalesce(?, target_price) WHERE plan_id=?", [t["stop_price"], t.get("target_price"), pid])
-            elif r is not None and r["status"] == "not_filled":
-                con.execute("UPDATE session_triggers_s81 SET status='blocked' WHERE trigger_id=?", [t["trigger_id"]])
-        # 5. the tactical views, carried out in session
+        # 4. the tactical views, carried out in session
         if cfg["views_in_session"]:
             _views_in_session(con, now, day, ctx, res, checks, market, liquidity, out)
     elif out["degraded"]:
@@ -620,7 +529,7 @@ def replay(con, day: date, bars_dir: Path, *, isins: Optional[Iterable[str]] = N
            first: Optional[time] = None, last: Optional[time] = None, data_root: Optional[Path] = None, market: str = MARKET, on_step: Optional[Callable[[datetime, dict], None]] = None) -> dict:
     """Feed the recorded minute bars of `day` (`bars_dir/<market>/<SYMBOL>.parquet`, columns ts, open, high, low, close, volume) through `run_once` at `step_minutes` steps, the SAME code the
     live loop runs. At each step `now` is the step time, a quote is the close of the last minute that had closed, and `bars` are only the minutes closed by then (nothing from the future).
-    `times` injects the clock (a list of datetimes). Defaults: every name held, with a trigger, a queued order or a view. Returns {'steps', 'runs', 'fills', ...}."""
+    `times` injects the clock (a list of datetimes). Defaults: every name held, with a queued order or a view. Returns {'steps', 'runs', 'fills', ...}."""
     from pflab import markets
     from pflab.paper import book
     m = markets.get(market)

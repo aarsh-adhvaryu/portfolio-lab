@@ -226,43 +226,6 @@ def test_harvest_step_uses_the_exemption_room_fifo_and_only_in_the_last_quarter(
     assert H.is_long_term(date(2020, 3, 1), date(2021, 3, 2)) and not H.is_long_term(date(2020, 3, 1), date(2021, 3, 1))
 
 
-# --- the variants -----------------------------------------------------------------------------------------------------------------
-
-def _state(prices, turnover=None, results=None, day=None, positions=None, slots=5):
-    cols = list(prices.columns)
-    return {"day": day or prices.index[-1].date(), "prices": prices, "turnover": turnover if turnover is not None else pd.DataFrame(1e9, index=prices.index, columns=cols),
-            "weights": {}, "value": 1e6, "meta": {k: {"symbol": k, "etf": False, "sector": None} for k in cols}, "universe": cols, "index": prices[cols[0]], "target": None,
-            "caps": {}, "positions": positions or {}, "slots": slots, "results": results or {}}
-
-
-def _load(vid):
-    fn, grid = policy_api.load(swing_study.variant_code(vid))
-    assert grid == {} and policy_api.cadence_of(swing_study.variant_code(vid)) == "daily"
-    return fn
-
-
-def test_the_three_variants_are_valid_policies_that_decide_on_the_signals_they_state():
-    idx = pd.bdate_range("2011-01-03", periods=300)
-    rise = pd.DataFrame({"UP": np.linspace(100, 160, 300), "FLAT": np.full(300, 100.0)}, index=idx)
-    out = _load("swing_momentum_continuation")(_state(rise), {}, {}, {}, {})
-    assert [e["key"] for e in out["entries"]] == ["UP"] and (out["entries"][0]["stop"], out["entries"][0]["target"], out["entries"][0]["max_days"]) == (0.08, 0.16, 30)
-    assert _load("swing_momentum_continuation")(_state(rise, positions={"UP": {}}), {}, {}, {}, {})["entries"] == []          # already held
-    assert _load("swing_momentum_continuation")(_state(rise, slots=0), {}, {}, {}, {})["entries"] == []
-    pull = rise.copy()
-    pull.iloc[-5:, 0] = pull.iloc[-6, 0] * np.linspace(0.99, 0.93, 5)                                                       # an uptrend, then 7% down in 5 sessions
-    out = _load("swing_pullback_in_uptrend")(_state(pull), {}, {}, {}, {})
-    assert [e["key"] for e in out["entries"]] == ["UP"] and (out["entries"][0]["stop"], out["entries"][0]["target"], out["entries"][0]["max_days"]) == (0.07, 0.10, 15)
-    assert _load("swing_pullback_in_uptrend")(_state(rise), {}, {}, {}, {})["entries"] == []                              # no pullback, no entry
-    px = pd.DataFrame({"R": np.full(300, 100.0), "Q": np.full(300, 100.0)}, index=idx)
-    px.iloc[-1] = (105.0, 105.0)
-    to = pd.DataFrame(1e9, index=idx, columns=["R", "Q"])
-    to.iloc[-1] = (3e9, 1e9)
-    today = idx[-1].date()
-    out = _load("swing_post_results_drift")(_state(px, to, {"R": [today], "Q": [today]}), {}, {}, {}, {})
-    assert [e["key"] for e in out["entries"]] == ["R"] and (out["entries"][0]["stop"], out["entries"][0]["target"], out["entries"][0]["max_days"]) == (0.08, 0.15, 30)   # Q: volume not 2x
-    assert _load("swing_post_results_drift")(_state(px, to, {"R": [idx[-2].date()]}), {}, {}, {}, {})["entries"] == []        # the results were known yesterday, not today
-
-
 def test_the_results_a_policy_sees_are_point_in_time_and_the_daily_state_holds_no_later_row():
     seen = []
 
@@ -278,19 +241,32 @@ def test_the_results_a_policy_sees_are_point_in_time_and_the_daily_state_holds_n
     assert any(m is not None for _, _, m in seen)
 
 
-def test_the_three_variants_run_in_the_sandbox_harness_on_a_toy_panel(monkeypatch):
+DAILY_CODE = """CADENCE = "daily"
+PARAMS = {}
+
+
+def decide(state, forecasts, sims, storylines, params=None):
+    out = {"entries": [], "exits": []}
+    held = set(state.get("positions", {}))
+    free = [k for k in state["universe"] if k not in held and not state["meta"][k]["etf"]]
+    if int(state.get("slots", 0)) > 0 and free:
+        out["entries"].append({"key": sorted(free)[0], "weight": 0.09, "stop": 0.08, "target": 0.16, "max_days": 30})
+    return out
+"""
+
+
+def test_a_daily_policy_runs_in_the_sandbox_harness_on_a_toy_panel(monkeypatch):
+    """The daily-step engine (kept for the C4b stop study) still runs a policy end to end through the runner; the three swing variants it was built for are deleted (A60)."""
     monkeypatch.setenv("PFLAB_SANDBOX", "local")
     data = make_data(n_days=1100, n_stocks=40)
     idx = data["px"].index
     data["results"] = {k: [str(idx[i].date()) for i in range(300, 1100, 63)] for k in list(data["px"].columns)[:20] if not k.startswith("ETF")}
-    ids = list(swing_study.VARIANTS)
-    out = runner.run(data, [{"id": v, "code": swing_study.variant_code(v)} for v in ids], ("2012-01-02", "2013-12-31"), {v: [{}] for v in ids},
+    out = runner.run(data, [{"id": "daily_toy", "code": DAILY_CODE}], ("2012-01-02", "2013-12-31"), {"daily_toy": [{}]},
                      {"min_history": 120, "tax": swing_study.tax_params()}, n_shuffles=2, n_mc=20, time_limit=900)
     assert not out.get("error") and not out.get("errors"), out
-    for v in ids:
-        row = out["results"][v]["runs"][0]
-        assert {"cagr", "dsr", "max_drawdown", "liq_cagr", "excess_vs_cash", "slippage_paid", "n_trades"} <= set(row["score"]) and row["shuffled"]["n"] == 2
-    assert out["results"][ids[0]]["cadence"] == "daily"
+    row = out["results"]["daily_toy"]["runs"][0]
+    assert {"cagr", "dsr", "max_drawdown", "liq_cagr", "excess_vs_cash", "slippage_paid", "n_trades"} <= set(row["score"]) and row["shuffled"]["n"] == 2
+    assert out["results"]["daily_toy"]["cadence"] == "daily"
 
 
 def test_the_runner_job_folder_carries_the_daily_files_and_the_panel_extras_round_trip(tmp_path):
@@ -302,7 +278,7 @@ def test_the_runner_job_folder_carries_the_daily_files_and_the_panel_extras_roun
     assert back["results"] == {"A": ["2012-03-01"]} and back["index_key"] == "A" and set(back["ohlc"]) == {"open", "high", "low"}
     work = tmp_path / "w"
     work.mkdir()
-    runner.write_job(work, d, [{"id": "x", "code": swing_study.variant_code("swing_momentum_continuation")}], ("2012-01-02", "2012-06-30"), {"x": [{}]})
+    runner.write_job(work, d, [{"id": "x", "code": DAILY_CODE}], ("2012-01-02", "2012-06-30"), {"x": [{}]})
     assert {"swing.py", "harvest_replay.py", "engine.py", "lab_runner.py", "results.json", "extra.json", "low_ratio.parquet"} <= {p.name for p in work.iterdir()}
 
 
@@ -383,9 +359,6 @@ def test_the_protocols_rule_in_code_matches_its_text():
     assert a["slippage"] == swing.SLIP and a["sizing"] == swing.SIZING and a["harvest"] == {k: v for k, v in swing.SWING_CFG["harvest_rule"].items() if k != "min_room"}
     assert a["history"] == [str(x) for x in runner.HISTORY] and a["final"] == [str(x) for x in runner.FINAL]
     assert a["capital"] == engine.DEFAULT_CFG["capital"] and a["cash_rate"] == engine.DEFAULT_CFG["cash_rate"] and a["index_expense_ratio"] == runner.INDEX_EXPENSE_RATIO
-    for vid, rule in a["variants"].items():
-        fn, _ = policy_api.load(swing_study.variant_code(vid))
-        assert fn.__globals__["RULE"] == rule, vid
     assert a["n_shuffles"] == 20 and a["shuffle_seed"] == 80
     text = swing_study.PROTOCOL.read_text(encoding="utf-8")
     for needle in (">= 1.0`", "5,000 resamples", "at most 10%", "at least 0.90", "not more than 5 points deeper", ">= +0.05` percentage points", "Rs 10,00,000", "0.20% a year"):
@@ -414,8 +387,7 @@ def test_registration_counts_four_tests_once_the_bar_rises_and_a_changed_protoco
     assert swing_study.protocol_ok(con)["unchanged"]
     fake.write_bytes(raw + b"\nan edit\n")
     assert not swing_study.protocol_ok(con)["unchanged"]
-    with pytest.raises(RuntimeError):
-        swing_study.run(con, tmp_path, None, NOW, data={})
+    assert not callable(getattr(swing_study, "run", None)) and not callable(getattr(swing_study, "seed_variants", None))       # A60: the study is a record; its live paths are deleted
 
 
 def test_the_recorded_run_is_reproduced_by_the_rule_in_code_and_written_onto_a_store_once(tmp_path):
@@ -434,21 +406,3 @@ def test_the_recorded_run_is_reproduced_by_the_rule_in_code_and_written_onto_a_s
     assert counter.n_tests(con) == n0 + 4 and service.n_trials(con) == 3                               # the three variants are trials in the deflated Sharpe
     assert con.execute("SELECT count(*) FROM learn_tests WHERE note LIKE 's81:%' AND passed IS NOT NULL").fetchone()[0] == 4
     assert swing_study.stored(con, "history", "swing_post_results_drift")["verdict"] == "fail"
-    with pytest.raises(RuntimeError, match="already been run"):
-        swing_study.run(con, tmp_path, None, NOW, data={})
-
-
-def test_seeding_makes_drafts_only_and_the_study_refuses_a_second_run(tmp_path, monkeypatch):
-    monkeypatch.setenv("PFLAB_SANDBOX", "local")
-    con = store.connect(tmp_path / "s.duckdb")
-    assert sorted(swing_study.seed_variants(con, tmp_path, NOW)) == sorted(swing_study.VARIANTS) and swing_study.seed_variants(con, tmp_path, NOW) == []
-    assert {r["status"] for r in service.listing(con) if r["policy_id"] in swing_study.VARIANTS} == {"draft"}                     # candidates only: none is a challenger or champion
-    swing_study.register(con, NOW)
-    con.execute("INSERT INTO swing_study_s81 VALUES (1, 'history', 'swing_momentum_continuation', ?, '2005-2017', 'fail', '{}', 'x')", [NOW])
-    with pytest.raises(RuntimeError, match="already been run"):
-        swing_study.run(con, tmp_path, None, NOW, data={})
-    assert swing_study.final_check(con, tmp_path, None, NOW, "swing_momentum_continuation", data={})["ran"] is False            # it did not pass the history screen: no final check
-    con.execute("UPDATE swing_study_s81 SET verdict='pass' WHERE run_id=1")
-    con.execute("INSERT INTO swing_study_s81 VALUES (2, 'final', 'swing_momentum_continuation', ?, '2018-2021', 'cleared', '{}', 'x')", [NOW])
-    again = swing_study.final_check(con, tmp_path, None, NOW, "swing_momentum_continuation", data={})
-    assert again["ran"] is False and "once" in again["why"]                                                                       # the final window is looked at once

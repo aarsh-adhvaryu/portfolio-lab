@@ -2,7 +2,9 @@
 
     core      index, gold and international ETFs (the part of the book that owns the market)
     longterm  stock picks held months to years
-    swing     days to weeks
+
+(A60, 2026-11-10: the `swing` sleeve is deleted: its registered study failed. Rows already tagged `swing` in `sleeves_s81` stay for the record and read as `longterm`; the starting split is
+core 60 / longterm 40.)
 
 `sleeves_s81(market, isin, sleeve, opened_on)` holds the sleeve a position was opened in (set when its first order is placed; it stays until the position is gone and re-opened).
 `sleeve_of` falls back to a default: ETFs, gold and international instruments are core, everything else is longterm. The sleeve SHARES of the book are a target
@@ -14,8 +16,8 @@ import json
 from datetime import date
 from typing import Dict, Optional
 
-SLEEVES = ("core", "longterm", "swing")
-CAPS = {"swing_max": 20.0, "longterm_max": 60.0, "core_min": 30.0}          # his answer (2026-11-09), percent of the book, enforced on every proposed allocation
+SLEEVES = ("core", "longterm")
+CAPS = {"longterm_max": 60.0, "core_min": 30.0}          # his answer (2026-11-09), percent of the book, enforced on every proposed allocation
 
 
 def default_sleeve(con, isin: str) -> str:
@@ -31,11 +33,13 @@ def default_sleeve(con, isin: str) -> str:
 
 def sleeve_of(con, isin: str, market: str = "IN") -> str:
     r = con.execute("SELECT sleeve FROM sleeves_s81 WHERE market=? AND isin=?", [market, isin]).fetchone()
-    return r[0] if r else default_sleeve(con, isin)
+    if not r:
+        return default_sleeve(con, isin)
+    return r[0] if r[0] in SLEEVES else "longterm"                # a row tagged with the deleted swing sleeve reads as longterm (A60)
 
 
 def set_sleeve(con, isin: str, sleeve: str, day: Optional[date] = None, market: str = "IN", force: bool = False) -> str:
-    """Record the sleeve a position opens in. The first record stays (a name bought for the swing sleeve is not moved by a later longterm buy) unless `force`. -> the sleeve in force."""
+    """Record the sleeve a position opens in. The first record stays unless `force`. -> the sleeve in force."""
     if sleeve not in SLEEVES:
         raise ValueError(f"unknown sleeve {sleeve!r}: use {', '.join(SLEEVES)}")
     r = con.execute("SELECT sleeve FROM sleeves_s81 WHERE market=? AND isin=?", [market, isin]).fetchone()
@@ -75,7 +79,7 @@ def default_shares(cfg: dict) -> dict:
     """The system's starting target from `configs/core.toml [baseline_v2]`, as fractions of the book."""
     b = cfg["baseline_v2"]
     core, gold, intl = float(b["core_pct"]) / 100.0, float(b["gold_pct"]) / 100.0, float(b["international_pct"]) / 100.0
-    return {"core": core, "longterm": float(b["longterm_pct"]) / 100.0, "swing": float(b["swing_pct"]) / 100.0, "gold": gold, "international": intl, "cash": 0.0,
+    return {"core": core, "longterm": float(b["longterm_pct"]) / 100.0, "gold": gold, "international": intl, "cash": 0.0,
             "index": max(0.0, core - gold - intl), "source": "the starting default"}
 
 
@@ -97,10 +101,18 @@ def target_shares(con, cfg: dict, target: Optional[dict]) -> dict:
 
 
 def check_proposal(classes: dict, sleeves: dict) -> dict:
-    """The sleeve caps of his answer, in code: swing at most 20%, longterm at most 60%, core at least 30%, the three summing to 100; gold, international and cash (core holdings)
-    cannot add up to more than the core. -> {ok, problems, sleeves}. Percent of the book."""
+    """The sleeve caps of his answer, in code: longterm at most 60%, core at least 30%, the two summing to 100 (a `swing` entry is accepted only as zero: the swing sleeve is deleted,
+    A60); gold, international and cash (core holdings) cannot add up to more than the core. -> {ok, problems, sleeves}. Percent of the book."""
     problems = []
     sl = {}
+    if "swing" in (sleeves or {}):
+        try:
+            sw = float(sleeves["swing"])
+        except (TypeError, ValueError):
+            sw = float("nan")
+        if sw != sw or abs(sw) > 1e-9:
+            problems.append("the swing sleeve is deleted (its study failed, A60): give core and longterm only")
+        sleeves = {k: v for k, v in sleeves.items() if k != "swing"}
     for k in SLEEVES:
         try:
             v = float(sleeves.get(k))
@@ -119,8 +131,6 @@ def check_proposal(classes: dict, sleeves: dict) -> dict:
     tot = sum(sl.values())
     if abs(tot - 100.0) > 0.05:
         problems.append(f"the sleeve shares add up to {tot:g}%, not 100%")
-    if sl["swing"] > CAPS["swing_max"] + 1e-9:
-        problems.append(f"swing at {sl['swing']:g}% is over the {CAPS['swing_max']:g}% cap")
     if sl["longterm"] > CAPS["longterm_max"] + 1e-9:
         problems.append(f"longterm at {sl['longterm']:g}% is over the {CAPS['longterm_max']:g}% cap")
     if sl["core"] < CAPS["core_min"] - 1e-9:

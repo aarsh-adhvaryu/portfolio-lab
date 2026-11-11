@@ -22,16 +22,15 @@ gauge_cut = 0.25              # ... then the equity class is cut by this share, 
 # S81 (A48): the baseline of the close loop: core ETFs (index, gold, international) plus the held longterm names. THE SYSTEM'S STARTING TARGET (his to change); the strategist's
 # adopted allocation replaces it (A49). Core + longterm + swing = 100; gold and international are part of the core, as percent of the whole book.
 version = "v2"                # "v1" = the S80 baseline (trades only names already held): the safe fallback
-core_pct = 60.0
-longterm_pct = 35.0
-swing_pct = 5.0               # held back for the swing sleeve (cash until it trades)
+core_pct = 60.0               # A60 (his choice 2026-11-10): the swing sleeve's 5 points went to the longterm sleeve: core 60 / longterm 40 / swing 0 (the swing sleeve is deleted)
+longterm_pct = 40.0
+longterm_buy_pct = 35.0       # until the learning book's own stock picks exist (S83) the held names are bought only up to this share (as before); the other 5 points of the sleeve wait as cash, never spent on more of his existing stocks
 gold_pct = 10.0
-international_pct = 10.0
-index_etfs = ["MONIFTY500", "NIFTYBEES", "JUNIORBEES"]   # Nifty 500, Nifty 50 and Nifty Next 50 index ETFs (the store knows all three; each at most the 35% ETF rail, so three let the whole book sit in the index)
+international_pct = 10.0      # A57: this share is held in the US paper sub-book (funded by a transfer out of the rupee book's cash); an India-listed international ETF is allowed only under the premium rail
+index_etfs = ["MONIFTY500", "NIFTYBEES", "JUNIORBEES"]   # Nifty 500, Nifty 50 and Nifty Next 50 index ETFs (the store knows all three)
 gold_etfs = ["GOLDBEES"]
 international_etfs = ["MON100"]              # Nasdaq 100 listed in India; subject to a premium-to-NAV rail (B8)
-swing_reserve = true
-index_fallback = true         # A50b: when the current allocation fails the index rule in the lab and holding the index passes, the system owns the index (set false to keep the starting split regardless)
+index_fallback = true         # A50b: when the current allocation fails the index rule in the lab and holding the index passes, the system owns the index for the INDIA CORE only (C3: the sleeves, the US sub-book and the held stocks are kept)
 
 [probation]
 # S81 (A50): a variant that clears the history screen and the once-only 2018-2021 check trades a satellite slice of this share of the book at once; the slice grows while its
@@ -84,7 +83,9 @@ harvest_margin = 0.90         # book at most this share of the room left (the fi
 harvest_min_gain = 5000.0     # a harvest smaller than this (rupees of gain) is not worth its charges
 harvest_cost_multiple = 3.0   # the tax a harvest is expected to save must be at least this many times its round-trip charges
 harvest_max_book_share = 0.05 # at most this share of the book is sold for harvesting at one close
-loss_harvest = true
+harvest_core = false          # A60 (2026-11-10): exemption and loss harvesting is OFF in the live book per sleeve until the narrower study (C4a) passes for that sleeve; the code stays for the study
+harvest_longterm = false
+loss_harvest = true           # (only acts in a sleeve whose switch above is on)
 loss_min_saving = 1000.0      # a loss harvest must save at least this much tax this year (rupees)
 rebuy = true                  # harvest sales are bought back at the NEXT session (never the same day); false: the sale stands
 
@@ -104,20 +105,9 @@ target_reward = 0.0           # 0 = no target
 time_stop_days = 0            # 0 = no time stop
 thesis_break = true
 
-[exits.swing]                 # days to weeks: a stop, a target (a multiple of the stop distance), a time stop in calendar days, thesis break on
-stop = true
-stop_sigmas = 2.0
-stop_horizon_days = 10
-stop_min_pct = 0.04
-stop_max_pct = 0.12
-target_reward = 2.0           # target = entry + this many times the stop distance
-time_stop_days = 21
-thesis_break = true
-
 [exits.score]
 horizons = [20, 60]           # sessions after the sale at which it is scored against holding
 min_n = 20                    # under this many scored sales a rate is a count, not a conclusion
-swing_grow_min_excess_pct = 0.0   # the swing sleeve grows when its scored sales beat holding (after tax) by more than this on average, from min_n sales
 # S81 (A54, the market-hours rhythms). A paper fill at the live quote, never better than the quote: the price is worse by at least half the modelled spread plus slippage.
 # MODEL `liquidity_v1` (an assumption, stated; his to change once a real fill record exists to calibrate it against):
 #   adv        the name's average traded value (close x volume, summed over the minute bars of each session) over its last `adv_days` sessions
@@ -161,7 +151,7 @@ max_premium_pct = 2.0         # no new buying at or above this premium
 taper_from_pct = 1.0          # between this and the limit the purchase is scaled down linearly to zero
 max_nav_age_days = 5          # a NAV older than this is "unknown"
 unknown = "skip"              # skip: no buying while the premium is unknown; allow: buy as the policy says
-classes = ["international"]   # the policy classes held to the limit; add "gold" to hold gold ETFs to it too (they ran 5-12% over NAV in Oct 2025 and Jan 2026: secondary sources)
+classes = ["international", "gold"]   # C1 (S82): gold ETFs are held to the same limit (they ran 5-12% over NAV in Oct 2025 and Jan 2026: secondary sources; GOLDBEES was 0.2% over NAV on 2026-11-09, S82's real check)
 
 # S81 B8 phase B (A53): the paper US sub-book (src/pflab/us/), USD, on the US close processed in the IST morning. OFF until the coordinator's loop and his yes: nothing else depends on it.
 [us]

@@ -2,13 +2,13 @@
 
     core      it may BUY the core ETFs (index, gold, international) up to the system's allocation target; the ETF list comes from `configs/core.toml [baseline_v2]`
               (symbols the store knows: Nifty 500 and Nifty 50 index ETFs, a gold ETF, a Nasdaq 100 ETF listed in India), each sized by risk and held to the 35% ETF rail
-    longterm  the held stock names stay as they are: they are bought toward their risk size while the sleeve is under its target and never sold to reach a sleeve share
-    swing     its share is held back as cash for the swing sleeve; baseline_v2 itself never trades it
+    longterm  the held stock names stay as they are: they are bought toward their risk size while the sleeve is under its target (and never above `longterm_buy_pct`, until the
+              learning book's own picks exist: the sleeve's other points wait as cash) and never sold to reach a sleeve share
     gauge     when the fall gauge fires every equity position (index ETFs and longterm names) is cut by `gauge_cut`, the difference kept in cash; gold and international stay
 
 THE PATH TO THE TARGET IS GRADUAL AND TAX-AWARE (his answer, 2026-11-09): new cash (a top-up) and any sale proceeds go to the core ETFs first, then to longterm names under their risk
 size; a position above its target is left alone (no sale for the sake of 60/35/5). Stocks are sold only for the exit manager's reasons (tax harvesting, a stop, a thesis break) and
-by the rails (a name over its 10% rail is trimmed to it), never to reach a sleeve share.
+by the rails (a name over its 10% rail is trimmed to it), never to reach a sleeve share. (A60: the swing sleeve is deleted; the starting split is core 60 / longterm 40.)
 
 `decide(state)` has the interface of `policy.decide`: -> {'weights': {isin: target fraction of the book}, 'notes': [...], 'classes': {class: fraction}, 'sleeves': {...}}.
 """
@@ -59,7 +59,7 @@ def decide(state: dict) -> dict:
     if total <= 0:
         return {"weights": {}, "notes": ["the book has no value"], "classes": {}, "sleeves": {}}
     sh = state["sleeve_target"]
-    notes.append(f"target ({sh['source']}): core {sh['core']:.0%} (index {sh['index']:.0%}, gold {sh['gold']:.0%}, intl {sh['international']:.0%}), longterm {sh['longterm']:.0%}, swing {sh['swing']:.0%}")
+    notes.append(f"target ({sh['source']}): core {sh['core']:.0%} (index {sh['index']:.0%}, gold {sh['gold']:.0%}, intl {sh['international']:.0%}), longterm {sh['longterm']:.0%}")
     cur = {r["isin"]: r["value"] / total for r in rows}
     no_buy = set(state.get("no_buy") or ())                       # B8: an international ETF trading far above its NAV is skipped
     gauge = bool(state["gauge"]["fired"])
@@ -93,7 +93,8 @@ def decide(state: dict) -> dict:
     lt = [r for r in rows if r["sleeve"] == "longterm" and r["buyable"]]
     lt_now = sum(cur[r["isin"]] for r in lt)
     if lt:
-        budget = max(sh["longterm"], 0.0) if lt_now < sh["longterm"] else lt_now
+        lt_share = min(max(sh["longterm"], 0.0), float(cfg["baseline_v2"].get("longterm_buy_pct", 100.0)) / 100.0)   # the held names are sized on this share until S83's picks exist
+        budget = lt_share if lt_now < lt_share else lt_now
         inv = {r["isin"]: 1.0 / max(state["vol"].get(r["isin"], 0.30), 0.05) for r in lt}
         caps = {r["isin"]: policy.cap_of(r) for r in lt}
         want = policy.risk_weights(budget, inv, caps)
@@ -108,18 +109,16 @@ def decide(state: dict) -> dict:
                 weights[k] = hi
                 notes.append(f"{r['symbol']} {cur[k]:.1%} is over the {hi:.0%} rail: trim to the rail")
             else:
-                weights[k] = max(cur[k], t if lt_now < sh["longterm"] else cur[k])
+                weights[k] = max(cur[k], t if lt_now < lt_share else cur[k])
                 if weights[k] > cur[k]:
                     inc_lt[k] = weights[k] - cur[k]
     if gauge:
         notes.append(f"fall gauge fired ({state['gauge']['why']}): equity cut by {cut:.0%}, the difference kept in cash; no buying")
         return {"weights": weights, "notes": notes, "classes": _classes(sh), "sleeves": _sleeves(sh)}
-    # --- the path: new cash and sale proceeds go to the core first, then to longterm; the swing share is held back --------------------------------------------------------------------
+    # --- the path: new cash and sale proceeds go to the core first, then to longterm; whatever is left waits as cash --------------------------------------------------------------------
     sales = sum(max(0.0, cur[k] - w) for k, w in weights.items())
     free = max(0.0, (state["cash"] + state.get("bank", 0.0)) / total) + sales
-    swing_now = sum(cur[r["isin"]] for r in rows if r["sleeve"] == "swing")
-    reserve = max(0.0, sh["swing"] - swing_now) if cfg["baseline_v2"].get("swing_reserve", True) else 0.0
-    free_buy = max(0.0, free - reserve)
+    free_buy = max(0.0, free)
     core_need = sum(inc_core.values())
     if core_need > free_buy and core_need > 0:
         f = free_buy / core_need
@@ -127,7 +126,7 @@ def decide(state: dict) -> dict:
             weights[k] = cur[k] + v * f
         for k in inc_lt:
             weights[k] = cur[k]
-        notes.append(f"cash {free:.1%} (swing {reserve:.1%} held back): {f:.0%} of the core gap bought now, longterm names wait")
+        notes.append(f"cash {free:.1%}: {f:.0%} of the core gap bought now, longterm names wait")
     else:
         left = free_buy - core_need
         lt_need = sum(inc_lt.values())
@@ -144,8 +143,8 @@ def decide(state: dict) -> dict:
 
 
 def _classes(sh: dict) -> Dict[str, float]:
-    return {"equity": sh["index"] + sh["longterm"] + sh["swing"], "gold": sh["gold"], "international": sh["international"], "cash": sh["cash"]}
+    return {"equity": sh["index"] + sh["longterm"], "gold": sh["gold"], "international": sh["international"], "cash": sh["cash"]}
 
 
 def _sleeves(sh: dict) -> Dict[str, float]:
-    return {"core": sh["core"], "longterm": sh["longterm"], "swing": sh["swing"]}
+    return {"core": sh["core"], "longterm": sh["longterm"]}

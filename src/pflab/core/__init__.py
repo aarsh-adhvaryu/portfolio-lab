@@ -18,8 +18,8 @@ DEFAULTS = {
     "strategist": {"on": True, "session_rupees": 300.0, "min_session_rupees": 40.0, "weekly_days": 7, "max_turns": 18, "model": "claude-opus-5-5", "weeks_to_win": 8,
                    "throttle_after": "2026-12-09"},
     # S81 (A48): the baseline for the close loop. "v2" holds the core ETFs and buys them from the first close; "v1" is the old one (the safe fallback).
-    "baseline_v2": {"version": "v2", "core_pct": 60.0, "longterm_pct": 35.0, "swing_pct": 5.0, "gold_pct": 10.0, "international_pct": 10.0,
-                    "index_etfs": ["MONIFTY500", "NIFTYBEES", "JUNIORBEES"], "gold_etfs": ["GOLDBEES"], "international_etfs": ["MON100"], "swing_reserve": True,
+    "baseline_v2": {"version": "v2", "core_pct": 60.0, "longterm_pct": 40.0, "longterm_buy_pct": 35.0, "gold_pct": 10.0, "international_pct": 10.0,
+                    "index_etfs": ["MONIFTY500", "NIFTYBEES", "JUNIORBEES"], "gold_etfs": ["GOLDBEES"], "international_etfs": ["MON100"],
                     "index_fallback": True},
     # S81 (A50): the satellite slices of lab variants on probation.
     "probation": {"start_share": 0.05, "steps": [0.05, 0.10, 0.20], "sessions_to_grow": [20, 40], "max_total_share": 0.20, "tolerance": 0.002, "min_sessions_to_judge": 10},

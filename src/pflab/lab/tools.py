@@ -103,10 +103,10 @@ def compare(ctx, a):
     return {"rows": out, "baseline": None if base is None else service.card_row({**base, "run_id": base["run_id"]})}
 
 
-@tool("propose_allocation", "Propose the system's ALLOCATION (yours; re-examine it weekly): classes (percent: equity, gold, international, cash; sum 100), sleeves (core, longterm, swing; sum 100; "
-      "swing <= 20, longterm <= 60, core >= 30; gold, international, cash sit inside the core), sectors (each <= 25) and reasons. Code checks the rails and caps, stores it as lab policy "
+@tool("propose_allocation", "Propose the system's ALLOCATION (yours; re-examine it weekly): classes (percent: equity, gold, international, cash; sum 100), sleeves (core, longterm; sum 100; "
+      "longterm <= 60, core >= 30; gold, international, cash sit inside the core), sectors (each <= 25) and reasons. Code checks the rails and caps, stores it as lab policy "
       "`alloc_t<id>` (run_lab it) and adopts it by the index rule and the final check. The same split again records that it stands.",
-      {"classes": O("{equity, gold, international, cash} in percent"), "sleeves": O("{core, longterm, swing} in percent"), "sectors": O("{sector: percent of the book}, may be empty"),
+      {"classes": O("{equity, gold, international, cash} in percent"), "sleeves": O("{core, longterm} in percent"), "sectors": O("{sector: percent of the book}, may be empty"),
        "reasons": S("what the book should hold and why, and what would change it (40+ characters)")}, ["classes", "sleeves", "reasons"])
 def propose_allocation(ctx, a):
     from pflab.lab import alloc_lab
