@@ -56,5 +56,15 @@ My tests in `tests/test_s82_fills.py` import `CCC, MON, day_bars, db, no_exits, 
 ## What is OFF / left
 Nothing is behind a switch. The calibration only starts moving numbers after 30 real fills. Left: show `fills.text` and the strategist note on the Today page (UI is the redesign's).
 
-## The real run (the one paid run)
-See the section below, filled in after the run.
+## The real run (the one paid run), 2026-11-11 23:26 IST
+- On a COPY of `D:\PL_backup\s82_pre_20261111` in `D:\s82_scratchills\store` (schema 102, migrated to 151 by this tree). Scratch `api_budget.toml` only: `dev_monthly_cap_rupees = 430`
+  (the strategist layer's 70% share = Rs 301), `counted_since` = 23:00 so only this run counted; `PFLAB_PAID=1`; the real key from `secrets.toml` (never printed); the real Docker sandbox
+  (`pflab-sandbox:2`) and the real panel under `D:\portfolio_lab\data` (read only).
+- It went through the real path: `strategist.tick` with the real `llm.client`, real governor, egress gate, `run_session`. The tick found the first-session reason (plus "the book is far from its allocation
+  target"), ran the allocation replays (free), then ONE session: status `done`, 9 Opus calls (11 log entries), 2 lab runs, 2 variants, 1 challenger, 1 note, 1 allocation proposal (target #3).
+- COST: Rs 18.43 in total (calls 5041-5049, Rs 1.0 to 3.4 each). Far under the Rs 300 session cap and the night's Rs 600.
+- The trigger recorded `done` (attempts 1, session 2, Rs 18.43); the note and proposal came back through `latest_strategist_note` (cost, proposal #3: equity 88, gold 10, cash 2); `strategist_line` and
+  `screens.view` (`fills`: "defaults, 0 of 30 real fills"; `strategist`) read them from the real store copy.
+- The note (the model's own words, sourced from lab runs): index plus 10% gold without the fall gauge lagged the index by about 1.2 points a year after tax; the allocation template inherits the gauge
+  drag so its proposal (alloc_t3) likely fails the index rule; the index-only target in force stands; next: test gold with rebalancing. Nothing was adopted (code decides, by the A50 rule), no live store was touched.
+- The scratch store copy was deleted afterwards; the log is `D:\s82_scratchillseal_run.log`.
