@@ -1,0 +1,278 @@
+{
+ "a_index": {
+  "arm": "index",
+  "on": {
+   "liq_cagr": 0.14429064093337862,
+   "liq_value": 5559723.811236269,
+   "tax_paid": 0.0,
+   "liq_tax": 441674.1285121269,
+   "charges": 15460.782185187743,
+   "slippage": 3390.340171099847,
+   "end_value": 6009473.880007577,
+   "worst_fall": 0.6389476552674663,
+   "traded": 5896220.13425823,
+   "start": "2005-02-01",
+   "end": "2017-12-29",
+   "stops_fired": 0.0,
+   "n_trades": 0.0
+  },
+  "off": {
+   "liq_cagr": 0.14249631351956848,
+   "liq_value": 5449790.772895526,
+   "tax_paid": 0.0,
+   "liq_tax": 616283.5315488185,
+   "charges": 9363.831484181086,
+   "slippage": 619.6934209721383,
+   "end_value": 6074239.3274660725,
+   "worst_fall": 0.637681360367752,
+   "traded": 1009602.8337850239,
+   "start": "2005-02-01",
+   "end": "2017-12-29",
+   "stops_fired": 0.0,
+   "n_trades": 0.0
+  },
+  "dL": 0.0017943274138101373,
+  "tax_saved": 174609.40303669154,
+  "extra_costs": 8867.597451134367,
+  "accounting_ok": true,
+  "t": 0.43521245923375146,
+  "p": 0.3278,
+  "n": 3206.0,
+  "mean_daily_diff": 5.344482143905975e-06,
+  "verdict": {
+   "ok": false,
+   "verdict": "fail",
+   "failed": [
+    "paired t 0.44 on the liquidation-marked paths is under the learner's bar 3.28 (N=98)"
+   ],
+   "t_bar": 3.2848385736450716,
+   "n_tests": 98
+  }
+ },
+ "a_stocks": {
+  "arm": "stocks",
+  "on": {
+   "liq_cagr": 0.11079693259450352,
+   "liq_value": 3809465.5968174147,
+   "tax_paid": 0.0,
+   "liq_tax": 201704.2141274975,
+   "charges": 12029.139907104,
+   "slippage": 6418.200757150766,
+   "end_value": 4016512.898943523,
+   "worst_fall": 0.562787496224274,
+   "traded": 5343309.855651416,
+   "start": "2005-02-01",
+   "end": "2017-12-29",
+   "stops_fired": 0.0,
+   "n_trades": 0.0
+  },
+  "off": {
+   "liq_cagr": 0.10727585656883543,
+   "liq_value": 3658614.5646239906,
+   "tax_paid": 0.0,
+   "liq_tax": 357124.250731005,
+   "charges": 6524.968514201843,
+   "slippage": 656.6957562514859,
+   "end_value": 4021087.5542457635,
+   "worst_fall": 0.5637906359610431,
+   "traded": 990587.5694025274,
+   "start": "2005-02-01",
+   "end": "2017-12-29",
+   "stops_fired": 0.0,
+   "n_trades": 0.0
+  },
+  "dL": 0.0035210760256680906,
+  "tax_saved": 155420.0366035075,
+  "extra_costs": 11265.676393801436,
+  "accounting_ok": true,
+  "t": 1.0354278323204351,
+  "p": 0.1378,
+  "n": 3206.0,
+  "mean_daily_diff": 1.2819458454657601e-05,
+  "book": {
+   "first_day": "2005-03-31",
+   "names": {
+    "name_01": 0.058240561319011334,
+    "name_02": 0.03555893740413304,
+    "name_03": 0.06440715510763298,
+    "name_04": 0.05684758892095367,
+    "name_05": 0.04701942298674699,
+    "name_06": 0.04789118094868338,
+    "name_07": 0.0522919956859842,
+    "name_08": 0.05485237642647239,
+    "name_09": 0.03427672745708167,
+    "name_10": 0.0431857422116649,
+    "name_11": 0.057153853983476686,
+    "name_12": 0.03628781304502141,
+    "name_13": 0.06620921097377237,
+    "name_14": 0.043280031250061364,
+    "name_15": 0.04953903667708758,
+    "name_16": 0.07450138234294928,
+    "name_17": 0.035144210854920054,
+    "name_18": 0.04099578583320626,
+    "name_19": 0.03713930023318739,
+    "name_20": 0.04517768633795296
+   }
+  },
+  "same_names": true,
+  "verdict": {
+   "ok": false,
+   "verdict": "fail",
+   "failed": [
+    "paired t 1.04 on the liquidation-marked paths is under the learner's bar 3.28 (N=98)"
+   ],
+   "t_bar": 3.2848385736450716,
+   "n_tests": 98
+  }
+ },
+ "b": {
+  "with_stops": {
+   "liq_cagr": 0.09108478380839569,
+   "liq_value": 3053215.1768972375,
+   "tax_paid": 0.0,
+   "liq_tax": 256534.47250278777,
+   "charges": 5175.288822715231,
+   "slippage": 1079.8433368409505,
+   "end_value": 3313305.9355200464,
+   "worst_fall": 0.5092344543972855,
+   "traded": 1319998.9934259404,
+   "start": "2005-01-03",
+   "end": "2017-12-29",
+   "stops_fired": 11.0,
+   "n_trades": 11.0
+  },
+  "without_stops": {
+   "liq_cagr": 0.10161217593570715,
+   "liq_value": 3452573.667970849,
+   "tax_paid": 0.0,
+   "liq_tax": 327373.9609358563,
+   "charges": 6204.997449769917,
+   "slippage": 638.5175882178453,
+   "end_value": 3784976.217006258,
+   "worst_fall": 0.5631118103497385,
+   "traded": 990738.9302539264,
+   "start": "2005-01-03",
+   "end": "2017-12-29",
+   "stops_fired": 0.0,
+   "n_trades": 0.0
+  },
+  "book": {
+   "first_day": "2005-03-09",
+   "names": {
+    "name_01": 0.058860760439414225,
+    "name_02": 0.03590736359777544,
+    "name_03": 0.06285980718390263,
+    "name_04": 0.055654317025977396,
+    "name_06": 0.04732706478044466,
+    "name_05": 0.047687786054576894,
+    "name_07": 0.052159691258895975,
+    "name_08": 0.055837902394530785,
+    "name_09": 0.03444249009781251,
+    "name_10": 0.04388253629606344,
+    "name_11": 0.05623565866922986,
+    "name_12": 0.03614703777836355,
+    "name_13": 0.06561103694379161,
+    "name_15": 0.05003713973937821,
+    "name_14": 0.04313777799121506,
+    "name_17": 0.03566258897810985,
+    "name_18": 0.04137062890216298,
+    "name_16": 0.07476321746947429,
+    "name_19": 0.03783632260140842,
+    "name_20": 0.04457887179747222
+   }
+  },
+  "same_names": true,
+  "stop_distances": {
+   "name_16": 0.26250329014251517,
+   "name_13": 0.3004647057240191,
+   "name_03": 0.3117655067981905,
+   "name_01": 0.3393259117806844,
+   "name_11": 0.35,
+   "name_08": 0.35,
+   "name_04": 0.35,
+   "name_07": 0.35,
+   "name_15": 0.35,
+   "name_05": 0.35,
+   "name_06": 0.35,
+   "name_20": 0.35,
+   "name_10": 0.35,
+   "name_14": 0.35,
+   "name_18": 0.35,
+   "name_19": 0.35,
+   "name_12": 0.35,
+   "name_02": 0.35,
+   "name_17": 0.35,
+   "name_09": 0.35
+  },
+  "verdict": {
+   "ok": false,
+   "verdict": "fail",
+   "failed": [
+    "the worst fall is 50.9% with stops and 56.3% without: a cut of 10% (needs 20%)",
+    "the stops cost +1.05% a year of return after tax (limit 1.00%)"
+   ],
+   "worst_fall_cut_relative": 0.09567790083996053,
+   "return_cost_per_year": 0.010527392127311463,
+   "worst_fall_with": 0.5092344543972855,
+   "worst_fall_without": 0.5631118103497385,
+   "liq_cagr_with": 0.09108478380839569,
+   "liq_cagr_without": 0.10161217593570715
+  }
+ },
+ "assumptions": {
+  "slippage": {
+   "half_spread_base": 0.0005,
+   "half_spread_cap": 0.005,
+   "turnover_ref": 100000000.0,
+   "impact_y": 1.0,
+   "sigma_window": 20,
+   "sigma_floor": 0.005
+  },
+  "tax": {
+   "st_rate": 0.2,
+   "lt_rate": 0.125,
+   "lt_exempt": 125000.0,
+   "lt_months": 12,
+   "slab": 0.3,
+   "carry_years": 8
+  },
+  "book": {
+   "n_names": 20,
+   "turnover_window": 250,
+   "min_history": 300,
+   "vol_window": 250,
+   "max_weight": 0.1,
+   "invested": 0.98,
+   "max_positions": 20,
+   "max_new_per_day": 20
+  },
+  "stops": {
+   "sigmas": 2.0,
+   "horizon_days": 63,
+   "vol_window": 250,
+   "min_pct": 0.12,
+   "max_pct": 0.35,
+   "fallback_vol": 0.3
+  },
+  "bootstrap": {
+   "block": 21,
+   "resamples": 5000,
+   "seed": 82
+  },
+  "capital": 1000000
+ },
+ "switches": {
+  "exits.harvest_core": false,
+  "exits.harvest_longterm": false,
+  "exits.longterm.stop": false
+ },
+ "protocol_sha256": "f0941ab1a4a72eeb6474a18888e488a92af8f11707e106ab2b56e5b1f5dc37b7",
+ "n_tests": 98,
+ "contained": true,
+ "seconds": 39.41,
+ "window": [
+  "2005-01-01",
+  "2017-12-31"
+ ],
+ "names_note": "the 20 shares are labelled name_NN in order of first appearance (the real ISINs are not committed: privacy grep); the selection rule is in the protocol"
+}

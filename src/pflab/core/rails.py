@@ -1,6 +1,6 @@
 """The rails around the policy: code the policy cannot edit. `check(con, state, decision)` takes the policy's target weights and returns the orders that may be placed.
 
-    position rails   one company 10%, one sector 25%, one ETF 35% (the same constants as `paper/rails.py`, which also cuts every buy again at the fill); a holding already
+    position rails   one company 10%, one sector 25%, one ETF 35% (a broad-market index ETF, the Nifty 50 and Nifty 500 index ETFs listed by symbol in `[rails] broad_index_etfs`, 60%: A56) (the same limits as `paper/rails.py`, which also cuts every buy again at the fill); a holding already
                      over a rail is never bought; no borrowing (buys never exceed cash, bank included), no short sales, listed shares and ETFs only
     circuit breaker  while the account is 12% below its own high (`paper/cadence.py`): no buy, sells and holds stay open
     band             a name within `band_pts` points of its target is left alone
@@ -32,7 +32,7 @@ def sell_costs(con, row: dict, qty: float, price: float, day: date) -> Dict[str,
     after = dict(before)
     for k, v in gains.items():
         after[k] = after.get(k, 0.0) + v
-    return {"charges": round(fee, 2), "tax": round(max(0.0, book.tax_of(after) - book.tax_of(before)), 2)}
+    return {"charges": round(fee, 2), "tax": round(max(0.0, book.tax_of(after, day) - book.tax_of(before, day)), 2)}
 
 
 def month_traded(con, day: date) -> float:

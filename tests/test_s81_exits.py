@@ -58,6 +58,8 @@ def con(tmp_path, monkeypatch):
     # this year's realised gains so far: a short-term gain a loss can offset (the paper book's own sell record)
     c.execute("INSERT INTO paper_trades VALUES (9001, ?, 9001, NULL, ?, 'X', 'sell', 100, 100.0, 10.0, 200000.0, 40000.0, ?)",
               [date(2026, 8, 3), CALM, json.dumps({"gains": {"st_eq": 200000.0}})])
+    real = exits.settings                                                       # S82 C4b: the shipped config has NO stop on the longterm sleeve; these tests exercise the stop MACHINERY, so they switch it on
+    monkeypatch.setattr(exits, "settings", lambda: {**real(), "longterm": {**real()["longterm"], "stop": True}})
     return c
 
 

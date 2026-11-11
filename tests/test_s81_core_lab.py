@@ -232,7 +232,7 @@ def test_the_strategist_tool_stores_the_proposal_and_his_targets_are_never_touch
 def test_the_first_message_of_a_session_shows_the_allocation_to_re_examine(con, tmp_path):
     alloc_lab.seed(con, tmp_path, NOW)
     msg = strategist._first_message(con, "the weekly session (re-examine the allocation)", 300.0)
-    assert "ALLOCATION IN FORCE" in msg and "propose_allocation" in msg and "index_hold" in msg and "alloc_default" in msg and "longterm <= 60%" in msg and "swing" not in msg
+    assert "ALLOCATION IN FORCE" in msg and "propose_allocation" in msg and "index_hold_s82" in msg and "alloc_default" in msg and "longterm <= 60%" in msg and "swing" not in msg
 
 
 # --- B3: the two-dimension index rule ------------------------------------------------------------------------------------------------------------
@@ -292,14 +292,18 @@ def test_both_sides_are_compared_after_tax_and_charges():
 
 def test_the_index_candidates_are_seeded_once_and_are_valid_lab_policies(con, tmp_path):
     first = alloc_lab.seed(con, tmp_path, NOW)
-    assert set(first) == {"index_hold", "alloc_default"}
+    assert set(first) == {"index_hold_s82", "alloc_default"}
     assert alloc_lab.seed(con, tmp_path, NOW) == [] and alloc_lab.seed(con, tmp_path, NOW) == []
-    assert con.execute("SELECT count(*) FROM core_policies_s80 WHERE policy_id IN ('index_hold','alloc_default')").fetchone()[0] == 2
+    assert con.execute("SELECT count(*) FROM core_policies_s80 WHERE policy_id IN ('index_hold_s82','alloc_default')").fetchone()[0] == 2
     from pflab.lab import policy_api
-    for pid in ("index_hold", "alloc_default"):
+    for pid in ("index_hold_s82", "alloc_default"):
         p = service.get(con, pid)
         assert policy_api.validate(p["code"]) == [] and p["status"] == "draft"
-    assert "'JUNIORBEES'" in service.get(con, "index_hold")["code"] and "'idx': 0.98" in service.get(con, "index_hold")["code"]
+    code = service.get(con, "index_hold_s82")["code"]                                    # S82 C3: the India core as the two broad index ETFs; JUNIORBEES is not broad; sleeves and international kept
+    defaults_line = [ln for ln in code.splitlines() if ln.startswith("DEFAULTS =")][0]
+    assert "'idx_syms': ['NIFTYBEES', 'MONIFTY500']" in defaults_line
+    assert "'idx': 0.5" in code and "'gold': 0.0" in code
+    assert "'intl': 0.1" in code and "'longterm': 0.4" in code
     assert "'idx': 0.4" in service.get(con, "alloc_default")["code"]
 
 
@@ -315,15 +319,16 @@ def test_the_allocation_variants_replay_in_the_lab_and_buy_the_core_etfs(con, tm
     d2 = {**data, "px": px, "turnover": to, "meta": meta}
     alloc_lab.seed(con, tmp_path, NOW)
     from pflab.lab import policy_api
-    for pid in ("index_hold", "alloc_default"):
+    for pid in ("index_hold_s82", "alloc_default"):
         fn, _ = policy_api.load(service.get(con, pid)["code"])
         run = engine.replay(fn, {}, d2, "2012-01-02", "2015-12-31")
         held = {k for k in run["book"].lots if run["book"].qty(k) > 0}
         assert run["failures"] == 0 and "ETF:MONIFTY500" in held
         sc = engine.score(run, d2, {})
         assert sc["cagr_liq"] is not None and sc["bench_cagr_liq"] is not None
-    run = engine.replay(policy_api.load(service.get(con, "index_hold")["code"])[0], {}, d2, "2012-01-02", "2015-12-31")
-    assert not [k for k in run["book"].lots if run["book"].qty(k) > 0 and not k.startswith("ETF:")]      # index only: no stock
+    pure = alloc_lab.render_code({"idx": 0.98, "gold": 0.0, "intl": 0.0, "longterm": 0.0, "idx_syms": alloc_lab.broad_syms()})
+    run = engine.replay(policy_api.load(pure)[0], {}, d2, "2012-01-02", "2015-12-31")
+    assert not [k for k in run["book"].lots if run["book"].qty(k) > 0 and not k.startswith("ETF:")]      # a pure index book holds no stock
 
 
 # --- adoption by the A50 rule --------------------------------------------------------------------------------------------------------------------
@@ -342,7 +347,7 @@ FAIL = {**_score(0.08, 0.13, -0.45, -0.40), "cagr": 0.09, "sharpe_daily": 0.03, 
 def test_a_proposal_that_passes_the_index_rule_and_the_final_check_is_adopted(con, tmp_path, monkeypatch):
     alloc_lab.seed(con, tmp_path, NOW)
     _hist(con, "alloc_default", PASS)
-    _hist(con, "index_hold", PASS)
+    _hist(con, "index_hold_s82", PASS)
     ok = alloc_lab.propose(con, tmp_path, NOW, GOOD_CLASSES, GOOD_SLEEVES, REASONS)
     _hist(con, ok["variant"], BETTER)
     monkeypatch.setattr(promotion, "final_run", lambda *a, **k: {"score": BETTER, "baseline": {}})
@@ -360,7 +365,7 @@ def test_a_proposal_that_passes_the_index_rule_and_the_final_check_is_adopted(co
 def test_a_proposal_that_fails_or_is_not_above_the_current_allocation_is_not_adopted(con, tmp_path, monkeypatch):
     alloc_lab.seed(con, tmp_path, NOW)
     _hist(con, "alloc_default", PASS)
-    _hist(con, "index_hold", PASS)
+    _hist(con, "index_hold_s82", PASS)
     monkeypatch.setattr(promotion, "final_run", lambda *a, **k: {"score": BETTER, "baseline": {}})
     a = alloc_lab.propose(con, tmp_path, NOW, GOOD_CLASSES, GOOD_SLEEVES, REASONS)
     _hist(con, a["variant"], FAIL)
@@ -378,18 +383,20 @@ def test_a_proposal_that_fails_or_is_not_above_the_current_allocation_is_not_ado
     assert allocation.active_target(con) is None
 
 
-def test_when_the_current_allocation_fails_the_index_rule_and_the_index_passes_the_system_owns_the_index(con, tmp_path):
+def test_when_the_current_allocation_fails_the_index_rule_and_the_index_passes_the_system_owns_the_india_core_only(con, tmp_path):
     alloc_lab.seed(con, tmp_path, NOW)
     _hist(con, "alloc_default", FAIL)
-    _hist(con, "index_hold", PASS)
+    _hist(con, "index_hold_s82", PASS)
     out = alloc_lab.tick(con, tmp_path, None, NOW)
     assert out["adopted_index_only"]["adopted"] is True
     act = allocation.active_target(con)
-    assert act["classes"]["equity"] == 100.0 and sleeves.stored(con, act["target_id"])["sleeves"] == {"core": 100.0, "longterm": 0.0}
-    assert alloc_lab.current_variant(con) == "index_hold" and "owns the index" in act["reasons"]
+    assert act["classes"] == {"equity": 90.0, "gold": 0.0, "international": 10.0, "cash": 0.0}      # gold moved into the index ETFs; the international share is KEPT (held in the US sub-book)
+    assert sleeves.stored(con, act["target_id"])["sleeves"] == {"core": 60.0, "longterm": 40.0}     # the sleeve shares are KEPT: the longterm stocks are not sold for a sleeve share
+    assert alloc_lab.current_variant(con) == "index_hold_s82" and "owns the index for the India core" in act["reasons"]
     assert alloc_lab.tick(con, tmp_path, None, NOW).get("adopted_index_only") is None       # once: the next tick finds the index already owned
     s = _state(con)
-    assert s["sleeve_target"]["core"] == 1.0 and s["sleeve_target"]["index"] == 1.0 and s["sleeve_target"]["longterm"] == 0.0
+    sh = s["sleeve_target"]
+    assert (sh["core"], sh["longterm"], sh["gold"], sh["international"]) == (0.60, 0.40, 0.0, 0.10) and sh["index"] == pytest.approx(0.50)
 
 
 # --- B3: probation slices ------------------------------------------------------------------------------------------------------------------------

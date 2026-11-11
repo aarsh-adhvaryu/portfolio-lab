@@ -130,6 +130,7 @@ class Runtime:
             s79.register_swing(self.cursor(), self.clock())            # S81 B5
             from pflab.learner import s83
             s83.register_picks_live(self.cursor(), self.clock())        # S83 L5: the picks sleeve's live test, one per market
+            s79.register_c4(self.cursor(), self.clock())               # S82 C4
             s79.apply_verdicts(self.cursor())
         except Exception:
             log.exception("registering S79 studies failed")
