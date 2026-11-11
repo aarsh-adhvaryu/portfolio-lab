@@ -175,3 +175,20 @@ that harvesting helps buy-and-hold core ETFs only would be a new registered stud
 Assumptions (all in the protocol and in `docs/research/swing_study_results_s81.json`): fills at the next close; stop/target from the day's adjusted range; slippage `0.0005*sqrt(1e8/traded value)` (clipped
 0.0005-0.005) + `1.0 * 20-day volatility * sqrt(order/traded value)`; today's tax law applied to 2005-2017; results days from BSE announcements (2011 on); survivorship in the 600-name selection.
 <!-- s81-swing-results:end -->
+
+<!-- s82-c4-results:begin -->
+## S82 C4 (2026-11-12 night): harvesting where it can help, and stops on long-term stocks (protocol: docs/protocols/s82_harvest_stops_protocol.md with A1; code `lab/c4_study.py`, result `docs/research/c4_study_results_s82.json`)
+
+Pre-registered and committed before any code or run; three tests counted in the learner's counter (the bar on the store copy was t >= 3.28 at N 98); run ONCE on the real 2005-2017 panel in the Docker sandbox (contained, 39 seconds), after charges, slippage and tax (today's tax rows applied to the whole window). The 2018-2021 window was not touched.
+
+| claim | arm | result | verdict | live switch |
+|---|---|---|---|---|
+| C4a harvesting | index ETF held buy-and-hold | +0.18 points a year after tax; tax saved Rs 1.75 lakh against Rs 8.9 thousand of extra charges and slippage; paired t 0.44 (bar 3.28) | fail | `[exits] harvest_core = false` stays |
+| C4a harvesting | buy-and-hold stock book (no monthly rebalance) | +0.35 points a year; tax saved Rs 1.55 lakh against Rs 11.3 thousand of extra costs; paired t 1.04 | fail | `[exits] harvest_longterm = false` stays |
+| C4b stops on long-term stocks | risk-sized stops (2 sigmas over 63 sessions, 12-35%) against none | worst fall 50.9% with stops against 56.3% without (a 10% relative cut; needed 20%); return 9.11% a year with stops against 10.16% without (a cost of 1.05 points; allowed 1.0) | fail | `[exits.longterm] stop = false` (the thesis-break sale, the rail trims and the fall gauge stay) |
+
+In plain words: selling to harvest tax does save tax, but not by enough, over enough independent evidence, to beat its own costs; and the stops on stocks he holds long cut the worst fall by half of what was needed while costing a little more return than allowed, so the system holds long-term stocks without a stop and relies on the thesis check, the 10% rail and the fall gauge. A description of the 2005-2017 history (600 liquid shares, survivorship in the selection), not a forecast.
+
+## S82 C3 (2026-11-12 night): the 60% broad-index limit in the lab (A56), after tax and charges, 2005-2017
+`index_hold_s82` (the India core as index ETFs only, the 40% stock sleeve and the international share kept): 10.78% a year against the Nifty 500 ETF's 14.32% (lag 3.54 points, worst fall -51.2% against -63.8%); the current allocation `alloc_default` (core 60 / longterm 40): 10.86% (lag 3.45, worst fall -51.6%): both fail the A50 index rule, so nothing was adopted and the 2018-2021 window was not looked at. A pure two-ETF index held under the same limit (diagnostic only): 12.05%, lag 2.26 points (S81's 1.9 held a third ETF). The 60% limit never binds in these replays (two ETFs sit near 49% each); the lag is the cost of the 40% stock sleeve. With `index_fallback = true` the fallback would therefore NOT adopt index-only.
+<!-- s82-c4-results:end -->
