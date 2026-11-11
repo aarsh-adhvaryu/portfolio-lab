@@ -1713,6 +1713,13 @@ def _picks_check(env: "Env", c: Check) -> None:
     nxt = markets.get("IN").next_session(jd[0]) if jd else None
     rep = core_session.report_day(cur, nxt) if nxt else ""
     c.ok("India picks share lowered from 40% to 35%" in rep, f"the 15:45 report of {nxt} told the lowered share in plain words: {[l for l in rep.splitlines() if 'picks share' in l][:1]}", "core/pick_share.py report_line, core/session.py report_day")
+    st_rows = cur.execute("SELECT scope, scenario, fall_pct, detail_json FROM stress_s83 WHERE day=(SELECT max(day) FROM stress_s83)").fetchall()
+    zero_blind = []
+    for sc, name, fall, dj in st_rows:
+        hs = (json.loads(dj or "{}").get("holdings") or [])
+        if hs and all(h.get("fall_pct") is None for h in hs) and fall is not None:
+            zero_blind.append((sc, name, fall))
+    c.ok(len(st_rows) == 12 and not zero_blind, f"the stress scenarios were stored for the three scopes ({len(st_rows)} rows), and none whose holdings all had no figure was stored as a number: {zero_blind[:2]}", "core/stress.py _scenario_result")
     acts = cur.execute("SELECT logged_at, what FROM paper_acts WHERE loop='core_loop' AND useful=FALSE AND (what LIKE 'the picks%' OR what LIKE '%picks%could not%')").fetchall()
     c.ok(not acts, f"the close loop never reported a picks part that failed: {acts[:2]}", "core/loop.py")
     fj = cur.execute("SELECT job, detail FROM job_runs WHERE job IN ('pick_score','stress_daily','strategist') AND status='failed'").fetchall()
