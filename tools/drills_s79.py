@@ -529,7 +529,7 @@ def run_days(env: "Env", first: date, last: date, on_step: Optional[Callable] = 
     return out
 
 
-S79B_ITEMS = ("situation", "macro_attribution", "wave_detector", "sentiment", "theme_exposure", "volume_profile", "construct", "benchmark", "provenance", "seats", "lenses")
+S79B_ITEMS = ("situation", "macro_attribution", "benchmark", "provenance", "seats", "lenses")      # A60: wave_detector, sentiment, theme_exposure, volume_profile and construct were deleted
 
 
 def switches() -> dict:

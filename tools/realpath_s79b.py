@@ -63,11 +63,9 @@ def main() -> int:
         lines.append(f"- fcast.catch_up: {json.dumps(out, default=str)[:300]}")
     except Exception as e:
         lines.append(f"- fcast.catch_up: FAILED {type(e).__name__}: {str(e)[:160]}")
-    for name, args in (("macro_attribution", {"market": "IN", "date": a.day}), ("wave_detector", {"market": "IN", "date": a.day}), ("sentiment", {"market": "IN", "date": a.day}),
-                       ("theme_exposure", {"market": "IN", "date": a.day}), ("event_calendar", {"market": "IN", "date": a.day}),
-                       ("volume_profile", {"market": "IN", "symbol": "NIFTY 50", "date": a.day}), ("transmission", {"market": "IN", "date": a.day}),
+    for name, args in (("macro_attribution", {"market": "IN", "date": a.day}), ("transmission", {"market": "IN", "date": a.day}),
                        ("forecast_now", {"market": "IN"}), ("fall_risk", {"market": "IN"}), ("breadth", {"market": "IN", "date": a.day}),
-                       ("implied_dist", {"market": "IN", "date": a.day}), ("construct", {}), ("benchmark", {}), ("lenses", {"market": "IN"}), ("provenance", {}), ("agenda", {})):
+                       ("implied_dist", {"market": "IN", "date": a.day}), ("benchmark", {}), ("lenses", {"market": "IN"}), ("provenance", {}), ("agenda", {})):
         call(name, args)
     try:
         from pflab.situation import build

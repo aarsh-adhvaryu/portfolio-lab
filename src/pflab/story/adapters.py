@@ -4,7 +4,7 @@ storyline is dropped after it has been read once.
 
     flows        foreign and domestic institutions' net cash-market buying (data/flows), the day and its 5-session total
     attribution  the split of the index's move into crude, rupee, US yield, Nasdaq, foreign flows and Asia (`macro_attribution`)
-    waves        market-wide waves and rotations flagged from the NSE daily files (`wave_flag`)
+    (the `waves` adapter was removed in A60: the wave flag failed its study)
 Filings and tone adapters join the same registry when their tables exist; a missing source gives no items, never an error.
 """
 from __future__ import annotations
@@ -45,17 +45,6 @@ def attribution_items(con, asof: date) -> List[dict]:
              "text": f"On {sess} the Nifty's move was explained mostly by: " + "; ".join(f"{p} {v:+.2f} points" for p, v in parts[:3] if v is not None)} for sess, parts in by.items()]
 
 
-def wave_items(con, asof: date) -> List[dict]:
-    try:
-        rows = con.execute("SELECT session, kind, direction, salience, definition FROM wave_flag WHERE market='IN' AND session <= ? AND session >= ? ORDER BY session DESC",
-                           [asof, asof - timedelta(days=5)]).fetchall()
-    except Exception:
-        return []
-    return [{"key": f"wave:{sess}:{kind}", "date": sess, "source_kind": "tool", "source_ref": f"wave_flag:{sess}:{kind}",
-             "text": f"On {sess} the wave scan flagged a {salience or ''} {kind.replace('_', ' ')} ({direction or 'no direction'}): {(definition or '')[:160]}".replace("  ", " ")}
-            for sess, kind, direction, salience, definition in rows]
-
-
 def kg_items(con, asof: date) -> List[dict]:
     """Material events (S81 B7) on the names the book holds or an open storyline is exposed to, from the rebuilt graph: a filing or a news item attached to a company by a confident
     rule, with its dissemination time. Evidence of `source_kind` "kg2_event" with the event id as its source: this is what the registered "graph earns its place" study counts.
@@ -79,10 +68,10 @@ def kg_items(con, asof: date) -> List[dict]:
     return out
 
 
-ADAPTERS = ("flows", "attribution", "waves", "kg2_events")
+ADAPTERS = ("flows", "attribution", "kg2_events")
 
 
 def collect(con, root, asof: date) -> List[dict]:
     """Every item of the last few sessions, oldest first; the caller skips what the reader has already read (`storyline_reader_s80`)."""
-    items = flows_items(root, asof) + attribution_items(con, asof) + wave_items(con, asof) + kg_items(con, asof)
+    items = flows_items(root, asof) + attribution_items(con, asof) + kg_items(con, asof)
     return sorted(items, key=lambda i: (i["date"], i["key"]))

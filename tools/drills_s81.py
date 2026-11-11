@@ -598,8 +598,8 @@ class Env:
 # jobs replaced by fakes: they fetch, spawn collectors, send, call a paid model, need Docker or Kite, or take minutes. The rest of the registry runs for real. A name that is not in
 # the registry of this tree is ignored (the list is by name so that a new job is real unless it is added here).
 FAKE_JOBS = ("instruments", "collect", "nav", "filings", "live", "tradecheck", "kg", "analyst", "research", "global", "outbox", "backup", "us_fx", "ledger", "deposits", "backfill",
-             "hq", "conductor", "learner", "security", "selfcheck", "comove", "scans", "companion", "outgoing", "sandbox", "twin", "bars_1m", "data_s79b", "sentiment",
-             "implied_calibration", "idle_cash", "watches", "watches_close", "forecast", "forecast_loop", "seats_mode", "plans", "review", "guards", "macro_attribution", "wave_scan",
+             "hq", "conductor", "learner", "security", "selfcheck", "comove", "scans", "companion", "outgoing", "sandbox", "twin", "bars_1m", "data_s79b",
+             "implied_calibration", "idle_cash", "watches", "watches_close", "forecast", "forecast_loop", "seats_mode", "plans", "review", "guards", "macro_attribution",
              "benchmark_attr", "bear_resolve", "summary_morning", "summary_evening", "news_s81_topup", "us_prices_daily")
 ARRIVAL_HOUR = (20, 15)            # NSE's files are in by the prices job's slot; a session's closes do not arrive before it
 
@@ -1558,7 +1558,7 @@ def drill_off_10_days(env: "Env", c: Check) -> None:
 
 # --- the network is down ---------------------------------------------------------------------------------------------------------------------
 
-FETCHING_JOBS = ("collect", "global", "us_fx", "nav", "filings", "instruments", "backfill", "data_s79b", "sentiment", "kg", "bars_1m", "comove", "macro_attribution", "wave_scan", "kg2_nightly", "news_s81_topup", "us_prices_daily", "us_close")
+FETCHING_JOBS = ("collect", "global", "us_fx", "nav", "filings", "instruments", "backfill", "data_s79b", "kg", "bars_1m", "comove", "macro_attribution", "kg2_nightly", "news_s81_topup", "us_prices_daily", "us_close")
 
 
 @drill("net_down", 20)

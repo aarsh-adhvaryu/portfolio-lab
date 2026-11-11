@@ -12,7 +12,6 @@ import pytest
 from pflab import markets
 from pflab.fcast import forecasters as F, plugins, protocol as P, replay, run
 from pflab.hq import tools as tl
-from pflab.quant import volume_profile as vp
 from tests.test_s79_explain import _ctx, rt, root  # noqa: F401  (fixtures)
 from tests.test_s79_forecast import NOW, con, in_sessions, walk  # noqa: F401  (fixtures)
 
@@ -226,68 +225,6 @@ def test_lenses_tool_reports_scores_weights_and_the_off_switch(rt, con, monkeypa
     assert h["n_live"] > 5 and h["pinball_vs_naive_live"] > 0 and h["weight"] and h["state"] == "shadow"
     monkeypatch.setattr(plugins, "settings", lambda: {"on": False})
     assert json.loads(tl.run(_ctx(rt), "lenses", {})[0]).get("off") is True
-
-
-# --- lens_value_area ----------------------------------------------------------------------------------------------------------------------------
-def _daily_for(c):
-    return pd.DataFrame({"date": c.index, "open": c.values, "high": c.values * 1.004, "low": c.values * 0.996, "close": c.values, "volume": 1.0, "basis": vp.B_TIME})
-
-
-def test_lens_value_area_is_registered_in_shadow(monkeypatch):
-    vp.register_lens()
-    l = plugins.REGISTRY["lens_value_area"]
-    assert l.replay_ok and "IN" in l.markets and l.protocol == "docs/protocols/s79_wave_sentiment_protocol.md" and plugins.active("IN")
-
-
-def test_lens_value_area_frame_is_ordered_point_in_time_and_none_without_data(monkeypatch):
-    ss = markets.get("IN").sessions_between(date(2023, 1, 2), date(2026, 10, 30))
-    c = walk(ss, seed=9, vol=0.01)
-    c.name = None
-    monkeypatch.setattr(vp, "_daily", lambda *a, **k: _daily_for(c))
-    vp._CACHE.clear()
-    vp._EV.clear()
-    fr = vp.lens_frame(None, "IN", c, 5)
-    ok = fr.dropna()
-    assert len(ok) > 400 and (np.diff(ok.to_numpy(float), axis=1) > 0).all()
-    # point in time: rows before a cut are the same whether or not the later closes exist
-    n = 700
-    cut = c.iloc[:n]
-    monkeypatch.setattr(vp, "_daily", lambda *a, **k: _daily_for(c).iloc[:n])
-    vp._CACHE.clear()
-    vp._EV.clear()
-    fr2 = vp.lens_frame(None, "IN", cut, 5)
-    pd.testing.assert_frame_equal(fr.iloc[:n], fr2, check_exact=False, rtol=1e-9, atol=1e-12)
-    # no daily bars, or a different series: no forecast, never a guess
-    monkeypatch.setattr(vp, "_daily", lambda *a, **k: pd.DataFrame(columns=["date", "open", "high", "low", "close", "volume", "basis"]))
-    vp._CACHE.clear()
-    assert vp.lens_frame(None, "IN", c, 5) is None
-    monkeypatch.setattr(vp, "_daily", lambda *a, **k: _daily_for(c * 3.0))
-    vp._CACHE.clear()
-    vp._EV.clear()
-    assert vp.lens_frame(None, "IN", c, 5) is None
-
-
-def test_lens_value_area_off_switch(monkeypatch):
-    ss = markets.get("IN").sessions_between(date(2023, 1, 2), date(2026, 10, 30))
-    c = walk(ss, seed=9)
-    monkeypatch.setattr(vp, "_daily", lambda *a, **k: _daily_for(c))
-    vp._CACHE.clear()
-    monkeypatch.setattr(vp, "lens_settings", lambda: {"on": False, "shrink_n": 60.0, "max_shift_sigma": 0.15, "history_sessions": 3000})
-    assert vp.lens_frame(None, "IN", c, 5) is None
-
-
-def test_the_shift_is_capped_and_shrunk(monkeypatch):
-    ss = markets.get("IN").sessions_between(date(2022, 1, 3), date(2026, 10, 30))
-    c = walk(ss, seed=2, vol=0.01)
-    monkeypatch.setattr(vp, "_daily", lambda *a, **k: _daily_for(c))
-    vp._CACHE.clear()
-    vp._EV.clear()
-    fr = vp.lens_frame(None, "IN", c, 5).dropna()
-    lc, r, sig, ew = F._vol_parts(c)
-    base = F._frame(sig * 0.0, F._sigma_h(sig, ew, 5, False)).reindex(fr.index)
-    mid = np.log1p(fr[0.5]) - np.log1p(base[0.5])
-    s5 = F._sigma_h(sig, ew, 5, False).reindex(fr.index)
-    assert (mid.abs() <= 0.15 * s5 + 1e-12).all()
 
 
 # (S80 phase 4: the agenda and its `propose_lens` kind are deleted; lens candidates now come from the strategist's lab, not from an agenda item.)
