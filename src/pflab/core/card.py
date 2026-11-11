@@ -181,7 +181,20 @@ def build(con, state: dict, decision: dict, placed: list, prev: Optional[dict] =
         "LAST 10 DECISIONS (with how their claims scored):\n" + _decisions(con),
         "CHANGED SINCE THE LAST CARD: " + _changed(con, facts, prev),
     ]
+    ps = _picks_score(con, day)                                  # S83 L4: the picks scorecard (the picks agent adds the PICKS section under facts["picks"]; not here)
+    if ps:
+        facts["picks_score"] = ps["json"]
+        lines.append("PICKS SCORE (after estimated tax, against the index):\n" + ps["text"])
     return "\n".join(lines)[:MAX_CHARS], facts
+
+
+def _picks_score(con, day) -> Optional[dict]:
+    """The scorecard of each market for the card: {'json': {market: scorecard}, 'text': plain words}. None when it cannot be read (the card never fails for it)."""
+    try:
+        from pflab.core import pick_score
+        return {"json": {m: pick_score.scorecard(con, m, day) for m in ("IN", "US")}, "text": "\n".join(pick_score.scorecard_text(con, m) for m in ("IN", "US"))}
+    except Exception:
+        return None
 
 
 def write(con, now: datetime, state: dict, decision: dict, placed: list) -> dict:
