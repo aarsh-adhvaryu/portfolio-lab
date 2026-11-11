@@ -61,7 +61,7 @@ def test_a_step_that_waits_for_a_module_says_exactly_which(D):
     assert not ok and "pflab.no_such_module" in why and "B9 something" in why
     names = [n for n, _fn, _ap in D.ACCELERATED_STEPS]
     assert names[0] == "standing" and len(names) == len(set(names))
-    for want in ("allocation_proposed_and_adopted", "core_etfs_bought", "exit_plan_fires", "harvest_sale_and_buyback", "swing_opened_closed_scored", "thesis_break_sale", "us_subbook_close", "session_replay"):
+    for want in ("allocation_proposed_and_adopted", "core_etfs_bought", "exit_plan_fires", "harvest_sale_and_buyback", "view_entry_exit_closed", "thesis_break_sale", "us_subbook_close", "session_replay"):
         assert want in names
     for _n, _fn, ap in D.ACCELERATED_STEPS:
         ok, why = ap(None)

@@ -1013,7 +1013,7 @@ def step_allocation(env: "Env", c: Check, phase: str) -> None:
         from pflab.lab import alloc_lab, tools as lt
         cur = env.cur()
         ctx = lt.make_ctx(cur, env.pm, env.data, env.clock.t, None)
-        text, is_err = lt.run(ctx, "propose_allocation", {"classes": {"equity": 50, "gold": 15, "international": 10, "cash": 25}, "sleeves": {"core": 55, "longterm": 40, "swing": 5},
+        text, is_err = lt.run(ctx, "propose_allocation", {"classes": {"equity": 50, "gold": 15, "international": 10, "cash": 25}, "sleeves": {"core": 60, "longterm": 40},
                                                           "sectors": {}, "reasons": "The drill's strategist wants more cash and less gold while the book is far from its target: hold half in shares, some gold and international, a quarter in cash."})
         env.alloc_proposal = (text, is_err)
         if is_err:
@@ -1119,26 +1119,23 @@ def step_harvest(env: "Env", c: Check, phase: str) -> None:
     c.note(f"scores registered for the harvest sale: {sc} (20 and 60 sessions after the sale; due later than this run)")
 
 
-def step_swing(env: "Env", c: Check, phase: str) -> None:
-    """A swing trade opened and closed and scored against holding the same money over the same days."""
+def step_view_entry(env: "Env", c: Check, phase: str) -> None:
+    """A position the session carried in on a tactical view (the swing sleeve is deleted, A60), given its exit plan after the fill, closed by that plan the next session and scored later."""
     if phase != "check":
         return
     info = getattr(env, "replay_info", None)
     if not info:
-        c.off("this step reads the swing trade the session replay step opens and closes: waiting for module pflab.core.session (the replay step did not run)")
+        c.off("this step reads the view entry the session replay step opens and closes: waiting for module pflab.core.session (the replay step did not run)")
         return
-    ex = importlib.import_module("pflab.core.exits")
     cur = env.cur()
-    isin = info["swing_isin"]
+    isin = info["entry_isin"]
     plan = cur.execute("SELECT plan_id, sleeve, status, closed_reason, stop, target FROM exit_plans_s81 WHERE isin=? ORDER BY plan_id DESC LIMIT 1", [isin]).fetchone()
-    c.ok(plan is not None and plan[1] == "swing", f"the swing entry opened an exit plan in the swing sleeve (stop {plan[4] if plan else None}, target {plan[5] if plan else None})", "core/session.py _open_plan, core/exits.py open_plan")
+    c.ok(plan is not None and plan[1] == "longterm" and plan[4] is not None, f"the view entry has an exit plan in the longterm sleeve (stop {plan[4] if plan else None}, target {plan[5] if plan else None})", "core/exits.py open_plan")
     c.ok(plan is not None and plan[2] == "closed", f"the plan closed with the exit ({plan[2] if plan else None}: {plan[3] if plan else None})", "core/exits.py")
     from pflab.core import sleeves
-    c.ok(sleeves.sleeve_of(cur, isin, "IN") == "swing", f"{info['swing']} is recorded in the swing sleeve", "core/sleeves.py")
-    sc = ex.swing_score(cur) if callable(getattr(ex, "swing_score", None)) else None
-    c.note(f"exits.swing_score: {str(sc)[:200]} (a sale is scored against holding the same money at 20 and 60 sessions: not due inside this run)")
+    c.ok(sleeves.sleeve_of(cur, isin, "IN") in sleeves.SLEEVES and "swing" not in sleeves.SLEEVES, f"{info['entry']} is recorded in a live sleeve ({sleeves.sleeve_of(cur, isin, 'IN')}); there is no swing sleeve", "core/sleeves.py")
     n = cur.execute("SELECT count(*) FROM exit_scores_s81 WHERE isin=?", [isin]).fetchone()[0]
-    c.note(f"scores registered for the swing sale so far: {n}")
+    c.note(f"scores registered for the exit sale so far: {n} (a sale is scored against holding the same money at 20 and 60 sessions: not due inside this run)")
 
 
 def step_thesis_break(env: "Env", c: Check, phase: str) -> None:
@@ -1217,8 +1214,8 @@ def step_session_replay(env: "Env", c: Check, phase: str) -> None:
     from pflab import markets
     from pflab.core import session
     from pflab.paper import book
-    if not callable(getattr(session, "replay", None)) or not callable(getattr(session, "add_trigger", None)):
-        c.off("pflab.core.session exists but offers no replay() / add_trigger() (the replay of recorded minute bars through the session loop)")
+    if not callable(getattr(session, "replay", None)):
+        c.off("pflab.core.session exists but offers no replay() (the replay of recorded minute bars through the session loop)")
         return
     m = markets.get("IN")
     cur = env.cur()
@@ -1228,7 +1225,7 @@ def step_session_replay(env: "Env", c: Check, phase: str) -> None:
     victims = {STOCKS[1][1], STOCKS[2][1]}                       # names another step may have sold on purpose
     harvested = {r[0] for r in cur.execute("SELECT DISTINCT isin FROM exit_events_s81 WHERE kind='harvest'").fetchall()} if module_exists("pflab.core.exits") else set()     # a harvested name is waiting on its buy-back plan
     free = [i for i in held if i not in victims and i not in harvested] or [i for i in held if i not in victims]
-    swing_isin = STOCKS[5][1]                                    # SYNAUTO1: in the store, not in the book (SYNBANK1 is the tactical view's)
+    swing_isin = STOCKS[5][1]                                    # SYNAUTO1: in the store, not in the book (SYNBANK1 is the first tactical view's); a second view brings it in (the name is kept from the old swing drill)
     if len(free) < 2:                                            # the earlier steps sold what they were for: the replay is given two fresh positions (paper buys at the last close, in the system's own ledger)
         from pflab.ledger import events as ev, system
         for s in (STOCKS[0], STOCKS[3], STOCKS[4]):
@@ -1267,24 +1264,36 @@ def step_session_replay(env: "Env", c: Check, phase: str) -> None:
         _ex.open_plan(cur, now0, "IN", stop_isin, "longterm", px[stop_isin], held[stop_isin], {"stop": px[stop_isin] * 0.92, "target": px[stop_isin] * 1.6})
         _ex.open_plan(cur, now0, "IN", thesis_isin, "longterm", px[thesis_isin], held[thesis_isin])
     else:
-        session._open_plan(cur, now0, stop_isin, px[stop_isin], held[stop_isin], {"stop": px[stop_isin] * 0.92, "target": px[stop_isin] * 1.6})
+        c.off("pflab.core.exits is missing: no plan can be opened for the replay")
+        return
     write(stop_isin, lambda i: px[stop_isin] if i < 105 else px[stop_isin] * 0.90)                                  # the 11:00 minute closes below the stop
-    session.add_trigger(cur, now0, swing_isin, "above", px[swing_isin] * 1.01, amount=40000.0, valid_from=day, stop_price=px[swing_isin] * 0.95, target_price=px[swing_isin] * 1.10, reason="drill: a breakout")
-    write(swing_isin, lambda i: px[swing_isin] if i < 3 else (px[swing_isin] * 1.015 if i < 200 else px[swing_isin] * 1.12),      # through the trigger at 09:18, flat near VWAP, then through its target
+    from pflab.core import views as _views
+    vw = _views.issue(cur, now0, last, direction=1, names=[STOCKS[5][0]], share_of_budget=0.4, horizon_sessions=10, stop_pct=25.0,
+                      reason="drill: the replayed day carries a second tactical view in, on a name the book does not hold")
+    if not vw.get("ok"):
+        c.off(f"the tactical view the replay needs could not be issued: {str(vw)[:160]}")
+        return
+
+    def open_entry_plan(t, res):                                 # the session no longer opens plans: the exit manager's own function does, right after the fill (stop 5% down, target 10% up)
+        if not entry_plan and any(f["kind"] == "view" and f["side"] == "buy" for f in res.get("fills", [])):
+            f = [x for x in res["fills"] if x["kind"] == "view"][0]
+            entry_plan.append(_ex.open_plan(cur, t, "IN", swing_isin, "longterm", f["price"], f["qty"], {"stop": px[swing_isin] * 0.95, "target": px[swing_isin] * 1.10}))
+    entry_plan: list = []
+    write(swing_isin, lambda i: px[swing_isin] if i < 3 else (px[swing_isin] * 1.015 if i < 200 else px[swing_isin] * 1.12),      # flat near VWAP, then through its target at 12:35
           lambda i: px[swing_isin] * 1.12)                                                                                       # the next session: it stays there, and the held exit goes through at the open
     write(thesis_isin, lambda i: px[thesis_isin])
     ev = [{"isin": thesis_isin, "kind": "guidance_cut", "severity": "high", "ts": datetime.combine(day, datetime.min.time()).replace(hour=13, minute=20), "source": "bse_announcement",
            "ref": "drill:replay:1", "text": "the company cuts its revenue guidance and a large client leaves (drill)"}]
     n0 = cur.execute("SELECT count(*) FROM paper_orders").fetchone()[0]
-    r = session.replay(cur, day, bars_root, isins=list(sym), events=ev, data_root=env.data)
+    r = session.replay(cur, day, bars_root, isins=list(sym), events=ev, data_root=env.data, on_step=open_entry_plan)
     c.ok(r["steps"] > 50 and r["names"] == 3, f"the replayed day {day} ran {r['steps']} session checks over {r['names']} names", "core/session.py replay")
     fl = cur.execute("SELECT ts, symbol, side, qty, quote, price, half_spread_bps, slippage_bps, kind, flag FROM session_fills_s81 WHERE day=? ORDER BY fill_id", [day]).fetchall()
     c.note("fills: " + "; ".join(f"{f[0]:%H:%M} {f[2]} {f[1]} {f[8]} q{f[4]:.2f} p{f[5]:.2f}" for f in fl[:8]))
     stop = [f for f in fl if f[1] == sym[stop_isin] and f[8] == "stop"]
     c.ok(len(stop) == 1 and stop[0][2] == "sell" and stop[0][5] < stop[0][4] and stop[0][0].time() >= dt(day, 11, 0).time(), f"a stop hit mid-session on {sym[stop_isin]} was filled at the replayed quote plus slippage, never better: {[(f'{f[0]:%H:%M}', f[4], f[5]) for f in stop]}", "core/session.py, core/fills.py")
-    entry = [f for f in fl if f[1] == sym[swing_isin] and f[8] == "swing_entry"]
+    entry = [f for f in fl if f[1] == sym[swing_isin] and f[8] == "view"]
     c.ok(len(entry) == 1 and entry[0][2] == "buy" and entry[0][0].time() >= dt(day, 9, 30).time() and entry[0][5] > entry[0][4],
-         f"the swing entry fired on its trigger only after the first 15 minutes, filled above the quote: {[(f'{f[0]:%H:%M}', f[4], f[5]) for f in entry]}", "core/session.py timing")
+         f"the view entry was carried out only after the first 15 minutes, filled above the quote: {[(f'{f[0]:%H:%M}', f[4], f[5]) for f in entry]}", "core/session.py timing")
     out = [f for f in fl if f[1] == sym[swing_isin] and f[2] == "sell"]
     queued = cur.execute("SELECT count(*) FROM session_queue_s81 WHERE status='queued'").fetchone()[0]
     c.ok(not out, f"the same-day exit (its target was reached at 12:35) was not carried out on the day of entry (sells today {len(out)}; the exit manager waits for the next session, {queued} queued by the guard)", "core/fills.py the no-same-day-round-trip guard")
@@ -1307,7 +1316,7 @@ def step_session_replay(env: "Env", c: Check, phase: str) -> None:
     r2 = session.replay(cur, day2, bars_root, isins=[swing_isin], data_root=env.data)
     f2 = cur.execute("SELECT ts, symbol, side, qty, quote, price, kind FROM session_fills_s81 WHERE day=? AND symbol=? ORDER BY fill_id", [day2, sym[swing_isin]]).fetchall()
     c.ok(any(f[2] == "sell" for f in f2) and swing_isin not in book.positions(cur), f"the held exit went through on {day2}: {[(f'{f[0]:%H:%M}', f[2], f[6], f[5]) for f in f2]}; the position is closed", "core/session.py queue, core/fills.py")
-    env.replay_info = {"day": day, "day2": day2, "swing_isin": swing_isin, "swing": sym[swing_isin]}
+    env.replay_info = {"day": day, "day2": day2, "entry_isin": swing_isin, "entry": sym[swing_isin]}
     rep = session.report_day(cur, day)
     c.ok("Filled" in rep and "Session" in rep, f"the 15:45 self-report names what fired and filled: {rep.splitlines()[0][:80]} ... {len(rep.splitlines())} lines", "core/session.py report_day")
     card = session.card(cur, dt(day, 15, 45))
@@ -1325,7 +1334,7 @@ ACCELERATED_STEPS: List[Tuple[str, Callable, Callable]] = [
     ("thesis_break_sale", step_thesis_break, needs("pflab.kg.events", "pflab.core.exits", why="B7 knowledge graph events + B4 exits")),
     ("us_subbook_close", step_us_book, needs("pflab.us.adapter", why="B8 phase B, the US sub-book")),
     ("session_replay", step_session_replay, needs("pflab.core.session", why="B6b session loop")),
-    ("swing_opened_closed_scored", step_swing, needs("pflab.core.session", "pflab.core.exits", "pflab.core.sleeves", why="B5/B6b swing sleeve: entries by the session loop's triggers, exits and scores by the exit manager")),   # after the replay it reads
+    ("view_entry_exit_closed", step_view_entry, needs("pflab.core.session", "pflab.core.exits", "pflab.core.sleeves", why="B5/B6b: entries by the session loop's tactical views, exits and scores by the exit manager")),   # after the replay it reads
 ]
 
 
