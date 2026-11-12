@@ -87,8 +87,22 @@ def _index(market: str, root=None) -> Optional[pd.Series]:
     return s[~s.index.duplicated(keep="last")].sort_index()
 
 
-def _adjust(s: pd.Series, isin: str, root) -> pd.Series:
-    """Earlier closes scaled by each split or bonus factor, so a split is not a fall."""
+def _panel_end(root, isin: str) -> Optional[date]:
+    """The last date of the research panel's adjusted closes for `isin` (those closes already carry every split up to it), None when the panel has nothing."""
+    try:
+        from pflab import _duck
+        from pflab.core import pick_score
+        p = pick_score._root(root) / "panel" / "prices.parquet"
+        if not p.exists():
+            return None
+        d = _duck.sql(f"SELECT max(date) AS d FROM '{p.as_posix()}' WHERE isin = '{isin}'").df()["d"].iloc[0]
+        return None if pd.isna(d) else pd.Timestamp(d).date()
+    except Exception:
+        return None
+
+
+def _adjust(s: pd.Series, isin: str, root, after: Optional[date] = None) -> pd.Series:
+    """Earlier closes scaled by each split or bonus factor that went ex after `after` (the panel's own end: it carries the splits before it), so a split is not a fall."""
     try:
         from pflab.core import pick_score
         f = pick_score._factors(isin, pick_score._root(root))
@@ -98,13 +112,13 @@ def _adjust(s: pd.Series, isin: str, root) -> pd.Series:
         return s
     s = s.copy()
     for r in f.itertuples(index=False):
-        if abs(float(r.factor) - 1.0) > EPS:
+        if abs(float(r.factor) - 1.0) > EPS and (after is None or r.ex_date > after):
             s[s.index < pd.Timestamp(r.ex_date)] *= float(r.factor)
     return s
 
 
-def _history(con, market: str, key: str, symbol: Optional[str], day: date, root, cfg: dict) -> Optional[pd.Series]:
-    """Closes up to `day` (never after it), adjusted for splits; None when there are not enough."""
+def _history(con, market: str, key: str, symbol: Optional[str], day: date, root, cfg: dict, full: bool = False) -> Optional[pd.Series]:
+    """Closes up to `day` (never after it), adjusted for splits; None when there are not enough. `full`: the whole stored history (a missed run looks back to the day it was passed on)."""
     n = int(cfg["history_sessions"])
     if market == "US":
         try:
@@ -116,13 +130,21 @@ def _history(con, market: str, key: str, symbol: Optional[str], day: date, root,
             return None
         s = s[s.index <= pd.Timestamp(day)]
     else:
-        rows = con.execute("SELECT date, close FROM prices WHERE isin=? AND date<=? AND date>=? AND close>0 ORDER BY date", [key, day, day - timedelta(days=int(n * 1.6) + 10)]).fetchall()
-        if not rows:
+        try:
+            from pflab.app import research
+            from pflab.core import pick_score
+            s = research.closes(con, pick_score._root(root), key, day, years=3 if full else 2)      # the panel's long history joined to the store's recent closes (the join the forecasts use)
+        except Exception:
+            s = pd.Series(dtype=float)
+        s = pd.Series(s).astype(float).dropna()
+        if not len(s):
             return None
-        s = pd.Series([float(r[1]) for r in rows], index=pd.to_datetime([r[0] for r in rows]))
-        s = _adjust(s[~s.index.duplicated(keep="last")], key, root)
-    s = s.tail(n + 1)
-    return s if len(s) >= int(cfg["min_history"]) else None
+        s.index = pd.to_datetime(s.index).normalize()
+        s = s[~s.index.duplicated(keep="last")].sort_index()
+        s = _adjust(s[(s.index <= pd.Timestamp(day)) & (s > 0)], key, root, _panel_end(root, key))
+    if not full:
+        s = s.tail(n + 1)
+    return s if len(s) >= (2 if full else int(cfg["min_history"])) else None
 
 
 def _at(ix: Optional[pd.Series], ts: pd.Timestamp) -> Optional[float]:
@@ -483,7 +505,12 @@ def _missed_signals(con, entries: List[dict], day: date, market: str, cfg: dict,
         if d0 >= day or con.execute("SELECT 1 FROM think_signals_s84 WHERE isin=? AND signal='missed_run' AND day >= ? LIMIT 1", [e["isin"], cool]).fetchone():
             continue
         try:
-            s = pick_score.stock_return_in(con, e["isin"], d0, day, root) if market == "IN" else pick_score.stock_return_us(e["symbol"], d0, day, root)
+            if market == "IN":                                   # the panel's adjusted history joined to the store's (the store alone holds only the last weeks): price return, split-safe
+                h = _history(con, "IN", e["isin"], e["symbol"], day, root, cfg, full=True)
+                a = None if h is None else h[h.index <= pd.Timestamp(d0)]
+                s = None if (h is None or a is None or not len(a) or (pd.Timestamp(d0) - a.index[-1]).days > 10 or h.index[-1].date() != day) else {"ret": float(h.iloc[-1] / a.iloc[-1] - 1.0)}
+            else:
+                s = pick_score.stock_return_us(e["symbol"], d0, day, root)
             ir = pick_score.series_return(ix, d0, day)
         except Exception:
             continue
@@ -493,7 +520,7 @@ def _missed_signals(con, entries: List[dict], day: date, market: str, cfg: dict,
         if pts >= float(cfg["missed_run_pts"]):
             out.append({"entry": e, "signal": "missed_run", "value": pts, "threshold": float(cfg["missed_run_pts"]), "surprise": pts / float(cfg["missed_run_pts"]),
                         "detail": {"passed_on": str(d0), "why_passed": e.get("base_why"), "ref": e.get("ref"), "name_return_pct": round(float(s["ret"]) * 100, 1),
-                                   "index_return_pct": round(ir * 100, 1), "points_ahead": round(pts, 1), "px_day": str(day),
+                                   "index_return_pct": round(ir * 100, 1), "return_basis": "price only against a total-return index" if market == "IN" else "price (dividends in) in dollars", "points_ahead": round(pts, 1), "px_day": str(day),
                                    "question": "was the reason for passing wrong, or has only the price changed?"}})
     return out
 
@@ -613,8 +640,8 @@ def _india_pass(con, sig_now: datetime, day: date, until: datetime, *, quotes: O
             s = s.copy()
             s.loc[pd.Timestamp(day)] = float(live)
             s = s.sort_index()
-        if (pd.Timestamp(day) - s.index[-1]).days > int(cfg["max_stale_days"]):
-            continue
+        if s.index[-1].date() != day:
+            continue                                                       # the close of `day` is not in yet (or the name did not trade): no signal on an older bar, the close is rerun when it arrives
         sigs = _price_signals(s, ix, cfg, light)
         fs = _forecast_signal(con, "IN", e["isin"], float(s.iloc[-1]), day, root, cfg) if e["held"] else None
         if fs:
@@ -640,8 +667,8 @@ def _us_pass(con, sig_now: datetime, s_day: date, until: datetime, *, quotes: Op
         if not e["held"] and "pick" not in e["why"]:
             continue
         s = _history(con, "US", e["isin"], e["symbol"], s_day, root, cfg)
-        if s is None or (pd.Timestamp(s_day) - s.index[-1]).days > int(cfg["max_stale_days"]):
-            continue
+        if s is None or s.index[-1].date() != s_day:
+            continue                                                       # the bar of the session just closed is not in yet: no signal on an older bar
         live = None if not quotes else (quotes.get(e["symbol"]) or quotes.get(e["isin"]))
         extra = {}
         if live and live > 0:
@@ -689,7 +716,11 @@ def _india_close(con, now: datetime, d: date, root, cfg: dict) -> dict:
     sig_now = now if d == now.date() else datetime.combine(d, time(15, 45))
     until = now if d == now.date() else datetime.combine(d, time(23, 59, 59))
     res = _india_pass(con, sig_now, d, until, quotes=None, light=False, root=root, cfg=cfg)
-    _log_run(con, now, "close", "IN", d, res)
+    ready = bool(con.execute("SELECT count(*) FROM prices WHERE date=? AND source='nse_bhavcopy'", [d]).fetchone()[0])
+    if ready or (now.date() - d).days > 3:                                  # a close whose prices have not arrived is not logged as done: the next catch-up runs it again
+        _log_run(con, now, "close", "IN", d, res)
+    else:
+        res["waiting_for_prices"] = str(d)
     return res
 
 
@@ -749,4 +780,34 @@ def run(con, now: datetime, *, mode: str, quotes: Optional[dict] = None, root=No
                 _merge(out, _us_morning(con, now, s, root, cfg))
     except Exception as ex:                                   # the watch never stops the loop that called it
         out["errors"].append(repr(ex)[:300])
+    return out
+
+
+# --- what Today and the reports show ---------------------------------------------------------------------------------------------------------------------------------------
+
+def watch_text(con, day: date) -> dict:
+    """The watch's day in plain words for Today, the 15:45 report and Telegram (a text block, JSON-able): how many things it noticed, how many cases it opened, how many it only logged."""
+    sig = cases.signals(con, day=day)
+    opened = cases.cases_opened_on(con, day)
+    noticed = int(con.execute("SELECT count(*) FROM think_cases_s84 WHERE opened_on=? AND state='noticed'", [day]).fetchone()[0])
+    joined = len([s for s in sig if s["status"] == "joined"])
+    by: Dict[str, int] = {}
+    for s in sig:
+        by[s["signal"]] = by.get(s["signal"], 0) + 1
+    if not sig:
+        text = "The watch noticed nothing out of the ordinary today."
+    else:
+        text = (f"The watch noticed {len(sig)} thing{'s' if len(sig) != 1 else ''} today: {opened} case{'s' if opened != 1 else ''} opened to think through"
+                + (f", {joined} added to a case already open" if joined else "") + (f", {noticed} only logged (the day's limit of {int(settings()['max_cases_per_day'])} cases was reached)" if noticed else "") + ".")
+    return {"day": str(day), "signals": len(sig), "cases_opened": opened, "joined": joined, "noticed_not_examined": noticed, "by_signal": by, "text": text}
+
+
+def missed_runs(con) -> List[dict]:
+    """Every missed-run signal ever stored (the scorecard's 'skips that ran' reads these): name, the day it was passed on, why, how far ahead it is."""
+    out = []
+    for s in cases.signals(con):
+        if s["signal"] == "missed_run":
+            d = json.loads(s["detail_json"] or "{}")
+            out.append({"signal_id": s["signal_id"], "case_id": s["case_id"], "day": s["day_s"], "market": s["market"], "isin": s["isin"], "symbol": s["symbol"], "passed_on": d.get("passed_on"),
+                        "why_passed": d.get("why_passed"), "points_ahead": d.get("points_ahead")})
     return out

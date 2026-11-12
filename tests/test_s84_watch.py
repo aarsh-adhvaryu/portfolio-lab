@@ -282,8 +282,13 @@ def test_the_catch_up_runs_each_missed_close_once_and_a_first_run_only_the_lates
     closes = [x[0] for x in con.execute("SELECT day FROM think_watch_runs_s84 WHERE mode='close' ORDER BY day").fetchall()]
     assert closes == [DAY] and r["errors"] == []                                                              # nothing logged before: only the latest session
     later = datetime(2026, 11, 5, 16, 30)
-    watch.run(con, later, mode="catchup", root=tmp_path)
     want = markets.get("IN").sessions_between(DAY + timedelta(days=1), markets.get("IN").session_closed_by(later))
+    watch.run(con, later, mode="catchup", root=tmp_path)
+    assert con.execute("SELECT count(*) FROM think_watch_runs_s84 WHERE mode='close' AND day > ?", [DAY]).fetchone()[0] == 0     # their prices have not arrived: not logged as done
+    for d in want:
+        for i in (AAA, BBB, GLD):
+            con.execute("INSERT INTO prices SELECT isin, ?, close, series, source, now() FROM prices WHERE isin=? AND date=?", [d, i, DAY])
+    watch.run(con, later, mode="catchup", root=tmp_path)                                                       # the prices are in: each missed close is run, once
     closes = [x[0] for x in con.execute("SELECT day FROM think_watch_runs_s84 WHERE mode='close' ORDER BY day").fetchall()]
     assert closes == [DAY] + want and len(want) >= 3
     n = con.execute("SELECT count(*) FROM think_watch_runs_s84").fetchone()[0]
@@ -335,3 +340,16 @@ def test_the_watch_is_off_when_the_loop_is_off_and_the_wide_watch_stays_off(con,
     assert watch.run(con, NOW, mode="close", root=tmp_path)["off"] is True and cases.signals(con) == []
     with pytest.raises(ValueError):
         watch.run(con, NOW, mode="weekly", root=tmp_path)
+
+
+def test_the_day_in_words_and_the_list_of_missed_runs(con, tmp_path, monkeypatch):
+    assert watch.watch_text(con, DAY)["text"] == "The watch noticed nothing out of the ordinary today."
+    on = _passed_on(con)
+    monkeypatch.setattr(watch, "_index", lambda market, root=None: _index_series())
+    con.execute("UPDATE prices SET close=130 WHERE isin=? AND date > ?", [CCC, on])
+    _reshape(con, BBB, [-0.04])
+    watch.run(con, NOW, mode="close", root=tmp_path)
+    w = watch.watch_text(con, DAY)
+    assert w["signals"] >= 2 and w["cases_opened"] == 2 and "2 cases opened" in w["text"] and w["by_signal"]["missed_run"] == 1
+    m = watch.missed_runs(con)
+    assert len(m) == 1 and m[0]["symbol"] == "CCC" and m[0]["passed_on"] == str(on) and m[0]["points_ahead"] >= 20
