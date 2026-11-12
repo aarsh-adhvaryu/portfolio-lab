@@ -369,3 +369,151 @@ def test_the_rule_and_the_models_choice_are_both_kept_and_the_big_trade_check(co
     whole = _whole(con)
     assert rule.needs_big_trade_check(con, "sell", 0.021 * whole, DAY) and not rule.needs_big_trade_check(con, "sell", 0.019 * whole, DAY)
     assert rule.needs_big_trade_check(con, "buy_in_parts", 1.0, DAY) and not rule.needs_big_trade_check(con, "hold", 10 * whole, DAY)
+
+
+# --- scoring, calibration, the scorecard, the advisory fallback ------------------------------------------------------------------------------------------
+
+FLAT = "INE777A01017"
+MV = [-0.20, 0.0, 0.20]
+
+
+@pytest.fixture
+def sc(tmp_path, monkeypatch):
+    """A store with one name whose closes are all 100 (so a decision's realised move is 0 unless a test sets a price), 120 sessions, and a fixed 10/50/90 curve of moves."""
+    monkeypatch.setenv("PFLAB_PM_DIR", str(tmp_path))
+    c = store.connect(tmp_path / "s.duckdb")
+    c.executemany("INSERT INTO prices VALUES (?, ?, ?, 'EQ', 'nse_bhavcopy', now())", [[FLAT, d, 100.0] for d in DAYS])
+    from pflab.think import score
+    monkeypatch.setattr(score, "_moves", lambda con, case, isin, symbol, decided_on, root=None: list(MV))
+    return c
+
+
+def _decide(con, k_back: int, rule_opt: str, model_opt, curves: dict, words=None, rule_hits=None):
+    """A case decided `k_back` sessions before the last day: its stored options (option -> (worst, likely, best)) and its decision; the answer with the words goes into a step."""
+    d0 = DAYS[-k_back]
+    now = datetime.combine(d0, datetime.min.time()) + timedelta(hours=15)
+    cid = cases.open_case(con, now, market="IN", kind="move", isin=FLAT, symbol="FLAT", title="flat moved", exposure_inr=100000, exposure_pct=0.01, score=1.0)
+    for opt, (w, l, b) in curves.items():
+        track = "rule" if opt == rule_opt else ("model" if opt == model_opt else "alt")
+        cases.add_option(con, cid, now, track=track, isin=FLAT, symbol="FLAT", option=opt, worst_inr=w, likely_inr=l, best_inr=b, expected_inr=l, worst_pct_book=0.0, size_inr=1000.0, chosen=track != "alt")
+    if words:
+        cases.add_step(con, cid, now, "understand", engine="fake", model="fake", thinking="low", payload={"answer": {"class": "temporary", "choices": [{"isin": FLAT, "symbol": "FLAT", "option": model_opt, "words": words}]}})
+    cases.record_decision(con, cid, d0, isin=FLAT, symbol="FLAT", rule_option=rule_opt, model_option=model_opt, acted_option=rule_opt)
+    return cid
+
+
+def test_a_decision_is_scored_at_5_20_and_60_sessions_against_every_option_not_taken_after_tax(sc):
+    from pflab.think import score
+    for off, px in ((70, 95.0), (50, 120.0), (10, 100.0)):                       # the price 5 sessions after the decision, then 20, then 60
+        pass
+    d0_idx = len(DAYS) - 70
+    sc.execute("UPDATE prices SET close=95 WHERE isin=? AND date=?", [FLAT, DAYS[d0_idx + 5]])
+    sc.execute("UPDATE prices SET close=120 WHERE isin=? AND date=?", [FLAT, DAYS[d0_idx + 20]])
+    sc.execute("UPDATE prices SET close=90 WHERE isin=? AND date=?", [FLAT, DAYS[d0_idx + 60]])
+    cid = _decide(sc, 70, "sell", "hold", {"sell": (-1000, -1000, -1000), "hold": (-40000, -1000, 38000), "buy_in_parts": (-10000, 500, 11000)})
+    n = score.score_due(sc, DAY)
+    assert n == 3 * 3                                                              # three horizons x three options
+    r = {(h, t, o): (res, vs) for h, t, o, res, vs in sc.execute("SELECT horizon_sessions, track, option, result_inr, vs_nothing_inr FROM think_scores_s84").fetchall()}
+    # at 5 sessions the price is down 5%: hold = -1000 + (-0.05 / -0.20) * (-40000 + 1000) on the line between the worst and the likely points
+    hold5 = -1000 + 0.25 * (-40000 + 1000)
+    assert r[(5, "model", "hold")][0] == pytest.approx(hold5) and r[(5, "rule", "sell")][0] == pytest.approx(-1000)
+    assert r[(5, "rule", "sell")][1] == pytest.approx(-1000 - hold5) and r[(5, "model", "hold")][1] == pytest.approx(0.0)       # against doing nothing (the stored hold)
+    hold20 = -1000 + 0.20 / 0.20 * (38000 + 1000)                                  # +20%: the best point
+    assert r[(20, "model", "hold")][0] == pytest.approx(hold20) and r[(20, "rule", "sell")][1] == pytest.approx(-1000 - hold20)
+    assert r[(60, "alt", "buy_in_parts")][0] == pytest.approx(-10000 + 0.5 * (500 + 10000))                                      # -10%: halfway between worst and likely
+    assert score.score_due(sc, DAY) == 0                                           # once only
+    young = _decide(sc, 3, "sell", None, {"sell": (-1000, -1000, -1000), "hold": (-1, 0, 1)})
+    assert score.score_due(sc, DAY) == 0 and young                                 # three sessions old: not due
+
+
+def test_the_scorecard_counts_rupees_against_nothing_how_often_right_and_says_a_count_under_twenty(sc):
+    from pflab.think import score
+    _decide(sc, 70, "sell", "hold", {"sell": (-1000, -1000, -1000), "hold": (5000, 6000, 7000)})            # the rule sold, holding was better
+    _decide(sc, 69, "hold", "sell", {"sell": (-1000, -1000, -1000), "hold": (5000, 6000, 7000)})            # the rule held, the model sold
+    score.score_due(sc, DAY)
+    card = score.scorecard(sc)
+    assert card["scored"] == 2 and card["rule_track"]["n"] == 2 and card["model_track"]["n"] == 2
+    assert card["rule_track"]["vs_nothing_inr"] == pytest.approx(-7000.0) and card["model_track"]["vs_nothing_inr"] == pytest.approx(-7000.0)       # sell: -1000 - 6000 ; hold = nothing: 0 ; model: the reverse
+    assert card["rule_track"]["right"] == 1 and "under 20" in card["text"] and card["model_vs_rule"]["beats"] is False
+    assert card["advisory"] is False
+
+
+def test_the_advisory_fallback_switches_on_at_twenty_scored_when_behind_nothing_and_off_when_ahead(sc):
+    from pflab.think import score
+    losing = {"sell": (-1000, -1000, -1000), "hold": (5000, 6000, 7000)}
+    for k in range(19):
+        _decide(sc, 100 - k, "sell", None, losing)
+    score.score_due(sc, DAY)
+    assert score._track(sc, "rule")["n"] == 19 and score.advisory(sc, DAY) is False                      # behind, but under 20 scored: live
+    _decide(sc, 80, "sell", None, losing)
+    score.score_due(sc, DAY)
+    assert score._track(sc, "rule")["n"] == 20 and score.advisory(sc, DAY) is True                       # 20 scored and behind nothing: advisory
+    winning = {"sell": (20000, 20000, 20000), "hold": (-3000, -2000, -1000)}
+    for k in range(8):
+        _decide(sc, 79 - k, "sell", None, winning)                                                     # each wins Rs 22,000 against holding: 8 x 22,000 beats 20 x -7,000
+    score.score_due(sc, DAY)
+    assert score._track(sc, "rule")["vs_nothing_inr"] > 0 and score.advisory(sc, DAY) is False          # ahead again: live
+    assert score.scorecard(sc)["advisory"] is False
+
+
+def test_the_loop_can_be_forced_advisory_in_the_config(sc, monkeypatch):
+    from pflab.think import score
+    real = think.settings
+    monkeypatch.setattr(think, "settings", lambda: {**real(), "mode": "advisory"})
+    assert score.advisory(sc, DAY) is True
+
+
+def test_calibration_moves_a_word_only_after_twenty_scored_in_bounded_monthly_steps(sc):
+    from pflab.think import score
+    words = {"worst": "very likely", "likely": "even", "best": "unlikely"}                              # the price never moves: the worst never comes, the likely one does
+    for k in range(19):
+        _decide(sc, 100 - k, "hold", "hold", {"hold": (-40000, -1000, 38000)}, words=words)
+    score.score_due(sc, DAY)
+    c = score.calibrate(sc, DAY)
+    assert c["words"]["very likely"]["n"] == 19 and c["words"]["very likely"]["hits"] == 0 and c["moved"] == []         # 19 scored: the table does not move
+    assert cases.probabilities(sc)["very likely"] == 0.95
+    _decide(sc, 80, "hold", "hold", {"hold": (-40000, -1000, 38000)}, words=words)
+    score.score_due(sc, DAY)
+    c = score.calibrate(sc, DAY)
+    assert set(c["moved"]) == {"very likely", "even", "unlikely"} or set(c["moved"]) >= {"very likely", "even"}
+    p = cases.probabilities(sc)
+    assert p["very likely"] == pytest.approx(0.90) and p["even"] == pytest.approx(0.55) and p["unlikely"] == pytest.approx(0.20)        # a step of 0.05 toward 0, 1 and 0
+    assert p["very unlikely"] == 0.05 and p["likely"] == 0.75                                           # words nobody used stay
+    again = score.calibrate(sc, DAY)                                                                    # the same month: no second step
+    assert again["moved"] == [] and cases.probabilities(sc) == p
+    later = score.calibrate(sc, DAY + timedelta(days=31))                                               # the next month: another bounded step
+    assert cases.probabilities(sc)["very likely"] == pytest.approx(0.85)
+    for _ in range(30):
+        later = score.calibrate(sc, DAY + timedelta(days=31 * (_ + 2)))
+    p = cases.probabilities(sc)
+    assert p["unlikely"] == pytest.approx(0.02) and p["very likely"] == pytest.approx(0.02) and p["even"] == pytest.approx(0.98)        # never outside [0.02, 0.98]
+    t = odds.weights(words, p)                                                                           # and the weights follow the table
+    assert t == pytest.approx([0.02 / 1.02, 0.98 / 1.02, 0.02 / 1.02])
+
+
+def test_skips_that_ran_are_counted_beside_skips_that_fell(sc):
+    from pflab.core import pick_score
+    for sid, (ret, idx) in enumerate(((60.0, 10.0), (-5.0, 3.0), (12.0, 10.0)), 1):
+        sc.execute("INSERT INTO skips_s83 (skip_id, market, isin, symbol, why, skipped_on, session_ref) VALUES (?, 'IN', ?, ?, 'passed', ?, 'x')", [sid, f"INE00{sid}A01011", f"S{sid}", DAYS[-300]])
+        pick_score._insert(sc, {"kind": "skip", "ref_id": sid, "market": "IN", "isin": f"INE00{sid}A01011", "horizon_months": 6, "start_on": DAYS[-300], "end_on": DAYS[-100], "return_pct": ret,
+                                "index_return_pct": idx, "excess_pct": ret - idx, "tax_charges_pct": None, "after_tax": False, "scored_on": DAYS[-90], "index_raw_pct": idx, "symbol": f"S{sid}", "detail": {}})
+    from pflab.think import score
+    card = score.scorecard(sc)
+    assert (card["skips_ran"], card["skips_fell"], card["skips_scored"], card["skips_total"]) == (1, 1, 3, 3) and "beat their index" in card["text"]
+
+
+def test_the_live_test_is_registered_once_with_the_protocols_hash_and_a_changed_protocol_is_seen(sc, tmp_path, monkeypatch):
+    from pflab.learner import counter, s84
+    from pflab.think import score
+    assert score.protocol_ok(sc)["registered"] is False
+    n0 = counter.n_tests(sc)
+    assert score.register(sc, NOW) == ["s84:thinking_live"] and counter.n_tests(sc) == n0 + 1
+    assert score.register(sc, NOW) == [] and counter.n_tests(sc) == n0 + 1                          # idempotent
+    ok = score.protocol_ok(sc)
+    assert ok["registered"] and ok["unchanged"] and s84.protocol_sha() == json.loads(sc.execute("SELECT params_json FROM learn_tests WHERE note='s84:thinking_live'").fetchone()[0])["protocol_sha256"]
+    copy = tmp_path / "p.md"
+    copy.write_bytes(PROTOCOL.read_bytes().replace(b"\n", b"\r\n"))                                  # a checkout that turns LF into CRLF is not an edit
+    monkeypatch.setattr(s84, "PROTOCOL", copy)
+    assert score.protocol_ok(sc)["unchanged"] is True
+    copy.write_bytes(copy.read_bytes() + b"\nan edit\n")
+    assert score.protocol_ok(sc)["unchanged"] is False and "changed" in score.protocol_ok(sc)["why"]

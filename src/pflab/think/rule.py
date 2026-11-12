@@ -272,6 +272,19 @@ def _decide_one(con, case: dict, ans: dict, ch: dict, asof: date, free_override:
     return out(b["option"], f"No new money now: {why}", 0.0, b["guards"], refused=b["refused"], parts=b.get("parts"), extra={"outcome": b.get("outcome")})
 
 
+def option_row(d: dict) -> dict:
+    """The keyword arguments for `cases.add_option(con, case_id, now, track="rule", chosen=True, **row)` of one decision of `decide` (`d` or an entry of `d["all"]`): the rupees of the chosen
+    option; a buy's rupees are scaled from the whole bet to the part decided now (so the row's size and its rupees agree, as `think/score.py` reads them)."""
+    o = d.get("outcome") or {}
+    k = 1.0
+    tot = (d.get("parts") or {}).get("total_inr")
+    if d.get("rule_option") == "buy_in_parts" and tot and tot > 0 and o:
+        k = float(d["size_inr"]) / float(tot)
+    return {"isin": d.get("isin"), "symbol": d.get("symbol"), "option": d["rule_option"], "worst_inr": float(o.get("worst_inr", 0.0)) * k, "likely_inr": float(o.get("likely_inr", 0.0)) * k,
+            "best_inr": float(o.get("best_inr", 0.0)) * k, "expected_inr": float(o.get("expected_inr", 0.0)) * k, "worst_pct_book": float(o.get("worst_pct_book", 0.0)) * k,
+            "size_inr": float(d.get("size_inr") or 0.0), "reason": d.get("reason", "")}
+
+
 def decide(con, case_id: int, answer: Optional[dict], asof, *, reserve_free_inr: Optional[float] = None, root=None) -> dict:
     """The rule's decision for the case. The returned dict is the case's own name's decision; `all` lists one per name in the answer. `reserve_free_inr` states the free reserve (tests)."""
     asof = asof.date() if isinstance(asof, datetime) else asof
