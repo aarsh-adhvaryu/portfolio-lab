@@ -34,7 +34,9 @@ BudgetRefused = an.BudgetRefused
 # S70: with the monthly cap at Rs 1,000 and the brain down to a pass a day, the workers (his investigations and the system's) get most of it
 LAYERS: Dict[str, tuple] = {"readers": (0.06, 15.0), "workers": (0.55, 80.0), "brain": (0.15, 40.0),
                             # S80 (v2): what the cloud money is FOR: the strategist's lab sessions (about 70% of the cap), the big-trade and anomaly checks (20%), the local model's escalations (10%)
-                            "strategist": (0.70, 450.0), "checker": (0.20, 150.0), "escalation": (0.10, 100.0)}
+                            "strategist": (0.70, 450.0), "checker": (0.20, 150.0), "escalation": (0.10, 100.0),
+                            # S84: the thinking loop's cases and the daily desk, called through `llm/gateway.py` (A55: the day figure is generous; the desk has its own daily budget and his monthly cap is the hard limit)
+                            "thinking": (0.60, 400.0)}
 
 
 @dataclass(frozen=True)
@@ -65,6 +67,9 @@ LIMITS: Dict[str, Limits] = {
     "strategist": Limits("strategist", 120_000, 12_000, {"off": 0, "economy": 2, "normal": 2}),
     "checker": Limits("checker", 30_000, 1_500, {"off": 0, "economy": 10, "normal": 20}),
     "escalation": Limits("escalation", 20_000, 1_500, {"off": 0, "economy": 20, "normal": 40}),
+    # S84: the one door (`llm/gateway.py`): a case's reading and decision (`think`) and the daily desk (`desk`); thinking counts as output, so a call may ask for a lot of room
+    "think": Limits("thinking", 120_000, 20_000, {"off": 0, "economy": 60, "normal": 200}),
+    "desk": Limits("thinking", 120_000, 20_000, {"off": 0, "economy": 60, "normal": 200}),
 }
 COUNTED = ("done", "sending", "queued", "submitted", "refused")
 
