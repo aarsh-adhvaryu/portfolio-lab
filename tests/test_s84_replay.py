@@ -124,10 +124,10 @@ def test_the_scripted_client_serves_a_tool_turn_then_text_and_counts_every_answe
 def test_every_scripted_answer_fits_the_closed_lists_and_carries_no_number(name):
     from pflab.think import session
     fn = M.SCENARIOS[name]
-    syms = {"nvda_held": "NVDA", "nvda_not_held": "NVDA", "ather": "ATHERENERG"}[name]
+    syms = {"nvda_held": "NVDA", "nvda_not_held": "NVDA", "ather": "SYNMISSED"}[name]
     for sym in (syms, "SPY", "SYNFMCG"):
         for n in (1, 2):
-            ans = fn({"symbol": sym, "case_id": 1}, n)
+            ans = fn({"symbol": sym, "case_id": 1, "kind": "missed_run"}, n)
             assert session.validate_answer(json.loads(json.dumps(ans)), "Nifty 500 S&P 500 Nasdaq 100") == [], (name, sym, n)
 
 
@@ -148,8 +148,8 @@ def test_the_account_prints_a_day_in_plain_lines():
 
 def test_a_skip_is_stored_and_the_snapshot_sees_only_what_is_new(con):
     before = R._maxids(con)
-    R.add_skip(con, "IN", "INE0LEZ01016", "ATHERENERG", "valuation", date(2026, 9, 21))
-    assert con.execute("SELECT symbol, skipped_on FROM skips_s83").fetchall() == [("ATHERENERG", date(2026, 9, 21))]
+    R.add_skip(con, "IN", "INE9S0A01011", "SYNMISSED", "valuation", date(2026, 9, 21))
+    assert con.execute("SELECT symbol, skipped_on FROM skips_s83").fetchall() == [("SYNMISSED", date(2026, 9, 21))]
     from pflab.think import cases
     cid = cases.open_case(con, datetime(2026, 11, 9, 7, 0), market="US", kind="thesis_event", isin="ZZ0001045810", symbol="NVDA", title="t")
     snap = R.snapshot_since(con, before)
@@ -158,5 +158,5 @@ def test_a_skip_is_stored_and_the_snapshot_sees_only_what_is_new(con):
 
 
 def test_the_ather_skip_day_is_the_first_stored_day_near_1400():
-    pan = pd.DataFrame({"symbol": ["ATHERENERG"] * 5, "date": [date(2026, 9, 18), date(2026, 9, 21), date(2026, 9, 22), date(2026, 9, 23), date(2026, 9, 24)], "close": [1300.0, 1380.0, 1395.0, 1499.0, 1500.0]})
+    pan = pd.DataFrame({"symbol": [R.ATHER["symbol"]] * 5, "date": [date(2026, 9, 18), date(2026, 9, 21), date(2026, 9, 22), date(2026, 9, 23), date(2026, 9, 24)], "close": [1300.0, 1380.0, 1395.0, 1499.0, 1500.0]})
     assert R.ather_skip_day(pan) == date(2026, 9, 21)

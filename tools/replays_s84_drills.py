@@ -51,14 +51,15 @@ def add_event(con, isin: str, kind: str, severity: str, ts: datetime, headline: 
 def sale_orders(con, isin: str, like: str = "%") -> list:
     """The rupee book's sell orders of a name (the paper book's own table), reason matched by `like`."""
     try:
-        return con.execute("SELECT order_id, isin, side, qty, status, reason FROM paper_orders WHERE isin=? AND side IN ('sell','SELL') AND reason LIKE ?", [isin, like]).fetchall()
+        return con.execute("SELECT order_id, isin, side, qty, status, note FROM paper_orders WHERE isin=? AND side IN ('sell','SELL') AND note LIKE ?", [isin, "case #%" if like == "%" else like]).fetchall()
     except Exception:
         return []
 
 
-def buy_orders(con, isin: str) -> list:
+def buy_orders(con, isin: str, since: Optional[date] = None) -> list:
+    """Buy orders of a name placed on or after `since` (all when None)."""
     try:
-        return con.execute("SELECT order_id, isin, side, qty, status, reason FROM paper_orders WHERE isin=? AND side IN ('buy','BUY')", [isin]).fetchall()
+        return con.execute("SELECT order_id, isin, side, qty, status, note, placed_at FROM paper_orders WHERE isin=? AND side IN ('buy','BUY') AND cast(placed_at as date) >= ?", [isin, since or date(2000, 1, 1)]).fetchall()
     except Exception:
         return []
 
@@ -92,6 +93,13 @@ class World:
     def close(self) -> None:
         R.disarm()
         self.env.close()
+
+
+def pytest_approx(x: float, rel: float = 1e-6):
+    class _A:
+        def __eq__(self, other):
+            return abs(other - x) <= rel * max(1.0, abs(x))
+    return _A()
 
 
 def _evidence_clean(w: World, c) -> None:
@@ -159,8 +167,8 @@ def drill_missed_exit(c) -> None:
             fr = [f for f in cases._rows(con, "think_freezes_s84", ("freeze_id", "isin", "since", "until", "until_event", "active"), "WHERE isin=?", [IT1])]
             c.ok(bool(fr), f"a freeze on the name was stored ({[(f['since'].isoformat(), f['active']) for f in fr]})", "think/session.py act")
             first_freeze_day = fr[0]["since"] if fr else None
-            during = [b for b in buy_orders(con, IT1)]
-            c.ok(not during, f"no buy order for the frozen name at any time ({during[:2]})", "core/baseline_v2.py / think freeze hook")
+            during = buy_orders(con, IT1, first_freeze_day)
+            c.ok(not during, f"no buy order for the frozen name from the freeze on ({during[:2]})", "core/baseline_v2.py / think freeze hook")
             c.ok(len(d) >= 2, f"it was looked at again and decided again ({len(d)} decisions)", "think/session.py follow_up")
             if len(d) >= 2:
                 c.ok(d[-1]["rule_option"] in ("hold", "buy_in_parts", "nothing", "wait", "freeze"), f"the later decision is the rule's, by its guards: {d[-1]['rule_option']} ({d[-1]['reason'][:120]})", "think/rule.py")
@@ -262,7 +270,7 @@ def drill_bet_sizing(c) -> None:
         out = []
         for isin, free in ((PICK1, 10_000_000.0), (PICK1, 3_000.0), (PICK2, 0.0)):
             cid = cases.open_case(con, D.dt(asof, 16), market="IN", kind="dip", isin=isin, symbol=SYM[isin], title=f"a chance on {SYM[isin]} (drill)", opened_by="drill")
-            ans = _answer("temporary", "buy_in_parts", SYM[isin])
+            ans = _answer("temporary", "buy_in_parts", SYM[isin], worst="unlikely", likely="likely", best="very likely")
             r = rule.decide(con, cid, ans, asof, reserve_free_inr=free)
             out.append((SYM[isin], free, r["rule_option"], r.get("refused"), round(r["size_inr"]), r.get("guards", [])[:2]))
             oc = (r.get("outcome") or {})
@@ -270,7 +278,16 @@ def drill_bet_sizing(c) -> None:
                 whole = odds.whole_book(con, asof)
                 c.ok(oc.get("worst_inr", 0) >= -0.01 * whole * (1 + 1e-6), f"the bet's worst case Rs {oc.get('worst_inr', 0):,.0f} fits 1% of the whole book (Rs {0.01 * whole:,.0f}) with a reserve of Rs {free:,.0f}", "think/rule.py _buy")
         c.note(f"decisions: {out}")
-        c.ok(any(o[2] == "buy_in_parts" for o in out), "with room a bet is sized and placed", "think/rule.py")
+        c.ok(any(o[2] == "buy_in_parts" for o in out), "with room and a positive expected result a bet is sized and placed", "think/rule.py")
+        rates = odds.base_rates(con, "dip", isin=PICK1, asof=asof, market="IN", symbol=SYM[PICK1])
+        k = 20 if 20 in rates else "20"
+        deep = dict(rates)
+        deep[k] = dict(rates[k], p10=-0.5)
+        cid = cases.open_case(con, D.dt(asof, 16), market="IN", kind="dip", isin=PICK1, symbol=SYM[PICK1], title="a deep bad case (drill)", opened_by="drill")
+        b0 = odds.bet_size(con, cid, PICK1, asof, market="IN", symbol=SYM[PICK1], rates=rates)
+        b1 = odds.bet_size(con, cid, PICK1, asof, market="IN", symbol=SYM[PICK1], rates=deep)
+        c.ok(b1["size_inr"] is not None and b0["size_inr"] is not None and b1["size_inr"] < b0["size_inr"], f"a deeper bad case sizes the bet down (Rs {b0['size_inr']:,.0f} -> Rs {b1['size_inr']:,.0f})", "think/odds.py bet_size")
+        c.ok(abs(b1["size_inr"] * b1["worst_per_inr"]) == pytest_approx(b1["limit_inr"]), f"the sized bet loses exactly the limit in its bad case (Rs {abs(b1['size_inr'] * b1['worst_per_inr']):,.0f} of Rs {b1['limit_inr']:,.0f})", "think/odds.py bet_size")
         c.ok(out[-1][2] in ("nothing", "wait") and out[-1][3], f"with no free reserve the bet is refused ({out[-1][2]}, refused {out[-1][3]})", "think/rule.py")
         _evidence_clean(w, c)
     finally:

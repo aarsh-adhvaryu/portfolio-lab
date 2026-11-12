@@ -40,7 +40,17 @@ APP_DATA = Path(os.environ.get("S84_APP_DATA", r"D:\PortfolioLabApp\data"))     
 WORKSHOP_DATA = Path(os.environ.get("S84_WORKSHOP_DATA", r"D:\portfolio_lab\data"))      # read only
 
 NVDA = {"symbol": "NVDA", "name": "NVIDIA Corporation", "cik": 1045810}
-ATHER = {"symbol": "ATHERENERG", "isin": "INE0LEZ01016", "name": "Ather Energy Limited", "sector": "Auto"}
+NAMES_FILE = Path(os.environ.get("S84_REPLAY_NAMES", r"D:\s84_scratch\replay\names.json"))     # the Indian name of replay (iii) is kept OUT of git (it is on his list): {"symbol","isin","name","sector"}
+
+
+def _names() -> dict:
+    try:
+        return json.loads(NAMES_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {"symbol": "SYNMISSED", "isin": "INE9S0A01011", "name": "SYNMISSED Limited", "sector": "Auto"}          # no file: a placeholder (the real-bars replay then cannot run)
+
+
+ATHER = _names()
 REAL_US = ("NVDA", "SPY", "QQQ", "XLK")                        # US bars laid over the profile (data/us/raw)
 REAL_GLOBAL = {"^GSPC": "US_SP500", "^IXIC": "US_NASDAQ", "CL=F": "BRENT_FUT"}                  # data/global/<name>
 SOURCE = "press reports"
@@ -68,14 +78,14 @@ def _drills():
 
 
 D = _drills()
-from replays_s84_model import (ATHER_SYMBOL, NVDA_SYMBOL, Scenario, ScriptedClient, ScriptMsg, ather_answers, case_of, nvda_held_answers, nvda_not_held_answers, words)       # noqa: E402,F401
+from replays_s84_model import (NVDA_SYMBOL, Scenario, ScriptedClient, ScriptMsg, ather_answers, case_of, nvda_held_answers, nvda_not_held_answers, words)       # noqa: E402,F401
 
 
 # --- real data ------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 def build_real_data(out: Path = REAL, app_data: Path = APP_DATA, workshop: Path = WORKSHOP_DATA, fetch: Optional[Callable] = None) -> dict:
     """The real bars the replays lay over the profile, written ONLY under `out`: the US names from a fresh Yahoo download (the repo's own `data/us_prices.fetch`), the Nifty indices and the USD/INR
-    close from the app's data (read only), and ATHERENERG with a few auto peers in the panel's layout (the workshop's panel to its last day, then the app's bhavcopy files)."""
+    close from the app's data (read only), and the missed-run name (NAMES_FILE) with a few auto peers in the panel's layout (the workshop's panel to its last day, then the app's bhavcopy files)."""
     import pandas as pd
     from pflab.data import us_prices as up
     fetch = fetch or up.fetch

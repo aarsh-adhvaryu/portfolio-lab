@@ -8,7 +8,6 @@ from types import SimpleNamespace
 from typing import Callable, Dict, List, Optional
 
 NVDA_SYMBOL = "NVDA"
-ATHER_SYMBOL = "ATHERENERG"
 
 
 class ScriptMsg:
@@ -124,8 +123,8 @@ def nvda_not_held_answers(case: dict, n: int) -> dict:
 
 
 def ather_answers(case: dict, n: int) -> dict:
-    sym = case.get("symbol") or ATHER_SYMBOL
-    if sym != ATHER_SYMBOL:
+    sym = case.get("symbol") or "the name"
+    if case.get("kind") != "missed_run":
         return _other(case)
     return {"happened": "Ather Energy has run well ahead of its index since the system looked at it and passed (the skip reason was valuation against negative trailing earnings).",
             "sources": ["the stored skip and its reason", "the stored closes against the index total return"], "class": "temporary",
