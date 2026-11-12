@@ -229,3 +229,4 @@ quiet_close_sessions = 60
 big_trade_share = 0.02
 opus_exposure_share = 0.02
 advisory_after_scored = 20
+wide_watch = false            # S85: the Nifty 500 and S&P 500 members (T1 scope); OFF, not built tonight
