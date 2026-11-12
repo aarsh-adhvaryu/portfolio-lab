@@ -24,7 +24,12 @@ MAX_PAID_FAILURES = 2
 KEY_PICKS = "first_picks_s83"
 REASON_PICKS = ("the first picks (S83): make the first stock picks for the picks sleeve, in India (up to its share, beside his Kite stocks) and in the US (beside SPY): "
                 "screen, read company cards, name stocks with a thesis, record the ones skipped")
-KEYS = {REASON: KEY, REASON_PICKS: KEY_PICKS}
+# S84 F1: one picks session for India at the first open after the release made room for the system's own picks (his decision 2026-11-12); once-only like the others, and only after the
+# share's new start was written (`pick_share.set_start_by_decision`), since before it there is no room to name a pick for.
+KEY_PICKS_IN = "first_picks_in_s84"
+REASON_PICKS_IN = ("the first Indian picks with room (S84): the India picks sleeve now has room for the system's own picks beside his Kite stocks (ordinary picks up to 10 points; 10 points are the "
+                   "opportunity reserve, not for picks): screen India, read company cards, name stocks with a thesis, record the ones skipped")
+KEYS = {REASON: KEY, REASON_PICKS: KEY_PICKS, REASON_PICKS_IN: KEY_PICKS_IN}
 
 
 def state(con, key: str = KEY) -> Optional[dict]:
@@ -48,8 +53,19 @@ def _pending(con, now: datetime, key: str) -> bool:
 
 def reasons(con, now: datetime) -> list:
     """The once-only reasons still to run: REASON (the S82 first session) and REASON_PICKS (the S83 first picks), each while never done, tried less than once today and not given up.
-    Both pending = both in the list, and the one session that follows serves both."""
-    return [r for r, k in KEYS.items() if _pending(con, now, k)]
+    Both pending = both in the list, and the one session that follows serves both. S84 F1 adds REASON_PICKS_IN (key `first_picks_in_s84`), listed only once the India share's new start exists."""
+    out = []
+    for r, k in KEYS.items():
+        if k == KEY_PICKS_IN:
+            try:
+                from pflab.core import pick_share
+                if not pick_share.decision_done(con, "IN"):
+                    continue                                                              # no room yet: the share's new start was not written (waiting for his Kite stocks to be held)
+            except Exception:
+                continue
+        if _pending(con, now, k):
+            out.append(r)
+    return out
 
 
 def keys_in(rs) -> list:

@@ -64,12 +64,10 @@ def market_block(con, market: str, day: date) -> dict:
 
 
 def share_ceiling(market: str, share: float) -> float:
-    """The most the picks may hold of the market's book: the sleeve's share (US: also under 1 minus the SPY floor)."""
-    if market != "US":
-        return share
+    """The most the picks may hold of the market's book: the sleeve's share less the opportunity reserve (US: also under 1 minus the SPY floor and the reserve)."""
     try:
-        from pflab.core import pick_share
-        return min(share, 1.0 - float(pick_share.settings("US")["us_spy_floor"]))
+        from pflab.core import picks
+        return picks.ordinary_ceiling(market, share)                 # F1/A64: less the opportunity reserve (India) / SPY's floor and the reserve (US)
     except Exception:
         return share
 
@@ -79,7 +77,12 @@ def _market_text(m: dict) -> str:
     if not m["on"]:
         return f"PICKS, {nm}: switched off for now (the book holds its core and what it holds)."
     holds = float(m["holds"]) if m.get("holds") is not None else m["share"] - m["room"]               # what the picks and his stocks in the sleeve really hold (it can be over the share: nothing is sold to reach it)
-    head = (f"PICKS, {nm}: the sleeve's share is {m['share']:.0%} ({m['share_why']}); the picks hold {holds:.1%}"
+    try:
+        from pflab.core import picks as _pk
+        rsv = f", {_pk.reserve_points(m['market']):g} points of it the opportunity reserve in cash, which only the thinking loop spends" if m["market"] == "IN" else ""
+    except Exception:
+        rsv = ""
+    head = (f"PICKS, {nm}: the sleeve's share is {m['share']:.0%} ({m['share_why']}){rsv}; the picks hold {holds:.1%}"
             + (", room left under the share " + f"{m['room']:.0%}" if m["room"] > 0.005 else ", no room left under the share" + (" (they hold more than the share: nothing is sold to reach it)" if holds > m["share"] + 0.005 else "")) + "."
             + (" The share was just lowered: no new picks until the next judgment." if m["no_new_picks"] else ""))
     if not m["picks"]:

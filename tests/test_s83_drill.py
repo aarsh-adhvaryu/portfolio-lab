@@ -72,7 +72,7 @@ def test_the_block_built_from_the_store_carries_what_the_sleeve_holds(tmp_path, 
     monkeypatch.setenv("PFLAB_DATA_DIR", str(tmp_path / "data"))
     con = store.connect(tmp_path / "l.duckdb")
     b = picks_card.market_block(con, "IN", date(2026, 11, 2))
-    assert b["holds"] == 0.0 and b["room"] == pytest.approx(0.40) and "the picks hold 0.0%, room left under the share 40%" in picks_card._market_text(b)
+    assert b["holds"] == 0.0 and b["room"] == pytest.approx(0.30) and "the picks hold 0.0%, room left under the share 30%" in picks_card._market_text(b)
 
 
 # --- the US sub-book: a withdrawn pick is sold whole, never left as dust ---------------------------------------------------------------------------------------
