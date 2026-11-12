@@ -53,6 +53,8 @@ weekly_days = 7
 max_turns = 18
 model = "claude-opus-5-5"
 weeks_to_win = 8              # after this many weeks with no AI-written challenger beating the baseline the strategist's budget halves and the system tells him
+daily_budget_rupees = 30.0    # S84 T10: the daily desk's most in a day (Sonnet reads, Opus decides); halves from throttle_after while the decision scorecard has 20 scored decisions and is behind "do nothing"
+desk_on = true                # S84 T10: the daily desk (one session after the Indian close, one in the IST morning after a US session, one catch-up after a gap)
 
 [checker]
 on = true                     # Sonnet's pass-or-veto on big trades (phase 3)
