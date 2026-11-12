@@ -42,3 +42,7 @@ stress estimate. Neighbours run: test_s81_us, test_s82_us, test_s83_drill, test_
 ## Exposed for screens
 `pick_score.scorecard(con, market)["named_not_held"]` (list of symbols), `pick_score.pick_started(...)`, `picks_card.market_block(...)["picks"][i]["held_yet"]`, stress detail `beta_measured`/`beta`/`limits`. Text: the scorecard
 text carries the "named, not yet held" line; the card's PICKS section says it per pick.
+
+## Also rewritten (behaviour that changed)
+`tests/test_s83_score.py::test_a_pick_cut_early...` (the pick now has a first fill: bought, then withdrawn) and `tests/test_s83_strat.py::test_the_picks_section...` (shows "named, not yet held" first, then the record after a first fill).
+Run green: test_s81_us, test_s82_us, test_s83_drill, test_s83_picks, test_s83_score, test_s83_strat, test_s80_strategist, test_s80_lab_service, test_s81_drills_harness, test_s73_loop, test_s81_drills_fixes, test_s82_cut, test_s79_forecast, test_s79_transmission, test_s79b_lens; privacy grep clean.
