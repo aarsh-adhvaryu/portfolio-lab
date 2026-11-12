@@ -91,6 +91,14 @@ def test_the_synthetic_prices_are_deterministic_and_the_data_files_hold_nothing_
         assert pd.to_datetime(df["date"]).max().date() <= last
     panel = pd.read_parquet(data / "panel" / "prices.parquet")
     assert set(panel["instrument_type"]) == {"STK", "ETF"} and {"NIFTYBEES", "GOLDBEES", "JUNIORBEES"} <= set(panel["symbol"])
+    # S84 (drillfix): the real panel carries the day's open/high/low and the lab's replay reads them (`build_panel(extras=True)`); the drills' panel lacked them, so every drill's strategist
+    # job logged `allocation: BinderException: Referenced column "open" not found`
+    assert {"open", "high", "low"} <= set(panel.columns) and bool((panel["low"] < panel["close"]).all() and (panel["high"] > panel["close"]).all())
+    from pflab.lab import runner
+    monkeypatch.setattr(runner, "_sector", lambda k: None)                      # the sector map and the results map are real data files the drills do not carry
+    monkeypatch.setattr(runner, "build_results", lambda *a, **k: {})
+    built = runner.build_panel(data, n_names=20, start=date(2000, 1, 1), end=date(2100, 1, 1), extras=True)
+    assert set(built["ohlc"]) == {"open", "high", "low"} and not built["ohlc"]["open"].dropna(how="all").empty
 
 
 def test_the_fake_local_model_answers_the_storyline_readers_schema_validly(D):
