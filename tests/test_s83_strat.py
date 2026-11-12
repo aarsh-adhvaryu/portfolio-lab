@@ -41,7 +41,7 @@ def test_the_three_picks_tools_are_registered_short_and_take_no_size_price_or_we
     for word in ("size", "price", "weight", "amount", "quantity", "qty", "percent", "share_of"):
         assert word not in blob, word
     assert set(defs["propose_picks"]["input_schema"]["properties"]) == {"market", "items", "learned_from"}
-    assert set(defs["propose_picks"]["input_schema"]["properties"]["items"]["items"]["properties"]) == {"symbol", "thesis", "break_condition", "storylines"}
+    assert set(defs["propose_picks"]["input_schema"]["properties"]["items"]["items"]["properties"]) == {"symbol", "thesis", "break_condition", "storylines", "takes_from"}
     assert len(tools.definitions()) <= 22
     assert all(len(d["description"]) < 480 for d in tools.definitions())
 

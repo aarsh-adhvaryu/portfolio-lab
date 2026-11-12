@@ -333,6 +333,13 @@ def propose(con, now: datetime, market: str, items: List[dict], *, session_ref: 
         if why:
             out["refused"].append({"symbol": sym, "reason": why})
             continue
+        earlier = _earlier_knowledge(con, now, key, sym)
+        takes = _norm((it or {}).get("takes_from"))
+        if earlier and len(takes) < MIN_TAKES:                                      # S84 T2x: a name with an earlier note or case says what the pick takes from it
+            e = earlier[0]
+            out["refused"].append({"symbol": sym, "reason": f"we already hold {len(earlier)} earlier {'note' if len(earlier) == 1 else 'notes or cases'} on {sym} (newest: {e['day']}, {e['kind']} {e['id']}: "
+                                                            f"{(e['title'] or '')[:100]}): say in takes_from ({MIN_TAKES}+ characters) what this pick takes from it"})
+            continue
         mine = [p for p in all_picks(con, market) if p["isin"] == key]
         live = [p for p in mine if p["state"] in ACTIVE]
         held = pos.get(key, 0.0) > 1e-9
@@ -342,6 +349,7 @@ def propose(con, now: datetime, market: str, items: List[dict], *, session_ref: 
                 con.execute("UPDATE picks_s83 SET thesis=?, break_condition=?, storylines_json=?, session_ref=?, learned_from=?, state_reason=?, state_changed_on=? WHERE pick_id=?",
                             [txt["thesis"], txt["break"], json.dumps(txt["storylines"]), session_ref, learned or None, f"the strategist wrote its thesis ({session_ref or 'a session'})", day, p["pick_id"]])
                 out["accepted"].append({"symbol": sym, "pick_id": p["pick_id"], "note": "thesis added to his Kite stock; it keeps what it holds"})
+                _read_earlier(con, now, p["pick_id"], takes, earlier)
                 continue
             out["refused"].append({"symbol": sym, "reason": f"{sym} is already a pick ({p['state']}): withdraw it first if you no longer believe it"})
             continue
@@ -386,7 +394,33 @@ def propose(con, now: datetime, market: str, items: List[dict], *, session_ref: 
         if note:
             res["note"] = note
         out["accepted"].append(res)
+        _read_earlier(con, now, pid, takes, earlier)
     return out
+
+
+MIN_TAKES = 20
+
+
+def _earlier_knowledge(con, now: datetime, isin: str, symbol: str) -> List[dict]:
+    """S84 T2x: the earlier notes (paid or written back) and cases `think/recall` holds on this name: what a new pick must say it takes from. Never raises (no earlier knowledge, no demand)."""
+    try:
+        from pflab.think import recall
+        r = recall.recall(con, now, isin=isin, symbol=symbol, limit_chars=2500)
+        return [i for i in r["items"] if i["kind"] in ("analyst_note", "note", "memory", "case")]
+    except Exception:
+        return []
+
+
+def _read_earlier(con, now: datetime, pick_id: int, takes: str, earlier: List[dict]) -> None:
+    """The pick read those items: a `knowledge_use_s84` row each, and the sentence it gave is kept on the pick."""
+    if not earlier:
+        return
+    try:
+        from pflab.think import recall
+        con.execute("UPDATE picks_s83 SET takes_from=? WHERE pick_id=?", [takes[:500], pick_id])
+        recall.mark_used(con, earlier, by_kind="pick", by_ref=f"pick:{pick_id}", day=now.date())
+    except Exception:
+        pass
 
 
 def withdraw(con, now: datetime, market: str, symbol: str, reason: str, session_ref: Optional[str] = None) -> dict:
