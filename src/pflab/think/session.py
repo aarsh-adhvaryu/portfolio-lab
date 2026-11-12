@@ -64,6 +64,20 @@ ANSWER_SCHEMA = {
     "required": ["happened", "class", "pending", "choices", "likelihood"],
 }
 
+def _strict(x):
+    """The vendor's structured output takes a plain schema: no length limits (`validate_answer` checks the sizes), objects closed with `additionalProperties: false`."""
+    if isinstance(x, dict):
+        y = {k: _strict(v) for k, v in x.items() if k not in ("maxLength", "minLength", "maxItems", "minItems")}
+        if y.get("type") == "object":
+            y["additionalProperties"] = False
+        return y
+    if isinstance(x, list):
+        return [_strict(v) for v in x]
+    return x
+
+
+ANSWER_SCHEMA = _strict(ANSWER_SCHEMA)
+
 TOOLS = [
     {"name": "recall", "description": "What the system already knows about a name or topic (earlier notes, graph events, storylines, its pick or skip, earlier cases), newest first, with source and date.",
      "input_schema": {"type": "object", "properties": {"symbol": {"type": "string"}, "topic": {"type": "string"}}, "required": []}},
@@ -328,7 +342,7 @@ def _default_web(con, question: str, now: datetime) -> dict:
 # --- the model's session --------------------------------------------------------------------------------------------------------------------------------------------------------
 
 def _gcall(con, now: datetime, case_id: int, role: str, messages: list, *, tools=None, schema=None, purpose: str, max_tokens: int = 1500) -> dict:
-    r = _mod("gateway").call(con, role, [{"type": "text", "text": SYSTEM}], messages, tools=tools, case_id=case_id, purpose=purpose, now=now, max_tokens=max_tokens, schema=schema) or {}
+    r = _mod("gateway").call(con, role, [{"type": "text", "text": SYSTEM}], messages, tools=tools, case_id=case_id, purpose=purpose, now=now, max_tokens=max_tokens, schema=schema, agent="think") or {}
     cases.add_step(con, case_id, now, purpose, engine=str(r.get("engine") or ""), model=str(r.get("model") or ""), thinking=str(r.get("thinking") or ""), cost_rupees=float(r.get("cost_rupees") or 0.0),
                    cached_tokens=int(r.get("cached_tokens") or 0), payload={"role": role, "text": str(r.get("text") or "")[:1500], "tool_calls": [t.get("name") for t in (r.get("tool_calls") or [])]})
     return r
@@ -345,7 +359,8 @@ def _read(con, now: datetime, case: dict, first: str, ctx: _Ctx) -> str:
         reading = str(r.get("text") or "") or reading
         if not calls:
             break
-        msgs.append({"role": "assistant", "content": ([{"type": "text", "text": r["text"]}] if r.get("text") else []) + [{"type": "tool_use", "id": t.get("id") or f"t{i}", "name": t["name"], "input": t.get("input") or {}} for i, t in enumerate(calls)]})
+        msgs.append({"role": "assistant", "content": r.get("assistant_content") or (([{"type": "text", "text": r["text"]}] if r.get("text") else [])
+                                                                                    + [{"type": "tool_use", "id": t.get("id") or f"t{i}", "name": t["name"], "input": t.get("input") or {}} for i, t in enumerate(calls)])})
         results = []
         for i, t in enumerate(calls):
             out = _tool_run(ctx, t["name"], t.get("input") or {})
@@ -382,7 +397,7 @@ def _answer(con, now: datetime, case: dict, first: str, reading: str, ctx: _Ctx,
 
 CHECK_SYSTEM = ("You are the independent CHECKER of a small personal paper portfolio. A rule wants to place the order below. Answer 'pass' unless you can name a concrete reason it is a mistake today "
                 "(a data error, a stale price, a known event, too concentrated, against the book's own stated risk). Do not second-guess the strategy.")
-CHECK_SCHEMA = {"type": "object", "properties": {"verdict": {"enum": ["pass", "veto"]}, "reason": {"type": "string", "maxLength": 240}}, "required": ["verdict", "reason"]}
+CHECK_SCHEMA = _strict({"type": "object", "properties": {"verdict": {"enum": ["pass", "veto"]}, "reason": {"type": "string", "maxLength": 240}}, "required": ["verdict", "reason"]})
 
 
 def big_trade_check(con, now: datetime, case: dict, order: dict) -> dict:
@@ -390,7 +405,7 @@ def big_trade_check(con, now: datetime, case: dict, order: dict) -> dict:
     try:
         r = _mod("gateway").call(con, "quick", [{"type": "text", "text": CHECK_SYSTEM}], [{"role": "user", "content": f"Case #{case['case_id']} ({case.get('title')}): {order['side'].upper()} {order['symbol']}, "
                                  f"about Rs {order['value']:,.0f} ({order.get('share', 0.0):.1%} of the whole book). Reason: {order.get('reason', '')[:400]}"}],
-                                 case_id=case["case_id"], purpose="big_trade_check", now=now, max_tokens=300, schema=CHECK_SCHEMA) or {}
+                                 case_id=case["case_id"], purpose="big_trade_check", now=now, max_tokens=300, schema=CHECK_SCHEMA, agent="think") or {}
         v = r.get("json") or {}
         verdict, reason = (v.get("verdict") if v.get("verdict") in ("pass", "veto") else "unchecked"), str(v.get("reason") or "no verdict")
         cases.add_step(con, case["case_id"], now, "big_trade_check", engine=str(r.get("engine") or ""), model=str(r.get("model") or ""), thinking=str(r.get("thinking") or ""),
@@ -688,6 +703,10 @@ def think_case(con, now: datetime, case_id: int, *, root=None, web: Optional[Cal
         res = _decide_all(con, now, day, case, ans, adv)
     except Exception as e:
         why = f"{type(e).__name__}: {str(e)[:240]}"
+        try:                                                                    # a refusal (his cap, the egress gate, the workshop guard) is said in the door's plain words
+            why = _mod("gateway").refusal_reason(e) or why
+        except Exception:
+            pass
         cases.add_step(con, case_id, now, "failed", payload={"why": why})
         look = _session_after(market, day, 1)
         cases.set_case(con, case_id, state=("open" if case["state"] in ("noticed", "open") else case["state"]), next_look_on=look, summary=f"thinking failed: {why}"[:300])

@@ -34,7 +34,7 @@ class Gate:
     def __init__(self, answers, checks=(), tools_first=False):
         self.answers, self.checks, self.calls, self.tools_first, self.seen_messages = list(answers), list(checks), [], tools_first, []
 
-    def call(self, con, role, system, messages, *, tools=None, case_id=None, purpose="", now=None, max_tokens=1500, schema=None):
+    def call(self, con, role, system, messages, *, tools=None, case_id=None, purpose="", now=None, max_tokens=1500, schema=None, **kw):
         self.calls.append({"role": role, "purpose": purpose, "schema": schema is not None, "tools": tools is not None})
         self.seen_messages.append(messages)
         m, t = self.MODELS[role]
@@ -142,6 +142,13 @@ def con(tmp_path, monkeypatch):
 def _case(con, isin=WIN, symbol="WIN", exposure_inr=400000.0, **kw):
     sid = cases.record_signal(con, NOW, market="IN", isin=isin, symbol=symbol, signal="governance", value=1.0, threshold=1.0, surprise=3.0, exposure_inr=exposure_inr, score=3.0)
     return cases.open_case(con, NOW, market="IN", kind="governance", isin=isin, symbol=symbol, title=f"{symbol}: a board investigation", exposure_inr=exposure_inr, score=3.0, signal_ids=[sid], **kw)
+
+
+def _thought(con, cid, sym="WIN"):
+    """The case was thought through two days ago and nothing has joined it since."""
+    old = NOW - timedelta(days=2)
+    con.execute("UPDATE think_signals_s84 SET ts=? WHERE case_id=?", [old, cid])
+    cases.add_step(con, cid, old, "answer_ok", payload={"answer": ans(sym=sym)})
 
 
 def _gate(con, answers, **kw):
@@ -287,7 +294,7 @@ def test_a_reserve_buy_passes_the_check_and_is_one_part_of_three(con):
     assert refs[0].startswith("paper_order:") and [c["purpose"] for c in g.calls] == ["big_trade_check"]
     o = con.execute("SELECT amount, side, note FROM paper_orders WHERE isin=?", [NEWX]).fetchone()
     assert o[0] == pytest.approx(10000.0) and o[1] == "buy" and f"case #{cid}" in o[2]
-    assert reserve.reserve_status(con, "IN", DAY)["free_inr"] == pytest.approx(st["free_inr"] - 10000.0, rel=1e-6)       # an open order takes its money out of the reserve
+    assert reserve.reserve_status(con, "IN", DAY)["free_inr"] == pytest.approx(st["free_inr"], rel=1e-6)       # plenty of cash beside the reserve: the order does not eat into it
 
 
 def test_a_bet_whose_worst_case_does_not_fit_one_percent_is_refused_and_an_unchecked_buy_waits(con):
@@ -431,8 +438,10 @@ def test_three_parts_five_sessions_apart_and_the_later_part_waits_for_its_gap(co
 def test_a_follow_up_by_date_closes_a_decided_case_and_extends_a_pending_one_without_a_model_call(con):
     done = _case(con)
     cases.set_case(con, done, state="acted", next_look_on=DAY, pending=None)
+    _thought(con, done)
     waiting = _case(con, isin=CALM, symbol="CALM")
     cases.set_case(con, waiting, state="waiting", next_look_on=DAY, pending="a result on the 5th")
+    _thought(con, waiting, sym="CALM")
     g = _gate(con, [])
     out = session.follow_up(con, NOW, DAY)
     assert out["closed"] == 1 and out["extended"] == 1 and out["rethought"] == 0 and g.calls == []
@@ -444,6 +453,7 @@ def test_a_follow_up_by_date_closes_a_decided_case_and_extends_a_pending_one_wit
 def test_a_quiet_case_closes_after_the_quiet_sessions_and_gives_back_its_freeze(con):
     cid = _case(con)
     cases.set_case(con, cid, state="waiting", next_look_on=DAY, pending="something that never came")
+    _thought(con, cid)
     cases.add_freeze(con, NOW, isin=WIN, symbol="WIN", market="IN", case_id=cid, until_event="something that never came")
     far = DAY + timedelta(days=120)
     out = session.follow_up(con, datetime.combine(far, datetime.min.time()) + timedelta(hours=16), far)
@@ -503,3 +513,34 @@ def test_the_reserve_is_a_share_of_the_part_and_the_exposed_figures_are_plain_di
     h = book.holdings(con, DAY)
     assert st["reserve_inr"] == pytest.approx(0.10 * h["value"], rel=1e-6) and st["used_inr"] == 0.0 and st["points"] == pytest.approx(10.0, abs=0.01)
     assert json.dumps(st) and reserve.reserve_status(con, "US", DAY)["free_inr"] == 0.0         # no US account: nothing to keep
+
+
+# --- through the real door with a scripted vendor client ---------------------------------------------------------------------------------------------------------------------------------
+
+def test_a_case_runs_through_the_real_gateway_and_stores_the_engine_model_thinking_cost_and_cache(con, monkeypatch):
+    from types import SimpleNamespace
+    from pflab.agents import analyst as an
+    from pflab.llm import gateway
+    monkeypatch.setattr(an, "config", lambda path=None: {"model": "claude-opus-5-5", "cap": 2500.0, "ask_above": 1000.0, "usd_inr": 90.0, "adopted": True, "policy": {}, "acceptance": {},
+                                                          "paper": {}, "tijori_to_analyst": True, "counted_since": None})
+    sent = []
+
+    def create(**p):
+        sent.append(p)
+        usage = SimpleNamespace(input_tokens=2000, output_tokens=400, cache_read_input_tokens=1500, cache_creation_input_tokens=0)
+        return SimpleNamespace(content=[SimpleNamespace(type="text", text=json.dumps(ans("hold", "temporary", pending="")))], stop_reason="end_turn", model=p["model"], usage=usage)
+
+    fake = SimpleNamespace(messages=SimpleNamespace(count_tokens=lambda **k: SimpleNamespace(input_tokens=3000), create=create), beta=SimpleNamespace(messages=SimpleNamespace(create=create)))
+    gateway.set_client(fake)
+    del session.DEPS["gateway"]
+    try:
+        cid = _case(con)                                                              # 4% of a Rs 10m book is over the Opus line
+        monkeypatch.setattr(session, "_whole_book", lambda con, day: 10_000_000.0)
+        r = session.think_case(con, NOW, cid)
+    finally:
+        gateway.set_client(None)
+    assert r["ok"], r
+    steps = [s for s in cases.get_case(con, cid)["steps"] if s["engine"]]
+    assert {s["model"] for s in steps} == {"claude-sonnet-5-5", "claude-opus-5-5"} and all(s["engine"] == "anthropic" and s["thinking"] and s["cost_rupees"] > 0 and s["cached_tokens"] == 1500 for s in steps)
+    assert con.execute("SELECT count(*) FROM api_calls WHERE case_id=? AND agent='think'", [cid]).fetchone()[0] == len(steps)
+    assert all("output_config" in p and p["output_config"].get("effort") for p in sent) and any("format" in p["output_config"] for p in sent)
