@@ -44,13 +44,19 @@ def market_block(con, market: str, day: date) -> dict:
     st = picks.status(con, market, day)
     sh = st["share"]
     scored = _vs_index(con, market)
+    try:
+        from pflab.core import pick_score
+        started = pick_score.started_ids(con, market)
+    except Exception:
+        started = None                                                  # unreadable: show as before
     plist, occupied = [], 0.0
     for p in st["picks"]:
         if p["state"] not in LIVE:
             continue
         occupied += float(p["weight"] or 0.0)
         plist.append({"pick_id": p["pick_id"], "symbol": p["symbol"], "source": p["source"], "state": p["state"], "thesis": _one_line(p["thesis"]), "break_condition": _one_line(p["break_condition"], 120),
-                      "days_held": p["days_held"], "weight": p["weight"], "vs_index": scored.get(int(p["pick_id"]))})
+                      "days_held": p["days_held"], "weight": p["weight"], "held_yet": started is None or int(p["pick_id"]) in started,
+                      "vs_index": scored.get(int(p["pick_id"])) if (started is None or int(p["pick_id"]) in started) else None})
     ceiling = share_ceiling(market, float(sh["share"]))
     room = max(0.0, ceiling - occupied)
     return {"market": market, "on": bool(st["on"]), "share": float(sh["share"]), "share_why": sh.get("source"), "holds": round(occupied, 4), "room": round(room, 4), "no_new_picks": bool(sh.get("no_new_picks")),
@@ -83,6 +89,9 @@ def _market_text(m: dict) -> str:
         v = p["vs_index"]
         vs = (f"{v['excess_pct']:+.1f} points against the index at {v['horizon_months']} month(s)" if v and v.get("excess_pct") is not None else "not scored yet (first score at 1 month)")
         who = "his Kite stock" if p["source"] == "kite" else "system pick"
+        if p.get("held_yet") is False:                                  # S84 F3: named, not bought: no record, no days in the book
+            lines.append(f"  - {p['symbol']} ({who}, {p['state']}): named, not yet held (its record starts at its first purchase). Thesis: {_sentence(p['thesis'])} Breaks if: {p['break_condition']}")
+            continue
         lines.append(f"  - {p['symbol']} ({who}, {p['state']}, {p['days_held']} days in the book, {float(p['weight'] or 0) * 100:.1f}% of the book): {vs}. Thesis: {_sentence(p['thesis'])} Breaks if: {p['break_condition']}")
     return "\n".join(lines)
 

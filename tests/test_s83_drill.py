@@ -98,19 +98,19 @@ def _us_state(stk_qty, cash=1000.0, price=50.0):
 
 def test_a_turnover_cap_that_would_leave_dust_of_a_withdrawn_pick_sells_it_whole(ucon):
     from pflab.us import policy
-    st, total = _us_state(stk_qty=20.4)                                      # USD 1,020 of a withdrawn pick; the day's cap is 10% of the sub-book (about USD 1,000): 98%, leaving USD 20 of dust
+    st, total = _us_state(stk_qty=60.6)                                      # USD 3,030 of a withdrawn pick; the full exit's day cap is 25% of the sub-book (about USD 3,007): 99%, leaving USD 22 of dust (S84 F2: was 10%)
     out = policy.check(ucon, st, {"weights": {"US:SPY": 0.80, "US:STK": 0.0}})
     sell = [o for o in out["orders"] if o["side"] == "sell" and o["symbol"] == "STK"]
-    assert len(sell) == 1 and sell[0]["qty"] == pytest.approx(20.4) and sell[0]["value"] == pytest.approx(1020.0)       # whole: the dust under the minimum trade is not left behind
+    assert len(sell) == 1 and sell[0]["qty"] == pytest.approx(60.6) and sell[0]["value"] == pytest.approx(3030.0)       # whole: the dust under the minimum trade is not left behind
     assert "turnover cap" in sell[0]["note"]
 
 
 def test_a_cap_that_leaves_more_than_the_minimum_trade_still_scales_the_sale_and_a_trim_is_still_not_a_dust_trade(ucon):
     from pflab.us import policy
-    st, total = _us_state(stk_qty=40.0)                                      # USD 2,000: the cap sells about half, the rest waits for the next session
+    st, total = _us_state(stk_qty=100.0)                                     # USD 5,000: the 25% cap sells about 70%, the rest waits for the next session
     out = policy.check(ucon, st, {"weights": {"US:SPY": 0.80, "US:STK": 0.0}})
     sell = [o for o in out["orders"] if o["side"] == "sell" and o["symbol"] == "STK"][0]
-    assert 0.3 * 2000.0 < sell["value"] < 2000.0 and sell["qty"] < 40.0
+    assert 0.3 * 5000.0 < sell["value"] < 5000.0 and sell["qty"] < 100.0
     st2, _ = _us_state(stk_qty=10.0)                                         # a trim (target 8% of the book, not zero) under the minimum trade is skipped as before
     out2 = policy.check(ucon, st2, {"weights": {"US:SPY": 0.80, "US:STK": 0.045}})
     assert not [o for o in out2["orders"] if o["symbol"] == "STK"] and any(s_["symbol"] == "STK" for s_ in out2["skipped"])
