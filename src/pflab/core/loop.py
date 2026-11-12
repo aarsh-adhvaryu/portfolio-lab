@@ -112,7 +112,7 @@ def run(con, now: datetime, root=None, index: Optional[pd.Series] = None, live_d
     marked = con.execute("SELECT max(day) FROM paper_days").fetchone()[0]
     if marked is None or marked < day:
         return {"waiting": f"the book is marked to {marked}, not yet to {day}"}
-    if con.execute("SELECT count(*) FROM paper_orders WHERE status='open'").fetchone()[0]:
+    if con.execute("SELECT count(*) FROM paper_orders WHERE status='open' AND coalesce(note, '') NOT LIKE 'case #%'").fetchone()[0]:      # S84: an order of a thinking case ("case #N") never holds the close's own decision back
         return {"waiting": "orders from an earlier session have not filled yet"}
     t0 = time.time()
     ensure_policy(con, now)

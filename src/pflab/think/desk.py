@@ -102,7 +102,8 @@ def _call(con, role: str, system: str, messages: list, **kw) -> dict:
     if fn is None:
         from pflab.llm import gateway
         fn = gateway.call
-    return fn(con, role, system, messages, agent="desk", **kw)         # the door's governor knows the agent `desk` (its own layer); the first user message is what the egress gate reads
+    from pflab.think.session import scrub                               # a US pseudo-ISIN in the facts is an "account-like number" to the egress gate: names go by symbol
+    return fn(con, role, system, scrub(con, messages), agent="desk", **kw)         # the door's governor knows the agent `desk` (its own layer); the first user message is what the egress gate reads
 
 
 def _refusal(e: BaseException) -> Optional[str]:
@@ -527,7 +528,8 @@ def _work_case(con, now, it, sid, root) -> tuple:
         if s is not None and hasattr(s, "think_case"):
             try:
                 r = s.think_case(con, now, cid, root=root)
-                extra = f" The case was thought through again by the desk: {r.get('summary') or r.get('status') or 'done'}."
+                extra = (f" The case was thought through again by the desk: it is {str(r.get('class') or 'unclear').replace('_', ' ')}, now {r.get('state')}." if r.get("ok")
+                         else f" The case's own session did not finish ({str(r.get('failed') or r.get('skipped') or 'no answer')[:120]}).")
             except Exception as e:
                 extra = f" (the case's own session failed: {type(e).__name__})"
     spent = sum(float(s["cost_rupees"] or 0) for s in cases.steps(con, cid)) - cost_before

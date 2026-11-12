@@ -154,7 +154,7 @@ def con(tmp_path, monkeypatch, root):
 
 
 def _pick(con, pid, isin, sym, state, source="system", on=date(2026, 1, 2)):
-    con.execute("INSERT INTO picks_s83 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [pid, "IN", isin, sym, source, "a thesis of at least sixty characters, written for the test", "breaks if x", "[]", "s1", None, state, on, None, None])
+    con.execute("INSERT INTO picks_s83 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)", [pid, "IN", isin, sym, source, "a thesis of at least sixty characters, written for the test", "breaks if x", "[]", "s1", None, state, on, None, None])
 
 
 def test_a_named_pick_that_was_never_bought_is_not_in_the_record_and_after_its_first_fill_it_is(con, root):

@@ -39,7 +39,7 @@ SYSTEM = """You are the THINKING DESK of a small paper portfolio of Indian share
 WHAT YOU ANSWER (structured, from closed lists only)
 - happened: two short lines, with where you read it (sources). Facts only.
 - class: market_fear (the market or the sector is afraid, the business is intact) / temporary (a company problem that looks temporary) / damage (damage to the business or its governance) / unclear (not yet clear).
-- known and pending: what is known, and what is still PENDING, named (a board decision, a result, a regulator, a date).
+- known and pending: what is known, and what is still PENDING, named (a board decision, a result, a regulator, a date). If the pending outcome has since become public, give the day it did (pending_resolved_on, YYYY-MM-DD); otherwise leave it out.
 - other_names: other names touched (peers, funds, suppliers), by symbol.
 - choices: for each affected holding or opportunity ONE option from: sell, trim, hold, freeze (no new buying), wait (for the pending event), buy_in_parts, nothing. Give the symbol and a short reason.
 - likelihood: for the worst, the likely and the best outcome a likelihood WORD (very unlikely, unlikely, even, likely, very likely), and which base-rate set fits (5, 20 or 60 sessions, or own range) with its reason.
@@ -54,6 +54,7 @@ ANSWER_SCHEMA = {
         "known": {"type": "string", "maxLength": 500},
         "pending": {"type": "string", "maxLength": 300},
         "pending_date": {"type": "string", "maxLength": 10},
+        "pending_resolved_on": {"type": "string", "maxLength": 10},
         "other_names": {"type": "array", "items": {"type": "string", "maxLength": 24}, "maxItems": 8},
         "choices": {"type": "array", "maxItems": MAX_CHOICES, "items": {"type": "object", "properties": {
             "symbol": {"type": "string", "maxLength": 24}, "option": {"enum": list(think.OPTIONS)}, "reason": {"type": "string", "maxLength": 300}}, "required": ["symbol", "option", "reason"]}},
@@ -159,8 +160,12 @@ def _session_after(market: str, day: date, n: int) -> date:
         return day + timedelta(days=max(1, n))
 
 
+_INDEX_NAMES = re.compile(r"\b(?:S&P ?(?:500|100|400|600)|Nasdaq[- ]?(?:100|Composite)?|Nifty ?(?:50|100|200|500|Next 50|Midcap ?(?:50|100|150)|Smallcap ?(?:50|100|250))|Dow(?: Jones)?(?: 30)?|Russell ?(?:1000|2000|3000)|FTSE ?(?:100|250)|BSE ?(?:500|100|200)|Sensex ?(?:30)?|Nikkei ?225|CAC ?40|DAX ?40?|Hang Seng ?\d*)\b", re.I)
+
+
 def _numbers(text: str) -> set:
-    return {t.replace(",", "").rstrip(".") for t in re.findall(r"\d[\d,]*\.?\d*", text or "")}
+    """The figures in a text; the digits that are part of an index's NAME (S&P 500, Nasdaq 100, Nifty 500) are names, not figures."""
+    return {t.replace(",", "").rstrip(".") for t in re.findall(r"\d[\d,]*\.?\d*", _INDEX_NAMES.sub(" ", text or ""))}
 
 
 def _walk(x, path=""):
@@ -222,10 +227,24 @@ def validate_answer(ans: object, known_text: str = "") -> List[str]:
     return out[:8]
 
 
-def _normal(ans: dict) -> dict:
-    """The answer in the shape `odds` and `rule` read: the same fields plus `klass` and the likelihood words flat."""
+def _normal(ans: dict, isins: Optional[dict] = None) -> dict:
+    """The answer in the shape `odds` and `rule` read (`odds.norm_answer`): {"class", "pending", "pending_resolved_on", "choices": [{"isin", "symbol", "option", "words": {worst, likely, best}, "base_rate_set",
+    "reason"}]}. The validated answer carries ONE likelihood for the whole case; every choice gets it as its words. `isins`: symbol -> ISIN (a choice without one would take the case's own name).
+    The base-rate set the model names is "5", "20" or "60" (history at that horizon: odds reads its own horizon, 20) or "own range"; odds' vocabulary is "history" | "own range" | an event kind."""
     lk = ans.get("likelihood") or {}
-    return {**ans, "klass": ans.get("class"), "worst_word": lk.get("worst"), "likely_word": lk.get("likely"), "best_word": lk.get("best"), "base_rate_set": str(lk.get("base_rate_set") or "20")}
+    words = {k: lk.get(k) for k in ("worst", "likely", "best")}
+    bset = "own range" if str(lk.get("base_rate_set")) == "own range" else "history"
+    choices = [{"isin": (isins or {}).get(str(c.get("symbol")).upper()), "symbol": str(c.get("symbol")).upper(), "option": c.get("option"), "words": words, "base_rate_set": bset, "reason": c.get("reason", "")}
+               for c in (ans.get("choices") or []) if isinstance(c, dict)]
+    return {**ans, "class": ans.get("class"), "klass": ans.get("class"), "pending": (ans.get("pending") or None), "pending_resolved_on": ans.get("pending_resolved_on") or None, "choices": choices}
+
+
+def _bet_total(rr: dict) -> float:
+    """The whole bet of a buy the rule decided: `size_inr` of its decision is the PART due now, `parts["total_inr"]` the whole bet (`act` buys `total / parts` a part)."""
+    p = rr.get("parts")
+    if isinstance(p, dict) and p.get("total_inr"):
+        return float(p["total_inr"])
+    return float(rr.get("size_inr") or 0.0)
 
 
 # --- the context the model reads -----------------------------------------------------------------------------------------------------------------------------------------------
@@ -346,7 +365,34 @@ def _default_web(con, question: str, now: datetime) -> dict:
 
 # --- the model's session --------------------------------------------------------------------------------------------------------------------------------------------------------
 
+_PSEUDO = re.compile(r"(?<![A-Za-z0-9])ZZ\d{10}(?![0-9])")
+
+
+def scrub(con, obj):
+    """A US stock's pseudo-ISIN (`ZZ` + the ten digits of its SEC number) is an "account-like number" to the egress gate: every text sent to the model names the stock by its symbol instead (`US:SYMBOL`;
+    "a US stock" when the store has none). Walks strings, lists and dicts; anything else is left alone."""
+    if isinstance(obj, str):
+        if "ZZ" not in obj:
+            return obj
+
+        def sym(m):
+            try:
+                r = con.execute("SELECT symbol FROM instruments WHERE isin=? LIMIT 1", [m.group(0)]).fetchone()
+                if r and r[0]:
+                    return "US:" + str(r[0])
+            except Exception:
+                pass
+            return "a US stock"
+        return _PSEUDO.sub(sym, obj)
+    if isinstance(obj, list):
+        return [scrub(con, x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: scrub(con, v) for k, v in obj.items()}
+    return obj
+
+
 def _gcall(con, now: datetime, case_id: int, role: str, messages: list, *, tools=None, schema=None, purpose: str, max_tokens: int = 1500) -> dict:
+    messages = scrub(con, messages)
     r = _mod("gateway").call(con, role, [{"type": "text", "text": SYSTEM}], messages, tools=tools, case_id=case_id, purpose=purpose, now=now, max_tokens=max_tokens, schema=schema, agent="think") or {}
     cases.add_step(con, case_id, now, purpose, engine=str(r.get("engine") or ""), model=str(r.get("model") or ""), thinking=str(r.get("thinking") or ""), cost_rupees=float(r.get("cost_rupees") or 0.0),
                    cached_tokens=int(r.get("cached_tokens") or 0), payload={"role": role, "text": str(r.get("text") or "")[:1500], "tool_calls": [t.get("name") for t in (r.get("tool_calls") or [])]})
@@ -526,12 +572,17 @@ def _act_buy_in(con, now: datetime, day: date, case: dict, d: dict) -> List[str]
     order = {"isin": isin, "symbol": d.get("symbol") or isin, "side": "buy", "qty": None, "amount": round(amount, 2), "value": amount, "risk_cut": False, "charges": 0.0, "tax": 0.0, "note": "",
              "from_w": None, "to_w": None, "reason": f"Case #{case['case_id']}, part {n} of {parts} from the opportunity reserve: {d.get('reason') or 'buy in parts'}", "kind": "case", "event_id": None}
     oid = _place_india(con, now, day, order, case["case_id"])
-    cases.add_step(con, case["case_id"], now, "part", payload={"isin": isin, "n": n, "of": parts, "inr": round(amount, 2), "day": str(day), "order_id": oid, "price": px[1] if px else None})
+    cases.add_step(con, case["case_id"], now, "part", payload={"isin": isin, "symbol": d.get("symbol"), "n": n, "of": parts, "inr": round(amount, 2), "day": str(day), "order_id": oid, "price": px[1] if px else None})
     return [f"paper_order:{oid}"]
 
 
 def _act_us(con, now: datetime, day: date, case: dict, d: dict) -> List[str]:
     from pflab.us import book as usb
+    try:                                                    # a US order carries the US SESSION's date (the last closed one), as the US step's own orders do: `us.book.fill_orders` fills only
+        from pflab.us import clock as uc                    # orders placed on an EARLIER session, so the IST date made an order decided on a Tuesday morning wait a session longer
+        day = uc.session_closed_by(now)
+    except Exception:
+        pass
     isin, sym, opt = d["isin"], d.get("symbol") or d["isin"], d["option"]
     if opt in ("sell", "trim"):
         pos = float(usb.positions(con).get(isin, 0.0))
@@ -569,7 +620,7 @@ def _act_us(con, now: datetime, day: date, case: dict, d: dict) -> List[str]:
         return [f"no order yet: the big-trade check could not run ({chk['reason']}); the case stays open"]
     usd = round(amount_inr / fx, 2)
     oid = usb.place(con, now, day, isin, sym, "buy", amount_usd=usd, reason=f"Case #{case['case_id']}, part {len(done) + 1} of {parts} from the US opportunity reserve: {d.get('reason') or 'buy in parts'}")
-    cases.add_step(con, case["case_id"], now, "part", payload={"isin": isin, "n": len(done) + 1, "of": parts, "inr": round(amount_inr, 2), "day": str(day), "order_id": oid})
+    cases.add_step(con, case["case_id"], now, "part", payload={"isin": isin, "symbol": sym, "n": len(done) + 1, "of": parts, "inr": round(amount_inr, 2), "day": str(day), "order_id": oid})
     return [f"us_order:{oid}"]
 
 
@@ -616,48 +667,70 @@ def _isin_of(con, market: str, symbol: str, case: dict) -> Optional[str]:
         return None
 
 
+def _isin_map(con, case: dict, ans: dict) -> dict:
+    """symbol -> ISIN for the names of an answer (the case's own name first; another name by the store's symbol lookup, None when it has none)."""
+    market = case.get("market") or "IN"
+    out = {}
+    for ch in (ans.get("choices") or []):
+        if isinstance(ch, dict) and ch.get("symbol"):
+            sym = str(ch["symbol"]).upper()
+            out[sym] = _isin_of(con, market, sym, case)
+    return out
+
+
+def _store_row(con, case_id: int, now: datetime, track: str, r: dict, *, chosen: bool = False, reason: Optional[str] = None, size_inr: Optional[float] = None) -> None:
+    cases.add_option(con, case_id, now, track=track, isin=r.get("isin"), symbol=r.get("symbol"), option=str(r.get("option")), worst_inr=float(r.get("worst_inr") or 0.0), likely_inr=float(r.get("likely_inr") or 0.0),
+                     best_inr=float(r.get("best_inr") or 0.0), expected_inr=float(r.get("expected_inr") or 0.0), worst_pct_book=float(r.get("worst_pct_book") or 0.0),
+                     size_inr=float(r.get("size_inr") or 0.0) if size_inr is None else float(size_inr), reason=str(r.get("basis") or "") if reason is None else reason, chosen=chosen)
+
+
 def _decide_all(con, now: datetime, day: date, case: dict, ans: dict, advisory: bool) -> dict:
-    """OPTIONS (the table), DECIDE (the rule) and ACT for every choice. -> {"decisions": [...], "orders": [...], "acted": bool, "freeze": bool}."""
+    """OPTIONS (the table), DECIDE (the rule) and ACT for every choice. -> {"decisions": [...], "orders": [...], "acted": bool, "freeze": bool}.
+    Stored, as `odds` and `score` agree: EVERY row of the option table (the model's own choice as track "model", chosen; the rest "alt") and the rule's choice as track "rule" (`rule.option_row`).
+    ONE cache dict serves the table and the rule of the case (the history scan takes seconds)."""
     odds, rule = _mod("odds"), _mod("rule")
     market = case.get("market") or "IN"
-    table = list(odds.option_table(con, case["case_id"], _normal(ans), day) or [])
+    names = _isin_map(con, case, ans)
+    nans = _normal(ans, names)
+    cache: dict = {}
+    table = list(odds.option_table(con, case["case_id"], nans, day, cache=cache) or [])
     for r in table:
-        cases.add_option(con, case["case_id"], now, track="table", isin=r.get("isin"), symbol=r.get("symbol"), option=str(r.get("option")), worst_inr=float(r.get("worst_inr") or 0.0),
-                         likely_inr=float(r.get("likely_inr") or 0.0), best_inr=float(r.get("best_inr") or 0.0), expected_inr=float(r.get("expected_inr") or 0.0),
-                         worst_pct_book=float(r.get("worst_pct_book") or 0.0), size_inr=float(r.get("size_inr") or 0.0), reason=str(r.get("basis") or ""))
+        _store_row(con, case["case_id"], now, "model" if r.get("track") == "model" else "alt", r, chosen=bool(r.get("chosen")), reason=str(ans_reason(ans, r) if r.get("chosen") else r.get("basis") or ""))
     out = {"decisions": [], "orders": [], "acted": False, "freeze": False, "tell_rows": []}
-    for ch in (ans.get("choices") or [])[:MAX_CHOICES]:
-        sym = str(ch["symbol"]).upper()
-        isin = _isin_of(con, market, sym, case)
+    ruled = rule.decide(con, case["case_id"], nans, day, cache=cache) or {}
+    per_name = {str(x.get("symbol") or "").upper(): x for x in (ruled.get("all") or [])}
+    for ch in nans["choices"][:MAX_CHOICES]:
+        sym, isin = ch["symbol"], ch.get("isin")
         if isin is None and sym != str(case.get("symbol") or "").upper():
             cases.add_step(con, case["case_id"], now, "choice_skipped", payload={"symbol": sym, "why": "no ISIN for this name in the store"})
             continue
         isin = isin or case.get("isin")
         model_opt = ch["option"]
-        rows = _rows_for(table, isin, sym)
-        mrow = next((r for r in rows if r.get("option") == model_opt), None)
-        if mrow:
-            cases.add_option(con, case["case_id"], now, track="model", isin=isin, symbol=sym, option=model_opt, worst_inr=float(mrow.get("worst_inr") or 0.0), likely_inr=float(mrow.get("likely_inr") or 0.0),
-                             best_inr=float(mrow.get("best_inr") or 0.0), expected_inr=float(mrow.get("expected_inr") or 0.0), worst_pct_book=float(mrow.get("worst_pct_book") or 0.0),
-                             size_inr=float(mrow.get("size_inr") or 0.0), reason=str(ch.get("reason") or ""), chosen=True)
-        a_i = {**_normal(ans), "isin": isin, "symbol": sym, "option": model_opt, "model_option": model_opt}
-        rr = rule.decide(con, case["case_id"], a_i, day) or {}
+        mine = _rows_for(table, isin, sym)
+        if not any(r.get("option") == model_opt for r in mine):       # an option the table does not hold for this name (a sale of something the book does not hold, a market or macro case): the model's
+            base = next((r for r in mine if r.get("option") == "nothing"), {})          # track is still stored so T8 can score it, valued as nothing (zero rupees), and says so
+            _store_row(con, case["case_id"], now, "model", {**base, "isin": isin, "symbol": sym, "option": model_opt, "worst_inr": 0.0, "likely_inr": 0.0, "best_inr": 0.0, "expected_inr": 0.0,
+                                                           "worst_pct_book": 0.0, "size_inr": 0.0}, chosen=True, reason=f"{ch.get('reason') or ''} (not an option for this name: valued as nothing)")
+        rr = per_name.get(sym) or ruled
         rule_opt = rr.get("rule_option") or "nothing"
         if rr.get("refused"):
             rule_opt = "nothing"
-        rrow = next((r for r in rows if r.get("option") == rule_opt), {})
-        cases.add_option(con, case["case_id"], now, track="rule", isin=isin, symbol=sym, option=rule_opt, worst_inr=float(rrow.get("worst_inr") or 0.0), likely_inr=float(rrow.get("likely_inr") or 0.0),
-                         best_inr=float(rrow.get("best_inr") or 0.0), expected_inr=float(rrow.get("expected_inr") or 0.0), worst_pct_book=float(rrow.get("worst_pct_book") or 0.0),
-                         size_inr=float(rr.get("size_inr") or 0.0), reason=str(rr.get("reason") or ""), chosen=True)
+        trow = next((r for r in _rows_for(table, isin, sym) if r.get("option") == rule_opt), None)
+        if rule_opt in ("sell", "trim", "buy_in_parts") and rr.get("outcome") and rule_opt == rr.get("rule_option"):
+            rrow = rule.option_row({**rr, "isin": isin, "symbol": sym})        # the rupees the rule's own outcome computed (a buy scaled to the part decided now)
+        else:                                                                    # hold, freeze, wait, nothing (and a refused buy): the table's own row of that option, with no size
+            rrow = {**(trow or {}), "isin": isin, "symbol": sym, "option": rule_opt, "size_inr": 0.0}
+        _store_row(con, case["case_id"], now, "rule", rrow, chosen=True, reason=str(rr.get("reason") or ""))
         held = _held(con, market, isin) > 1e-9
         thesis_sale = (ans.get("class") == "damage" and rule_opt == "sell" and held)
         reason = str(rr.get("reason") or "")
         if model_opt != rule_opt:
             reason = f"the model chose {model_opt}, the rule chose {rule_opt}; the rule acts. " + reason
-        d = {"isin": isin, "symbol": sym, "market": market, "option": rule_opt, "size_inr": float(rr.get("size_inr") or 0.0), "parts": rr.get("parts"), "reason": reason[:400],
-             "worst_pct_book": rrow.get("worst_pct_book"), "guards": rr.get("guards"), "override_guard": False, "thesis_break_skip_check": False}
+        wp = (rr.get("outcome") or {}).get("worst_pct_book")                  # of the WHOLE bet (a part's row is scaled), the figure the 1% limit speaks of
+        d = {"isin": isin, "symbol": sym, "market": market, "option": rule_opt, "size_inr": _bet_total(rr) if rule_opt == "buy_in_parts" else float(rr.get("size_inr") or 0.0),
+             "parts": rr.get("parts"), "reason": reason[:400], "worst_pct_book": wp, "guards": rr.get("guards"), "override_guard": False, "thesis_break_skip_check": False}
         if isinstance(d["parts"], dict):
-            d["parts"] = d["parts"].get("of") or d["parts"].get("n")
+            d["parts"] = d["parts"].get("n")
         refs: List[str] = []
         acted_opt = rule_opt
         if advisory and not thesis_sale:
@@ -672,6 +745,13 @@ def _decide_all(con, now: datetime, day: date, case: dict, ans: dict, advisory: 
         cases.record_decision(con, case["case_id"], day, isin=isin, symbol=sym, rule_option=rule_opt, model_option=model_opt, acted_option=acted_opt, order_refs=refs, reason=reason, advisory=bool(advisory))
         out["decisions"].append({"symbol": sym, "rule": rule_opt, "model": model_opt, "acted": acted_opt, "refs": refs, "row": rrow, "reason": reason})
     return out
+
+
+def ans_reason(ans: dict, r: dict) -> str:
+    for c in ans.get("choices") or []:
+        if isinstance(c, dict) and str(c.get("symbol") or "").upper() == str(r.get("symbol") or "").upper():
+            return str(c.get("reason") or "")
+    return ""
 
 
 def _advisory(con, day: date) -> bool:
@@ -776,10 +856,14 @@ def tell(con, now: datetime, case_id: int, *, force: bool = False) -> Optional[i
     if case.get("klass"):
         lines.append("Kind: " + case["klass"].replace("_", " ") + (f"; waiting for: {case['pending']}" if case.get("pending") else "") + ".")
     rule_rows = {o["symbol"]: o for o in case["options"] if o["track"] == "rule"}
+    hold_rows = {o["symbol"]: o for o in case["options"] if o["track"] in ("model", "alt") and o["option"] == "hold"}
     for d in (acted or case["decisions"][-2:]):
         r = rule_rows.get(d["symbol"])
         lines.append(f"{d['symbol']}: {d['acted_option'].replace('_', ' ')}" + (f" (the rule chose {d['rule_option']}, the model {d['model_option']})" if d["differs"] else "") + ".")
-        if r and (r["worst_inr"] or r["best_inr"]):
+        h = hold_rows.get(d["symbol"])
+        if r and r["option"] in ("sell", "trim") and h:                          # a sale's own rupees are only its cost: what matters is what holding would have meant
+            lines.append(f"Holding instead: if it goes badly {_rs(h['worst_inr'])}, most likely {_rs(h['likely_inr'])}, if well {_rs(h['best_inr'])} (after tax, over about 20 sessions).")
+        elif r and (r["worst_inr"] or r["best_inr"]):
             lines.append(f"If it goes badly {_rs(r['worst_inr'])}, most likely {_rs(r['likely_inr'])}, if well {_rs(r['best_inr'])}.")
     if any(d["advisory"] for d in case["decisions"]):
         lines.append("The loop is advisory now: nothing was ordered.")
@@ -814,28 +898,99 @@ def _last_answer(con, case_id: int) -> Optional[dict]:
     return None
 
 
+def _part_plans(con, case_id: int) -> Dict[str, List[dict]]:
+    """The parts bought so far, by the name they bought (a market case buys an ETF, not its own pseudo-name): {isin: [part payloads, oldest first]}."""
+    out: Dict[str, List[dict]] = {}
+    for s in cases.steps(con, case_id):
+        if s["step"] == "part":
+            try:
+                p = json.loads(s["payload_json"] or "{}")
+            except Exception:
+                continue
+            if p.get("isin"):
+                out.setdefault(p["isin"], []).append(p)
+    return out
+
+
 def _continue_parts(con, now: datetime, case: dict) -> List[str]:
-    """The next part of a buy in parts: the rule weighs its guards again (a later part only while the thesis holds, 5 sessions apart); code buys it."""
+    """The next part of every buy in parts of the case: the rule weighs its guards again (a later part only while the thesis holds, 5 sessions apart); code buys it."""
     ans = _last_answer(con, case["case_id"])
-    if not ans or not case.get("isin"):
+    if not ans:
         return []
-    plan = _parts_done(con, case["case_id"], case["isin"])
     parts = int(think.settings()["parts"])
-    if not plan or len(plan) >= parts:
-        return []
     day = now.date()
-    last_day = date.fromisoformat(plan[-1]["day"])
-    if day < _session_after(case.get("market") or "IN", last_day, int(think.settings()["parts_gap_sessions"])):
+    out: List[str] = []
+    for isin, plan in _part_plans(con, case["case_id"]).items():
+        if not plan or len(plan) >= parts:
+            continue
+        last_day = date.fromisoformat(plan[-1]["day"])
+        if day < _session_after(case.get("market") or "IN", last_day, int(think.settings()["parts_gap_sessions"])):
+            continue
+        sym = str(plan[-1].get("symbol") or (case.get("symbol") if isin == case.get("isin") else "") or "").upper()
+        if not sym:
+            continue
+        nans = _normal({**ans, "choices": [{"symbol": sym, "option": "buy_in_parts", "reason": "the next part"}]}, {sym: isin})
+        ruled = _mod("rule").decide(con, case["case_id"], nans, day) or {}
+        rr = (ruled.get("all") or [ruled])[0]
+        if rr.get("refused") or rr.get("rule_option") != "buy_in_parts":
+            out.append(f"part {len(plan) + 1} of {sym} waits: the rule chose {rr.get('rule_option')} ({str(rr.get('reason'))[:120]})")
+            continue
+        d = {"isin": isin, "symbol": sym, "market": case.get("market"), "option": "buy_in_parts", "size_inr": _bet_total(rr) or float(plan[0]["inr"]) * parts,
+             "parts": parts, "reason": str(rr.get("reason") or "next part"), "worst_pct_book": (rr.get("outcome") or {}).get("worst_pct_book")}
+        refs = act(con, now, case["case_id"], d)
+        bought = any(r.startswith(("paper_order", "us_order")) for r in refs)
+        cases.record_decision(con, case["case_id"], day, isin=isin, symbol=sym, rule_option="buy_in_parts", model_option="buy_in_parts",
+                              acted_option="buy_in_parts" if bought else "nothing", order_refs=refs, reason=f"part {len(plan) + 1}: " + d["reason"])
+        out += refs
+        if bought:
+            try:
+                tell(con, now, case["case_id"])
+            except Exception:
+                pass
+    return out
+
+
+def _retry_refused(con, now: datetime, case: dict) -> List[str]:
+    """A buy the model chose and the rule REFUSED on a timing guard (it still makes new lows, a damage wait, a stretched price) is decided again at the next look, by the rule alone on the stored answer
+    (no model call, no cost): the guard clears with time, not with a new signal, so "nothing changed" must not end the case's chance. The first part is bought when the rule now says so."""
+    ans = _last_answer(con, case["case_id"])
+    day = now.date()
+    if not ans or _advisory(con, day):
         return []
-    rr = _mod("rule").decide(con, case["case_id"], {**_normal(ans), "isin": case["isin"], "symbol": case.get("symbol"), "option": "buy_in_parts", "model_option": "buy_in_parts", "part": len(plan) + 1}, day) or {}
-    if rr.get("refused") or rr.get("rule_option") != "buy_in_parts":
-        return [f"part {len(plan) + 1} waits: the rule chose {rr.get('rule_option')} ({str(rr.get('reason'))[:120]})"]
-    d = {"isin": case["isin"], "symbol": case.get("symbol"), "market": case.get("market"), "option": "buy_in_parts", "size_inr": float(rr.get("size_inr") or 0.0) or float(plan[0]["inr"]) * parts,
-         "parts": parts, "reason": str(rr.get("reason") or "next part"), "worst_pct_book": None}
-    refs = act(con, now, case["case_id"], d)
-    cases.record_decision(con, case["case_id"], day, isin=case["isin"], symbol=case.get("symbol"), rule_option="buy_in_parts", model_option="buy_in_parts",
-                          acted_option="buy_in_parts" if any(r.startswith(("paper_order", "us_order")) for r in refs) else "nothing", order_refs=refs, reason=f"part {len(plan) + 1}: " + d["reason"])
-    return refs
+    plans = _part_plans(con, case["case_id"])
+    latest: Dict[str, dict] = {}
+    for d in cases.decisions(con, case["case_id"]):
+        if d["isin"]:
+            latest[d["isin"]] = d
+    out: List[str] = []
+    for isin, d in latest.items():
+        if d["model_option"] != "buy_in_parts" or d["rule_option"] not in ("nothing", "wait") or isin in plans or d["decided_on"] >= day or not d["symbol"]:
+            continue
+        sym = str(d["symbol"]).upper()
+        nans = _normal({**ans, "choices": [{"symbol": sym, "option": "buy_in_parts", "reason": "looked at again"}]}, {sym: isin})
+        ruled = _mod("rule").decide(con, case["case_id"], nans, day) or {}
+        rr = (ruled.get("all") or [ruled])[0]
+        if rr.get("refused") or rr.get("rule_option") != "buy_in_parts":
+            continue
+        parts = int(think.settings()["parts"])
+        dd = {"isin": isin, "symbol": sym, "market": case.get("market"), "option": "buy_in_parts", "size_inr": _bet_total(rr), "parts": parts,
+              "reason": "the guard that held the buy back has cleared: " + str(rr.get("reason") or ""), "worst_pct_book": (rr.get("outcome") or {}).get("worst_pct_book")}
+        refs = act(con, now, case["case_id"], dd)
+        bought = any(r.startswith(("paper_order", "us_order")) for r in refs)
+        cases.record_decision(con, case["case_id"], day, isin=isin, symbol=sym, rule_option="buy_in_parts", model_option="buy_in_parts", acted_option="buy_in_parts" if bought else "nothing",
+                              order_refs=refs, reason=dd["reason"][:400])
+        out += refs
+        if bought:
+            try:
+                tell(con, now, case["case_id"])
+            except Exception:
+                pass
+    return out
+
+
+def _unfinished(con, case_id: int) -> bool:
+    n = int(think.settings()["parts"])
+    return any(len(p) < n for p in _part_plans(con, case_id).values())
 
 
 def follow_up(con, now: datetime, day: Optional[date] = None, *, root=None, web: Optional[Callable] = None) -> dict:
@@ -859,13 +1014,12 @@ def follow_up(con, now: datetime, day: Optional[date] = None, *, root=None, web:
                 if not r.get("ok"):
                     out["failed"].append(f"#{cid}: {r.get('failed')}")
                 continue
-            refs = _continue_parts(con, now, c)
+            refs = _continue_parts(con, now, c) + _retry_refused(con, now, c)
             if any(x.startswith(("paper_order", "us_order")) for x in refs):
                 out["parts"] += 1
             cases.add_step(con, cid, now, "looked", payload={"changed": False, "day": str(day), "parts": refs})
             quiet_from = _session_after(market, c["opened_on"], int(st["quiet_close_sessions"]))
-            plan = _parts_done(con, cid, c.get("isin") or "")
-            unfinished = bool(plan) and len(plan) < int(st["parts"])
+            unfinished = _unfinished(con, cid)
             last_sig = max([s["day"] for s in cases.signals(con, case_id=cid)] or [c["opened_on"]])
             if day >= _session_after(market, last_sig, int(st["quiet_close_sessions"])) or (day >= quiet_from and not c.get("pending")):
                 cases.close_case(con, cid, day, f"quiet for {st['quiet_close_sessions']} sessions")
@@ -901,4 +1055,4 @@ def thinking_text(con, day: Optional[date] = None) -> str:
         parts.append(reserve.text(con, day))
     except Exception:
         pass
-    return " ".join(parts)
+    return " ".join(x if x.rstrip().endswith((".", "!", "?")) else x.rstrip() + "." for x in parts if x)

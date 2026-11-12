@@ -44,7 +44,7 @@ RULE = {
     "calibration_ceiling": 0.98,
     "advisory_after_scored": _D["advisory_after_scored"],
 }
-MARKET_FALL_KINDS = ("market_fall", "market_down")
+MARKET_FALL_KINDS = ("market", "market_fall", "market_down")                   # "market" is the watch's case kind for the index falling 10% in 20 sessions
 MAX_STOCK, MAX_BROAD_ETF = 0.10, 0.60              # his limits (`paper/rails.py`): a stock 10% of the book, a broad-market index ETF 60% (A56); the sector rail is applied at the order
 
 

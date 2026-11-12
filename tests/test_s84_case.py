@@ -76,12 +76,14 @@ class Recall:
 
 
 class Odds:
-    def option_table(self, con, case_id, answer, asof):
+    def option_table(self, con, case_id, answer, asof, *, cache=None, **kw):
+        """As `odds.option_table`: one row per option, the model's own choice flagged (track "model", chosen), the rest "alt"; `cache` is the one dict of the case."""
         c = cases.get_case(con, case_id)
+        chosen = [x.get("option") for x in answer["choices"]]
         rows = []
         for o in think.OPTIONS:
             rows.append({"isin": c["isin"], "symbol": c["symbol"], "option": o, "worst_inr": -5000.0, "likely_inr": 1000.0, "best_inr": 9000.0, "expected_inr": 700.0,
-                         "worst_pct_book": -0.005, "size_inr": 30000.0 if o == "buy_in_parts" else 0.0, "basis": "own range"})
+                         "worst_pct_book": -0.005, "size_inr": 30000.0 if o == "buy_in_parts" else 0.0, "basis": "own range", "track": "model" if o in chosen else "alt", "chosen": o in chosen})
         return rows
 
     def base_rates(self, con, kind, *, move=None, isin=None, asof):
@@ -94,7 +96,8 @@ class Odds:
 class Rule:
     nxt = {"rule_option": "hold", "size_inr": 0.0, "parts": 3, "reason": "the rule holds", "guards": [], "refused": False}
 
-    def decide(self, con, case_id, answer, asof):
+    def decide(self, con, case_id, answer, asof, *, cache=None, **kw):
+        assert [c["symbol"] for c in answer["choices"]] and all(c.get("words") for c in answer["choices"])          # the answer reaches the rule in odds' shape
         return dict(Rule.nxt)
 
 
@@ -185,7 +188,7 @@ def test_the_rule_acts_where_the_model_differs_and_both_choices_and_the_steps_ar
     c = cases.get_case(con, cid)
     d = c["decisions"][0]
     assert d["differs"] and d["acted_option"] == "sell" and d["rule_option"] == "sell" and d["model_option"] == "hold" and "the rule acts" in d["reason"]
-    assert {o["track"] for o in c["options"]} >= {"table", "model", "rule"}
+    assert {o["track"] for o in c["options"]} >= {"alt", "model", "rule"}
     assert [o["option"] for o in c["options"] if o["track"] == "rule"] == ["sell"] and [o["option"] for o in c["options"] if o["track"] == "model"] == ["hold"]
     model_steps = [s for s in c["steps"] if s["engine"]]
     assert model_steps and all(s["model"] and s["thinking"] and s["cost_rupees"] > 0 and s["cached_tokens"] == 120 for s in model_steps)

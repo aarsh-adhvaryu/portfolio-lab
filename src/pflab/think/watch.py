@@ -734,6 +734,11 @@ def _us_morning(con, now: datetime, s: date, root, cfg: dict, quotes: Optional[d
     except Exception:
         ist_day = s + timedelta(days=1)
     live = ist_day >= now.date()
+    if not live:                                           # a weekend or holiday morning: the pass of the session that is STILL the latest US session runs on the real clock (Sunday-evening news is public Monday morning)
+        try:
+            live = s == uc.session_closed_by(now)
+        except Exception:
+            pass
     sig_now = now if live else datetime.combine(ist_day, time(8, 0))
     res = _us_pass(con, sig_now, s, now if live else datetime.combine(ist_day, time(8, 0)), quotes=quotes if live else None, root=root, cfg=cfg)
     _log_run(con, now, "us_morning", "US", s, res)
