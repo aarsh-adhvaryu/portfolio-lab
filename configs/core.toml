@@ -202,3 +202,30 @@ start_share = 0.50            # the picks' share of the sub-book (SPY keeps at l
 min_share = 0.30
 max_share = 0.70
 step = 0.05
+
+# S84 (A64-A68): the thinking loop (src/pflab/think/). One loop for any situation. The numbers are his to change. Every rupee, size, price and probability comes from code; the model reads and names.
+[think]
+on = true
+mode = "live"                 # live: the rule acts; advisory: cases open and report, only thesis-break sales act (T8 turns it advisory when the rule's track is behind "do nothing" after 20 scored decisions)
+max_cases_per_day = 3         # A67: at most this many NEW cases are thought through a day; the rest are stored as "noticed, not examined"
+move_sigmas = 2.5             # a move beyond this many of the name's usual daily moves (1 day and 5 days, also against its market)
+fall_pct_10d = 0.20
+rel_pts_5d = 15.0
+market_down_20d = 0.10
+news_burst_x = 3.0            # linked news today against the name's 60-day norm
+storyline_jump_pts = 15.0
+missed_run_pts = 20.0         # a skipped or screened name now this many points ahead of its index since that day
+stretched_sigmas = 2.5        # no first part on a day a name is more than this many usual daily moves above its 20-session average
+bet_worst_pct_book = 0.01     # A66: one opportunity bet loses at most this share of the WHOLE book in its worst case
+reserve_india_pts = 10.0      # A64: points of the India part kept as an opportunity reserve (the thinking loop alone may spend it)
+reserve_us_pts = 10.0         # ... and of the US sub-book
+sale_beats_holding_pts = 1.0
+damage_wait_sessions = 10
+parts = 3
+parts_gap_sessions = 5
+market_fall_reserve_share = 0.5
+look_max_sessions = 5
+quiet_close_sessions = 60
+big_trade_share = 0.02
+opus_exposure_share = 0.02
+advisory_after_scored = 20
