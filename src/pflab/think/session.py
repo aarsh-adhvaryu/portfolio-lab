@@ -637,6 +637,17 @@ def act(con, now: datetime, case_id: int, decision: dict) -> List[str]:
         fid = cases.add_freeze(con, now, isin=d["isin"], symbol=d.get("symbol") or d["isin"], market=market, case_id=case_id, until=until, until_event=until_event,
                                reason=f"case #{case_id}: {d.get('reason') or opt}")
         return [f"freeze:{fid}"]
+    if opt in ("sell", "trim", "buy_in_parts"):                                  # S85 E4: his standing instructions (hold_name, pause_buys, no_new_names, cash_floor) bind a case's order too
+        try:
+            from pflab.core import rules_gate
+            held_by = rules_gate.case_block(con, now, isin=d["isin"], symbol=d.get("symbol"), market=market, side="buy" if opt == "buy_in_parts" else "sell", option=opt,
+                                            thesis_break=bool(opt == "sell" and (case.get("klass") == "damage" or d.get("thesis_break_skip_check"))),
+                                            value=float(d.get("size_inr") or 0.0) / (int(d.get("parts") or think.settings()["parts"]) if opt == "buy_in_parts" else 1))
+        except Exception:
+            held_by = None
+        if held_by:
+            cases.add_step(con, case_id, now, "rule_block", payload={"isin": d["isin"], "symbol": d.get("symbol"), "option": opt, "why": held_by})
+            return [f"no order: {held_by}"]
     if opt in ("sell", "trim"):
         return _act_us(con, now, day, case, d) if market == "US" else _act_sell_in(con, now, day, case, d)
     if opt == "buy_in_parts":
@@ -742,6 +753,8 @@ def _decide_all(con, now: datetime, day: date, case: dict, ans: dict, advisory: 
             out["freeze"] = out["freeze"] or any(x.startswith("freeze") for x in refs)
             if refs and not any(x.startswith(("paper_order", "us_order", "freeze")) for x in refs):
                 acted_opt = "nothing (" + refs[0][:120] + ")"
+                if "your rule '" in refs[0]:                                      # S85 E4: a standing instruction of his held the order back: the decision's reason says which
+                    reason = (reason + " | " + refs[0])[:700]
         cases.record_decision(con, case["case_id"], day, isin=isin, symbol=sym, rule_option=rule_opt, model_option=model_opt, acted_option=acted_opt, order_refs=refs, reason=reason, advisory=bool(advisory))
         out["decisions"].append({"symbol": sym, "rule": rule_opt, "model": model_opt, "acted": acted_opt, "refs": refs, "row": rrow, "reason": reason})
     return out
