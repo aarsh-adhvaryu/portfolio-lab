@@ -359,3 +359,31 @@ def test_the_desk_is_off_with_its_switch(con, monkeypatch):
     a_case(con)
     monkeypatch.setattr(desk, "settings", lambda: {**desk.DEFAULTS, "desk_on": False})
     assert desk.run_desk(con, NOW, "india_close")["skipped"] and desk.due(con, NOW) == [] and desk.tick_hook(con, NOW) == {"off": True} and m.calls == []
+
+
+# --- through the real door, with a scripted vendor client ------------------------------------------------------------------------------------------------------------------------------
+
+def test_the_desk_goes_through_the_gateway_as_the_agent_desk_and_a_refusal_stops_the_day(con, monkeypatch):
+    from pflab.agents import analyst as an
+    from pflab.llm import gateway
+    from tests.test_s84_gate import Fake, _cfg
+    monkeypatch.setattr(an, "config", lambda path=None: _cfg())
+    monkeypatch.setattr(desk, "cap_left", lambda con, now: 1000.0)
+    ans = {"finding": "The case is waiting on the board.", "needs_decision": "none", "next_step": "Look again."}
+    f = Fake(blocks=[SimpleNamespace(type="text", text=json.dumps(ans))], model="claude-sonnet-5-5")
+    gateway.set_client(f)
+    try:
+        a_case(con, pct=0.01)
+        a_holding(con, monkeypatch, isin=BBB, sym="BBB")
+        r = desk.run_desk(con, NOW, "india_close")
+        assert r["status"] in ("done", "budget") and f.sent and r["cost_rupees"] > 0
+        st = desk.steps(con, r["session_id"])
+        assert st[0]["status"] == "done" and st[0]["thinking"] == "medium" and "sonnet" in st[0]["model"] and st[0]["finding"].startswith("The case is waiting")
+        assert con.execute("SELECT count(*) FROM api_calls WHERE agent='desk'").fetchone()[0] >= 1
+        assert desk.spent_today(con, NOW.date()) >= r["cost_rupees"] - 1e-9
+        # the governor refuses (cap spent): the rest of the agenda is not reached and the day is marked as stopped by it
+        monkeypatch.setattr(an, "config", lambda path=None: _cfg(cap=0.01))
+        r2 = desk.run_desk(con, NOW + timedelta(days=1), "catchup", covers="india_close")
+        assert r2["status"] == "budget" and r2["stopped"]
+    finally:
+        gateway.set_client(None)

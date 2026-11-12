@@ -42,21 +42,27 @@ READ_SYSTEM = ("You are the DESK of a small personal-portfolio system (a paper b
                "book. You do not trade and you never write a number: use only the figures in the facts you are given, and if you need a figure that is not there, leave it out. "
                "Answer with JSON only: {\"finding\": at most two sentences, \"needs_decision\": one of none|pick|withdrawal|case, \"next_step\": at most one sentence}. "
                "Say needs_decision=withdrawal only when the facts show an event that breaks the thesis of a pick the book holds; otherwise none.")
-READ_SCHEMA = {"type": "object", "properties": {"finding": {"type": "string"}, "needs_decision": {"type": "string", "enum": ["none", "pick", "withdrawal", "case"]}, "next_step": {"type": "string"}},
-               "required": ["finding", "needs_decision"]}
+def _obj(props: dict, required: list) -> dict:
+    """A JSON schema object the vendor's structured output accepts (no extra keys)."""
+    return {"type": "object", "properties": props, "required": required, "additionalProperties": False}
+
+
+READ_SCHEMA = _obj({"finding": {"type": "string"}, "needs_decision": {"type": "string", "enum": ["none", "pick", "withdrawal", "case"]}, "next_step": {"type": "string"}}, ["finding", "needs_decision", "next_step"])
 SHORTLIST_SYSTEM = ("You are the DESK of a small personal-portfolio system. From the screen's rows pick at most {n} symbols worth a closer look for the picks sleeve, using only what the rows say. "
                     "Past returns are a description, not evidence. Answer JSON only: {{\"symbols\": [..], \"why\": one sentence}}. An empty list is a good answer when nothing is worth it.")
-SHORTLIST_SCHEMA = {"type": "object", "properties": {"symbols": {"type": "array", "items": {"type": "string"}}, "why": {"type": "string"}}, "required": ["symbols"]}
+SHORTLIST_SCHEMA = _obj({"symbols": {"type": "array", "items": {"type": "string"}}, "why": {"type": "string"}}, ["symbols", "why"])
 PICK_SYSTEM = ("You are the DECISION step of the desk of a small personal-portfolio system (paper money). You may name stocks for the picks sleeve with a thesis and what would break it, and skip "
                "ideas you looked at. You never write a size, a price, a weight or any number of your own: code checks the rails, sizes, buys and scores. Each pick needs a thesis of 60+ characters "
                "from the facts, a break condition, and, when the facts show an earlier note or case on the name, what you take from it. Answer JSON only: "
                "{\"picks\": [{\"symbol\", \"thesis\", \"break_condition\", \"storylines\": []}], \"skips\": [{\"symbol\", \"why\"}], \"learned_from\": what the scorecard taught you}. Fewer picks is fine; none is fine.")
-PICK_SCHEMA = {"type": "object", "properties": {"picks": {"type": "array", "items": {"type": "object"}}, "skips": {"type": "array", "items": {"type": "object"}}, "learned_from": {"type": "string"}},
-               "required": ["picks", "skips"]}
+PICK_SCHEMA = _obj({"picks": {"type": "array", "items": _obj({"symbol": {"type": "string"}, "thesis": {"type": "string"}, "break_condition": {"type": "string"},
+                                                              "storylines": {"type": "array", "items": {"type": "integer"}}}, ["symbol", "thesis", "break_condition", "storylines"])},
+                    "skips": {"type": "array", "items": _obj({"symbol": {"type": "string"}, "why": {"type": "string"}}, ["symbol", "why"])}, "learned_from": {"type": "string"}},
+                   ["picks", "skips", "learned_from"])
 WITHDRAW_SYSTEM = ("You are the DECISION step of the desk of a small personal-portfolio system (paper money). A pick the book holds may have lost its thesis. Withdraw it only if the facts show the "
                    "thesis no longer holds; the sale is then made by code (the 12-month tax guard may make it wait). Never write a number. Answer JSON only: "
                    "{\"action\": \"withdraw\" or \"keep\", \"reason\": one or two sentences using only the facts}.")
-WITHDRAW_SCHEMA = {"type": "object", "properties": {"action": {"type": "string", "enum": ["withdraw", "keep"]}, "reason": {"type": "string"}}, "required": ["action", "reason"]}
+WITHDRAW_SCHEMA = _obj({"action": {"type": "string", "enum": ["withdraw", "keep"]}, "reason": {"type": "string"}}, ["action", "reason"])
 
 _NUM = re.compile(r"\d[\d,]*\.?\d*")
 _TAGS = re.compile(r"[#@][\w-]+")
@@ -96,7 +102,16 @@ def _call(con, role: str, system: str, messages: list, **kw) -> dict:
     if fn is None:
         from pflab.llm import gateway
         fn = gateway.call
-    return fn(con, role, system, messages, **kw)
+    return fn(con, role, system, messages, agent="desk", **kw)         # the door's governor knows the agent `desk` (its own layer); the first user message is what the egress gate reads
+
+
+def _refusal(e: BaseException) -> Optional[str]:
+    """Plain words when the governor, the cap or the egress gate refused (the desk stops for the day), else None (an ordinary failure of one item)."""
+    try:
+        from pflab.llm import gateway
+        return gateway.refusal_reason(e)
+    except Exception:
+        return None
 
 
 def on() -> bool:
@@ -395,7 +410,12 @@ def cap_left(con, now: datetime) -> Optional[float]:
 
 def spent_today(con, day: date) -> float:
     """What the day's desk sessions spent (their own model calls and the case sessions they started); a session adds its total when it finishes."""
-    return float(con.execute("SELECT coalesce(sum(cost_rupees),0) FROM desk_sessions_s84 WHERE day=?", [day]).fetchone()[0])
+    own = float(con.execute("SELECT coalesce(sum(cost_rupees),0) FROM desk_sessions_s84 WHERE day=?", [day]).fetchone()[0])
+    try:                                                                    # the door's own ledger counts what the governor counts (refused and failed calls too)
+        from pflab.llm import gateway
+        return max(own, gateway.spent(con, datetime.combine(day, time.min), agent="desk"))
+    except Exception:
+        return own
 
 
 def budget_status(con, day: date, now: Optional[datetime] = None) -> dict:
@@ -616,8 +636,12 @@ def run_desk(con, now: datetime, mode: str, *, root=None, covers: Optional[str] 
         con.execute("UPDATE desk_sessions_s84 SET status='quiet', finished_at=?, plan_text=?, note='nothing changed' WHERE session_id=?", [now, plan, sid])
         return {"session_id": sid, "mode": mode, "status": "quiet", "cost_rupees": 0.0, "items": 0, "plan": plan}
     con.execute("UPDATE desk_sessions_s84 SET agenda_json=? WHERE session_id=?", [json.dumps([{k: v for k, v in i.items() if k in ("rank", "kind", "ref", "title", "why")} for i in items]), sid])
-    spent, status, results, stopped = 0.0, "done", [], None
+    spent, status, results, stopped, halt = 0.0, "done", [], None, False
     for it in items:
+        if halt:
+            _step(con, sid, it, now, "not_reached", f"not reached: {stopped}")
+            results.append((it, "not_reached", ""))
+            continue
         try:
             _guard_budget(con, now, spent, bs["budget"], 0.0)
         except _Stop as s:
@@ -634,8 +658,12 @@ def run_desk(con, now: datetime, mode: str, *, root=None, covers: Optional[str] 
             _step(con, sid, it, now, "not_reached", f"not reached: {s}")
             results.append((it, "not_reached", ""))
         except Exception as e:                                                       # a failed model call is recorded; the rest of the agenda goes on
-            _step(con, sid, it, now, "failed", f"{type(e).__name__}: {str(e)[:200]}")
-            results.append((it, "failed", f"could not be worked: {type(e).__name__}"))
+            why = _refusal(e)
+            _step(con, sid, it, now, "failed", why or f"{type(e).__name__}: {str(e)[:200]}")
+            results.append((it, "failed", f"could not be worked: {why or type(e).__name__}"))
+            if why:                                                                  # the cap, the governor or the egress gate said no: the rest waits for the next session
+                status, stopped = "budget", why
+                halt = True
     if status == "done" and spent >= bs["budget"] > 0:
         status, stopped = "budget", "the day's desk budget is used"
     plan = _plan(con, now, items, results, stopped)
