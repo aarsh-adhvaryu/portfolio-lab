@@ -52,8 +52,8 @@ def json_of(text: str) -> dict:
 def _strip_images(x):
     """A copy with every image's base64 data replaced by its size (S78: a chart the model looked at is not text to scan, and its bytes do not belong in the request log)."""
     if isinstance(x, dict):
-        if x.get("type") == "image" and isinstance(x.get("source"), dict) and "data" in x["source"]:
-            return {"type": "image", "source": {"type": "base64", "media_type": x["source"].get("media_type"), "omitted_chars": len(x["source"]["data"])}}
+        if x.get("type") in ("image", "document") and isinstance(x.get("source"), dict) and x["source"].get("type") == "base64" and "data" in x["source"]:      # S85: a PDF he sent is not text to scan either
+            return {"type": x["type"], "source": {"type": "base64", "media_type": x["source"].get("media_type"), "omitted_chars": len(x["source"]["data"])}}
         return {k: _strip_images(v) for k, v in x.items()}
     if isinstance(x, list):
         return [_strip_images(v) for v in x]
