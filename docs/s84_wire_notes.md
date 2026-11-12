@@ -30,7 +30,7 @@ Nothing is behind a new switch: the job follows `[think] on` and `[core] kill`. 
 
 ## Tests (`tests/test_s84_wire.py`, 24, fakes in `sys.modules`)
 close order watch -> think -> follow-up; US morning; a gap caught up once per missed session, oldest first, at each session's own close (the NSE calendar has no session on Tue 10 Nov 2026); first sweep latest only; no closes = nothing; the daily cap and the retry of unthought cases; a failing watch (visible, unmarked, retried); a failing think step does not stop the others, the follow-up or the marker; a failing follow-up; guard/cap refusal pauses; the failure line once a day; a missing module is not a failure; the kill and think switches; the session tick (and `session.run_once` surviving a failing watch); Today block and its fallback; the 15:45 report (one line each, 15-line cap, unchanged when nothing to say); the job registered, on a world node, due after the close; the job's result; the catch-up hook; the US job hook order.
-Also run green: see the final report for the modules touched.
+Also run green: test_s81_session, test_s81_ondemand, test_s67_world, test_s67_fresh_profile_jobs, test_s79_open, test_s79_week_check, test_s81_drills_fixes, test_s82_us, test_s82_fills (its pinned key set of `today_extras` now includes `think`), test_s83_score, test_s83_strat, test_service, test_s70_jobs, test_s58_run_now (211 passed).
 
 ## Exposed for screens
 - `pflab.think.wire.today_block(con, day) -> {"thinking": {"open": [...], "noticed_not_examined_today", "text"}, "reserve": [text per market], "knowledge": text, "plan": text, "scorecard": text}` (also `core.card.today_extras(con)["think"]`, already behind the Today route that serves `today_extras`).
