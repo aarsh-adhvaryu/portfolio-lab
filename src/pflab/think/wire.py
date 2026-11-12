@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import importlib
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Dict, List, Optional
 
 LOOP = "think_loop"
@@ -234,6 +234,8 @@ def sweep(con, now: datetime, root=None, *, only_market: Optional[str] = None, t
                 newest = day if newest is None or day > newest else newest
             if done:
                 out["sessions"][market] = done
+        if (not only_market or only_market == "US") and _market_on("US"):
+            opened += _us_carry(con, now, w, root, out)
         if think_cases:
             from pflab import think
             ids = opened + _unthought(con, int(think.settings()["max_cases_per_day"]))
@@ -272,6 +274,29 @@ def _learn(con, now: datetime, out: dict, new_session: bool) -> None:
         cadence.act(con, now, LOOP, f"learn {day}: {int(n or 0)} score row(s)", True, {"day": str(day)})
     except Exception as e:
         out["failed"].append(_fail(con, now, "score", e))
+
+
+def _us_carry(con, now: datetime, w, root, out: dict) -> List[int]:
+    """The US morning pass on an IST morning that has no new US session before it (a weekend, a US holiday): news made public since the last session's own morning pass (Sunday evening, US time =
+    Monday morning IST) is read on that morning, once per IST day, from 07:00 (`watch._us_morning` runs the still-latest session on the real clock). Never raises."""
+    try:
+        if now.time() < time(7, 0):
+            return []
+        s = _closed("US", now)
+        from pflab.us import clock as uc
+        c = uc.close_ist(s)
+        if c is None or c.date() >= now.date() or not _marked(con, "US", s):          # the session's own morning pass has not run yet (or it is today's): the normal sweep owns it
+            return []
+        if con.execute("SELECT 1 FROM paper_acts WHERE loop=? AND what LIKE ? LIMIT 1", [LOOP, f"watch USAM {now.date()} %"]).fetchone():
+            return []
+        res = w.run(con, now, mode="us_morning", root=root) or {}
+        from pflab.paper import cadence
+        cadence.act(con, now, LOOP, f"watch USAM {now.date()} us_morning: {len(res.get('signals') or [])} signal(s), {len(res.get('cases_opened') or [])} case(s) opened", True, {"market": "US", "day": str(now.date())})
+        out.setdefault("sessions", {}).setdefault("US", []).append(f"{now.date()}:carry")
+        return list(res.get("cases_opened") or [])
+    except Exception as e:
+        out["failed"].append(_fail(con, now, "us morning (carry)", e))
+        return []
 
 
 def _looks_due(con, now: datetime) -> bool:

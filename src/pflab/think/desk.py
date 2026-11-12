@@ -102,7 +102,8 @@ def _call(con, role: str, system: str, messages: list, **kw) -> dict:
     if fn is None:
         from pflab.llm import gateway
         fn = gateway.call
-    return fn(con, role, system, messages, agent="desk", **kw)         # the door's governor knows the agent `desk` (its own layer); the first user message is what the egress gate reads
+    from pflab.think.session import scrub                               # a US pseudo-ISIN in the facts is an "account-like number" to the egress gate: names go by symbol
+    return fn(con, role, system, scrub(con, messages), agent="desk", **kw)         # the door's governor knows the agent `desk` (its own layer); the first user message is what the egress gate reads
 
 
 def _refusal(e: BaseException) -> Optional[str]:

@@ -535,3 +535,108 @@ def test_the_history_is_scanned_once_per_case_and_once_per_decision_when_scoring
     score.score_due(con, days[-1])
     assert len(calls) == n_first                                                                           # the calibration and a second scoring read it back: no further scan
     assert [s for s in cases.steps(con, cid) if s["step"] == "moves"] and not any(s["step"] == "moves" and str(s["step_at"])[:10] == str(days[-1]) for s in cases.steps(con, cid))
+
+
+# --- regressions found by the replays (docs/s84_replay_notes.md) ----------------------------------------------------------------------------------------------------------------
+
+def test_a_us_pseudo_isin_never_reaches_the_egress_gate_and_a_us_case_is_not_blocked(con):
+    pseudo = "ZZ0000123456"
+    con.execute("INSERT INTO instruments (isin, key_kind, asset_class, tax_class, listed, symbol, name, source, built_at) VALUES (?, 'isin', 'equity', 'US_EQUITY', TRUE, 'USX', 'Usx Inc', 'synthetic', now())", [pseudo])
+    cl = script(Client(answer()))
+    msgs = [{"role": "user", "content": f"Case on {pseudo}: the follow-up. Recall: [note] {pseudo} fell."}, {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": json.dumps({"isin": pseudo})}]}]
+    cid = open_case_on(con, BBB, "BBB")
+    r = session._gcall(con, CLOSE_AT, cid, "read", msgs, purpose="read1")                     # the real door, the real egress gate: this was refused ("account-like number") before the scrub
+    assert r["text"] and pseudo not in json.dumps(cl.sent) and "US:USX" in json.dumps(cl.sent)
+    with pytest.raises(Exception):                                                              # and the gate does refuse the raw key, so the scrub is what protects the follow-up
+        gateway.call(con, "read", "x", msgs, case_id=cid, purpose="raw", now=CLOSE_AT, agent="think")
+    from pflab.think import desk
+    seen = []
+    desk.call_fn = lambda con_, role, system, messages, **kw: seen.append(messages) or {"json": {}, "text": "{}"}
+    try:
+        desk._call(con, "read", "s", [{"role": "user", "content": f"holding {pseudo}"}])
+    finally:
+        desk.call_fn = None
+    assert pseudo not in json.dumps(seen)
+
+
+def test_a_us_order_of_a_case_carries_the_us_session_date_so_it_fills_at_the_next_open(con, monkeypatch):
+    from pflab.us import book as usb
+    placed = []
+    monkeypatch.setattr(usb, "positions", lambda con_, *a, **k: {"ZZ0000000009": 5.0})
+    monkeypatch.setattr(usb, "place", lambda con_, now, day, isin, sym, side, **k: placed.append((day, side)) or 1)
+    cid = open_case_on(con, BBB, "BBB")
+    tue_morning = datetime(2026, 11, 10, 9, 0)                                                  # Tuesday 09:00 IST: Monday's US session closed at 02:30 IST
+    out = session._act_us(con, tue_morning, tue_morning.date(), cases.get_case(con, cid), {"isin": "ZZ0000000009", "symbol": "USX", "option": "sell", "reason": "r"})
+    assert placed == [(date(2026, 11, 9), "sell")] and out == ["us_order:1"]                      # Monday's date, not Tuesday's
+
+
+def test_the_us_morning_pass_runs_on_the_real_clock_on_a_weekend_or_holiday_morning(con, tmp_path, monkeypatch):
+    captured = []
+    monkeypatch.setattr(watch, "_us_pass", lambda con_, sig_now, s_day, until, **k: captured.append((sig_now, s_day, until)) or {"signals": [], "cases_opened": [], "noticed": 0, "joined": []})
+    monday = datetime(2026, 11, 9, 7, 0)                                                        # Sunday evening US time is public by Monday 06:30 IST
+    watch.run(con, monday, mode="us_morning", root=tmp_path)
+    assert captured and captured[0][1] == date(2026, 11, 6) and captured[0][0] == monday and captured[0][2] == monday       # Friday's session, on Monday's clock (not Saturday 08:00)
+
+
+def test_the_wire_runs_one_extra_us_morning_pass_a_day_after_a_weekend_and_marks_it(con, tmp_path, monkeypatch):
+    import sys
+    calls = []
+    fake = SimpleNamespace(run=lambda con_, now, *, mode, quotes=None, root=None: calls.append((mode, now)) or {"signals": [1], "cases_opened": []}, scope=lambda *a, **k: [])
+    monkeypatch.setitem(sys.modules, "pflab.think.watch", fake)
+    monkeypatch.setattr(wire, "_market_on", lambda m: True)
+    monkeypatch.setattr(wire, "_data_through", lambda con_, root, market: date(2026, 11, 6) if market == "US" else DAY)
+    from pflab.paper import cadence
+    cadence.act(con, datetime(2026, 11, 7, 8, 0), "think_loop", "watch US 2026-11-06 us_morning: 0 signal(s), 0 case(s) opened", True)          # Friday's own morning pass ran on Saturday
+    mon = datetime(2026, 11, 9, 7, 30)
+    out = {"failed": []}
+    assert wire._us_carry(con, mon, fake, tmp_path, out) == [] and calls == [("us_morning", mon)] and out["sessions"]["US"] == ["2026-11-09:carry"]
+    wire._us_carry(con, mon + timedelta(minutes=30), fake, tmp_path, out)
+    assert len(calls) == 1                                                                      # once per IST day
+    wire._us_carry(con, datetime(2026, 11, 10, 6, 0), fake, tmp_path, out)
+    assert len(calls) == 1                                                                      # not before 07:00
+
+
+def test_a_case_order_never_holds_the_closes_own_decision_back(con, tmp_path):
+    from pflab.core import loop
+    from tests.test_s80_core import calm_index
+    fall(con, BBB, -0.10)
+    script(Client(answer(option="hold", klass="damage")))
+    r = wire.sweep(con, CLOSE_AT + timedelta(minutes=30), tmp_path / "data", only_market="IN")
+    assert [o for o in orders(con, "sell") if o[0] == BBB and o[2] == "open"], r                 # the case's sale is open, placed before the close loop of the same session
+    res = loop.run(con, NOW, tmp_path / "data", calm_index())
+    assert "waiting" not in res and res.get("status") in ("traded", "held"), res
+    assert con.execute("SELECT count(*) FROM core_runs_s80 WHERE day=?", [DAY]).fetchone()[0] == 1
+
+
+def test_a_buy_refused_on_a_timing_guard_is_decided_again_when_the_guard_clears(con, tmp_path):
+    add_name(con, ETF, "NIFTYBEES", "etf", -0.003, 0.0005)                                      # a steady fall: it still makes new lows
+    script(Client(answer("NIFTYBEES", "buy_in_parts", "temporary", pending="", worst="very unlikely", likely="even", best="likely"), check="pass"))
+    cid = open_case_on(con, ETF, "NIFTYBEES")
+    r = session.think_case(con, CLOSE_AT + timedelta(minutes=40), cid, root=tmp_path / "data")
+    d = cases.get_case(con, cid)["decisions"][0]
+    assert r["ok"] and d["model_option"] == "buy_in_parts" and d["rule_option"] == "nothing" and not [o for o in orders(con, "buy") if o[0] == ETF], d
+    days = extend(con, 9, {ETF: 0.02})                                                          # it turns up: three sessions above its low
+    n_answers = len([s for s in cases.steps(con, cid) if s["step"] == "answer_ok"])
+    out = session.follow_up(con, datetime.combine(days[-1], datetime.min.time()) + timedelta(hours=16, minutes=30), days[-1], root=tmp_path / "data")
+    assert out["failed"] == [], out
+    assert len([o for o in orders(con, "buy") if o[0] == ETF]) == 1                              # the first part, decided by the rule alone: no new model answer
+    assert len([s for s in cases.steps(con, cid) if s["step"] == "answer_ok"]) == n_answers
+    assert [d_["rule_option"] for d_ in cases.get_case(con, cid)["decisions"]] == ["nothing", "buy_in_parts"]
+
+
+def test_index_names_with_digits_are_names_not_figures():
+    a = answer(happened="The S&P 500 and the Nasdaq 100 fell with the Nifty 500 on a rate scare.")
+    assert session.validate_answer(a, "a rate scare") == []
+    assert session.validate_answer(answer(happened="The S&P 500 fell 3.5% on a rate scare."), "a rate scare")           # a real figure still needs a source
+
+
+def test_a_market_or_macro_case_stores_both_tracks_so_the_model_can_be_scored(con, tmp_path):
+    script(Client(answer("DOLLAR-RUPEE", "hold", "unclear", pending="", worst="unlikely", likely="likely", best="unlikely"), check="pass"))
+    cid = open_case_on(con, "MACRO:USDINR", "dollar-rupee", kind="overnight", signal="overnight_shock", value=-0.03, exposure=100000.0)
+    r = session.think_case(con, CLOSE_AT + timedelta(minutes=40), cid, root=tmp_path / "data")
+    assert r["ok"], r
+    c = cases.get_case(con, cid)
+    chosen = {o["track"]: o["option"] for o in c["options"] if o["chosen"]}
+    assert chosen["model"] == "hold" and chosen["rule"] == "nothing", chosen
+    assert "valued as nothing" in [o for o in c["options"] if o["track"] == "model"][0]["reason"]
+    assert c["decisions"][0]["model_option"] == "hold" and c["decisions"][0]["rule_option"] == "nothing"          # (scoring needs a price path for the name: a macro or index series is S85's)

@@ -160,8 +160,12 @@ def _session_after(market: str, day: date, n: int) -> date:
         return day + timedelta(days=max(1, n))
 
 
+_INDEX_NAMES = re.compile(r"\b(?:S&P ?(?:500|100|400|600)|Nasdaq[- ]?(?:100|Composite)?|Nifty ?(?:50|100|200|500|Next 50|Midcap ?(?:50|100|150)|Smallcap ?(?:50|100|250))|Dow(?: Jones)?(?: 30)?|Russell ?(?:1000|2000|3000)|FTSE ?(?:100|250)|BSE ?(?:500|100|200)|Sensex ?(?:30)?|Nikkei ?225|CAC ?40|DAX ?40?|Hang Seng ?\d*)\b", re.I)
+
+
 def _numbers(text: str) -> set:
-    return {t.replace(",", "").rstrip(".") for t in re.findall(r"\d[\d,]*\.?\d*", text or "")}
+    """The figures in a text; the digits that are part of an index's NAME (S&P 500, Nasdaq 100, Nifty 500) are names, not figures."""
+    return {t.replace(",", "").rstrip(".") for t in re.findall(r"\d[\d,]*\.?\d*", _INDEX_NAMES.sub(" ", text or ""))}
 
 
 def _walk(x, path=""):
@@ -361,7 +365,34 @@ def _default_web(con, question: str, now: datetime) -> dict:
 
 # --- the model's session --------------------------------------------------------------------------------------------------------------------------------------------------------
 
+_PSEUDO = re.compile(r"(?<![A-Za-z0-9])ZZ\d{10}(?![0-9])")
+
+
+def scrub(con, obj):
+    """A US stock's pseudo-ISIN (`ZZ` + the ten digits of its SEC number) is an "account-like number" to the egress gate: every text sent to the model names the stock by its symbol instead (`US:SYMBOL`;
+    "a US stock" when the store has none). Walks strings, lists and dicts; anything else is left alone."""
+    if isinstance(obj, str):
+        if "ZZ" not in obj:
+            return obj
+
+        def sym(m):
+            try:
+                r = con.execute("SELECT symbol FROM instruments WHERE isin=? LIMIT 1", [m.group(0)]).fetchone()
+                if r and r[0]:
+                    return "US:" + str(r[0])
+            except Exception:
+                pass
+            return "a US stock"
+        return _PSEUDO.sub(sym, obj)
+    if isinstance(obj, list):
+        return [scrub(con, x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: scrub(con, v) for k, v in obj.items()}
+    return obj
+
+
 def _gcall(con, now: datetime, case_id: int, role: str, messages: list, *, tools=None, schema=None, purpose: str, max_tokens: int = 1500) -> dict:
+    messages = scrub(con, messages)
     r = _mod("gateway").call(con, role, [{"type": "text", "text": SYSTEM}], messages, tools=tools, case_id=case_id, purpose=purpose, now=now, max_tokens=max_tokens, schema=schema, agent="think") or {}
     cases.add_step(con, case_id, now, purpose, engine=str(r.get("engine") or ""), model=str(r.get("model") or ""), thinking=str(r.get("thinking") or ""), cost_rupees=float(r.get("cost_rupees") or 0.0),
                    cached_tokens=int(r.get("cached_tokens") or 0), payload={"role": role, "text": str(r.get("text") or "")[:1500], "tool_calls": [t.get("name") for t in (r.get("tool_calls") or [])]})
@@ -547,6 +578,11 @@ def _act_buy_in(con, now: datetime, day: date, case: dict, d: dict) -> List[str]
 
 def _act_us(con, now: datetime, day: date, case: dict, d: dict) -> List[str]:
     from pflab.us import book as usb
+    try:                                                    # a US order carries the US SESSION's date (the last closed one), as the US step's own orders do: `us.book.fill_orders` fills only
+        from pflab.us import clock as uc                    # orders placed on an EARLIER session, so the IST date made an order decided on a Tuesday morning wait a session longer
+        day = uc.session_closed_by(now)
+    except Exception:
+        pass
     isin, sym, opt = d["isin"], d.get("symbol") or d["isin"], d["option"]
     if opt in ("sell", "trim"):
         pos = float(usb.positions(con).get(isin, 0.0))
@@ -670,6 +706,11 @@ def _decide_all(con, now: datetime, day: date, case: dict, ans: dict, advisory: 
             continue
         isin = isin or case.get("isin")
         model_opt = ch["option"]
+        mine = _rows_for(table, isin, sym)
+        if not any(r.get("option") == model_opt for r in mine):       # an option the table does not hold for this name (a sale of something the book does not hold, a market or macro case): the model's
+            base = next((r for r in mine if r.get("option") == "nothing"), {})          # track is still stored so T8 can score it, valued as nothing (zero rupees), and says so
+            _store_row(con, case["case_id"], now, "model", {**base, "isin": isin, "symbol": sym, "option": model_opt, "worst_inr": 0.0, "likely_inr": 0.0, "best_inr": 0.0, "expected_inr": 0.0,
+                                                           "worst_pct_book": 0.0, "size_inr": 0.0}, chosen=True, reason=f"{ch.get('reason') or ''} (not an option for this name: valued as nothing)")
         rr = per_name.get(sym) or ruled
         rule_opt = rr.get("rule_option") or "nothing"
         if rr.get("refused"):
@@ -909,6 +950,44 @@ def _continue_parts(con, now: datetime, case: dict) -> List[str]:
     return out
 
 
+def _retry_refused(con, now: datetime, case: dict) -> List[str]:
+    """A buy the model chose and the rule REFUSED on a timing guard (it still makes new lows, a damage wait, a stretched price) is decided again at the next look, by the rule alone on the stored answer
+    (no model call, no cost): the guard clears with time, not with a new signal, so "nothing changed" must not end the case's chance. The first part is bought when the rule now says so."""
+    ans = _last_answer(con, case["case_id"])
+    day = now.date()
+    if not ans or _advisory(con, day):
+        return []
+    plans = _part_plans(con, case["case_id"])
+    latest: Dict[str, dict] = {}
+    for d in cases.decisions(con, case["case_id"]):
+        if d["isin"]:
+            latest[d["isin"]] = d
+    out: List[str] = []
+    for isin, d in latest.items():
+        if d["model_option"] != "buy_in_parts" or d["rule_option"] not in ("nothing", "wait") or isin in plans or d["decided_on"] >= day or not d["symbol"]:
+            continue
+        sym = str(d["symbol"]).upper()
+        nans = _normal({**ans, "choices": [{"symbol": sym, "option": "buy_in_parts", "reason": "looked at again"}]}, {sym: isin})
+        ruled = _mod("rule").decide(con, case["case_id"], nans, day) or {}
+        rr = (ruled.get("all") or [ruled])[0]
+        if rr.get("refused") or rr.get("rule_option") != "buy_in_parts":
+            continue
+        parts = int(think.settings()["parts"])
+        dd = {"isin": isin, "symbol": sym, "market": case.get("market"), "option": "buy_in_parts", "size_inr": _bet_total(rr), "parts": parts,
+              "reason": "the guard that held the buy back has cleared: " + str(rr.get("reason") or ""), "worst_pct_book": (rr.get("outcome") or {}).get("worst_pct_book")}
+        refs = act(con, now, case["case_id"], dd)
+        bought = any(r.startswith(("paper_order", "us_order")) for r in refs)
+        cases.record_decision(con, case["case_id"], day, isin=isin, symbol=sym, rule_option="buy_in_parts", model_option="buy_in_parts", acted_option="buy_in_parts" if bought else "nothing",
+                              order_refs=refs, reason=dd["reason"][:400])
+        out += refs
+        if bought:
+            try:
+                tell(con, now, case["case_id"])
+            except Exception:
+                pass
+    return out
+
+
 def _unfinished(con, case_id: int) -> bool:
     n = int(think.settings()["parts"])
     return any(len(p) < n for p in _part_plans(con, case_id).values())
@@ -935,7 +1014,7 @@ def follow_up(con, now: datetime, day: Optional[date] = None, *, root=None, web:
                 if not r.get("ok"):
                     out["failed"].append(f"#{cid}: {r.get('failed')}")
                 continue
-            refs = _continue_parts(con, now, c)
+            refs = _continue_parts(con, now, c) + _retry_refused(con, now, c)
             if any(x.startswith(("paper_order", "us_order")) for x in refs):
                 out["parts"] += 1
             cases.add_step(con, cid, now, "looked", payload={"changed": False, "day": str(day), "parts": refs})
