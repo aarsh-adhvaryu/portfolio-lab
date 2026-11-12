@@ -49,3 +49,4 @@ Also the S82 paragraph's "longterm at most 60%, core at least 30%" stays.
 ## Left for the coordinator
 - Core gap vs reserve: `baseline_v2` spends free cash on the core's gap first; to protect the reserve from it too, subtract `reserve_points/100 * total` from `free` there (not touched here).
 - `think/reserve.py` should read `picks.reserve_points` and treat the cash weight above/below it as used/free.
+- Existing pin updated: tests/test_s83_drill.py card room 40% -> 30% (the 10-point reserve is not room for ordinary picks).
