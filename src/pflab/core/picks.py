@@ -453,6 +453,11 @@ def target_weights(con, state: dict, market: str = "IN") -> Dict[str, float]:
     out: Dict[str, float] = {}
     system = []
     occupied = 0.0
+    try:                                                                     # S84 (A65): names under a thinking-loop freeze get no new buying
+        from pflab.think import cases as _tcases
+        frozen = set(_tcases.frozen_isins(con, state.get("day"), market))
+    except Exception:
+        frozen = set()
     for p in managed(con, market):
         k = p["isin"]
         if k not in rows or not rows[k]["buyable"] and p["state"] != "withdrawn":
@@ -477,6 +482,8 @@ def target_weights(con, state: dict, market: str = "IN") -> Dict[str, float]:
             k = p["isin"]
             if gauge:
                 out[k] = cur.get(k, 0.0) * (1.0 - cut)                       # no buying while the gauge fires; held picks are cut like the rest of the equity
+            elif k in frozen:
+                out[k] = cur.get(k, 0.0)                                     # S84: a name under a thinking-loop freeze is not bought (what is held stays)
             else:
                 out[k] = max(cur.get(k, 0.0), want.get(k, 0.0))              # never sold to reach a share; a pick above its risk size keeps what it holds
             if cur.get(k, 0.0) > stock_cap + 1e-9:                           # only the company rail trims a pick (a rail trim)
