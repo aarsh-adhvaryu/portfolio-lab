@@ -106,6 +106,11 @@ def _tojson(x) -> str:
     return json.dumps(x, default=str, ensure_ascii=False)
 
 
+def reserve_status(con, market: str, day: date) -> dict:
+    """The reserve of a market (see `think/reserve.py`); here too because the loop's wiring reads it through the session module."""
+    return reserve.reserve_status(con, market, day)
+
+
 # --- small helpers -------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 def _whole_book(con, day: date) -> float:
@@ -547,6 +552,13 @@ def _act_us(con, now: datetime, day: date, case: dict, d: dict) -> List[str]:
     if wp is not None and wp > lim * 1.0001:
         return [f"no order: the worst case would lose {wp:.2%} of the whole book, over the {lim:.0%} limit"]
     amount_inr = min(part_inr, st["free_inr"])
+    try:                                                                  # F2: a reserve buy is outside the monthly cap and limited to `exempt_day_share` of the sub-book a day (the US step's own carve-out)
+        from pflab import us as _us
+        sub_inr = float(st["reserve_inr"]) / max(float(st.get("reserve_points") or 10.0) / 100.0, 1e-9)
+        today_inr = sum(float(o.get("amount_usd") or 0.0) for o in usb.open_orders(con) if o["side"] == "buy" and o.get("placed_day") == day) * fx
+        amount_inr = min(amount_inr, max(0.0, float(_us.settings()["exempt_day_share"]) * sub_inr - today_inr))
+    except Exception:
+        pass
     if amount_inr < MIN_RESERVE_BUY_INR:
         return [f"no order: the US reserve has no room (free Rs {st['free_inr']:,.0f})"]
     whole = _whole_book(con, day)

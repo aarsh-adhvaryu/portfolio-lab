@@ -28,6 +28,7 @@ Branch `s84/case`. Modules: `src/pflab/think/session.py`, `src/pflab/think/reser
 - Freezes (hooks, each with a test): `core/baseline_v2.decide` reads `state["frozen"]` (no increase for those names) and `state["reserve_frac"]` (the reserve stays cash: new money and sale proceeds meet it
   first); `core/state.build` sets both keys (`cases.frozen_isins`, `reserve.hold_fraction`); `core/picks.target_weights` (system picks: held amount stays); `us/picks_wire.extra_weights` (a frozen US pick's target is
   what the sub-book holds).
+- `session.reserve_status(con, market, day)` delegates to `reserve.reserve_status` (the wiring reads it there). A US reserve buy is placed directly as a US order, limited to `[us] exempt_day_share` (25%) of the sub-book a day counting today's open buys (the F2 carve-out is therefore enforced here, not through `us.policy.check` `decision["kinds"]`).
 - `cases.frozen_isins(con, day, market)` added at the end of `think/cases.py`. `exits.KINDS` gains `"case"`.
 
 ## Decisions (2026-11-12, one line each)
@@ -42,7 +43,7 @@ Branch `s84/case`. Modules: `src/pflab/think/session.py`, `src/pflab/think/reser
 - Failures: a gateway refusal is stored as the plain `gateway.refusal_reason`; the case stays open with its next look the next session; the exit manager's thesis sales are a separate path and still act.
 
 ## What is OFF / not done
-- Nothing is switched off by a flag. Not done by me (wire's): the `core/card.py today_extras` key and the `core/session.py report_day` line call `session.thinking_text(con, day)` (one function for both); the loop
+- Nothing is switched off by a flag. Merged since: gateway, recall, desk, wire (100 tests of mine, gate, wire, cases and recall pass together). Wire now calls my functions by the contract names. Not done by me (wire's, now done there): the `core/card.py today_extras` key and the `core/session.py report_day` line call `session.thinking_text(con, day)` (one function for both); the loop
   wiring, the daily cap loop and the `think_loop` job. The brief listed those hooks for me and for `wire`; I left them to `wire` to avoid a double edit.
 - `notice -> think` ordering and the 3-a-day cap are the caller's (`watch` opens at most 3; wire thinks through the open ones).
 

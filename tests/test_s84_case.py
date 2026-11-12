@@ -544,3 +544,15 @@ def test_a_case_runs_through_the_real_gateway_and_stores_the_engine_model_thinki
     assert {s["model"] for s in steps} == {"claude-sonnet-5-5", "claude-opus-5-5"} and all(s["engine"] == "anthropic" and s["thinking"] and s["cost_rupees"] > 0 and s["cached_tokens"] == 1500 for s in steps)
     assert con.execute("SELECT count(*) FROM api_calls WHERE case_id=? AND agent='think'", [cid]).fetchone()[0] == len(steps)
     assert all("output_config" in p and p["output_config"].get("effort") for p in sent) and any("format" in p["output_config"] for p in sent)
+
+
+def test_a_us_reserve_buy_is_limited_to_a_quarter_of_the_sub_book_a_day_and_the_session_exposes_the_reserve(con, monkeypatch):
+    from pflab.us import book as usb
+    placed = []
+    monkeypatch.setattr(usb, "place", lambda con, now, day, isin, symbol, side, qty=None, amount_usd=None, reason="": placed.append(amount_usd) or len(placed))
+    monkeypatch.setattr(reserve, "reserve_status", lambda con, m, day: {"free_inr": 90000.0, "reserve_inr": 100000.0, "reserve_points": 100.0, "fx": 100.0, "text": "r", "used_inr": 0, "points": 1})
+    cid = _case(con, isin="ZZ0001045810", symbol="NVDA")
+    _gate(con, [], checks=["pass"])
+    refs = session.act(con, NOW, cid, {"isin": "ZZ0001045810", "symbol": "NVDA", "market": "US", "option": "buy_in_parts", "size_inr": 270000.0, "parts": 3, "reason": "dip", "worst_pct_book": -0.004})
+    assert refs == ["us_order:1"] and placed[0] == pytest.approx(250.0)        # a part of Rs 90,000 is cut to 25% of a Rs 100,000 sub-book (at 100 a dollar)
+    assert session.reserve_status(con, "IN", DAY)["text"] == "r"
