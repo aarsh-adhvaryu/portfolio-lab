@@ -101,8 +101,8 @@ def nvda_held_answers(case: dict, n: int) -> dict:
     sym = case.get("symbol") or NVDA_SYMBOL
     if sym != NVDA_SYMBOL:
         return _other(case)
-    return {"happened": "Nvidia's chief executive disclosed a relationship with a former executive of a company US officials suspect of spying for China, and the board opened an investigation (press reports, 8 Nov US).",
-            "sources": ["press reports 8 Nov (US evening)", "the graph's event row"], "class": "damage",
+    return {"happened": "Nvidia's chief executive disclosed a relationship with a former executive of a company US officials suspect of spying for China, and the board opened an investigation (press reports of Sunday evening, US time).",
+            "sources": ["press reports of Sunday evening (US)", "the graph's event row"], "class": "damage",
             "known": "The chief executive's disclosure and the board's investigation are public; a class action followed.", "pending": "the board's decision on the chief executive", "pending_date": "",
             "other_names": ["QQQ", "SPY"],
             "choices": [{"symbol": sym, "option": "sell", "reason": "a governance shock at the top of the company is damage until shown otherwise; the break condition of the pick is governance"}],
@@ -114,8 +114,8 @@ def nvda_not_held_answers(case: dict, n: int) -> dict:
     if sym != NVDA_SYMBOL:
         return _other(case, "market_fear", "nothing")
     base = {"happened": "Nvidia's chief executive is under a board investigation and the shares fell; the S&P 500 and the Nasdaq 100 funds the sub-book holds carry it as a large weight (press reports).",
-            "sources": ["press reports 8-11 Nov", "the graph's event rows"], "known": "The investigation and a class action are public; the board's decision is not.",
-            "other_names": ["SPY", "QQQ", "XLK"], "class": "unclear", "pending": "the board's decision on the chief executive", "pending_date": ""}
+            "sources": ["press reports of the week", "the graph's event rows"], "known": "The investigation and a class action are public; the board's decision is not.",
+            "other_names": ["SPY", "QQQ", "XLK"], "class": "unclear", "pending": "the board's decision on the chief executive", "pending_date": "2026-11-12"}
     if n == 1:
         return dict(base, choices=[{"symbol": sym, "option": "wait", "reason": "the board's decision is pending: no buying until it is public and the shares stop making new lows"}],
                     likelihood=words("even", "even", "unlikely"))

@@ -403,11 +403,62 @@ def think_hook(env, t: datetime) -> Optional[dict]:
         from pflab.think import wire
     except ImportError:
         return None
+    if getattr(env, "real", False):
+        return real_hook(env, t)
     try:
         return wire.sweep(env.cur(), t, env.data)
     except Exception:
         env.exceptions.append(f"{t:%a %d %b %H:%M} think sweep: " + traceback.format_exc(limit=3).strip().splitlines()[-1][:300])
         return None
+
+
+REAL_LIMIT = {"calls": 5}
+
+
+def web_stub(con, question, now):
+    return {"text": "A web check is not available in this replay (no paid search is made).", "cost_rupees": 0.0}
+
+
+def real_hook(env, t: datetime) -> Optional[dict]:
+    """The real path's loop: the wire watches (no thinking, no follow-up); only the NVDA case is thought through, ONCE, by the real model (Sonnet reads, Opus decides); any other case stays open."""
+    from pflab.think import cases, session, wire
+    con = env.cur()
+    res = wire.sweep(con, t, env.data, think_cases=False, follow=False)
+    out = {"watched": res.get("sessions")}
+    for c in cases.open_cases(con):
+        if c["symbol"] == NVDA["symbol"] and not any(st["step"] == "answer_ok" for st in cases.steps(con, c["case_id"])) and not getattr(env, "real_done", None):
+            r = session.think_case(con, t, c["case_id"], root=env.data, web=web_stub)
+            env.real_done = {"case_id": c["case_id"], "at": f"{t:%a %d %b %H:%M}", "result": r}
+            out["thought"] = [c["case_id"]]
+    return out
+
+
+def wide_watch_standin(env, t: datetime, key: str, symbol: str = "NVDA") -> Optional[int]:
+    """The S85 wide watch (a shock in any S&P 500 company) does not exist tonight: the watch looks at a skipped or screened name for a missed run only, and no US news source feeds it. This stands for
+    it in replay (ii): when a headline on the name has become public, the signal is recorded and a case is opened on it once, exactly as the watch does for a held name."""
+    from pflab.think import cases
+    con = env.cur()
+    rows = con.execute("SELECT event_id, ts, kind, severity, headline FROM kg2_event WHERE isin=? AND ts <= ? ORDER BY ts", [key, t]).fetchall()
+    if not rows:
+        return None
+    fresh = [r for r in rows if not con.execute("SELECT 1 FROM think_signals_s84 WHERE isin=? AND detail_json LIKE ?", [key, f"%{r[0]}%"]).fetchone()]
+    if not fresh:
+        return None
+    sids = [cases.record_signal(con, t, market="US", isin=key, symbol=symbol, signal="thesis_event", value=3.0 if r[3] == "high" else 2.0, threshold=1.0, surprise=3.0 if r[3] == "high" else 2.0,
+                                exposure_inr=0.0, score=0.0, detail={"ref": r[0], "kind": r[2], "severity": r[3], "text": r[4], "standin": "wide watch (S85)"}) for r in fresh]
+    ex = cases.case_for(con, key)
+    if ex:
+        for sid in sids:
+            cases.set_signal(con, sid, case_id=ex["case_id"], status="joined")
+        return ex["case_id"]
+    cid = cases.open_case(con, t, market="US", kind="thesis_event", isin=key, symbol=symbol, title=f"{symbol}: {fresh[0][2].replace('_', ' ')} ({fresh[0][3]}): {fresh[0][4][:120]}", score=1.0, opened_by="replay (wide watch stand-in)",
+                          signal_ids=sids)
+    try:
+        from pflab.think import session
+        session.think_case(con, t, cid, root=env.data)
+    except Exception:
+        env.exceptions.append(f"{t:%a %d %b %H:%M} think (stand-in case): " + traceback.format_exc(limit=3).strip().splitlines()[-1][:300])
+    return cid
 
 
 def morning_watch(env, t: datetime) -> Optional[dict]:
@@ -419,7 +470,10 @@ def morning_watch(env, t: datetime) -> Optional[dict]:
     env._mw_day = t.date()
     try:
         from pflab.think import session, watch
-        res = watch.run(env.cur(), t, mode="us_morning", root=env.data) or {}
+        from pflab.us import clock
+        # `watch.run(mode="us_morning")` on a morning with no new session treats the morning as a past one (its clock is the session's IST morning, a weekend morning: Saturday 08:00): the
+        # Sunday-evening news is invisible. The pass itself, called with the real `now`, sees it.
+        res = watch._us_pass(env.cur(), t, clock.session_closed_by(t, 30), t, quotes=None, root=env.data, cfg=watch.settings()) or {}
         for cid in res.get("cases_opened") or []:
             session.think_case(env.cur(), t, cid, root=env.data)
         return res
@@ -448,6 +502,8 @@ def run_window(env, first: date, last: date, *, key: Optional[str] = None, hook:
                 env.safe("hook", hook, env, t)
             if getattr(env, "morning_watch", False):
                 morning_watch(env, t)
+            if getattr(env, "standin_key", None):
+                env.safe("standin", wide_watch_standin, env, t, env.standin_key)
             snap = snapshot_since(env.cur(), before)
             if snap or sw:
                 out.append({"t": f"{t:%a %d %b %H:%M}", "sweep": {k: v for k, v in (sw or {}).items() if k in ("watched", "thought", "cases", "failed", "paused", "signals")}, **snap})
@@ -548,16 +604,20 @@ def _sub_value(con) -> Optional[float]:
     return float(r[0]) if r else None
 
 
-def replay_nvda(held: bool, *, client=None, scenario: Optional[Callable] = None, share: float = 0.08, run_root: Optional[Path] = None, rebuild: bool = False, morning: bool = True) -> dict:
+def replay_nvda(held: bool, *, client=None, scenario: Optional[Callable] = None, share: float = 0.08, run_root: Optional[Path] = None, rebuild: bool = False, morning: bool = True, real: bool = False) -> dict:
     """(i) held: NVDA at `share` of the sub-book from the 6 Nov close. (ii) not held: the system had looked at it and passed (a skip, so it is in the watch's scope). The Nvidia week, 6-12 Nov
     (the IST morning of the 12th handles the 11 Nov US session). A scripted model unless `client` is given."""
     start = date(2026, 11, 5)
     env = make_world("nvda_held" if held else "nvda_not_held", start, run_root=run_root, rebuild=rebuild)
     try:
         scen = Scenario("nvda_held" if held else "nvda_not_held", scenario or (nvda_held_answers if held else nvda_not_held_answers))
-        install_cap(300.0)
-        cl = client or ScriptedClient(scen.responder(env.cur()), {})
-        arm(cl)
+        env.real = bool(real)
+        if real:
+            cl = go_real(env)
+        else:
+            install_cap(300.0)
+            cl = client or ScriptedClient(scen.responder(env.cur()), {})
+            arm(cl)
         open_world(env, start)
         env.morning_watch = False
         run_window(env, start, date(2026, 11, 7), release=False)                               # the sub-book opens and buys its SPY; Friday's US close is handled on Saturday morning
@@ -571,13 +631,53 @@ def replay_nvda(held: bool, *, client=None, scenario: Optional[Callable] = None,
             uins.ensure(con, "NVDA", NVDA["name"], etf=False, ciks={"NVDA": NVDA["cik"]}, now=datetime(2026, 11, 7, 9, 30))
             add_skip(con, "US", key, "NVDA", "passed on 5 Nov: the picks sleeve preferred the index fund; the multiple was high for a first position", date(2026, 11, 5))
         env.morning_watch = morning
+        env.standin_key = None if held else key
         tl = run_window(env, date(2026, 11, 8), date(2026, 11, 12), key=key, only_from=datetime(2026, 11, 8, 0, 0))
         res = {"replay": "nvda_held" if held else "nvda_not_held", "morning_watch": morning, "injected": inj, "timeline": tl, "account": account(tl), "model_calls": getattr(cl, "calls", []), "model_answers": scen.log,
                "accounting": nvda_accounting(env, inj), "exceptions": env.exceptions[:5], "errors": env.catcher.records[:5], "sub_book_usd": _sub_value(env.cur())}
+        if real:
+            res["real"] = {"thought": getattr(env, "real_done", None), "calls_made": getattr(env, "real_state", {}).get("n"),
+                           "api_rows": [tuple(str(x) for x in r) for r in env.cur().execute("SELECT call_id, role, model, thinking, cached_tokens, cost_inr, status FROM api_calls ORDER BY call_id").fetchall()],
+                           "answer_steps": [(st["step"], st["model"], st["thinking"], round(st["cost_rupees"], 2), st["payload_json"][:1800]) for c in env.cur().execute("SELECT case_id FROM think_cases_s84 WHERE symbol='NVDA'").fetchall()
+                                            for st in __import__("pflab.think.cases", fromlist=["x"]).steps(env.cur(), c[0])]}
         return res
     finally:
         disarm()
+        if getattr(env, "real_restore", None):
+            env.real_restore()
         env.close()
+
+
+def go_real(env, cap: float = 70.0):
+    """The ONE real path: the real gateway and client (the key from the secrets file, never printed), the real governor and egress gate with a scratch cap, the workshop's paid guard satisfied by
+    PFLAB_PAID; the drills' network block is lifted only around a model call; at most REAL_LIMIT["calls"] calls in all; the app's `think_loop` job is replaced by a fake (the hook thinks one case)."""
+    from dataclasses import replace
+    from pflab.llm import gateway
+    from pflab.service import jobs
+    os.environ.pop("PFLAB_SECRETS_FILE", None)
+    os.environ["PFLAB_PAID"] = "1"
+    install_cap(cap)
+    gateway.set_client(None)
+    job = jobs.REGISTRY.get("think_loop")
+    if job is not None:
+        jobs.REGISTRY["think_loop"] = replace(job, fn=lambda ctx: {"replay": "the real path thinks one case itself"})
+    eng = gateway.ENGINES["anthropic"]
+    orig = eng.send
+    state = {"n": 0}
+
+    def send(*a, **k):
+        if state["n"] >= REAL_LIMIT["calls"]:
+            raise RuntimeError(f"the real path allows {REAL_LIMIT['calls']} model calls in all")
+        state["n"] += 1
+        env.net.uninstall()
+        try:
+            return orig(*a, **k)
+        finally:
+            env.net.install()
+    eng.send = send
+    env.real_state = state
+    env.real_restore = lambda: setattr(eng, "send", orig)
+    return SimpleNamespace(calls=[])
 
 
 def ather_skip_day(pan=None) -> date:

@@ -277,59 +277,110 @@ def drill_bet_sizing(c) -> None:
         w.close()
 
 
-def _seed_scored_cases(con, n: int, beats: bool, asof: date) -> List[int]:
-    """`n` closed cases with a decision each, dated far enough back in the profile's own history for 5, 20 and 60 sessions to have passed (the synthetic closes exist), rule track `beats` doing nothing
-    or not. Decided through the case store's plain API (the same rows the loop writes)."""
-    from pflab.think import cases
-    ids = []
-    held = [FMCG1, FMCG2, CAPG1, IT1]
+def _seed_scored_cases(con, n: int, ahead: bool, asof: date, first_k: int = 0) -> List[int]:
+    """`n` closed cases with a decision each, dated far enough back in the profile's own history (the synthetic closes exist) for 5, 20 and 60 sessions to have passed. The rule's choice is a sale
+    whose stored curve (worst, likely, best in rupees) is above ("ahead") or below the stored curve of holding, so its track against "do nothing" is positive or negative; the model's own choice is
+    hold. Each case stores its validated answer (likelihood words) as the loop does. Plain case-store API: the same rows the loop writes."""
     from pflab import markets
+    from pflab.think import cases
     m = markets.get("IN")
     d = asof
     for _ in range(90):
         d = m.previous_session(d)
-    for k in range(n):
+    held = [FMCG1, FMCG2, CAPG1, IT1]
+    ids = []
+    for k in range(first_k, first_k + n):
         isin = held[k % 4]
         day = d
         for _ in range(k):
             day = m.next_session(day)
-        cid = cases.open_case(con, D.dt(day, 16), market="IN", kind="dip", isin=isin, symbol=SYM[isin], title=f"seeded case {k} (drill)", opened_by="drill")
-        opt = "sell" if beats else "hold"
-        cases.add_option(con, cid, D.dt(day, 16), track="rule", isin=isin, symbol=SYM[isin], option=opt, worst_inr=-1000.0, likely_inr=500.0, best_inr=1500.0, expected_inr=400.0, worst_pct_book=0.002, size_inr=20000.0, chosen=True)
-        cases.add_option(con, cid, D.dt(day, 16), track="model", isin=isin, symbol=SYM[isin], option="hold", worst_inr=-1000.0, likely_inr=500.0, best_inr=1500.0, expected_inr=400.0, worst_pct_book=0.002, chosen=True)
-        cases.record_decision(con, cid, day, isin=isin, symbol=SYM[isin], rule_option=opt, model_option="hold", acted_option=opt, reason="seeded")
+        now = D.dt(day, 16)
+        cid = cases.open_case(con, now, market="IN", kind="dip", isin=isin, symbol=SYM[isin], title=f"seeded case {k} (drill)", opened_by="drill")
+        sell = (4000.0, 6000.0, 9000.0) if ahead else (-5000.0, -4000.0, -3000.0)
+        cases.add_option(con, cid, now, track="rule", isin=isin, symbol=SYM[isin], option="sell", worst_inr=sell[0], likely_inr=sell[1], best_inr=sell[2], expected_inr=sell[1], worst_pct_book=0.002, size_inr=20000.0, chosen=True)
+        cases.add_option(con, cid, now, track="model", isin=isin, symbol=SYM[isin], option="hold", worst_inr=-1000.0, likely_inr=500.0, best_inr=1500.0, expected_inr=400.0, worst_pct_book=0.002, chosen=True)
+        cases.add_step(con, cid, now, "answer_ok", payload={"answer": _answer("market_fear", "hold", SYM[isin], worst="unlikely", likely="likely", best="unlikely")})
+        cases.record_decision(con, cid, day, isin=isin, symbol=SYM[isin], rule_option="sell", model_option="hold", acted_option="sell", reason="seeded")
         cases.close_case(con, cid, day + timedelta(days=1), "seeded")
         ids.append(cid)
     return ids
 
 
-def drill_calibration_and_advisory(c_cal, c_adv) -> None:
-    """The word table does not move before 20 scored cases and moves after them, in bounded steps; the advisory fallback switches on when the rule's track is behind "do nothing" after 20 and off when ahead."""
+def drill_calibration(c) -> None:
+    """The word table does not move before 20 scored decisions and moves after them, in bounded steps."""
     S = sessions(4)
     w = World("calibration", lambda case, n: _answer("market_fear", "hold", case.get("symbol") or "X"), tag="calibration")
     try:
         w.run(S[1])
         from pflab.think import cases, score
-        con = w.con
-        asof = S[1]
-        cases.seed_calibration(con, asof)
+        con, asof = w.con, S[1]
+        cases.seed_calibration(con, asof - timedelta(days=60))
         before = dict(cases.probabilities(con))
-        _seed_scored_cases(con, 10, True, asof)
-        n10 = score.score_due(con, asof)
+        _seed_scored_cases(con, 6, True, asof)
+        c.ok(score.score_due(con, asof) > 0, "decisions 5, 20 and 60 sessions old are scored from the stored closes", "think/score.py score_due")
         score.calibrate(con, asof)
-        c_cal.ok(cases.probabilities(con) == before, "with fewer than 20 scored decisions the word table did not move", "think/score.py calibrate")
-        c_adv.ok(not score.advisory(con, asof), "with fewer than 20 scored decisions the loop is not advisory", "think/score.py advisory")
-        _seed_scored_cases(con, 14, True, asof)
+        c.ok(cases.probabilities(con) == before, "with 6 scored decisions (12 words, under 20 of any) the word table did not move", "think/score.py calibrate")
+        _seed_scored_cases(con, 18, True, asof, first_k=6)
         score.score_due(con, asof)
-        sc = score.scorecard(con)
-        c_cal.note(f"scorecard after 24 seeded decisions: {sc}")
         r = score.calibrate(con, asof)
         after = cases.probabilities(con)
         steps = {k: round(abs(after[k] - before[k]), 4) for k in before}
-        c_cal.ok(any(v > 0 for v in steps.values()) or r.get("moved") is False, f"after 20+ scored decisions the word table was corrected ({steps})", "think/score.py calibrate")
-        c_cal.ok(all(v <= 0.05 + 1e-9 for v in steps.values()) and all(0.02 <= p <= 0.98 for p in after.values()), "each step is at most 0.05 and stays inside [0.02, 0.98]", "think/score.py calibrate")
-        c_adv.note(f"advisory with the rule ahead: {score.advisory(con, asof)}")
-        w2 = None
-        _evidence_clean(w, c_cal)
+        c.note(f"words: {({k: (v['n'], v['hits'], round(v['p_before'], 2), round(v['p_after'], 2)) for k, v in r['words'].items() if v['n']})}")
+        c.ok(bool(r["moved"]) or all(v["hits"] / max(v["n"], 1) == v["p_before"] for v in r["words"].values() if v["n"] >= 20), f"after 24 scored decisions the table was corrected ({r['moved']}, steps {steps})", "think/score.py calibrate")
+        c.ok(all(v <= 0.05 + 1e-9 for v in steps.values()) and all(0.02 <= p <= 0.98 for p in after.values()), "each step is at most 0.05 and the table stays inside [0.02, 0.98]", "think/score.py calibrate")
+        r2 = score.calibrate(con, asof + timedelta(days=3))
+        c.ok(not r2["moved"], "a second correction inside the same month does not move it again", "think/score.py calibrate")
+        _evidence_clean(w, c)
     finally:
         w.close()
+
+
+def drill_advisory(c) -> None:
+    """After 20 scored decisions with the rule behind "do nothing" after tax the loop is advisory (a non-thesis choice does not act); once the rule's track is ahead it is live again."""
+    S = sessions(4)
+    w = World("advisory", lambda case, n: _answer("market_fear", "hold", case.get("symbol") or "X"), tag="advisory")
+    try:
+        w.run(S[1])
+        from pflab.think import score
+        con, asof = w.con, S[1]
+        _seed_scored_cases(con, 10, False, asof)
+        score.score_due(con, asof)
+        c.ok(not score.advisory(con, asof), "with 10 scored decisions (rule behind) the loop is still live: 20 are needed", "think/score.py advisory")
+        _seed_scored_cases(con, 12, False, asof, first_k=10)
+        score.score_due(con, asof)
+        sc = score.scorecard(con)
+        c.ok(score.advisory(con, asof), f"with {sc['scored']} scored decisions and the rule behind doing nothing (Rs {sc['vs_nothing_inr']:,.0f}) the loop is advisory", "think/score.py advisory")
+        _seed_scored_cases(con, 40, True, asof, first_k=22)
+        score.score_due(con, asof)
+        sc = score.scorecard(con)
+        c.ok(not score.advisory(con, asof), f"with the rule's track ahead again (Rs {sc['vs_nothing_inr']:,.0f}) the loop is live again", "think/score.py advisory")
+        c.note(f"scorecard text: {sc['text']}")
+        _evidence_clean(w, c)
+    finally:
+        w.close()
+
+
+DRILLS = {"three_cases": drill_three_cases, "missed_exit": drill_missed_exit, "disagree": drill_disagree, "failing": drill_failing, "follow_up": drill_follow_up, "bet_sizing": drill_bet_sizing,
+          "calibration": drill_calibration, "advisory": drill_advisory}
+
+
+def run_all(only: Optional[str] = None, out=None) -> dict:
+    """Run the drills (all, or the one named); PASS / FAIL / ERROR for each with its evidence. The report is written to `out`/drills.json when given."""
+    import time
+    res = {}
+    for name, fn in DRILLS.items():
+        if only and name != only:
+            continue
+        c = D.Check(name)
+        t0 = time.time()
+        try:
+            fn(c)
+            res[name] = c.result(t0)
+        except Exception:
+            c.evidence.append("ERROR: " + " | ".join(l.strip() for l in traceback.format_exc().strip().splitlines()[-4:])[:600])
+            res[name] = {"name": name, "status": "ERROR", "evidence": c.evidence, "findings": [], "seconds": round(time.time() - t0, 1)}
+    if out:
+        from pathlib import Path
+        Path(out).mkdir(parents=True, exist_ok=True)
+        (Path(out) / "drills.json").write_text(json.dumps(res, indent=1, default=str), encoding="utf-8")
+    return {k: {"status": v["status"], "failed": [e for e in v["evidence"] if e.startswith(("FAIL", "ERROR"))]} for k, v in res.items()}
