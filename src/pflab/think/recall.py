@@ -160,7 +160,7 @@ def _notes(con, cut: datetime, who: dict, topic: Optional[str], sector: Optional
             continue
         tk, cq = _tokens(ctopic), cquestion or dtitle or ""
         hit = doc in linked or (sym and (sym in tk or (ctopic and ctopic.strip().upper() in GENERIC_TOPICS_UP and _has_word(cq, sym)))) \
-            or any(t.upper() in tk or (ctopic and ctopic.strip().upper() in GENERIC_TOPICS_UP and _has_word(cq, t)) for t in topics) \
+            or any((_tokens(t) and _tokens(t) <= tk) or (ctopic and ctopic.strip().upper() in GENERIC_TOPICS_UP and _has_word(cq, t)) for t in topics) \
             or (question is not None and _similar(question, cq))
         if not hit:
             continue
@@ -402,7 +402,7 @@ _SYMS = re.compile(r"(?<![A-Za-z0-9])[A-Z][A-Z0-9&\-]{2,14}(?![A-Za-z0-9])")
 def _isins_in(con, text: str) -> List[str]:
     """ISINs of the names written in capitals in `text` that are listed in the graph's nodes or the instruments (by code; a word that is not a symbol is ignored)."""
     out = []
-    for tok in dict.fromkeys(_SYMS.findall(text or "")):
+    for tok in list(dict.fromkeys(_SYMS.findall(text or "")))[:30]:
         r = _rows(con, "SELECT isin FROM kg2_node WHERE upper(symbol)=? UNION SELECT isin FROM instruments WHERE upper(symbol)=? LIMIT 1", [tok, tok])
         if r:
             out.append(r[0][0])

@@ -268,3 +268,12 @@ def test_a_repeated_web_check_on_an_unchanged_name_costs_zero(con):
     event(con, "e-news", AAA, datetime(2026, 11, 11, 9, 0), "regulatory_action", "medium", "Aaaa gets a notice")
     o4 = an.web_search(con, q, c, now=NOW, cfg=CFG, pv=an.Private(), topic="brain web")
     assert o4.status == "done" and c.creates == 3                                                    # an event on the name since: paid again
+
+
+def test_a_note_on_several_names_is_reused_for_the_same_names_within_the_topic_window(con):
+    n = note(con, "AAAA,BBBB", [AAA, BBB], "A note on the two names together.", datetime(2026, 11, 9, 21, 0))
+    f = recall.same_subject_fresh(con, NOW, topic="AAAA,BBBB")
+    assert f and f["id"] == n                                                                          # no single name to check events for: the topic window (14 days) applies
+    assert recall.same_subject_fresh(con, NOW + timedelta(days=20), topic="AAAA,BBBB") is None
+    assert recall.same_subject_fresh(con, NOW, topic="AAAA,PEERCO") is None
+    assert recall.same_subject_fresh(con, NOW, topic="general") is None                                # a generic topic is never "the same subject"
