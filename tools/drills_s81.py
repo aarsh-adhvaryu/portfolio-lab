@@ -1803,7 +1803,7 @@ def step_thinking(env: "Env", c: Check, phase: str) -> None:
     pseudo = [x for x in dec if x not in sec]
     c.note(f"decisions on a non-security case (market, macro, storyline): {len(pseudo)}; their stored tracks: {sorted({o['track'] for x in pseudo for o in cases.options(cur, x['case_id'])})} (the model's track is not stored for them: T8 cannot score it)")
     n_sales = cur.execute("SELECT count(*) FROM paper_orders WHERE isin IN (?,?) AND side IN ('sell','SELL') AND note LIKE 'case #%'", list(victims)).fetchone()[0]
-    c.note(f"sale orders from cases on the shocked names: {n_sales} (the scripted model says hold; a rule sale only on class damage, so none is expected)")
+    c.note(f"sale orders from cases on the shocked names: {n_sales} (the scripted model says hold; the rule sells when its expected result after tax beats holding by 1 point of the position, or on class damage)")
     n_ans = env.think_client.counter.get("answers", 0)
     c.ok(n_ans > 0, f"the model's answers were all scripted ({n_ans}); nothing was sent", "tools/replays_s84_model.py")
     if getattr(env, "think_scen", None):
