@@ -353,3 +353,29 @@ def test_the_day_in_words_and_the_list_of_missed_runs(con, tmp_path, monkeypatch
     assert w["signals"] >= 2 and w["cases_opened"] == 2 and "2 cases opened" in w["text"] and w["by_signal"]["missed_run"] == 1
     m = watch.missed_runs(con)
     assert len(m) == 1 and m[0]["symbol"] == "CCC" and m[0]["passed_on"] == str(on) and m[0]["points_ahead"] >= 20
+
+
+def test_a_held_us_name_is_in_scope_with_its_rupee_value_and_is_watched_on_the_us_morning(con, tmp_path):
+    _us_bars(tmp_path, "XYZ", [-0.12])
+    con.execute("INSERT INTO instruments (isin, key_kind, asset_class, tax_class, listed, symbol, name, source, built_at, market) VALUES ('ZZ0000000001', 'isin', 'equity', 'FOREIGN', TRUE, 'XYZ', 'XYZ Inc', 'synthetic', now(), 'US')")
+    con.execute("INSERT INTO us_account_s81 VALUES (1, ?, 1000000, 83.0, 'synthetic', 12048.0, 0.1, 't', now())", [DAYS[-30]])
+    con.execute("INSERT INTO us_cash_s81 VALUES (1, ?, 1000.0, 'seed', '', now())", [DAYS[-30]])
+    con.execute("INSERT INTO us_lots_s81 VALUES (1, 'ZZ0000000001', 'XYZ', ?, 50.0, 100.0, 83.0, 'synthetic', 'buy')", [DAYS[-20]])
+    con.execute("INSERT INTO fx_rates (pair, date, rate, source) VALUES ('USDINR_FBIL', ?, 84.0, 'synthetic')", [date(2026, 10, 28)])
+    sc = {e["symbol"]: e for e in watch.scope(con, date(2026, 10, 29), market="US", root=tmp_path)}
+    assert sc["XYZ"]["held"] and sc["XYZ"]["market"] == "US" and sc["XYZ"]["exposure_inr"] > 100_000 and 0 < sc["XYZ"]["exposure_pct"] < 1
+    r = watch.run(con, datetime(2026, 10, 30, 9, 0), mode="us_morning", root=tmp_path)
+    s = [x for x in cases.signals(con) if x["isin"] == "ZZ0000000001"]
+    assert {"move_1d"} <= {x["signal"] for x in s} and s[0]["exposure_inr"] == pytest.approx(sc["XYZ"]["exposure_inr"]) and len(r["cases_opened"]) == 1
+
+
+def test_a_thesis_break_event_on_a_held_us_name_opens_a_case_on_the_us_morning(con, tmp_path):
+    _us_bars(tmp_path, "XYZ", [0.001])
+    con.execute("INSERT INTO instruments (isin, key_kind, asset_class, tax_class, listed, symbol, name, source, built_at, market) VALUES ('ZZ0000000001', 'isin', 'equity', 'FOREIGN', TRUE, 'XYZ', 'XYZ Inc', 'synthetic', now(), 'US')")
+    con.execute("INSERT INTO us_account_s81 VALUES (1, ?, 1000000, 83.0, 'synthetic', 12048.0, 0.1, 't', now())", [DAYS[-30]])
+    con.execute("INSERT INTO us_cash_s81 VALUES (1, ?, 1000.0, 'seed', '', now())", [DAYS[-30]])
+    con.execute("INSERT INTO us_lots_s81 VALUES (1, 'ZZ0000000001', 'XYZ', ?, 50.0, 100.0, 83.0, 'synthetic', 'buy')", [DAYS[-20]])
+    con.execute("INSERT INTO fx_rates (pair, date, rate, source) VALUES ('USDINR_FBIL', ?, 84.0, 'synthetic')", [date(2026, 10, 28)])
+    _event(con, "ZZ0000000001", "fraud_investigation", "high", datetime(2026, 10, 30, 6, 30), source="news_x", ref="us1", headline="a board investigation of the chief executive (synthetic)")
+    r = watch.run(con, datetime(2026, 10, 30, 9, 0), mode="us_morning", root=tmp_path)
+    assert ("ZZ0000000001", "thesis_event") in _sigs(con) and len(r["cases_opened"]) == 1 and cases.get_case(con, r["cases_opened"][0])["market"] == "US"

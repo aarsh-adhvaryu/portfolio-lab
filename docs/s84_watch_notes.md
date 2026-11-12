@@ -5,7 +5,7 @@
   scorecard's "skips that ran" reads), `settings()`. Code only: no model, no cost, nothing reaches a broker.
 - Migration 220 `think_watch_runs_s84` (`src/pflab/pm/mig_s79/m_watch84.py`): one row per India close and per US morning pass (the catch-up's bookkeeping). Session-loop passes are not logged there.
 - `configs/core.toml [think]`: one line added, `wide_watch = false` (the brief names it). The other watch numbers are defaults in `watch.WATCH_DEFAULTS` and any of them can be put in `[think]` to override.
-- Tests: `tests/test_s84_watch.py` (25 tests, synthetic data only).
+- Tests: `tests/test_s84_watch.py` (27 tests, synthetic data only).
 
 ## Signals (each a number with its threshold; `surprise` = value over threshold, 1.0 = at the line)
 move_1d / move_5d (beyond `move_sigmas` x the name's usual daily move, 5-day line = sigma x sqrt 5; sigma = std of the last 250 daily returns before today), rel_1d / rel_5d (the same on the move against
@@ -37,6 +37,9 @@ state `noticed` (their signals `not_examined`). Every signal is stored once per 
 6. "Names he asked about" (`strategist_requests_s81` holds free text, no symbols): not parsed tonight. Left for S85 with the wide watch.
 7. Sector exposure and exposure through funds: S85 (the brief). `[think] wide_watch` is read and says "not built" if switched on; no half-written code.
 8. Catch-up holdings are today's holdings (the ledger's lots are not time-sliced here); prices, filings and probabilities are point in time (<= the pass's day, filings <= its clock).
+
+9. The US pass also reads `kg/events.material_events` for held US names (a ZZ key in `kg2_event`): US weekend news cannot reach the graph tonight (no US source until S85), so a drill that needs the Nvidia news
+   of Sun 8 Nov must write a `kg2_event` row for the US key; without it the watch sees that story only through the price (the Monday after-hours quote, or the Tuesday close).
 
 ## OFF and why
 Nothing of mine is OFF behind a switch. `wide_watch` (the Nifty 500 and S&P 500 members) is OFF and not built (S85). The watch runs only when something calls `watch.run`; the coordinator wires it.

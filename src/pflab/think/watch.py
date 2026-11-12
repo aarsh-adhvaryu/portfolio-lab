@@ -364,7 +364,7 @@ def _thesis_signals(con, entries: List[dict], day: date, until: datetime, cfg: d
     try:
         from pflab.kg import events
         since = datetime.combine(day - timedelta(days=int(cfg["event_lookback_days"])), time(0, 0))
-        evs = events.material_events(con, [e["isin"] for e in entries if e["market"] == "IN"], since, until)
+        evs = events.material_events(con, [e["isin"] for e in entries], since, until)
     except Exception:
         return []
     by = {e["isin"]: e for e in entries}
@@ -683,6 +683,7 @@ def _us_pass(con, sig_now: datetime, s_day: date, until: datetime, *, quotes: Op
             if fs:
                 raws.append({**fs, "entry": e})
     us_eq = _equity_inr(entries, "US")
+    raws += _thesis_signals(con, [e for e in entries if e["held"]], sig_now.date(), until, cfg)      # the graph holds events on US names only once US filings reach it (S85) or a drill writes one
     raws += _market_signal(ix, "US", s_day, cfg, us_eq, whole)
     raws += _macro_signals(s_day, sig_now, cfg, us_eq + _equity_inr(scope(con, s_day, market="IN", root=root, held_only=True), "IN"), whole, root)
     raws += _storyline_signals(con, sig_now.date(), "US", cfg, 0.0, whole)
