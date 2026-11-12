@@ -89,8 +89,18 @@ def words(worst: str = "unlikely", likely: str = "likely", best: str = "unlikely
     return {"worst": worst, "likely": likely, "best": best, "base_rate_set": sets, "reason": why}
 
 
+def _other(case: dict, klass: str = "market_fear", option: str = "hold") -> dict:
+    """Any case that is not the replay's subject (a market-wide move, a synthetic holding): read as ordinary, nothing to do."""
+    sym = case.get("symbol") or "the market"
+    return {"happened": f"{sym} moved with its market or sector on the day; no company event is stored for it.", "sources": ["the stored closes"], "class": klass,
+            "known": "The move is in the stored closes.", "pending": "", "pending_date": "", "other_names": [],
+            "choices": [{"symbol": sym, "option": option, "reason": "an ordinary move with no company event behind it"}], "likelihood": words("unlikely", "likely", "unlikely")}
+
+
 def nvda_held_answers(case: dict, n: int) -> dict:
     sym = case.get("symbol") or NVDA_SYMBOL
+    if sym != NVDA_SYMBOL:
+        return _other(case)
     return {"happened": "Nvidia's chief executive disclosed a relationship with a former executive of a company US officials suspect of spying for China, and the board opened an investigation (press reports, 8 Nov US).",
             "sources": ["press reports 8 Nov (US evening)", "the graph's event row"], "class": "damage",
             "known": "The chief executive's disclosure and the board's investigation are public; a class action followed.", "pending": "the board's decision on the chief executive", "pending_date": "",
@@ -101,6 +111,8 @@ def nvda_held_answers(case: dict, n: int) -> dict:
 
 def nvda_not_held_answers(case: dict, n: int) -> dict:
     sym = case.get("symbol") or NVDA_SYMBOL
+    if sym != NVDA_SYMBOL:
+        return _other(case, "market_fear", "nothing")
     base = {"happened": "Nvidia's chief executive is under a board investigation and the shares fell; the S&P 500 and the Nasdaq 100 funds the sub-book holds carry it as a large weight (press reports).",
             "sources": ["press reports 8-11 Nov", "the graph's event rows"], "known": "The investigation and a class action are public; the board's decision is not.",
             "other_names": ["SPY", "QQQ", "XLK"], "class": "unclear", "pending": "the board's decision on the chief executive", "pending_date": ""}
@@ -113,6 +125,8 @@ def nvda_not_held_answers(case: dict, n: int) -> dict:
 
 def ather_answers(case: dict, n: int) -> dict:
     sym = case.get("symbol") or ATHER_SYMBOL
+    if sym != ATHER_SYMBOL:
+        return _other(case)
     return {"happened": "Ather Energy has run well ahead of the Nifty 500 since the system looked at it and passed (the skip reason was valuation against negative trailing earnings).",
             "sources": ["the stored skip and its reason", "the stored closes against the Nifty 500 total return"], "class": "temporary",
             "known": "The price has risen a lot; trailing earnings are still negative.", "pending": "", "pending_date": "", "other_names": ["TVSMOTOR", "HEROMOTOCO"],

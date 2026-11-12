@@ -410,6 +410,24 @@ def think_hook(env, t: datetime) -> Optional[dict]:
         return None
 
 
+def morning_watch(env, t: datetime) -> Optional[dict]:
+    """FINDING of the Nvidia replay (S84): `think/wire.sweep` watches a US market only for a SESSION that has closed since the last pass, so news of a Sunday evening (US) is not looked at in the IST
+    morning of Monday but after Monday's session closes, on Tuesday morning. This hook stands for the fix: in the IST morning (the first step of a day at or after 06:30) it also runs the watch in
+    mode `us_morning` (everything since the last US close, after-hours news included) and thinks the cases that opens. Idempotent per (name, signal, day), so a day with a session is not doubled."""
+    if not (6, 30) <= (t.hour, t.minute) < (12, 0) or getattr(env, "_mw_day", None) == t.date():
+        return None
+    env._mw_day = t.date()
+    try:
+        from pflab.think import session, watch
+        res = watch.run(env.cur(), t, mode="us_morning", root=env.data) or {}
+        for cid in res.get("cases_opened") or []:
+            session.think_case(env.cur(), t, cid, root=env.data)
+        return res
+    except Exception:
+        env.exceptions.append(f"{t:%a %d %b %H:%M} morning watch: " + traceback.format_exc(limit=3).strip().splitlines()[-1][:300])
+        return None
+
+
 def run_window(env, first: date, last: date, *, key: Optional[str] = None, hook: Optional[Callable] = None, release: bool = True, only_from: Optional[datetime] = None) -> List[dict]:
     """Day by day, step by step: headlines released at their time, the app's loops, then the thinking loop; every step's news is kept. Returns the timeline."""
     out: List[dict] = []
@@ -428,6 +446,8 @@ def run_window(env, first: date, last: date, *, key: Optional[str] = None, hook:
             sw = think_hook(env, t)
             if hook:
                 env.safe("hook", hook, env, t)
+            if getattr(env, "morning_watch", False):
+                morning_watch(env, t)
             snap = snapshot_since(env.cur(), before)
             if snap or sw:
                 out.append({"t": f"{t:%a %d %b %H:%M}", "sweep": {k: v for k, v in (sw or {}).items() if k in ("watched", "thought", "cases", "failed", "paused", "signals")}, **snap})
@@ -528,7 +548,7 @@ def _sub_value(con) -> Optional[float]:
     return float(r[0]) if r else None
 
 
-def replay_nvda(held: bool, *, client=None, scenario: Optional[Callable] = None, share: float = 0.08, run_root: Optional[Path] = None, rebuild: bool = False) -> dict:
+def replay_nvda(held: bool, *, client=None, scenario: Optional[Callable] = None, share: float = 0.08, run_root: Optional[Path] = None, rebuild: bool = False, morning: bool = True) -> dict:
     """(i) held: NVDA at `share` of the sub-book from the 6 Nov close. (ii) not held: the system had looked at it and passed (a skip, so it is in the watch's scope). The Nvidia week, 6-12 Nov
     (the IST morning of the 12th handles the 11 Nov US session). A scripted model unless `client` is given."""
     start = date(2026, 11, 5)
@@ -539,6 +559,7 @@ def replay_nvda(held: bool, *, client=None, scenario: Optional[Callable] = None,
         cl = client or ScriptedClient(scen.responder(env.cur()), {})
         arm(cl)
         open_world(env, start)
+        env.morning_watch = False
         run_window(env, start, date(2026, 11, 7), release=False)                               # the sub-book opens and buys its SPY; Friday's US close is handled on Saturday morning
         con = env.cur()
         key = nvda_key(con)
@@ -549,8 +570,9 @@ def replay_nvda(held: bool, *, client=None, scenario: Optional[Callable] = None,
             from pflab.us import instruments as uins
             uins.ensure(con, "NVDA", NVDA["name"], etf=False, ciks={"NVDA": NVDA["cik"]}, now=datetime(2026, 11, 7, 9, 30))
             add_skip(con, "US", key, "NVDA", "passed on 5 Nov: the picks sleeve preferred the index fund; the multiple was high for a first position", date(2026, 11, 5))
+        env.morning_watch = morning
         tl = run_window(env, date(2026, 11, 8), date(2026, 11, 12), key=key, only_from=datetime(2026, 11, 8, 0, 0))
-        res = {"replay": "nvda_held" if held else "nvda_not_held", "injected": inj, "timeline": tl, "account": account(tl), "model_calls": getattr(cl, "calls", []), "model_answers": scen.log,
+        res = {"replay": "nvda_held" if held else "nvda_not_held", "morning_watch": morning, "injected": inj, "timeline": tl, "account": account(tl), "model_calls": getattr(cl, "calls", []), "model_answers": scen.log,
                "accounting": nvda_accounting(env, inj), "exceptions": env.exceptions[:5], "errors": env.catcher.records[:5], "sub_book_usd": _sub_value(env.cur())}
         return res
     finally:
