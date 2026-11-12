@@ -16,7 +16,10 @@ def classify_pending(root: Path, g: dict, limit: int = 40, chat: Optional[Callab
     A model that cannot answer leaves the rule's answer. Returns counts only."""
     cache = classify.load_cache(root)
     ev = g["event"]
-    todo = ev[ev["kind"].isin(["other", "news"]) & ~ev["event_id"].isin(set(cache))].sort_values(["ts", "event_id"], ascending=[False, True]).head(limit)
+    todo = ev[ev["kind"].isin(["other", "news"]) & ~ev["event_id"].isin(set(cache))].copy()
+    # S84: a headline with a governance keyword (the rule's leadership_crisis lead) is asked about FIRST, then newest first
+    todo["_lead"] = [0 if classify.rule_kind(str(h or ""))[0] == "leadership_crisis" else 1 for h in todo["headline"]]
+    todo = todo.sort_values(["_lead", "ts", "event_id"], ascending=[True, False, True]).head(limit)
     done, failed, rows = 0, 0, []
     for r in todo.itertuples():
         text = ""
