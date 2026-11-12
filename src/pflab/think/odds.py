@@ -260,11 +260,22 @@ def _move_history(con, move: float, asof: date, horizons, ix, window: int = 1, r
     return out
 
 
-def base_rates(con, kind: Optional[str], *, move: Optional[float] = None, isin: Optional[str] = None, asof, market: str = "IN", symbol: Optional[str] = None, window: int = 1, root=None) -> dict:
+def base_rates(con, kind: Optional[str], *, move: Optional[float] = None, isin: Optional[str] = None, asof, market: str = "IN", symbol: Optional[str] = None, window: int = 1, root=None, cache: Optional[dict] = None) -> dict:
     """{5: {n, p10, p50, p90}, 20: {...}, 60: {...}, "basis": "history" | "own range", ...}: the spread of what such names did against their index over the next 5, 20 and 60 sessions.
     `kind` is an event kind (read from the graph's events) or a move kind; `move` (a signed fraction over `window` sessions) selects names that moved alike. Point in time: nothing after
-    `asof`. With fewer than `base_rate_min_n` cases at 20 sessions the count is said and the name's own range stands in (basis "own range", `history_n` keeps the count)."""
+    `asof`. With fewer than `base_rate_min_n` cases at 20 sessions the count is said and the name's own range stands in (basis "own range", `history_n` keeps the count).
+    `cache` is a dict the caller keeps for one case (the scan of the history takes a few seconds): the same question is answered from it."""
     asof = _day(asof)
+    key = (kind, None if move is None else round(float(move), 6), isin, asof, (market or "IN").upper(), symbol, window)
+    if cache is not None and key in cache:
+        return cache[key]
+    out = _base_rates(con, kind, move, isin, asof, market, symbol, window, root)
+    if cache is not None:
+        cache[key] = out
+    return out
+
+
+def _base_rates(con, kind, move, isin, asof, market, symbol, window, root) -> dict:
     hz = [int(h) for h in PARAMS["base_rate_horizons"]]
     min_n = settings()["base_rate_min_n"]
     ix = _index_series(market, root) if (market or "IN").upper() == "IN" else None
@@ -531,7 +542,7 @@ def _outcome_row(case, option, isin, symbol, vals, w, size, tax, whole, basis, h
 
 
 def outcomes(con, case, option: str, *, isin: Optional[str] = None, asof, bet_inr: Optional[float] = None, words: Optional[dict] = None, rates: Optional[dict] = None,
-             market: Optional[str] = None, symbol: Optional[str] = None, root=None) -> dict:
+             market: Optional[str] = None, symbol: Optional[str] = None, root=None, cache: Optional[dict] = None) -> dict:
     """Worst, likely and best in rupees of one option, the expected rupees (the words' weights, 30/40/30 without them) and the share of the whole book. `case` is the case dict or its id.
     {"worst_inr", "likely_inr", "best_inr", "expected_inr", "worst_pct_book", "tax_inr", "size_inr", "basis", ...}. A buy with no `bet_inr` is sized by A66 (`bet_size`), before the reserve
     and the rails (`rule.decide` applies those)."""
@@ -549,7 +560,7 @@ def outcomes(con, case, option: str, *, isin: Optional[str] = None, asof, bet_in
     w = weights(words, probs)
     kind, move, window = case_kind_move(con, case)
     if rates is None:
-        rates = base_rates(con, kind, move=move, isin=isin, asof=asof, market=market, symbol=symbol, window=window, root=root)
+        rates = base_rates(con, kind, move=move, isin=isin, asof=asof, market=market, symbol=symbol, window=window, root=root, cache=cache)
     moves = _scenario_moves(rates, h)
     rates = {**rates, "_moves": moves}
     whole = whole_book(con, asof, root)
@@ -617,7 +628,7 @@ def applicable(held: bool) -> List[str]:
     return list(think.OPTIONS) if held else ["freeze", "wait", "buy_in_parts", "nothing"]
 
 
-def option_table(con, case_id: int, answer: dict, asof, *, root=None, kind: Optional[str] = None, move: Optional[float] = None) -> List[dict]:
+def option_table(con, case_id: int, answer: dict, asof, *, root=None, kind: Optional[str] = None, move: Optional[float] = None, cache: Optional[dict] = None) -> List[dict]:
     """The menu with its rupees for each name of the model's answer: one row per (name, option), the model's own choice flagged (`track` "model", `chosen` true; the rest "alt"). The
     answer's likelihood WORDS go through `cases.probabilities` (the store's table) to scenario weights; everything else is code. A choice with no isin takes the case's."""
     asof = _day(asof)
@@ -625,7 +636,7 @@ def option_table(con, case_id: int, answer: dict, asof, *, root=None, kind: Opti
     ans = norm_answer(answer)
     k0, m0, window = case_kind_move(con, case)
     probs = cases.probabilities(con)
-    rows, cache = [], {}
+    rows, by_name = [], {}
     for c in ans["choices"] or [{"isin": case.get("isin"), "symbol": case.get("symbol"), "option": None, "words": {}, "base_rate_set": None, "reason": ""}]:
         isin, symbol = c.get("isin") or case.get("isin"), c.get("symbol") or case.get("symbol")
         market = case.get("market") or "IN"
@@ -633,18 +644,18 @@ def option_table(con, case_id: int, answer: dict, asof, *, root=None, kind: Opti
         bset = c.get("base_rate_set")
         k = kind or (bset if bset and bset not in ("history", "own range", "own_range") else k0)
         key = (isin, k, bset == "own range")
-        if key not in cache:
-            r = base_rates(con, k, move=move if move is not None else m0, isin=isin, asof=asof, market=market, symbol=symbol, window=window, root=root)
+        if key not in by_name:
+            r = base_rates(con, k, move=move if move is not None else m0, isin=isin, asof=asof, market=market, symbol=symbol, window=window, root=root, cache=cache)
             if bset in ("own range", "own_range") and r["basis"] != "own range":
                 own = own_range(con, market, isin, symbol, asof, PARAMS["base_rate_horizons"], root, n_found=r["history_n"])
                 r = {**r, **{h: own[h] for h in PARAMS["base_rate_horizons"]}, "basis": "own range", "detail": "the model chose the name's own range (from its volatility)"}
-            cache[key] = r
+            by_name[key] = r
         for opt in applicable(pos["held"]):
             try:
-                o = outcomes(con, case, opt, isin=isin, asof=asof, words=c.get("words"), rates=cache[key], market=market, symbol=symbol, root=root)
+                o = outcomes(con, case, opt, isin=isin, asof=asof, words=c.get("words"), rates=by_name[key], market=market, symbol=symbol, root=root)
             except Exception as e:
                 o = {"isin": isin, "symbol": symbol, "option": opt, "error": f"{type(e).__name__}: {e}", "worst_inr": 0.0, "likely_inr": 0.0, "best_inr": 0.0, "expected_inr": 0.0,
-                     "worst_pct_book": 0.0, "size_inr": 0.0, "tax_inr": 0.0, "basis": cache[key]["basis"]}
+                     "worst_pct_book": 0.0, "size_inr": 0.0, "tax_inr": 0.0, "basis": by_name[key]["basis"]}
             o.update({"track": "model" if opt == c.get("option") else "alt", "chosen": opt == c.get("option"), "words": c.get("words"), "held": pos["held"],
                       "position_inr": pos["value_inr"], "probabilities": {w: probs[w] for w in think.WORDS}})
             rows.append(o)
