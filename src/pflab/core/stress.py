@@ -24,6 +24,8 @@ import numpy as np
 import pandas as pd
 
 BETA_SESSIONS = 250
+BETA_MIN, BETA_MAX = 0.5, 2.0                         # S84 F4: the bounds of the sensitivity used for an estimate (no own history in the window)
+MAX_FALL = -0.90                                      # S84 F4: an estimate never reports a fall beyond this
 MIN_BETA_OBS = 60                                     # daily; 40 weekly
 EDGE_DAYS = 10                                        # a history must start within this many days of the window's start and run to within this many of its end
 SCOPES = ("IN", "US", "ALL")
@@ -240,11 +242,17 @@ def _holding_fall(con, h: dict, name: str, a: date, b: date, day: date, ref: Dic
     if series is not None and ref.get(rk) is not None:
         beta, n = _beta(series, ref[rk], day, weekly)
     note = f"beta {beta:.2f} to {rk} over {n} {'weekly' if weekly else 'daily'} returns" if beta is not None else f"beta 1.0 assumed: under the minimum history to measure it ({n} returns)"
+    beta_raw = beta
     beta = 1.0 if beta is None else beta
+    held_in = min(max(beta, BETA_MIN), BETA_MAX)                  # S84 F4: no own history in the window: the sensitivity stays between 0.5 and 2.0 (a young high-beta name's 250 sessions say 3 or 4)
+    if held_in != beta:
+        note += f"; kept at {held_in:.1f} (the estimate never uses a sensitivity outside {BETA_MIN} to {BETA_MAX})"
+    beta = held_in
     raw = m * beta
-    usd = max(raw, -1.0)                                      # a share cannot lose more than all of it: the straight-line estimate overstates a deep fall for a high beta
-    return {"fall_pct": ((1.0 + usd) * fxr - 1.0) * 100.0, "basis": "estimate", "detail": {"market_series": rk, "market_return_pct": m * 100.0, "beta": beta, "beta_note": note, "fx": fx_note,
-                                                                                              "straight_line_pct": raw * 100.0, "floored_at_total_loss": raw < -1.0}}
+    usd = max(raw, MAX_FALL)                                  # and a fall is never reported beyond -90%: the straight-line estimate overstates a deep fall for a high beta
+    fall = max(((1.0 + usd) * fxr - 1.0) * 100.0, MAX_FALL * 100.0)
+    return {"fall_pct": fall, "basis": "estimate", "detail": {"market_series": rk, "market_return_pct": m * 100.0, "beta": beta, "beta_measured": beta_raw, "beta_note": note, "fx": fx_note,
+                                                              "straight_line_pct": raw * 100.0, "floored_at_total_loss": raw < MAX_FALL, "limits": f"sensitivity {BETA_MIN} to {BETA_MAX}, fall never beyond {MAX_FALL * 100:.0f}%"}}
 
 
 def _scenario_result(name: str, items: List[dict], total: float, fall_of) -> dict:
