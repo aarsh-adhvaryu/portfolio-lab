@@ -468,6 +468,7 @@ def sync_data_files(con, data: Path) -> None:
     (data / "panel").mkdir(parents=True, exist_ok=True)
     pd.DataFrame({"date": st["date"], "isin": st["isin"], "symbol": st["symbol"], "instrument_type": np.where(st["kind"] == "etf", "ETF", "STK"), "series": "EQ",
                   "adj_close": st["close"].astype(float), "close": st["close"].astype(float),
+                  "open": (st["close"] * 0.999).astype(float), "high": (st["close"] * 1.004).astype(float), "low": (st["close"] * 0.996).astype(float),     # the real panel has the day's range: the lab's replay reads it (S84: its absence was the strategist's `Referenced column "open" not found`)
                   "turnover": st["isin"].map(lambda i: THIN_TURNOVER.get(i, 8e7 if i in {s[1] for s in PICK_STOCKS} else 5e7)).astype(float)}).to_parquet(data / "panel" / "prices.parquet")
 
 
@@ -1028,8 +1029,13 @@ def step_allocation(env: "Env", c: Check, phase: str) -> None:
         from pflab.lab import alloc_lab, tools as lt
         cur = env.cur()
         ctx = lt.make_ctx(cur, env.pm, env.data, env.clock.t, None)
-        text, is_err = lt.run(ctx, "propose_allocation", {"classes": {"equity": 50, "gold": 15, "international": 10, "cash": 25}, "sleeves": {"core": 60, "longterm": 40},
-                                                          "sectors": {}, "reasons": "The drill's strategist wants more cash and less gold while the book is far from its target: hold half in shares, some gold and international, a quarter in cash."})
+        # S83/S84: the longterm share belongs to the picks rule (F1 starts it from the weight of his stocks plus 20 points), a proposal cannot change it, and gold, international and cash are
+        # core holdings (they cannot add up to more than the core). So the drill reads the live share, proposes the sleeves AS THEY ARE and a class split that fits inside the core.
+        from pflab.core import pick_share
+        live_lt = round(float(pick_share.share(cur, "IN")["share"]) * 100.0, 2)
+        env.alloc_live_lt = live_lt
+        text, is_err = lt.run(ctx, "propose_allocation", {"classes": {"equity": 62, "gold": 8, "international": 10, "cash": 20}, "sleeves": {"core": round(100.0 - live_lt, 2), "longterm": live_lt},
+                                                          "sectors": {}, "reasons": "The drill's strategist wants more cash and less gold while the book is far from its target: hold about three fifths in shares, some gold and international, a fifth in cash."})
         env.alloc_proposal = (text, is_err)
         if is_err:
             return
@@ -1657,11 +1663,36 @@ def _picks_check(env: "Env", c: Check) -> None:
     pre, post = pk.get("pre_shrink", {}), None
     rf = (pk.get("shrink_refusal") or {}).get("refused") or []
     c.ok(rf and "no new picks" in rf[0]["reason"] and not (pk["shrink_refusal"].get("accepted")), f"while the India share was lowered, a new pick was refused: {rf[0]['reason'][:150] if rf else pk.get('shrink_refusal')}", "core/picks.py propose, core/pick_share.py shrinking")
-    # 7. the share rule: +5 and -5 in both markets, each judgment a dated row with its figures, no sale
-    for m, a, b in (("IN", 0.40, 0.35), ("US", 0.50, 0.45)):
-        rows = cur.execute("SELECT old_share, new_share, reason, figures_json FROM sleeve_share_s83 WHERE market=? ORDER BY change_id", [m]).fetchall()
+    # 7. the share rule: +5 and -5 in both markets, each judgment a dated row with its figures, no sale.
+    # S84 (F1, his decision 2026-11-12): India's share no longer starts at 40%: the first India row is the decision's (his Kite stocks' weight + 20 points, at most 60%: 10 points ordinary picks + 10
+    # the opportunity reserve in cash); the rule's +5/-5 steps then start from THAT share. The US share is untouched (50%).
+    rows_in = cur.execute("SELECT old_share, new_share, reason, figures_json FROM sleeve_share_s83 WHERE market='IN' ORDER BY change_id").fetchall()
+    d0 = rows_in[0] if rows_in else None
+    f0 = json.loads(d0[3]) if d0 else {}
+    want0 = round(min(float(f0.get("max_share", 0.60)), float(f0.get("kite_weight", 0.0)) + float(f0.get("extra_points", 20)) / 100.0), 4) if d0 else None
+    c.ok(d0 is not None and str(d0[2]).startswith(pick_share.DECISION_REASON) and abs(d0[0] - 0.40) < 1e-9 and abs(d0[1] - want0) < 1e-6 and 0.40 <= d0[1] <= 0.60 and f0.get("kind") == "decision"
+         and float(f0.get("extra_points")) == 20 and float(f0.get("reserve_points")) == 10,
+         f"India's share started by his decision of 2026-11-12: 40% -> {d0[1]:.1%} = his Kite stocks' {float(f0.get('kite_weight', 0)):.1%} + 20 points (10 for ordinary picks, 10 the cash reserve), at most 60% "
+         f"(first India row: {d0[2][:110] if d0 else None})", "core/pick_share.py set_start_by_decision")
+    start_in = round(float(d0[1]), 3) if d0 else 0.40
+    rule_rows = {"IN": rows_in[1:], "US": cur.execute("SELECT old_share, new_share, reason, figures_json FROM sleeve_share_s83 WHERE market='US' ORDER BY change_id").fetchall()}
+    for m, a, b in (("IN", start_in, round(start_in - 0.05, 3)), ("US", 0.50, 0.45)):
+        rows = rule_rows[m]
         steps = [(round(r[0], 3), round(r[1], 3)) for r in rows]
         c.ok(steps == [(a, b), (b, a)] and all(json.loads(r[3]).get("sessions") for r in rows), f"{m}: the sleeve's share fell {a:.0%} -> {b:.0%} (behind) then rose back (ahead) as two dated rows with their figures: {steps}", "core/pick_share.py judge")
+    # the reserve: it is cash that ordinary picks never take. The ceiling the sleeve's ordinary picks may reach is the share less 10 points; SYNPICK1 (the one ordinary pick) never held more than that
+    # on any close (the 10% stock rail is the same number here, so the ceiling arithmetic is asserted too), and a US pick's ceiling leaves SPY its floor and the 10-point reserve.
+    c.ok(abs(picks.ordinary_ceiling("IN", start_in) - (start_in - 0.10)) < 1e-9 and abs(picks.ordinary_ceiling("US", 0.50) - min(0.50, 1.0 - 0.30 - 0.10)) < 1e-9,
+         f"the ordinary picks' ceiling is the share less the 10-point reserve (India {picks.ordinary_ceiling('IN', start_in):.1%} of the India part at a {start_in:.1%} share; US {picks.ordinary_ceiling('US', 0.50):.1%} of the sub-book)", "core/picks.py ordinary_ceiling")
+    pd_rows = cur.execute("SELECT day, value, cash, holdings_json FROM paper_days ORDER BY day").fetchall()
+    over = []
+    for d_, v_, _cash, hj_ in pd_rows:
+        h_ = json.loads(hj_ or "{}")
+        px_ = cur.execute("SELECT close FROM prices WHERE isin=? AND date<=? ORDER BY date DESC LIMIT 1", [isin1, d_]).fetchone()
+        w_ = float(h_.get(isin1) or 0.0) * float(px_[0]) / v_ if v_ and px_ else 0.0
+        if w_ > 0.10 + 0.015:
+            over.append((str(d_), round(w_, 3)))
+    c.ok(not over, f"the system's ordinary pick SYNPICK1 never held more than the 10-point ordinary room (plus the 1.5-point band) of the book on any close: {over[:3]} ({len(pd_rows)} closes)", "core/picks.py target_weights")
     c.ok(all(j[2].get("judged") for j in pk["judged"]), f"every synthetic judgment was made: {[(j[0], j[1], j[2].get('result') or j[2].get('why')) for j in pk['judged']]}", "core/pick_share.py judge (it needs a system pick bought)")
     rec = pick_score.sleeve_record(cur, "IN", markets.get("IN").session_closed_by(env.clock.t))
     c.note(f"the real sleeve record at the end: {rec.get('sessions')} session(s) of record, points a year {rec.get('points_a_year')} (the registered rule needs 60: the synthetic record above stood in)")
@@ -1702,17 +1733,18 @@ def _picks_check(env: "Env", c: Check) -> None:
         body = env.client().get("/api/core").json()
         end_line = (body.get("picks") or {}).get("line")
         usyms = [p["symbol"] for p in body["picks"]["US"]["picks"]]
-        c.ok(end_line is None and (body["picks"]["IN"]["share"] == 0.40) and "UPICKA" in usyms and "SYNPICK1" in [p["symbol"] for p in body["picks"]["IN"]["picks"]],
+        c.ok(end_line is None and (abs(body["picks"]["IN"]["share"] - start_in) < 1e-3) and "UPICKA" in usyms and "SYNPICK1" in [p["symbol"] for p in body["picks"]["IN"]["picks"]],
              f"once the system had named picks, Today no longer says 'no picks yet' (line {end_line!r}), it shows the India share {body['picks']['IN']['share']} and both markets' picks {usyms}", "core/card.py today_extras, core/picks_card.py")
     except Exception as e:
         c.ok(False, f"the Today endpoint failed at the end: {type(e).__name__}: {str(e)[:120]}", "core/screens.py")
     from pflab.core import card as core_card, session as core_session
     ctext = core_card.latest(cur) or ""
     c.ok("PICKS, India" in ctext and "SYNPICK1" in ctext and "WHAT I LEARNED" in ctext and "PICKS SCORE" in ctext, f"the book card has the PICKS section, the last 'what I learned' and the scorecard ({len(ctext)} characters)", "core/card.py, core/picks_card.py")
-    jd = cur.execute("SELECT decided_on FROM sleeve_share_s83 WHERE market='IN' ORDER BY change_id LIMIT 1").fetchone()
+    jd = cur.execute("SELECT decided_on FROM sleeve_share_s83 WHERE market='IN' AND new_share < old_share - 1e-9 ORDER BY change_id LIMIT 1").fetchone()          # the first India LOWERING (the decision row before it raised the share)
     nxt = markets.get("IN").next_session(jd[0]) if jd else None
     rep = core_session.report_day(cur, nxt) if nxt else ""
-    c.ok("India picks share lowered from 40% to 35%" in rep, f"the 15:45 report of {nxt} told the lowered share in plain words: {[l for l in rep.splitlines() if 'picks share' in l][:1]}", "core/pick_share.py report_line, core/session.py report_day")
+    low_txt = f"India picks share lowered from {start_in:.0%} to {start_in - 0.05:.0%}"
+    c.ok(low_txt in rep, f"the 15:45 report of {nxt} told the lowered share in plain words: {[l for l in rep.splitlines() if 'picks share' in l][:1]}", "core/pick_share.py report_line, core/session.py report_day")
     st_rows = cur.execute("SELECT scope, scenario, fall_pct, detail_json FROM stress_s83 WHERE day=(SELECT max(day) FROM stress_s83)").fetchall()
     zero_blind = []
     for sc, name, fall, dj in st_rows:
