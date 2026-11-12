@@ -114,13 +114,46 @@ def decide(state: dict, extra: Optional[Dict[str, float]] = None, core_total: Op
     return {"weights": weights, "notes": notes, "classes": {"us_equity": float(s["invested_share"])}}
 
 
+OUTSIDE = "[outside the monthly cap"                       # the tag an order's reason carries when it is not rebalancing: its fill is left out of the month's turnover (S84 F2)
+
+
 def _month_traded(con, day: date) -> float:
-    r = con.execute("SELECT coalesce(sum(qty * price_usd), 0) FROM us_trades_s81 WHERE day >= ? AND day <= ?", [date(day.year, day.month, 1), day]).fetchone()
+    """What the month's REBALANCING has traded (dollars): fills of orders tagged OUTSIDE (funding purchases, a named pick's purchase, a reserve buy, the full exit of a withdrawn pick) are not counted."""
+    r = con.execute("SELECT coalesce(sum(t.qty * t.price_usd), 0) FROM us_trades_s81 t LEFT JOIN us_orders_s81 o ON o.order_id = t.order_id "
+                    "WHERE t.day >= ? AND t.day <= ? AND coalesce(o.reason, '') NOT LIKE ?", [date(day.year, day.month, 1), day, "%" + OUTSIDE + "%"]).fetchone()
     return float(r[0] or 0.0)
 
 
+def _scale(items: List[dict], cap: float, s: dict, skipped: list, label: str) -> List[dict]:
+    """Bring `items` (orders) to a dollar cap: every order scaled by the same share; a full exit never leaves dust under the minimum trade."""
+    traded = sum(o["value"] for o in items)
+    if not items or traded <= cap + 1e-9:
+        return items
+    f = cap / traded if traded > 0 else 0.0
+    scaled = []
+    for o in items:
+        if o["side"] == "sell":
+            q = round(o["qty"] * f, 6)
+            if o.get("full_exit") and (o["held_qty"] - q) * o["price"] < float(s["min_trade_usd"]):
+                q = o["held_qty"]                                        # scaling a full exit must not leave dust the minimum trade would never sell: it goes whole (the dust is under the minimum trade)
+            o = dict(o, qty=q, value=q * o["price"])
+        else:
+            o = dict(o, amount=round(o["amount"] * f, 2), value=o["value"] * f)
+        if o["value"] < float(s["min_trade_usd"]) and not o.get("full_exit"):
+            skipped.append({"isin": o["isin"], "why": "dropped by the turnover cap"})
+            continue
+        o["note"] = (o["note"] + "; " if o["note"] else "") + f"scaled to {f:.0%} by the {label} turnover cap (USD {cap:,.0f})"
+        scaled.append(o)
+    return scaled
+
+
 def check(con, state: dict, decision: dict) -> dict:
-    """The orders that may be placed, with reasons. Buys are in dollars (fractional shares); sells in shares."""
+    """The orders that may be placed, with reasons. Buys are in dollars (fractional shares); sells in shares.
+
+    Two caps (S84 F2). REBALANCING keeps the registered caps (a day's `turnover_day`, a month's `turnover_month` of what rebalancing has traded; a fresh account or a tranche moved in today deploys
+    under `deploy_turnover_day`). OUTSIDE the monthly cap, limited to `exempt_day_share` (25%) of the sub-book a day: buying a newly named pick (a stock) out of SPY or cash, a reserve buy
+    (`decision["kinds"][symbol] == "opportunity"`, set by the thinking loop) and the full exit of a withdrawn pick; the SPY sale that funds such a purchase goes with them. The funding purchases of
+    a deploying session never count toward the month either. The tag in the order's reason is what `_month_traded` reads."""
     cfg, s = state["cfg"]["rails"], state["settings"]
     band = float(s["band_pts"]) / 100.0
     total, day = float(state["value"]), state["day"]
@@ -162,31 +195,44 @@ def check(con, state: dict, decision: dict) -> dict:
         keep.append(o)
     invested = sum(r["value"] for r in state["rows"]) / total if total > 0 else 0.0
     deploying = invested < 0.5 * float(s["invested_share"]) or bool(state.get("funded_today"))      # a fresh account or a tranche moved in this session is cash to be put to work: the churn caps of a settled book would take months
+    kinds = {str(k).upper(): v for k, v in (decision.get("kinds") or {}).items()}
+    broad = roles(s)["broad"]
+    for o in keep:                                                           # the kind of each order: outside the monthly cap, or rebalancing
+        r = rows[o["isin"]]
+        pick = r.get("asset_class") == "equity" and r["symbol"].upper() not in broad
+        o["outside"] = None
+        if o["side"] == "buy" and kinds.get(r["symbol"].upper()) == "opportunity":
+            o["outside"] = "reserve buy"
+        elif o["side"] == "buy" and pick:
+            o["outside"] = "a named pick's purchase"
+        elif o["side"] == "sell" and pick and o.get("full_exit"):
+            o["outside"] = "the full exit of a withdrawn pick"
+    allowance = sum(o["value"] for o in keep if o["outside"] and o["side"] == "buy")          # the SPY sale that funds those purchases rides with them
+    for o in sorted((o for o in keep if o["side"] == "sell" and not o["outside"] and rows[o["isin"]]["symbol"].upper() in broad), key=lambda o: -o["value"]):
+        if allowance <= 1e-9:
+            break
+        if o["value"] <= allowance + 1e-9:
+            o["outside"], o["funding_sale"] = "the sale that funds a pick", True
+            allowance -= o["value"]
+    if deploying:
+        for o in keep:
+            if o["side"] == "buy" and not o["outside"]:
+                o["tag"] = "a funding purchase"
+    out_items = [o for o in keep if o["outside"]]
+    rest = [o for o in keep if not o["outside"]]
+    day_cap_out = float(s["exempt_day_share"]) * total
+    lead = sum(o["value"] for o in out_items if not o.get("funding_sale"))               # the purchases and exits are what the 25% limits; a funding sale is scaled with them
+    if lead > day_cap_out + 1e-9:
+        out_items = _scale(out_items, sum(o["value"] for o in out_items) * day_cap_out / lead, s, skipped, "daily 25% pick")
     if deploying:
         cap = float(s["deploy_turnover_day"]) * total
     else:
         cap = min(float(cfg["turnover_day"]) * total, max(0.0, float(cfg["turnover_month"]) * total - _month_traded(con, day)))
-    traded = sum(o["value"] for o in keep)
-    if keep and traded > cap + 1e-9:
-        f = cap / traded if traded > 0 else 0.0
-        scaled = []
-        for o in keep:
-            px = float(rows[o["isin"]]["price"])
-            if o["side"] == "sell":
-                q = round(o["qty"] * f, 6)
-                if o.get("full_exit") and (o["held_qty"] - q) * o["price"] < float(s["min_trade_usd"]):
-                    q = o["held_qty"]                                        # scaling a full exit must not leave dust the minimum trade would never sell: it goes whole (the dust is under the minimum trade)
-                o = dict(o, qty=q, value=q * o["price"])
-            else:
-                o = dict(o, amount=round(o["amount"] * f, 2), value=o["value"] * f)
-            if o["value"] < float(s["min_trade_usd"]) and not o.get("full_exit"):
-                skipped.append({"isin": o["isin"], "why": "dropped by the turnover cap"})
-                continue
-            o["note"] = (o["note"] + "; " if o["note"] else "") + f"scaled to {f:.0%} by the turnover cap (USD {cap:,.0f})"
-            scaled.append(o)
-        keep = scaled
+    rest = _scale(rest, cap, s, skipped, "rebalancing")
+    keep = out_items + rest
     keep.sort(key=lambda o: (o["side"] != "sell", -o["value"]))
     for o in keep:
-        o["reason"] = (f"us_core_v2: weight {o['from_w']:.1%} now, target {o['to_w']:.1%}" + (f"; {o['note']}" if o["note"] else "")
+        tag = o.get("outside") or o.get("tag")
+        o["reason"] = (f"us_core_v2: weight {o['from_w']:.1%} now, target {o['to_w']:.1%}" + (f"; {o['note']}" if o["note"] else "") + (f" {OUTSIDE}: {tag}]" if tag else "")
                        + (f"; estimated charges USD {o['charges_usd']:,.2f} and Indian tax Rs {o['tax_inr']:,.0f} (estimate)" if o["side"] == "sell" else ""))
     return {"orders": keep, "skipped": skipped, "clipped": {k: v for k, v in clipped.items() if v["why"]}, "turnover_cap_usd": round(cap, 2)}

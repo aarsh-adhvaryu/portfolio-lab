@@ -118,6 +118,7 @@ def test_horizons_score_only_when_elapsed_and_never_twice(con, root):
 
 def test_a_pick_cut_early_is_measured_to_the_day_it_ended(con, root):
     _pick(con, state="withdrawn", changed=date(2026, 2, 2))
+    con.execute("INSERT INTO paper_trades VALUES (7, ?, NULL, NULL, ?, 'AAA', 'buy', 10, 100.0, 0.5, NULL, NULL, '{}')", [D0, AAA])     # S84 F3: a pick is scored from its first fill (bought, then withdrawn)
     _score(con, NOW3, root)
     rows = _rows(con)
     assert rows[1][2] == date(2026, 2, 2) and rows[3][2] == date(2026, 2, 2)   # never dropped out of the record: the later horizons carry the same end
