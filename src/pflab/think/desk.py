@@ -222,7 +222,7 @@ def _picks_by_isin(con, day: date) -> Dict[str, dict]:
         from pflab.core import picks
         for m in ("IN", "US"):
             for p in picks.status(con, m, day)["picks"]:
-                if p["state"] in ("held", "buying", "proposed", "accepted", "active") and p.get("isin"):
+                if p["state"] in ("held", "buying", "proposed") and p.get("isin"):
                     out[p["isin"]] = {**p, "market": m}
     except Exception:
         pass
