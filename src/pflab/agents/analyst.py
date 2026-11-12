@@ -362,6 +362,18 @@ def recent_note(con, req: Request, now: datetime, days: int = REUSE_DAYS) -> Opt
     return None
 
 
+def _fresh_on_subject(con, now: datetime, *, isins=(), topic: Optional[str] = None, question: Optional[str] = None) -> Optional[tuple]:
+    """S84 (T2x, never pay twice): (call_id or None, written_at, text) of a note on the same subject that no event, result or move beyond the watch's thresholds has outdated, else None.
+    `think/recall.same_subject_fresh` decides; any failure means "ask" (it never blocks a call)."""
+    try:
+        from pflab.think import recall
+        isins = [i for i in (isins or []) if i]
+        f = recall.same_subject_fresh(con, now, isin=isins[0] if len(isins) == 1 else None, topic=None if len(isins) == 1 else topic, question=question)
+        return (None, datetime.fromisoformat(f["written_at"]), f["text"]) if f else None
+    except Exception:
+        return None
+
+
 def cost(input_tokens: int, output_tokens: int, batch: bool, usd_inr: float, model: str = MODEL) -> tuple:
     pr = PRICES.get(model, PRICE_PER_MTOK_USD)
     usd = (input_tokens * pr["input"] + output_tokens * pr["output"]) / 1e6
@@ -540,6 +552,8 @@ def ring(con, req: Request, client, *, now: Optional[datetime] = None, approved:
     if not (cfg["adopted"] or trial):
         raise NotAdopted("the analyst is off until the pre-registered comparison shows a clear gain")
     old = recent_note(con, req, now) if reuse else None
+    if not old and reuse:
+        old = _fresh_on_subject(con, now, isins=req.isins, topic=req.topic)               # S84 never pay twice: a note on the same name with no event or move since
     if old:
         return Outcome("reused", f"(note of {old[1]:%Y-%m-%d}, reused) {old[2]}", old[0])
     try:
@@ -718,6 +732,9 @@ def web_search(con, question: str, client, *, now: Optional[datetime] = None, cf
         gate(req, pv if pv is not None else private_values(con))
     except EgressBlocked as e:
         return Outcome("blocked", str(e))
+    old = _fresh_on_subject(con, now, question=question)                  # S84 never pay twice: the same question on a name nothing has moved since costs nothing
+    if old:
+        return Outcome("reused", f"(note of {old[1]:%Y-%m-%d}, reused) {old[2]}", old[0])
     tools = [{"type": WEB_TOOL, "name": "web_search", "max_uses": int(max_uses)}]
     p = {"model": cfg["model"], "max_tokens": int(max_tokens), "system": WEB_SYSTEM, "thinking": {"type": "adaptive"},
          "output_config": {"effort": effort}, "tools": tools, "messages": [{"role": "user", "content": question}]}
