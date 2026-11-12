@@ -18,6 +18,8 @@ The model's answer (the shape `option_table` and `rule.decide` read; `norm_answe
 """
 from __future__ import annotations
 
+import json
+
 import math
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -43,7 +45,7 @@ FALLBACK_VOL = 0.30                                      # a name with too littl
 MIN_OBS = 60                                             # closes needed for an own range
 BAND = (0.7, 1.4)                                        # "a move of the same size": between 0.7 and 1.4 times the move, same sign
 LOOKBACK_DAYS = 2000
-MOVE_KINDS = ("move", "move_1d", "move_5d", "fall", "fall_10d", "rel_5d", "missed_run", "market_fall", "market_down", "shock")
+MOVE_KINDS = ("move", "move_1d", "move_5d", "fall", "fall_10d", "rel_5d", "missed_run", "market", "market_fall", "market_down", "shock", "overnight")      # `watch.GROUP` kinds are case kinds ("market", "overnight")
 Z90 = 1.2815515655446004
 ESTIMATE = ("estimate: worst and best are the 10th and 90th percentile of the move over {h} sessions (a bad case, not the worst that can happen), valued after the tax and charges of the "
             "dated tax rows as if liquidated at the end of the horizon; the index's own drift is taken as zero; a loss earns no tax credit")
@@ -475,6 +477,16 @@ def case_kind_move(con, case: Optional[dict]) -> tuple:
         return None, None, 1
     kind, move, window = case.get("kind"), None, 1
     best = 0.0
+    if kind == "event":                                    # the watch's case kind for a graph event: the base rates are those of the event's own kind (`leadership_crisis`, ...)
+        for s in case.get("signals") or []:
+            if s.get("signal") == "thesis_event":
+                try:
+                    k = json.loads(s.get("detail_json") or "{}").get("kind")
+                except Exception:
+                    k = None
+                if k:
+                    kind = k
+                    break
     for s in case.get("signals") or []:
         name, v = str(s.get("signal") or ""), s.get("value")
         if v is None:

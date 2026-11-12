@@ -541,7 +541,7 @@ def _act_buy_in(con, now: datetime, day: date, case: dict, d: dict) -> List[str]
     order = {"isin": isin, "symbol": d.get("symbol") or isin, "side": "buy", "qty": None, "amount": round(amount, 2), "value": amount, "risk_cut": False, "charges": 0.0, "tax": 0.0, "note": "",
              "from_w": None, "to_w": None, "reason": f"Case #{case['case_id']}, part {n} of {parts} from the opportunity reserve: {d.get('reason') or 'buy in parts'}", "kind": "case", "event_id": None}
     oid = _place_india(con, now, day, order, case["case_id"])
-    cases.add_step(con, case["case_id"], now, "part", payload={"isin": isin, "n": n, "of": parts, "inr": round(amount, 2), "day": str(day), "order_id": oid, "price": px[1] if px else None})
+    cases.add_step(con, case["case_id"], now, "part", payload={"isin": isin, "symbol": d.get("symbol"), "n": n, "of": parts, "inr": round(amount, 2), "day": str(day), "order_id": oid, "price": px[1] if px else None})
     return [f"paper_order:{oid}"]
 
 
@@ -584,7 +584,7 @@ def _act_us(con, now: datetime, day: date, case: dict, d: dict) -> List[str]:
         return [f"no order yet: the big-trade check could not run ({chk['reason']}); the case stays open"]
     usd = round(amount_inr / fx, 2)
     oid = usb.place(con, now, day, isin, sym, "buy", amount_usd=usd, reason=f"Case #{case['case_id']}, part {len(done) + 1} of {parts} from the US opportunity reserve: {d.get('reason') or 'buy in parts'}")
-    cases.add_step(con, case["case_id"], now, "part", payload={"isin": isin, "n": len(done) + 1, "of": parts, "inr": round(amount_inr, 2), "day": str(day), "order_id": oid})
+    cases.add_step(con, case["case_id"], now, "part", payload={"isin": isin, "symbol": sym, "n": len(done) + 1, "of": parts, "inr": round(amount_inr, 2), "day": str(day), "order_id": oid})
     return [f"us_order:{oid}"]
 
 
@@ -857,29 +857,61 @@ def _last_answer(con, case_id: int) -> Optional[dict]:
     return None
 
 
+def _part_plans(con, case_id: int) -> Dict[str, List[dict]]:
+    """The parts bought so far, by the name they bought (a market case buys an ETF, not its own pseudo-name): {isin: [part payloads, oldest first]}."""
+    out: Dict[str, List[dict]] = {}
+    for s in cases.steps(con, case_id):
+        if s["step"] == "part":
+            try:
+                p = json.loads(s["payload_json"] or "{}")
+            except Exception:
+                continue
+            if p.get("isin"):
+                out.setdefault(p["isin"], []).append(p)
+    return out
+
+
 def _continue_parts(con, now: datetime, case: dict) -> List[str]:
-    """The next part of a buy in parts: the rule weighs its guards again (a later part only while the thesis holds, 5 sessions apart); code buys it."""
+    """The next part of every buy in parts of the case: the rule weighs its guards again (a later part only while the thesis holds, 5 sessions apart); code buys it."""
     ans = _last_answer(con, case["case_id"])
-    if not ans or not case.get("isin"):
+    if not ans:
         return []
-    plan = _parts_done(con, case["case_id"], case["isin"])
     parts = int(think.settings()["parts"])
-    if not plan or len(plan) >= parts:
-        return []
     day = now.date()
-    last_day = date.fromisoformat(plan[-1]["day"])
-    if day < _session_after(case.get("market") or "IN", last_day, int(think.settings()["parts_gap_sessions"])):
-        return []
-    nans = _normal({**ans, "choices": [{"symbol": case.get("symbol"), "option": "buy_in_parts", "reason": "the next part"}]}, {str(case.get("symbol")).upper(): case.get("isin")})
-    rr = _mod("rule").decide(con, case["case_id"], nans, day) or {}
-    if rr.get("refused") or rr.get("rule_option") != "buy_in_parts":
-        return [f"part {len(plan) + 1} waits: the rule chose {rr.get('rule_option')} ({str(rr.get('reason'))[:120]})"]
-    d = {"isin": case["isin"], "symbol": case.get("symbol"), "market": case.get("market"), "option": "buy_in_parts", "size_inr": _bet_total(rr) or float(plan[0]["inr"]) * parts,
-         "parts": parts, "reason": str(rr.get("reason") or "next part"), "worst_pct_book": (rr.get("outcome") or {}).get("worst_pct_book")}
-    refs = act(con, now, case["case_id"], d)
-    cases.record_decision(con, case["case_id"], day, isin=case["isin"], symbol=case.get("symbol"), rule_option="buy_in_parts", model_option="buy_in_parts",
-                          acted_option="buy_in_parts" if any(r.startswith(("paper_order", "us_order")) for r in refs) else "nothing", order_refs=refs, reason=f"part {len(plan) + 1}: " + d["reason"])
-    return refs
+    out: List[str] = []
+    for isin, plan in _part_plans(con, case["case_id"]).items():
+        if not plan or len(plan) >= parts:
+            continue
+        last_day = date.fromisoformat(plan[-1]["day"])
+        if day < _session_after(case.get("market") or "IN", last_day, int(think.settings()["parts_gap_sessions"])):
+            continue
+        sym = str(plan[-1].get("symbol") or (case.get("symbol") if isin == case.get("isin") else "") or "").upper()
+        if not sym:
+            continue
+        nans = _normal({**ans, "choices": [{"symbol": sym, "option": "buy_in_parts", "reason": "the next part"}]}, {sym: isin})
+        ruled = _mod("rule").decide(con, case["case_id"], nans, day) or {}
+        rr = (ruled.get("all") or [ruled])[0]
+        if rr.get("refused") or rr.get("rule_option") != "buy_in_parts":
+            out.append(f"part {len(plan) + 1} of {sym} waits: the rule chose {rr.get('rule_option')} ({str(rr.get('reason'))[:120]})")
+            continue
+        d = {"isin": isin, "symbol": sym, "market": case.get("market"), "option": "buy_in_parts", "size_inr": _bet_total(rr) or float(plan[0]["inr"]) * parts,
+             "parts": parts, "reason": str(rr.get("reason") or "next part"), "worst_pct_book": (rr.get("outcome") or {}).get("worst_pct_book")}
+        refs = act(con, now, case["case_id"], d)
+        bought = any(r.startswith(("paper_order", "us_order")) for r in refs)
+        cases.record_decision(con, case["case_id"], day, isin=isin, symbol=sym, rule_option="buy_in_parts", model_option="buy_in_parts",
+                              acted_option="buy_in_parts" if bought else "nothing", order_refs=refs, reason=f"part {len(plan) + 1}: " + d["reason"])
+        out += refs
+        if bought:
+            try:
+                tell(con, now, case["case_id"])
+            except Exception:
+                pass
+    return out
+
+
+def _unfinished(con, case_id: int) -> bool:
+    n = int(think.settings()["parts"])
+    return any(len(p) < n for p in _part_plans(con, case_id).values())
 
 
 def follow_up(con, now: datetime, day: Optional[date] = None, *, root=None, web: Optional[Callable] = None) -> dict:
@@ -908,8 +940,7 @@ def follow_up(con, now: datetime, day: Optional[date] = None, *, root=None, web:
                 out["parts"] += 1
             cases.add_step(con, cid, now, "looked", payload={"changed": False, "day": str(day), "parts": refs})
             quiet_from = _session_after(market, c["opened_on"], int(st["quiet_close_sessions"]))
-            plan = _parts_done(con, cid, c.get("isin") or "")
-            unfinished = bool(plan) and len(plan) < int(st["parts"])
+            unfinished = _unfinished(con, cid)
             last_sig = max([s["day"] for s in cases.signals(con, case_id=cid)] or [c["opened_on"]])
             if day >= _session_after(market, last_sig, int(st["quiet_close_sessions"])) or (day >= quiet_from and not c.get("pending")):
                 cases.close_case(con, cid, day, f"quiet for {st['quiet_close_sessions']} sessions")

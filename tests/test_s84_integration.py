@@ -103,11 +103,12 @@ def fall(con, isin, pct, day=DAY):
 
 
 def extend(con, n, isin_drift=None):
-    """`n` more sessions after DAY for every name (a flat tape with the small wobble the fixture uses), -> the list of days added."""
+    """`n` more sessions after DAY for every name in the store (a flat tape with a small wobble, `isin_drift` a daily drift per name), -> the list of days added."""
     days = [d.date() for d in pd.bdate_range(DAY + timedelta(days=1), periods=n)]
-    last = {i: float(con.execute("SELECT close FROM prices WHERE isin=? AND date=?", [i, DAY]).fetchone()[0]) for i in (AAA, BBB, GLD)}
+    names = [r[0] for r in con.execute("SELECT DISTINCT isin FROM prices").fetchall()]
+    last = {i: float(con.execute("SELECT close FROM prices WHERE isin=? AND date=?", [i, DAY]).fetchone()[0]) for i in names}
     for k, d in enumerate(days):
-        for i in (AAA, BBB, GLD):
+        for i in names:
             last[i] *= (1.0 + (isin_drift or {}).get(i, 0.0))
             con.execute("INSERT INTO prices VALUES (?, ?, ?, 'EQ', 'nse_bhavcopy', now())", [i, d, last[i] * (1.0 + (0.002 if k % 2 else -0.002))])
     return days
@@ -220,3 +221,217 @@ def _seed_decided(con, from_case, k):
 
 def _has(con, table):
     return bool(con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name=?", [table]).fetchone()[0])
+
+
+# --- the second scenario: a name the book does not hold, after a market-wide fall -----------------------------------------------------------------------------------------------
+
+ETF, VOLX = "INF000N01017", "INE000V01010"
+
+
+def add_name(con, isin, sym, cls, drift, wob, sector=None, start=100.0):
+    con.execute("INSERT INTO instruments (isin, key_kind, asset_class, tax_class, listed, symbol, name, sector, source, built_at) VALUES (?, 'isin', ?, ?, TRUE, ?, ?, ?, 'synthetic', now())",
+                [isin, cls, "LISTED_NONEQUITY" if cls == "etf" else "EQUITY", sym, f"{sym} Ltd", sector])
+    for k, d in enumerate(DAYS):
+        con.execute("INSERT INTO prices VALUES (?, ?, ?, 'EQ', 'nse_bhavcopy', now())", [isin, d, start * (1.0 + drift) ** k * (1.0 + (wob if k % 2 else -wob))])
+
+
+def falling_index(n_future=60):
+    """A synthetic Nifty 500: calm, then 12% down in the last 3 sessions, then a steep recovery (so the fall is a signal on one day only)."""
+    days = DAYS + [d.date() for d in pd.bdate_range(DAY + timedelta(days=1), periods=n_future)]
+    lvl = [1000.0 * 1.0003 ** k for k in range(len(DAYS))]
+    lvl[-3:] = [lvl[-4] * 0.96, lvl[-4] * 0.96 ** 2, lvl[-4] * 0.96 ** 3]
+    for _ in range(n_future):
+        lvl.append(lvl[-1] * 1.04)
+    return pd.Series(lvl, index=pd.to_datetime(days))
+
+
+def test_a_name_not_held_after_a_market_fall_is_bought_in_three_parts_from_the_reserve(con, tmp_path, monkeypatch):
+    add_name(con, ETF, "NIFTYBEES", "etf", 0.0010, 0.002)
+    ix = falling_index()
+    monkeypatch.setattr(watch, "_index", lambda market, root=None: ix if market == "IN" else None)
+    market_answer = answer("NIFTYBEES", "buy_in_parts", "market_fear", pending="", worst="very unlikely", likely="even", best="likely")
+
+    def by_case(p):                                         # the held names the index fall also flags (they fell less than the market) are held; the market's own case buys the ETF
+        text = json.dumps(p["messages"][0]["content"])
+        if "Nifty 500" in text:
+            return market_answer
+        sym = re.search(r"market IN, kind \w+\): (\w+)", text.replace("\n", " ")).group(1)
+        return answer(sym, "hold", "market_fear", pending="", worst="unlikely", likely="likely", best="unlikely")
+    cl = script(Client(by_case, check="pass"))
+    now0 = CLOSE_AT + timedelta(minutes=30)
+    r = wire.sweep(con, now0, tmp_path / "data", only_market="IN")
+    assert r["failed"] == [], r
+    cid = next(c for c in r["cases_opened"] if cases.get_case(con, c)["isin"] == "MARKET:IN")
+    c = cases.get_case(con, cid)
+    assert c["kind"] == "market" and c["klass"] == "market_fear" and c["state"] == "acted"
+    assert "claude-opus-5-5" in cl.roles()                                                  # a chance that could spend the reserve is decided by Opus
+    d = c["decisions"][0]
+    assert d["symbol"] == "NIFTYBEES" and d["rule_option"] == "buy_in_parts" and d["acted_option"] == "buy_in_parts", d
+    res = reserve.reserve_status(con, "IN", DAY)
+    buys = [o for o in orders(con, "buy") if o[0] == ETF]
+    assert len(buys) == 1 and f"case #{cid}" in buys[0][3]
+    amt1 = con.execute("SELECT amount FROM paper_orders WHERE isin=? AND side='buy'", [ETF]).fetchone()[0]
+    rr = [o for o in c["options"] if o["track"] == "rule"][0]
+    assert rr["option"] == "buy_in_parts" and rr["size_inr"] == pytest.approx(amt1, rel=1e-6) and rr["expected_inr"] > 0
+    whole = odds.whole_book(con, DAY)
+    assert abs(rr["worst_pct_book"]) <= 0.01 / 3 + 1e-9                                      # a part's share of a bet whose bad case loses at most 1% of the whole book
+    # the model's own row (track model) is the table's buy_in_parts row: sized by the 1% limit over the bad case, before the reserve and the rails
+    mrow = [o for o in c["options"] if o["track"] == "model"][0]
+    assert mrow["option"] == "buy_in_parts" and mrow["size_inr"] > 0 and abs(mrow["worst_pct_book"]) <= 0.01 + 1e-9
+    # parts two and three come at the follow-ups at least 5 sessions apart; the table is never re-bought past three
+    days = extend(con, 20, {ETF: 0.01})                                                  # the ETF recovers: no new lows
+    parts_days = [DAY]
+    for step in (5, 12):                                                                      # five sessions on (the NSE has no session on 10 Nov), then five more
+        nowk = datetime.combine(days[step - 1], datetime.min.time()) + timedelta(hours=16, minutes=30)
+        rk = wire.sweep(con, nowk, tmp_path / "data", only_market="IN")
+        assert rk["failed"] == [], rk
+        parts_days.append(days[step - 1])
+    buys = [o for o in orders(con, "buy") if o[0] == ETF]
+    assert len(buys) == 3, (buys, [(s["step"], s["payload_json"][:200]) for s in cases.get_case(con, cid)["steps"] if s["step"] in ("part", "looked", "failed")])
+    part_steps = [json.loads(s["payload_json"]) for s in cases.get_case(con, cid)["steps"] if s["step"] == "part"]
+    assert [p["n"] for p in part_steps] == [1, 2, 3]
+    gaps = [(date.fromisoformat(b["day"]) - date.fromisoformat(a["day"])).days for a, b in zip(part_steps, part_steps[1:])]
+    assert all(g >= 5 for g in gaps)
+    assert sum(p["inr"] for p in part_steps) <= res["reserve_inr"] * 0.5 + 1.0              # a market-wide fall may put up to half the reserve into the index ETF
+    # every reserve buy went past the independent check
+    assert con.execute("SELECT count(*) FROM think_steps_s84 WHERE case_id=? AND step='big_trade_check'", [cid]).fetchone()[0] >= 3
+    # a fourth part is never bought
+    rk = wire.sweep(con, datetime.combine(days[16], datetime.min.time()) + timedelta(hours=17), tmp_path / "data", only_market="IN")
+    assert len([o for o in orders(con, "buy") if o[0] == ETF]) == 3
+
+
+def open_case_on(con, isin, sym, kind="move", signal="move_1d", value=-0.30, exposure=0.0, now=None):
+    now = now or CLOSE_AT + timedelta(minutes=30)
+    sid = cases.record_signal(con, now, market="IN", isin=isin, symbol=sym, signal=signal, value=value, threshold=0.03, surprise=2.0, exposure_inr=exposure, score=2.0 * max(exposure, 1.0))
+    return cases.open_case(con, now, market="IN", kind=kind, isin=isin, symbol=sym, title=f"{sym} moved {value:.0%} in a day", exposure_inr=exposure, score=2.0, signal_ids=[sid], opened_by="watch", state="open")
+
+
+def test_a_bet_is_sized_down_to_one_percent_of_the_book_and_refused_when_it_cannot_fit(con, tmp_path):
+    add_name(con, VOLX, "VOLX", "equity", 0.002, 0.06, sector="Auto", start=200.0)
+    script(Client(answer("VOLX", "buy_in_parts", "temporary", pending="", worst="very unlikely", likely="even", best="likely"), check="pass"))
+    cid = open_case_on(con, VOLX, "VOLX")
+    now = CLOSE_AT + timedelta(minutes=40)
+    r = session.think_case(con, now, cid, root=tmp_path / "data")
+    assert r["ok"], r
+    c = cases.get_case(con, cid)
+    mrow = [o for o in c["options"] if o["track"] == "model"][0]
+    whole = odds.whole_book(con, DAY)
+    assert mrow["option"] == "buy_in_parts" and mrow["size_inr"] > 0
+    assert abs(mrow["worst_pct_book"]) == pytest.approx(0.01, rel=1e-3)                             # the bet's size is the 1% limit over the bad case's loss: its worst case loses 1% of the whole book
+    assert mrow["size_inr"] < 0.5 * reserve.reserve_status(con, "IN", DAY)["reserve_inr"]            # sized DOWN by the limit, not by the reserve or the rail
+    d = c["decisions"][0]
+    assert d["rule_option"] == "buy_in_parts" and d["acted_option"] == "buy_in_parts"
+    part = con.execute("SELECT amount FROM paper_orders WHERE isin=? AND side='buy'", [VOLX]).fetchone()[0]
+    assert part == pytest.approx(mrow["size_inr"] / 3, rel=1e-3)
+    # the act itself refuses a decision whose stored worst case is over 1% of the book, whatever the rule said
+    out = session.act(con, now, cid, {"isin": VOLX, "symbol": "VOLX", "market": "IN", "option": "buy_in_parts", "size_inr": 90000.0, "parts": 3, "worst_pct_book": -0.02, "reason": "too big"})
+    assert len(out) == 1 and out[0].startswith("no order: the worst case would lose 2.00%")
+    assert len([o for o in orders(con, "buy") if o[0] == VOLX]) == 1
+    # a name whose bad case is so wide that no part is worth buying: the rule refuses, nothing is bought
+    add_name(con, "INE000W01011", "WILDX", "equity", 0.0, 0.45, sector="Pharma", start=50.0)
+    script(Client(answer("WILDX", "buy_in_parts", "temporary", pending="", worst="very unlikely", likely="even", best="likely"), check="pass"))
+    cid2 = open_case_on(con, "INE000W01011", "WILDX")
+    r2 = session.think_case(con, now, cid2, root=tmp_path / "data")
+    assert r2["ok"], r2
+    d2 = cases.get_case(con, cid2)["decisions"][0]
+    assert d2["rule_option"] == "nothing" and d2["acted_option"] == "nothing" and not [o for o in orders(con, "buy") if o[0] == "INE000W01011"], d2
+
+
+# --- the third scenario: the model and the rule disagree; the rule acts ----------------------------------------------------------------------------------------------------------
+
+def test_the_model_says_sell_the_rule_says_hold_the_rule_acts_and_both_are_stored_and_scored(con, tmp_path):
+    script(Client(answer("BBB", "sell", "market_fear", pending="", worst="even", likely="even", best="even"), check="pass"))
+    cid = open_case_on(con, BBB, "BBB", exposure=150000.0)
+    r = session.think_case(con, CLOSE_AT + timedelta(minutes=40), cid, root=tmp_path / "data")
+    assert r["ok"], r
+    c = cases.get_case(con, cid)
+    d = c["decisions"][0]
+    assert d["model_option"] == "sell" and d["rule_option"] == "hold" and d["differs"] and d["acted_option"] == "hold", d
+    assert "the model chose sell, the rule chose hold; the rule acts" in d["reason"]
+    assert not [o for o in orders(con, "sell") if o[0] == BBB]                                      # the rule's choice acts: no sale
+    tr = {o["track"]: o["option"] for o in c["options"] if o["chosen"]}
+    assert tr == {"model": "sell", "rule": "hold"}
+    assert {o["option"] for o in c["options"] if o["track"] == "alt"} == set(think.OPTIONS) - {"sell"}      # the rule's hold is also an alt row: the options not taken
+    # 25 sessions later BOTH tracks are scored against everything not taken
+    days = extend(con, 25, {BBB: -0.01})
+    assert score.score_due(con, days[-1]) > 0
+    rows = con.execute("SELECT track, option, vs_nothing_inr FROM think_scores_s84 WHERE horizon_sessions=20").fetchall()
+    assert {(t, o) for t, o, _ in rows if t in ("model", "rule")} == {("model", "sell"), ("rule", "hold")}
+    assert [v for t, o, v in rows if t == "model"][0] > 0 and [v for t, o, v in rows if t == "rule"][0] == pytest.approx(0.0, abs=1e-6)       # the price kept falling: the model's sale would have beaten the rule's hold
+    sc = score.scorecard(con)
+    assert sc["model_track"]["vs_nothing_inr"] > sc["rule_track"]["vs_nothing_inr"]
+
+
+# --- the fourth scenario: the thinking session fails ------------------------------------------------------------------------------------------------------------------------------
+
+def test_a_failing_thinking_session_leaves_the_case_open_and_the_close_and_the_thesis_sale_go_on(con, tmp_path):
+    from pflab.core import loop
+    from tests.test_s80_core import calm_index
+    fall(con, BBB, -0.10)
+    t = datetime.combine(DAY, datetime.min.time()) + timedelta(hours=11)
+    con.execute("INSERT INTO kg2_event (event_id, isin, source, ref, ts, event_date, kind, severity, headline, link_rule, link_proof, dedupe_key, ts_rule) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                ["bse:fraud1:" + BBB, BBB, "bse_announcement", "fraud1", t, DAY, "fraud_investigation", "high", "the chief executive is under investigation", "t", "t", "bse:fraud1", "release_time"])
+    script(Client(answer(), boom=RuntimeError("the vendor is down")))
+    r = wire.sweep(con, CLOSE_AT + timedelta(minutes=30), tmp_path / "data", only_market="IN")                # the thinking pass: every model call raises
+    assert r["failed"] and all("thinking failed" in x for x in r["failed"]), r                               # visible, not raised
+    assert r["sessions"] == {"IN": [f"{DAY}:close"]}                                                         # the session was still watched and marked
+    cid = next(c for c in r["cases_opened"] if cases.get_case(con, c)["isin"] == BBB)
+    c = cases.get_case(con, cid)
+    assert c["state"] == "open" and "thinking failed" in (c["summary"] or "") and any(s["step"] == "failed" for s in c["steps"]) and c["decisions"] == []
+    assert not orders(con, "sell")                                                                          # the thinking placed nothing
+    assert "Thinking failed on" in wire.today_block(con, DAY)["thinking"]["text"]
+    # the close itself: the exit manager reads the filing and sells the name (a thesis break), as it does without any thinking
+    res = loop.run(con, NOW, tmp_path / "data", calm_index())
+    assert res.get("status") in ("traded", "held"), res
+    sells = [o for o in orders(con, "sell") if o[0] == BBB]
+    assert len(sells) == 1 and con.execute("SELECT count(*) FROM exit_events_s81 WHERE isin=? AND kind='thesis'", [BBB]).fetchone()[0] == 1, (res, sells)
+    # the failed case's next look is the next session: the vendor is back, the follow-up thinks the same case through (nothing was lost; no paid retry every half hour)
+    script(Client(answer("BBB", "sell", "damage", pending="the board's decision")))
+    nxt = extend(con, 3)[0]
+    assert str(cases.get_case(con, cid)["next_look_on"]) <= str(nxt)
+    r2 = wire.sweep(con, datetime.combine(nxt, datetime.min.time()) + timedelta(hours=16, minutes=30), tmp_path / "data", only_market="IN")
+    c2 = cases.get_case(con, cid)
+    assert c2["klass"] == "damage" and c2["decisions"] and r2["follow_up"]["rethought"] >= 1, (r2, c2)
+
+
+# --- the fifth scenario: advisory mode -----------------------------------------------------------------------------------------------------------------------------------------
+
+def test_in_advisory_mode_cases_open_and_report_and_only_the_damage_sale_acts(con, tmp_path, monkeypatch):
+    real = think.settings
+    monkeypatch.setattr(think, "settings", lambda: {**real(), "mode": "advisory"})
+    # a held name with a damage answer: the thesis-break sale still acts
+    script(Client(answer("BBB", "hold", "damage", pending="the board's decision"), check="pass"))
+    c1 = open_case_on(con, BBB, "BBB", exposure=150000.0)
+    r1 = session.think_case(con, CLOSE_AT + timedelta(minutes=40), c1, root=tmp_path / "data")
+    assert r1["ok"] and r1["advisory"] is True
+    d1 = cases.get_case(con, c1)["decisions"][0]
+    assert d1["rule_option"] == "sell" and d1["acted_option"] == "sell" and d1["advisory"] is True and len([o for o in orders(con, "sell") if o[0] == BBB]) == 1
+    # a chance: the rule would buy in parts; advisory reports it and orders nothing
+    add_name(con, ETF, "NIFTYBEES", "etf", 0.0010, 0.002)
+    script(Client(answer("NIFTYBEES", "buy_in_parts", "market_fear", pending="", worst="very unlikely", likely="even", best="likely"), check="pass"))
+    c2 = open_case_on(con, "MARKET:IN", "Nifty 500", kind="market", signal="market_down_20d", value=-0.12, exposure=500000.0)
+    r2 = session.think_case(con, CLOSE_AT + timedelta(minutes=41), c2, root=tmp_path / "data")
+    assert r2["ok"] and r2["advisory"] is True
+    d2 = cases.get_case(con, c2)["decisions"][0]
+    assert d2["rule_option"] == "buy_in_parts" and d2["acted_option"].startswith("advisory") and not [o for o in orders(con, "buy") if o[0] == ETF]
+    assert cases.get_case(con, c2)["state"] == "advisory"
+    assert not cases.active_freezes(con, DAY)                                                              # nothing acts in advisory: no system freeze either
+
+
+def test_the_loop_turns_advisory_by_itself_when_the_rule_is_behind_doing_nothing_after_20_scored(con, tmp_path):
+    script(Client(answer("BBB", "hold", "damage", pending="the board's decision"), check="pass"))
+    cid = open_case_on(con, BBB, "BBB", exposure=150000.0)
+    assert session.think_case(con, CLOSE_AT + timedelta(minutes=40), cid, root=tmp_path / "data")["advisory"] is False
+    days = extend(con, 25, {BBB: 0.01})                                                                     # the name RECOVERED: the sale was worse than holding
+    for k in range(19):
+        _seed_decided(con, cid, k)
+    d25 = days[-1]
+    assert score.score_due(con, d25) > 0 and score.scorecard(con)["rule_track"]["vs_nothing_inr"] < 0
+    assert score.advisory(con, d25) is True
+    add_name(con, ETF, "NIFTYBEES", "etf", 0.0010, 0.002)
+    script(Client(answer("NIFTYBEES", "buy_in_parts", "temporary", pending="", worst="very unlikely", likely="even", best="likely"), check="pass"))
+    at = datetime.combine(d25, datetime.min.time()) + timedelta(hours=16)
+    c3 = open_case_on(con, ETF, "NIFTYBEES", now=at)
+    r3 = session.think_case(con, at + timedelta(minutes=5), c3, root=tmp_path / "data")
+    assert r3["ok"] and r3["advisory"] is True
+    assert not [o for o in orders(con, "buy") if o[0] == ETF]
