@@ -489,3 +489,28 @@ def test_scripts_have_no_control_characters():
     for f in ("core/exits.py", "core/harvest.py", "core/tax_rows.py", "pm/mig_s79/m_exits.py"):
         t = (root / f).read_text(encoding="utf-8")
         assert not [c for c in t if ord(c) < 32 and c not in "\n\r\t"], f
+
+
+def _ca_events():
+    medium = {"isin": CALM, "kind": "regulatory_action", "severity": "medium", "ts": datetime(2026, 10, 30, 9, 40), "source": "press", "ref": "ca:1", "text": "a securities class action is filed"}
+    return medium, {**medium, "severity": "high", "ref": "ca:2", "text": "the regulator bars the company"}
+
+
+def test_a_medium_class_action_is_left_to_the_thinking_loop_and_a_high_one_still_sells(con, monkeypatch):
+    """S84: a medium `regulatory_action` (a securities class action) on a held name is the thinking loop's to weigh; high severity still sells here."""
+    exits.backfill_plans(con, DAY)
+    medium, high = _ca_events()
+    from pflab import think
+    monkeypatch.setattr(think, "on", lambda: True)
+    monkeypatch.setattr(think, "settings", lambda: {**think.DEFAULTS, "mode": "live"})
+    assert [x for x in exits.check_thesis(con, DAY, [medium]) if x["kind"] == "thesis"] == []
+    assert len([x for x in exits.check_thesis(con, DAY, [high]) if x["kind"] == "thesis"]) == 1
+
+
+def test_with_the_thinking_loop_advisory_or_off_a_medium_class_action_sells_as_before(con, monkeypatch):
+    exits.backfill_plans(con, DAY)
+    medium, _ = _ca_events()
+    from pflab import think
+    monkeypatch.setattr(think, "on", lambda: True)
+    monkeypatch.setattr(think, "settings", lambda: {**think.DEFAULTS, "mode": "advisory"})
+    assert len([x for x in exits.check_thesis(con, DAY, [medium]) if x["kind"] == "thesis"]) == 1

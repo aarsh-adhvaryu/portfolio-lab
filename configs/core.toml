@@ -87,6 +87,7 @@ harvest_margin = 0.90         # book at most this share of the room left (the fi
 harvest_min_gain = 5000.0     # a harvest smaller than this (rupees of gain) is not worth its charges
 harvest_cost_multiple = 3.0   # the tax a harvest is expected to save must be at least this many times its round-trip charges
 harvest_max_book_share = 0.05 # at most this share of the book is sold for harvesting at one close
+thesis_think_first_kinds = ["regulatory_action"]   # S84: a MEDIUM event of these kinds (a securities class action) is left to the thinking loop, which weighs it; a HIGH one still sells here at once
 harvest_core = false          # A60 (2026-11-10): exemption and loss harvesting is OFF in the live book per sleeve until the narrower study (C4a) passes for that sleeve; the code stays for the study
 harvest_longterm = false
 loss_harvest = true           # (only acts in a sleeve whose switch above is on)
