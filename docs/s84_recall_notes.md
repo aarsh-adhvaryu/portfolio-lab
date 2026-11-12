@@ -41,5 +41,10 @@ Names written in capitals in the notes' questions resolved to instruments (8 of 
 ## Tests
 `tests/test_s84_recall.py` (14), `tests/test_s84_recall_card.py` (2: a seeded note on a name is in its company card and counted as used; another name's note and a later-dated note are not), `tests/test_s84_recall_picks.py` (3). Named for the brief: a seeded analyst note on a held name appears in that name's recall; a note about another name does not; nothing after `asof` (notes, events, derived-time filings, picks, cases); the second paid call on an unchanged subject costs zero (`ring` and `web_search`); the knowledge line counts.
 
+## Existing tests changed (behaviour that still exists, rewritten, not weakened)
+- `tests/test_s83_strat.py`: the pinned property set of a `propose_picks` item now includes `takes_from`.
+- `tests/test_analyst.py::test_budget_cap_and_per_job_approval`: its second and third sends asked a different question on the SAME name (AAA) as the note just bought; under never-pay-twice that is answered from the note, so the budget is now tested on a request for another name (BBB). Same assertions (`BudgetRefused` twice).
+- Run and green with these: test_analyst, test_analyst_compare, test_app_ai, test_escalate, test_s83_picks/tools/strat, test_s62_security, test_s78_abilities, test_s84_cases, test_researcher, test_pm_store, test_overnight_s47, test_s46_quant_event_thesis, test_s58_drill, test_s80_strategist/tactical, test_s79_debate, test_hq; privacy grep clean.
+
 ## Could not verify
 The real `kg2` side on real data (the copy's graph tables are empty, so peers, sector and event items are proved on synthetic rows only); that a real case session reads the card's new section within the 16,000-character card limit (the section is cut to 2,500 characters and the card is still trimmed by `fit_card`).
