@@ -164,3 +164,16 @@ def for_secrets(secrets, transport: Optional[Transport] = None, downloader: Opti
         return None
     from pflab.service import telegram as tgm
     return TgApi(secrets.get("telegram", "token"), secrets.get("telegram", "chat_id"), transport or tgm.requests_transport, downloader)
+
+
+def roundtrip(api: TgApi, text: str = "S85 test: Telegram works") -> dict:
+    """The one real-path check: ONE message to the investor, then that same message edited in place (an edit sends nothing new). Returns what happened."""
+    ids = api.send_message(text)
+    edited = bool(ids) and api.edit_message(ids[-1], text + " (edit works)")
+    return {"sent": len(ids), "message_id": ids[-1] if ids else None, "edited_in_place": edited}
+
+
+if __name__ == "__main__":       # PFLAB_LIVE=1 python -m pflab.service.tg_api  (the workshop's guard refuses without it)
+    from pflab.pm import secrets as _sec
+    _api = for_secrets(_sec.load())
+    print(roundtrip(_api) if _api else "Telegram is not set up in the secrets file")

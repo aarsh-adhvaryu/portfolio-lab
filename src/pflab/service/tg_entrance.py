@@ -380,7 +380,10 @@ class Entrance:
                 ids = self.api.send_message(text)
                 if msg_id is not None and ids:
                     with self._lock:
-                        self._progress[msg_id] = {"tg": ids[-1], "last": self._mono(), "text": text}
+                        now = self._mono()
+                        for k in [k for k, v in self._progress.items() if now - v["last"] > 3600]:      # an answer that never came: forget it
+                            self._progress.pop(k, None)
+                        self._progress[msg_id] = {"tg": ids[-1], "last": now, "text": text}
                 return
             if text == st["text"] or self._mono() - st["last"] < MIN_EDIT_SECONDS:
                 return

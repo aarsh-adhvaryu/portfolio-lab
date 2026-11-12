@@ -432,3 +432,10 @@ def test_threads_can_reply_at_once(fake, tmp_path):
     [t.start() for t in ts]
     [t.join() for t in ts]
     assert sorted(fake.texts()) == sorted(f"answer {i}" for i in range(20))
+
+
+def test_the_real_path_roundtrip_sends_one_message_and_edits_it(fake):
+    api = tg_api.TgApi(fake.token, 42, fake.transport, fake.downloader, sleep=lambda s: None)
+    out = tg_api.roundtrip(api)
+    assert out == {"sent": 1, "message_id": fake.shown[0]["id"], "edited_in_place": True}
+    assert fake.methods().count("sendMessage") == 1 and fake.shown[0]["text"] == "S85 test: Telegram works (edit works)"
