@@ -169,6 +169,26 @@ def test_a_headline_keyword_in_an_article_is_a_lead_the_model_confirms_then_it_i
     assert any(e["kind"] == "leadership_crisis" and e["ref"] == url for e in seen)                      # think/watch and the exit manager see it as a thesis-break event
 
 
+def test_a_leadership_pick_from_an_article_needs_the_company_in_the_headline(root):
+    """Real run 2026-11-12: a school-board chairman and 'a Mumbai-based firm' were linked to listed names only because the text named them. The model may say crisis; the graph keeps it a lead."""
+    url = "https://n.example/alpha-industries-supplier-probe"
+    _w(root, "news_s81/gkg1/2026-06-22.parquet", pd.DataFrame([{"date": "2026-06-22", "url": url, "source": "n.example", "isin": A, "org": "alpha industries", "tone": -2.0,
+                                                                  "themes": "", "india": True, "numarts": 1}]))
+    p = news.text_path(root, news.url_hash(url))
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"url": url, "title": "Exam board chairman transferred as Centre orders probe into procurement",
+                             "text": "The vendor was Alpha Industries, which supplied the marking software. " * 3}), encoding="utf-8")
+    g = kb.build(root, date(2026, 6, 30), groups=GROUPS)
+
+    class R:
+        def __init__(self, text):
+            self.text = text
+    job.classify_pending(root, g, limit=5, chat=lambda *a, **k: R(json.dumps({"kind": "leadership_crisis", "severity": "high"})))
+    g2 = kb.build(root, date(2026, 6, 30), groups=GROUPS)
+    r = g2["event"][g2["event"]["ref"] == url].iloc[0]
+    assert (r["kind"], r["severity"]) == ("news", "low")
+
+
 def test_a_model_that_says_none_leaves_the_article_as_other(root):
     url = "https://n.example/alpha-industries-ceo-ousted"
     _w(root, "news_s81/gkg1/2026-06-22.parquet", pd.DataFrame([{"date": "2026-06-22", "url": url, "source": "n.example", "isin": A, "org": "alpha industries", "tone": 0.0,
