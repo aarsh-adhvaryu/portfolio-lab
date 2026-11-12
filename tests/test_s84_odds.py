@@ -545,3 +545,16 @@ def test_the_live_test_is_registered_once_with_the_protocols_hash_and_a_changed_
     assert score.protocol_ok(sc)["unchanged"] is True
     copy.write_bytes(copy.read_bytes() + b"\nan edit\n")
     assert score.protocol_ok(sc)["unchanged"] is False and "changed" in score.protocol_ok(sc)["why"]
+
+
+def test_a_us_stock_is_capped_at_ten_percent_of_the_sub_book_not_of_the_whole_book(con, fixed_rates, monkeypatch):
+    from pflab.us import wholebook
+    cid = cases.open_case(con, NOW, market="US", kind="move", isin="ZZ0000000001", symbol="XYZ", title="XYZ fell", exposure_inr=0, exposure_pct=0.0, score=1.0)
+    ser = pd.Series(np.linspace(80.0, 100.0, 120), index=pd.to_datetime(DAYS[-120:]))                    # a steady climb: no new lows
+    monkeypatch.setattr(odds, "closes", lambda con, market, isin, symbol, asof, n=320, root=None: ser)
+    monkeypatch.setattr(odds, "position", lambda con, market, isin, symbol, asof, root=None: {"held": False, "qty": 0.0, "price": 100.0, "value_inr": 0.0, "ccy": "USD", "fx": 90.0, "canon": isin, "market": "US"})
+    real = wholebook.whole_book_inr
+    monkeypatch.setattr(wholebook, "whole_book_inr", lambda con, day, root=None: {**real(con, day, root), "us_book_inr": 500_000.0})
+    ans = _answer("temporary", "buy_in_parts", isin="ZZ0000000001", symbol="XYZ")
+    d = rule.decide(con, cid, ans, DAY, reserve_free_inr=60_000_000.0)
+    assert d["rule_option"] == "buy_in_parts" and d["parts"]["total_inr"] == pytest.approx(50_000.0) and "the stock rail" in " ".join(d["guards"])      # 10% of the Rs 5 lakh sub-book
