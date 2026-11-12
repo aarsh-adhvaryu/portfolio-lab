@@ -113,7 +113,7 @@ def nvda_not_held_answers(case: dict, n: int) -> dict:
     sym = case.get("symbol") or NVDA_SYMBOL
     if sym != NVDA_SYMBOL:
         return _other(case, "market_fear", "nothing")
-    base = {"happened": "Nvidia's chief executive is under a board investigation and the shares fell; the S&P 500 and the Nasdaq 100 funds the sub-book holds carry it as a large weight (press reports).",
+    base = {"happened": "Nvidia's chief executive is under a board investigation and the shares fell; the broad index funds the sub-book holds carry it as a large weight (press reports).",
             "sources": ["press reports of the week", "the graph's event rows"], "known": "The investigation and a class action are public; the board's decision is not.",
             "other_names": ["SPY", "QQQ", "XLK"], "class": "unclear", "pending": "the board's decision on the chief executive", "pending_date": "2026-11-12"}
     if n == 1:
@@ -127,8 +127,8 @@ def ather_answers(case: dict, n: int) -> dict:
     sym = case.get("symbol") or ATHER_SYMBOL
     if sym != ATHER_SYMBOL:
         return _other(case)
-    return {"happened": "Ather Energy has run well ahead of the Nifty 500 since the system looked at it and passed (the skip reason was valuation against negative trailing earnings).",
-            "sources": ["the stored skip and its reason", "the stored closes against the Nifty 500 total return"], "class": "temporary",
+    return {"happened": "Ather Energy has run well ahead of its index since the system looked at it and passed (the skip reason was valuation against negative trailing earnings).",
+            "sources": ["the stored skip and its reason", "the stored closes against the index total return"], "class": "temporary",
             "known": "The price has risen a lot; trailing earnings are still negative.", "pending": "", "pending_date": "", "other_names": ["TVSMOTOR", "HEROMOTOCO"],
             "choices": [{"symbol": sym, "option": "buy_in_parts", "reason": "the reason for passing (valuation, negative earnings) has not been answered by results: only the price changed; if anything is bought it is small and in parts"}],
             "likelihood": words("unlikely", "even", "unlikely")}

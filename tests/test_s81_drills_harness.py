@@ -62,7 +62,7 @@ def test_a_step_that_waits_for_a_module_says_exactly_which(D):
     names = [n for n, _fn, _ap in D.ACCELERATED_STEPS]
     assert names[0] == "standing" and len(names) == len(set(names))
     for want in ("allocation_proposed_and_adopted", "core_etfs_bought", "exit_plan_fires", "harvest_sale_and_buyback", "view_entry_exit_closed", "thesis_break_sale", "us_subbook_close", "session_replay",
-                 "picks_learning_book"):
+                 "picks_learning_book", "thinking_loop"):
         assert want in names
     for _n, _fn, ap in D.ACCELERATED_STEPS:
         ok, why = ap(None)

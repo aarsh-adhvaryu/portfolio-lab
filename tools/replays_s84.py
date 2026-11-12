@@ -412,7 +412,7 @@ def think_hook(env, t: datetime) -> Optional[dict]:
         return None
 
 
-REAL_LIMIT = {"calls": 5}
+REAL_LIMIT = {"calls": int(os.environ.get("S84_REAL_CALLS", "5"))}
 
 
 def web_stub(con, question, now):
@@ -658,9 +658,28 @@ def go_real(env, cap: float = 70.0):
     os.environ["PFLAB_PAID"] = "1"
     install_cap(cap)
     gateway.set_client(None)
-    job = jobs.REGISTRY.get("think_loop")
-    if job is not None:
-        jobs.REGISTRY["think_loop"] = replace(job, fn=lambda ctx: {"replay": "the real path thinks one case itself"})
+    import pflab.think as think_pkg                                                  # the stake is under 1% of the whole book (8% of a 10% sub-book): Opus is asked to DECIDE by lowering the line
+    orig_settings = think_pkg.settings
+    think_pkg.settings = lambda: {**orig_settings(), "opus_exposure_share": 0.005}
+    for jn in ("think_loop", "strategist"):                                         # the app's own jobs would think every case / hold a desk session with the real model: only the hook thinks, once
+        job = jobs.REGISTRY.get(jn)
+        if job is not None:
+            jobs.REGISTRY[jn] = replace(job, fn=lambda ctx: {"replay": "the real path thinks one case itself"})
+    from pflab.think import session as sess_mod
+    orig_think = sess_mod.think_case
+
+    def only_nvda(con, now, case_id, **kw):                                         # the close loop's own hooks call think_case too: any case but NVDA is left open, no call
+        row = con.execute("SELECT symbol FROM think_cases_s84 WHERE case_id=?", [case_id]).fetchone()
+        if not row or row[0] != NVDA["symbol"]:
+            return {"case_id": case_id, "skipped": "the real path thinks only the NVDA case"}
+        return orig_think(con, now, case_id, **kw)
+    sess_mod.think_case = only_nvda
+    try:
+        from pflab.think import desk as desk_mod
+        orig_desk = desk_mod.run_desk
+        desk_mod.run_desk = lambda *a, **k: {"skipped": "no desk in the real replay"}
+    except ImportError:
+        desk_mod = orig_desk = None
     eng = gateway.ENGINES["anthropic"]
     orig = eng.send
     state = {"n": 0}
@@ -676,7 +695,8 @@ def go_real(env, cap: float = 70.0):
             env.net.install()
     eng.send = send
     env.real_state = state
-    env.real_restore = lambda: setattr(eng, "send", orig)
+    env.real_restore = lambda: (setattr(eng, "send", orig), setattr(think_pkg, "settings", orig_settings), setattr(sess_mod, "think_case", orig_think),
+                                (setattr(desk_mod, "run_desk", orig_desk) if desk_mod else None))
     return SimpleNamespace(calls=[])
 
 
