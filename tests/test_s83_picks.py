@@ -145,9 +145,10 @@ def test_his_kite_stocks_are_adopted_once_and_a_thesis_is_added_to_one(con):
 
 def test_an_accepted_pick_is_bought_over_several_sessions_inside_the_turnover_caps_then_held(con, monkeypatch):
     small_turnover(monkeypatch, 0.03)
+    assert pick_share.set_start_by_decision(con, NOW)["done"]                                  # S84 F1: room for the system's own picks (his Kite stocks' weight + 20 points; 10 of them the reserve)
     picks.propose(con, NOW, "IN", [item("CCC")], session_ref="s1")
     s = st.build(con, START, None, INDEX)
-    assert CCC in {r["isin"] for r in s["rows"]} and s["picks"]["weights"][CCC] == pytest.approx(0.10, abs=1e-6)           # sized by risk, at the stock rail
+    assert CCC in {r["isin"] for r in s["rows"]} and s["picks"]["weights"][CCC] == pytest.approx(0.10, abs=1e-3)           # sized by risk, at the stock rail (the 10 ordinary points of the 20, S84 F1)
     kite = {AAA, BBB, FFF}
     assert all(s["picks"]["weights"][k] == pytest.approx(min(0.10, next(r["value"] for r in s["rows"] if r["isin"] == k) / s["value"])) for k in kite)   # his stocks keep what they hold (a name over the 10% rail is brought to it)
     days = [d for d in DAYS if d >= START][:14]

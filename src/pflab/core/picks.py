@@ -90,6 +90,26 @@ def share(con, market: str = "IN") -> dict:
     return pick_share.share(con, market)
 
 
+def reserve_points(market: str = "IN") -> float:
+    """A64: the points of the market's book (India: the rupee book; US: the sub-book) kept as the OPPORTUNITY RESERVE in cash, which only the thinking loop may spend: ordinary picks never
+    take them (`target_weights`, `propose`, the card's room). From `[think] reserve_india_pts` / `reserve_us_pts` (10 and 10)."""
+    try:
+        from pflab import think
+        t = think.settings()
+        return float(t["reserve_us_pts" if market == "US" else "reserve_india_pts"])
+    except Exception:
+        return 10.0
+
+
+def ordinary_ceiling(market: str, share_now: float) -> float:
+    """The most the picks sleeve (his Kite stocks, withdrawn names and the system's ordinary picks) may hold: India, the share less the reserve; US, the share but SPY (at least its floor) and the
+    reserve must both fit beside it."""
+    res = reserve_points(market) / 100.0
+    if market == "US":
+        return max(0.0, min(share_now, 1.0 - float(settings("US")["us_spy_floor"]) - res))
+    return max(0.0, share_now - res)
+
+
 # --- the book's numbers (a market at a time) --------------------------------------------------------------------------------------------
 
 def _positions(con, market: str, day: date, strict: bool = False) -> Dict[str, float]:
@@ -333,6 +353,13 @@ def propose(con, now: datetime, market: str, items: List[dict], *, session_ref: 
         if why:
             out["refused"].append({"symbol": sym, "reason": why})
             continue
+        earlier = _earlier_knowledge(con, now, key, sym)
+        takes = _norm((it or {}).get("takes_from"))
+        if earlier and len(takes) < MIN_TAKES:                                      # S84 T2x: a name with an earlier note or case says what the pick takes from it
+            e = earlier[0]
+            out["refused"].append({"symbol": sym, "reason": f"we already hold {len(earlier)} earlier {'note' if len(earlier) == 1 else 'notes or cases'} on {sym} (newest: {e['day']}, {e['kind']} {e['id']}: "
+                                                            f"{(e['title'] or '')[:100]}): say in takes_from ({MIN_TAKES}+ characters) what this pick takes from it"})
+            continue
         mine = [p for p in all_picks(con, market) if p["isin"] == key]
         live = [p for p in mine if p["state"] in ACTIVE]
         held = pos.get(key, 0.0) > 1e-9
@@ -342,6 +369,7 @@ def propose(con, now: datetime, market: str, items: List[dict], *, session_ref: 
                 con.execute("UPDATE picks_s83 SET thesis=?, break_condition=?, storylines_json=?, session_ref=?, learned_from=?, state_reason=?, state_changed_on=? WHERE pick_id=?",
                             [txt["thesis"], txt["break"], json.dumps(txt["storylines"]), session_ref, learned or None, f"the strategist wrote its thesis ({session_ref or 'a session'})", day, p["pick_id"]])
                 out["accepted"].append({"symbol": sym, "pick_id": p["pick_id"], "note": "thesis added to his Kite stock; it keeps what it holds"})
+                _read_earlier(con, now, p["pick_id"], takes, earlier)
                 continue
             out["refused"].append({"symbol": sym, "reason": f"{sym} is already a pick ({p['state']}): withdraw it first if you no longer believe it"})
             continue
@@ -365,16 +393,18 @@ def propose(con, now: datetime, market: str, items: List[dict], *, session_ref: 
             if sec and sec_w >= hard.MAX_SECTOR - 0.01:
                 out["refused"].append({"symbol": sym, "reason": f"the {sec} sector is already {sec_w:.1%} of the book, at the {hard.MAX_SECTOR:.0%} sector rail: a pick in it could not be bought"})
                 continue
-            room = sh["share"] - sum(wts.get(p["isin"], 0.0) for p in act)
+            ceil_ = ordinary_ceiling("IN", sh["share"])
+            room = ceil_ - sum(wts.get(p["isin"], 0.0) for p in act)
             if room < 0.01:
-                note = f"the sleeve is at or over its {sh['share']:.0%} share (his Kite stocks and the picks hold {sh['share'] - room:.0%}): it waits for room"
+                note = (f"the sleeve is at or over its {sh['share']:.0%} share less the {reserve_points('IN'):g}-point opportunity reserve (his Kite stocks and the picks hold {ceil_ - room:.0%} "
+                        f"of the {ceil_:.0%} ordinary picks may use): it waits for room")
         else:
             if n_system >= int(c["us_max_stocks"]):
                 out["refused"].append({"symbol": sym, "reason": f"the sub-book already has {n_system} stocks picked: at most {int(c['us_max_stocks'])}"})
                 continue
-            ceiling = 1.0 - float(c["us_spy_floor"])
+            ceiling = 1.0 - float(c["us_spy_floor"]) - reserve_points("US") / 100.0
             if used_w + 0.01 > ceiling + 1e-9:
-                out["refused"].append({"symbol": sym, "reason": f"the picks already hold {used_w:.0%} of the sub-book: SPY must keep at least {float(c['us_spy_floor']):.0%}, so the picks stop at {ceiling:.0%}"})
+                out["refused"].append({"symbol": sym, "reason": f"the picks already hold {used_w:.0%} of the sub-book: SPY must keep at least {float(c['us_spy_floor']):.0%} and {reserve_points('US'):g} points are the opportunity reserve, so the picks stop at {ceiling:.0%}"})
                 continue
         pid = next_id(con, "picks_s83", "pick_id")
         con.execute("INSERT INTO picks_s83 (pick_id, market, isin, symbol, source, thesis, break_condition, storylines_json, session_ref, learned_from, state, proposed_on, state_changed_on, "
@@ -386,7 +416,33 @@ def propose(con, now: datetime, market: str, items: List[dict], *, session_ref: 
         if note:
             res["note"] = note
         out["accepted"].append(res)
+        _read_earlier(con, now, pid, takes, earlier)
     return out
+
+
+MIN_TAKES = 20
+
+
+def _earlier_knowledge(con, now: datetime, isin: str, symbol: str) -> List[dict]:
+    """S84 T2x: the earlier notes (paid or written back) and cases `think/recall` holds on this name: what a new pick must say it takes from. Never raises (no earlier knowledge, no demand)."""
+    try:
+        from pflab.think import recall
+        r = recall.recall(con, now, isin=isin, symbol=symbol, limit_chars=2500)
+        return [i for i in r["items"] if i["kind"] in ("analyst_note", "note", "memory", "case")]
+    except Exception:
+        return []
+
+
+def _read_earlier(con, now: datetime, pick_id: int, takes: str, earlier: List[dict]) -> None:
+    """The pick read those items: a `knowledge_use_s84` row each, and the sentence it gave is kept on the pick."""
+    if not earlier:
+        return
+    try:
+        from pflab.think import recall
+        con.execute("UPDATE picks_s83 SET takes_from=? WHERE pick_id=?", [takes[:500], pick_id])
+        recall.mark_used(con, earlier, by_kind="pick", by_ref=f"pick:{pick_id}", day=now.date())
+    except Exception:
+        pass
 
 
 def withdraw(con, now: datetime, market: str, symbol: str, reason: str, session_ref: Optional[str] = None) -> dict:
@@ -453,6 +509,11 @@ def target_weights(con, state: dict, market: str = "IN") -> Dict[str, float]:
     out: Dict[str, float] = {}
     system = []
     occupied = 0.0
+    try:                                                                     # S84 (A65): names under a thinking-loop freeze get no new buying
+        from pflab.think import cases as _tcases
+        frozen = set(_tcases.frozen_isins(con, state.get("day"), market))
+    except Exception:
+        frozen = set()
     for p in managed(con, market):
         k = p["isin"]
         if k not in rows or not rows[k]["buyable"] and p["state"] != "withdrawn":
@@ -466,8 +527,7 @@ def target_weights(con, state: dict, market: str = "IN") -> Dict[str, float]:
         else:
             system.append(p)
     sh = share(con, market)["share"]
-    ceiling = (1.0 - float(c["us_spy_floor"])) if market == "US" else 1.0
-    budget = max(0.0, min(sh, ceiling) - occupied)
+    budget = max(0.0, ordinary_ceiling(market, sh) - occupied)             # A64: the reserve's points are never spent by an ordinary pick
     if system:
         stock_cap = float(c["us_stock_cap"]) if market == "US" else MAX_STOCK
         inv = {p["isin"]: 1.0 / max(float(state["vol"].get(p["isin"], 0.30)), 0.05) for p in system}
@@ -477,11 +537,29 @@ def target_weights(con, state: dict, market: str = "IN") -> Dict[str, float]:
             k = p["isin"]
             if gauge:
                 out[k] = cur.get(k, 0.0) * (1.0 - cut)                       # no buying while the gauge fires; held picks are cut like the rest of the equity
+            elif k in frozen:
+                out[k] = cur.get(k, 0.0)                                     # S84: a name under a thinking-loop freeze is not bought (what is held stays)
             else:
                 out[k] = max(cur.get(k, 0.0), want.get(k, 0.0))              # never sold to reach a share; a pick above its risk size keeps what it holds
             if cur.get(k, 0.0) > stock_cap + 1e-9:                           # only the company rail trims a pick (a rail trim)
                 out[k] = min(out[k], stock_cap)
+        if market == "IN" and not gauge:
+            _from_cash_above_reserve(state, total, cur, out, [p["isin"] for p in system], reserve_points(market) / 100.0)
     return out
+
+
+def _from_cash_above_reserve(state: dict, total: float, cur: Dict[str, float], out: Dict[str, float], names: List[str], reserve: float) -> None:
+    """F1/A64: the system's ordinary picks are bought from cash and new money, and only from the cash ABOVE the reserve: the reserve refills from new money and sale proceeds before an ordinary
+    pick takes any. The increases of the pick names are scaled down (never below what a pick holds) to the cash above the reserve. A state with no cash figure is left as it is."""
+    if "cash" not in state:
+        return
+    free = max(0.0, (float(state.get("cash") or 0.0) + float(state.get("bank") or 0.0)) / total - reserve)
+    inc = {k: out[k] - cur.get(k, 0.0) for k in names if k in out and out[k] > cur.get(k, 0.0) + 1e-12}
+    need = sum(inc.values())
+    if need > free + 1e-12:
+        f = (free / need) if need > 0 else 0.0
+        for k, v in inc.items():
+            out[k] = cur.get(k, 0.0) + v * f
 
 
 def attach(con, state: dict, market: str = "IN") -> dict:

@@ -12,15 +12,41 @@ from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 THESIS_BREAK_KINDS = ("results_miss", "guidance_cut", "auditor_resignation", "promoter_pledge_increase", "regulatory_action", "rating_downgrade",
-                      "fraud_investigation", "large_order_loss")
+                      "fraud_investigation", "large_order_loss", "leadership_crisis")       # S84 (A68): leadership_crisis, a governance shock
 OTHER_KINDS = ("results", "board_meeting", "dividend", "corporate_action", "order_win", "rating_upgrade", "management_change", "fund_raise", "news", "routine", "other")
 KINDS = THESIS_BREAK_KINDS + OTHER_KINDS
 SEVERITIES = ("low", "medium", "high")
 MODEL_PICKS = THESIS_BREAK_KINDS + ("none",)            # the model's own closed list: a thesis-break kind, or "none"
 
 # (kind, severity, pattern over the lower-cased headline + subject); first match wins, thesis-break kinds first
+# S84 (A68). The top of a company: the chief executive, the chair, a founder, a managing director (_EXEC), and a promoter (_TOP adds him).
+_EXEC = r"(ceo|chief executive(?: officer)?|chair(?:man|woman|person)?|founder|co-founder|managing director)"
+_TOP = r"(?:" + _EXEC + r"|promoters?)"
+_NOW = r"(?:immediate effect|effective immediately|with immediate)"
+_PERSON = r"(?:executives?|officers?|ceo|cfo|directors?|chairman|chief executive)"
+# a securities class action is a regulatory matter of medium weight: it is checked FIRST so the word "fraud" inside it does not make it a fraud investigation
+_CLASS_ACTION = r"(class[- ]action|securities (?:fraud )?(?:suit|lawsuit|litigation)|shareholders?'? (?:lawsuit|suit)|investors? (?:lawsuit|suit)\b)"
+# a governance shock = leadership_crisis (high): an investigation of the top person, the chief executive or chair ousted / removed / on leave / leaving at once, a promoter or
+# chief executive arrested, an executive tied to espionage, sanctions or a criminal case. A plain appointment or an ordinary resignation stays `management_change` (low).
+_INV = r"(?:investigat\w+|probe\w*|inquiry|inquiries)"
+_LEADERSHIP = "|".join([
+    _INV + r".{0,70}\b" + _TOP + r"\b",
+    r"\b" + _TOP + r"\b.{0,70}" + _INV,
+    r"\b" + _EXEC + r"\b.{0,60}\b(?:ousted|ouster|removed|removal|fired|sacked|dismissed|placed on (?:administrative |medical )?leave|on (?:administrative )?leave)\b",
+    r"\b(?:oust\w*|removing|firing|sacking)\b.{0,40}\b" + _EXEC + r"\b",
+    r"\b" + _EXEC + r"\b.{0,60}\b(?:resign\w*|steps? down|stepping down|exits?|leaves?|leaving|departs?|quits?)\b.{0,30}" + _NOW,
+    r"\b(?:resign\w*|removal|termination)\b.{0,40}\b" + _EXEC + r"\b.{0,40}" + _NOW,
+    r"board.{0,40}to oust",
+    r"\b" + _TOP + r"\b.{0,40}\b(?:arrest\w*|detained|indicted|taken into custody)",
+    r"\b(?:arrest\w*|detained|indicted)\b.{0,40}\b" + _TOP + r"\b",
+    r"\b" + _PERSON + r"\b.{0,70}\b(?:espionage|spy\w*|sanction\w*|criminal (?:case|charges?|complaint|probe))",
+    r"\b(?:espionage|spy\w*)\b.{0,70}\b" + _PERSON + r"\b",
+])
+
 RULES: List[Tuple[str, str, "re.Pattern"]] = [(k, s, re.compile(p)) for k, s, p in [
+    ("regulatory_action", "medium", _CLASS_ACTION),
     ("auditor_resignation", "high", r"\b(auditor|statutory auditors?)\b.*\bresign|\bresign\w*\b.*\bauditor"),
+    ("leadership_crisis", "high", _LEADERSHIP),
     ("fraud_investigation", "high", r"\b(fraud|forensic audit|money laundering|enforcement directorate|\bed\b raid|cbi|search and seizure|income tax (search|raid)|seiz\w+)"),
     ("promoter_pledge_increase", "medium", r"(invocation|invoked).{0,40}pledge|pledge.{0,40}(invok|increase|creat)|creation of pledge"),
     ("rating_downgrade", "high", r"downgrad|rating.{0,30}(lowered|withdrawn|watch with negative|negative outlook)"),
@@ -70,7 +96,10 @@ def validate(obj: dict) -> Optional[str]:
 SCHEMA = {"type": "object", "properties": {"kind": {"type": "string", "enum": list(MODEL_PICKS)}, "severity": {"type": "string", "enum": list(SEVERITIES)}},
           "required": ["kind", "severity"], "additionalProperties": False}
 SYSTEM = ("You label stock-exchange filings and news about one listed company. Choose ONE kind from the closed list, or 'none' when the item is not one of them, "
-          "and a severity (low, medium, high) for how much it could hurt a long-term holder. Never write numbers. Answer with JSON only.")
+          "and a severity (low, medium, high) for how much it could hurt a long-term holder. Never write numbers. Answer with JSON only. "
+          "leadership_crisis (severity high) is a governance shock at the top: a board or regulator investigating the chief executive, chair or founder; a chief executive or chair "
+          "ousted, removed, put on leave or leaving with immediate effect; an executive linked to espionage, sanctions or a criminal case; a promoter arrested. "
+          "A securities class action is regulatory_action with severity medium. An ordinary appointment or a planned retirement is none.")
 
 
 def model_classify(headline: str, text: str = "", *, chat: Optional[Callable] = None) -> Optional[dict]:

@@ -1100,8 +1100,23 @@ def company_card(con, now, market: str, symbol: str, root=None, get: Optional[Ca
     sym = (symbol or "").strip().upper()
     card = _card_in(con, now, day, root, sym) if market == "IN" else _card_us(con, now, day, root, sym, get, fetch)
     card.update({"market": market, "asof": str(day), "labels": labels_text(rule_verdicts(con))})
+    if card.get("ok", True):
+        card["what_we_already_know"] = what_we_know(con, now, card.get("isin") or card.get("key"), sym, market)
     _log(con, now, market, "company_card", {"symbol": sym}, [sym])
     return card
+
+
+def what_we_know(con, now, isin: Optional[str], sym: str, market: str) -> dict:
+    """S84 (T2x): the card's "what we already know" section: the paid notes, graph events, storylines, pick or skip and earlier cases `think/recall` holds on the name, point-in-time; each item the
+    card hands over is a row in `knowledge_use_s84` (read by a card). Never raises: a failure is said in the section."""
+    try:
+        from pflab.think import recall
+        at = now if isinstance(now, datetime) else datetime.combine(now, datetime.max.time())
+        r = recall.recall(con, at, isin=isin, symbol=sym, limit_chars=2500)
+        recall.mark_used(con, r["items"], by_kind="card", by_ref=f"{market}:{sym}", day=at.date())
+        return {"n": r["n"], "text": r["text"] or "nothing stored about this name yet", "ids": [f"{i['kind']} {i['id']}" for i in r["items"]]}
+    except Exception as e:
+        return {"n": 0, "text": f"not available ({type(e).__name__})", "ids": []}
 
 
 def fit_card(card: dict, limit: int) -> dict:

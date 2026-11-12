@@ -41,7 +41,7 @@ def test_the_three_picks_tools_are_registered_short_and_take_no_size_price_or_we
     for word in ("size", "price", "weight", "amount", "quantity", "qty", "percent", "share_of"):
         assert word not in blob, word
     assert set(defs["propose_picks"]["input_schema"]["properties"]) == {"market", "items", "learned_from"}
-    assert set(defs["propose_picks"]["input_schema"]["properties"]["items"]["items"]["properties"]) == {"symbol", "thesis", "break_condition", "storylines"}
+    assert set(defs["propose_picks"]["input_schema"]["properties"]["items"]["items"]["properties"]) == {"symbol", "thesis", "break_condition", "storylines", "takes_from"}
     assert len(tools.definitions()) <= 22
     assert all(len(d["description"]) < 480 for d in tools.definitions())
 
@@ -141,6 +141,9 @@ def test_the_picks_section_has_each_pick_the_share_and_why_and_the_last_learned(
     pid = out["accepted"][0]["pick_id"]
     con.execute("INSERT INTO pick_scores_s83 (score_id, kind, ref_id, market, isin, horizon_months, excess_pct, return_pct, index_return_pct) VALUES (1, 'pick', ?, 'IN', 'x', 3, 2.5, 6.0, 3.5)", [pid])
     lab.write_note(con, NOW, 3, "A note about the week with enough words in it.", learned=LEARNED)
+    named = picks_card.build(con, START + timedelta(days=10))                                                    # S84 F3: named and not bought: no record yet
+    assert "named, not yet held" in named["text"] and next(p for p in named["IN"]["picks"] if p["symbol"] == "CCC")["vs_index"] is None
+    con.execute("INSERT INTO paper_trades VALUES (900, ?, NULL, NULL, ?, 'CCC', 'buy', 10, 100.0, 1.0, NULL, NULL, '{}')", [START + timedelta(days=1), CCC])     # its first fill: the record starts
     b = picks_card.build(con, START + timedelta(days=10))
     inb = b["IN"]
     assert inb["share"] == 0.40 and "starting share" in inb["share_why"] and inb["on"]

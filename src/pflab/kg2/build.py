@@ -235,6 +235,8 @@ def news_events(root: Path, asof: date, since: date, scope: dict, cache: Dict[st
         eid = _eid("gdelt_gkg1", r.isin, r.url)
         kind, sev = classify.rule_kind(head)
         kind = "news" if kind == "other" else kind
+        if kind == "leadership_crisis":
+            kind, sev = "news", "low"        # S84: a governance keyword in a headline is a lead the local model must confirm (the cache's pick may make it leadership_crisis / high); never a sale by itself
         if kind in classify.THESIS_BREAK_KINDS:
             sev = "low"          # a keyword in an article is a lead, never a thesis break by itself (the model's validated pick may raise it)
         c = cache.get(eid)

@@ -34,6 +34,11 @@ RULE = {
     "behind_points_a_year": 2.0,
     "min_system_picks_bought": 1,
 }
+# Amendment A1 (his decision 2026-11-12, F1/A64): once, at the S84 release, India's share becomes his Kite stocks' weight plus `extra_points` (at most the maximum, never lower than it was):
+# `extra_points` = `ordinary_points` for the system's ordinary picks + `reserve_points` for the opportunity reserve. The range, the steps and the judgment rule above stay.
+# Pinned to the protocol's second JSON block (`json amendment_a1`) by tests/test_s84_fixa.py.
+RULE_A1 = {"decided": "2026-11-12", "market": "IN", "extra_points": 20.0, "ordinary_points": 10.0, "reserve_points": 10.0, "max_share": 0.60}
+DECISION_REASON = "his decision 2026-11-12"
 NAMES = {"IN": "India", "US": "US"}
 AGAINST = {"IN": "the Nifty 500", "US": "SPY in rupees"}
 BOUGHT_STATES = ("buying", "held", "withdrawn", "stopped", "broken")
@@ -85,6 +90,48 @@ def share(con, market: str = "IN") -> dict:
         return {"share": start, "start": start, "source": "the starting share (no judgment yet)", "min": float(c["min_share"]), "max": float(c["max_share"]), "shrinking": False, "judged_on": None}
     return {"share": float(r[3]), "start": start, "source": f"judged on {r[1]}: {r[4]}", "min": float(c["min_share"]), "max": float(c["max_share"]),
             "shrinking": float(r[3]) < float(r[2]) - 1e-9, "judged_on": str(r[1])}
+
+
+def decision_done(con, market: str = "IN") -> bool:
+    """Has the one-time start of 2026-11-12 (F1) been written for the market?"""
+    try:
+        return bool(con.execute("SELECT 1 FROM sleeve_share_s83 WHERE market=? AND reason LIKE ?", [market, DECISION_REASON + "%"]).fetchone())
+    except Exception:
+        return False
+
+
+def set_start_by_decision(con, now: datetime) -> dict:
+    """F1 (his decision 2026-11-12), once: India's share = his Kite stocks' weight in the India part + 20 points, at most the 60% maximum and never lower than it is now; written as one dated
+    row in `sleeve_share_s83` whose reason starts "his decision 2026-11-12". Idempotent by that reason. His Kite stocks are adopted first; with none held yet (nothing to weigh) it writes
+    nothing and says "waiting". Never raises; the range, the steps and the judgment rule are untouched. Called at the app's start (`app/runtime.py`)."""
+    try:
+        from pflab.core import picks
+        from pflab.pm.store import next_id
+        market = "IN"
+        if not on(market):
+            return {"done": False, "why": "the India picks are switched off"}
+        if decision_done(con, market):
+            return {"done": False, "why": "already done"}
+        picks.adopt_kite_holdings(con, now)
+        day = now.date()
+        wts, _sectors = picks._weights(con, market, day)
+        kite = [p for p in picks.managed(con, market) if p["source"] == "kite"]
+        kite_w = sum(max(0.0, wts.get(p["isin"], 0.0)) for p in kite)
+        if kite_w <= 1e-9:
+            return {"done": False, "why": "waiting: no Kite stock of his is held in the book yet, so there is nothing to weigh"}
+        c = settings(market)
+        cur = share(con, market)["share"]
+        extra = float(RULE_A1["extra_points"]) / 100.0
+        new = round(max(cur, min(float(c["max_share"]), kite_w + extra)), 4)
+        why = (f"{DECISION_REASON}: his Kite stocks hold {kite_w:.1%} of the India part; room for the system's own picks worth {RULE_A1['extra_points']:g} points on top "
+               f"({RULE_A1['ordinary_points']:g} for ordinary picks, {RULE_A1['reserve_points']:g} an opportunity reserve in cash), at most {float(c['max_share']):.0%}: the share is {new:.1%} (was {cur:.0%})")
+        figs = {"kind": "decision", "kite_weight": round(kite_w, 5), "extra_points": RULE_A1["extra_points"], "reserve_points": RULE_A1["reserve_points"], "max_share": float(c["max_share"])}
+        cid = next_id(con, "sleeve_share_s83", "change_id")
+        con.execute("INSERT INTO sleeve_share_s83 (change_id, market, decided_on, old_share, new_share, reason, figures_json) VALUES (?,?,?,?,?,?,?)",
+                    [cid, market, day, float(cur), float(new), why, json.dumps(figs)])
+        return {"done": True, "change_id": cid, "old": cur, "new": new, "kite_weight": kite_w, "reason": why}
+    except Exception as e:
+        return {"done": False, "why": f"{type(e).__name__}: {str(e)[:160]}"}
 
 
 def system_picks_bought(con, market: str) -> int:

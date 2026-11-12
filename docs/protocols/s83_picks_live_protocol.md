@@ -68,3 +68,28 @@ the claim becomes a verdict only under section 6.
 
 `core/pick_share.py` carries the numbers of section 4 as `RULE`. `tests/test_s83_picks.py` reads the JSON block above and compares it with `RULE` and with the defaults in
 `configs/core.toml`. Changing a number here or there without the other fails the test; changing it after registration needs a dated amendment and a re-registration.
+
+## 8. Amendment A1, 2026-11-12 (his decision): room for the system's own Indian picks
+
+Written BEFORE any code path could buy an Indian pick of the system. None has been bought or judged, so nothing was seen; the claims of section 1, the measurement of section 2, the
+judgment of sections 3-4 (60 sessions of record, the 20-60% range, 5-point steps, behind by more than 2 points a year) and the verdict of section 6 are unchanged.
+
+What changes: the India share's START. His Kite stocks fill the whole 40% share, so the system's own picks had no room and the share could never be judged (section 3 needs a system pick
+bought). At the S84 release, ONCE, the India share is set to his Kite stocks' weight in the India part plus 20 points, at most the 60% maximum and never lower than it was. It is one dated
+row in `sleeve_share_s83`, reason "his decision 2026-11-12" (`pick_share.set_start_by_decision`, idempotent by that reason). Of the 20 points, 10 are for ordinary picks and 10 are an
+OPPORTUNITY RESERVE in cash that only the thinking loop (A65) may spend: ordinary picks never take them, and the reserve is refilled from new money and sale proceeds before an ordinary pick takes
+any cash (`picks.target_weights`). Picks are bought from cash and new money inside the turnover caps; nothing in the core is sold to make room. The sleeve's record then includes the thinking
+loop's reserve purchases in India (they are stocks of the longterm sleeve).
+
+```json amendment_a1
+{
+  "decided": "2026-11-12",
+  "market": "IN",
+  "extra_points": 20.0,
+  "ordinary_points": 10.0,
+  "reserve_points": 10.0,
+  "max_share": 0.60
+}
+```
+
+Counted in the learner as one more test (`s84:picks_live_a1:IN`, `learner/s83.register_picks_amendment_a1`). `tests/test_s84_fixa.py` pins the block above to `pick_share.RULE_A1`.

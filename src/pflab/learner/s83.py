@@ -41,9 +41,30 @@ def register_picks_live(con, now: datetime) -> List[str]:
     return done
 
 
+AMENDMENT_A1 = ("s84:picks_live_a1:IN", f"{TEMPLATE}_a1:IN", "India: the longterm sleeve, from his decision of 2026-11-12 (room for the system's own picks: his Kite stocks plus 20 points), beats the Nifty 500 "
+                "after estimated tax, measured live")
+
+
+def register_picks_amendment_a1(con, now: datetime) -> List[str]:
+    """S84 F1, Amendment A1 of the picks protocol (dated 2026-11-12, written before any Indian pick was bought): counted once as a new test (idempotent by note key), with the amended file's
+    SHA-256. After it, `protocol_ok` compares the file with THIS hash (the first registration holds the file as it was)."""
+    from pflab.learner import counter
+    if not PROTOCOL.exists():
+        return []
+    note, template, _what = AMENDMENT_A1
+    if con.execute("SELECT 1 FROM learn_tests WHERE note=?", [note]).fetchone():
+        return []
+    counter.record(con, now, "study", template, {"protocol": PROTOCOL_REL, "protocol_sha256": protocol_sha(), "amendment": "A1, 2026-11-12"}, note=note)
+    return [note]
+
+
 def protocol_ok(con) -> dict:
     rows = con.execute("SELECT note, params_json FROM learn_tests WHERE note IN (%s)" % ",".join("?" for _ in STUDIES), [n for n, _, _ in STUDIES]).fetchall()
     shas = {n: json.loads(p or "{}").get("protocol_sha256") for n, p in rows}
+    am = con.execute("SELECT params_json FROM learn_tests WHERE note=?", [AMENDMENT_A1[0]]).fetchone()
+    if am:                                                                                  # an amendment was counted: the file must be the amended one
+        a_sha = json.loads(am[0] or "{}").get("protocol_sha256")
+        shas = {n: a_sha for n in shas}
     try:
         now = protocol_sha()
     except FileNotFoundError:

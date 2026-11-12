@@ -135,6 +135,15 @@ def _recent_gauge_session(con, now: datetime) -> bool:
 
 # --- the session ------------------------------------------------------------------------------------------------------------------
 
+PICKS_MARKERS = ("\nPICKS SCORE (", "\nPICKS, India", "\nPICKS, US")
+
+
+def without_picks(card_text: str) -> str:
+    """S84 F5: the book card's text without its picks scorecard and PICKS section (they are the card's last blocks; the first message adds them fresh, once). The card itself is not changed."""
+    cut = [i for i in (card_text.find(m) for m in PICKS_MARKERS) if i >= 0]
+    return card_text[: min(cut)].rstrip() if cut else card_text
+
+
 def _first_message(con, reason: str, budget: float, now: Optional[datetime] = None) -> str:
     from pflab.core import card
     c = card.latest(con) or "(no book card yet: the close loop has not run)"
@@ -147,8 +156,10 @@ def _first_message(con, reason: str, budget: float, now: Optional[datetime] = No
         alloc = ""
     try:                                                                    # S83 L3: the picks scorecard and the picks sleeve (fresh, both markets), beside the allocation status
         from pflab.core import pick_score, picks_card
-        alloc += ("PICKS SCORE (code; after estimated tax, against the index):\n" + "\n".join(pick_score.scorecard_text(con, m) for m in ("IN", "US"))
-                  + "\n\n" + picks_card.build(con, now.date())["text"] + "\n\n")
+        fresh = ("PICKS SCORE (code; after estimated tax, against the index):\n" + "\n".join(pick_score.scorecard_text(con, m) for m in ("IN", "US"))
+                 + "\n\n" + picks_card.build(con, now.date())["text"] + "\n\n")
+        alloc += fresh
+        c = without_picks(c)                                                # S84 F5: the card holds the same two blocks (kept as it is for Today); the message carries them once, fresh
     except Exception as e:
         alloc += f"PICKS: unreadable now ({type(e).__name__})\n\n"
     return (f"WHY THIS SESSION: {reason}\nBUDGET: about Rs {budget:,.0f} for the whole session (it ends when it is used).\n"
@@ -261,6 +272,11 @@ def tick(con, pm_dir: Path, root, now: datetime, client_fn, data=None, box=None)
         out["allocation"] = alloc_lab.tick(con, pm_dir, root, now, data=data, box=box)
     except Exception as e:
         out["allocation"] = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
+    try:                                                                    # S84 T10: the daily desk sits down when a slot is open (its own light session through the gateway, its own daily budget; the weekly one below is unchanged)
+        from pflab.think import desk
+        out["desk"] = desk.tick_hook(con, now, root)
+    except Exception as e:
+        out["desk"] = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
     reasons = due(con, now)
     try:                                                                    # S82 C9: the once-only first real session in the app (kept out of `due`, which is the weekly rule's own)
         from pflab.lab import first_session_s82

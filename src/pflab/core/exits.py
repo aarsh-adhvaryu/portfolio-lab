@@ -30,14 +30,14 @@ from pflab.core import tax_rows as tr
 from pflab.tax import rules
 
 MARKET = "IN"
-KINDS = ("target", "stop", "time", "thesis", "harvest", "trim", "withdraw")
+KINDS = ("target", "stop", "time", "thesis", "harvest", "trim", "withdraw", "case")      # S84: `case` = a sale decided by the thinking loop (think/session.py)
 SEVERITY_WORDS = {"low": 0.25, "minor": 0.25, "medium": 0.5, "moderate": 0.5, "high": 0.75, "major": 0.75, "severe": 0.9, "critical": 1.0}
 REBUY_WAIT_DAYS = 10                    # a harvest sale whose buy-back has not happened in this many days: the plan is closed instead of waiting
 
 DEFAULTS = {
     "on": True, "guard_days": 21, "guard_thesis_override": 0.75, "thesis_severity": 0.75,
     "thesis_kinds": ["fraud", "default", "auditor_resignation", "guidance_cut", "regulatory_action", "rating_downgrade", "results_miss", "promoter_selling", "pledge_invoked",
-                     "delisting", "insolvency"],
+                     "delisting", "insolvency", "leadership_crisis"],
     "trim_over_pts": 0.5, "trim_buffer_pts": 1.0, "min_trim_rupees": 2000.0, "stop_vol_window": 250, "fallback_vol": 0.30,
     "harvest_quarter_months": [1, 2, 3], "harvest_off_quarter_share": 0.34, "harvest_margin": 0.90, "harvest_min_gain": 5000.0, "harvest_cost_multiple": 3.0,
     "harvest_max_book_share": 0.05, "loss_harvest": True, "loss_min_saving": 1000.0, "rebuy": True,
@@ -465,7 +465,8 @@ def check_thesis(con, day: date, events: List[dict], market: str = MARKET, price
         if d is None or d > day or d < p["opened_on"]:
             continue
         sev = _severity(ev.get("severity"))
-        kind_hit = str(ev.get("kind")) in p["thesis_break_kinds"]
+        # S84: a plan opened before a kind was added (leadership_crisis) still reads it: the plan's own list plus today's configured list (a plan with none, the core, never gets here)
+        kind_hit = str(ev.get("kind")) in set(p["thesis_break_kinds"]) | set(cfg["thesis_kinds"])
         if not ((kind_hit and sev >= 0.5) or sev >= float(cfg["thesis_severity"])):
             continue
         ref = str(ev.get("ref") or f"{ev.get('kind')}|{ev['ts']}|{ev.get('source')}")

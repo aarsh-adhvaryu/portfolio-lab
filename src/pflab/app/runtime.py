@@ -130,10 +130,19 @@ class Runtime:
             s79.register_swing(self.cursor(), self.clock())            # S81 B5
             from pflab.learner import s83
             s83.register_picks_live(self.cursor(), self.clock())        # S83 L5: the picks sleeve's live test, one per market
+            from pflab.learner import s84
+            s84.register_thinking_live(self.cursor(), self.clock())     # S84 T8: the thinking loop's live test, once
             s79.register_c4(self.cursor(), self.clock())               # S82 C4
             s79.apply_verdicts(self.cursor())
         except Exception:
             log.exception("registering S79 studies failed")
+        try:                                                 # S84 F1 (his decision 2026-11-12): the dated amendment is counted first, then India's share gets room for the system's own picks, once
+            from pflab.core import pick_share
+            from pflab.learner import s83 as s83a
+            s83a.register_picks_amendment_a1(self.cursor(), self.clock())
+            pick_share.set_start_by_decision(self.cursor(), self.clock())
+        except Exception:
+            log.exception("the S84 F1 start of the India picks share failed")
         last_run = self.cursor().execute("SELECT max(started_at) FROM job_runs").fetchone()[0]
         if last_run is not None and self.clock() - last_run > timedelta(hours=6):
             self.catching_up, self._woke_at = f"started after {int((self.clock() - last_run).total_seconds() // 3600)} h off", self.clock()

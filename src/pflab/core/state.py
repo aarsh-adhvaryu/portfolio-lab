@@ -87,6 +87,15 @@ def build(con, day: date, root=None, index: Optional[pd.Series] = None, cfg: Opt
         picks.attach(con, out, "IN")
     except Exception:
         out.pop("picks", None)
+    try:                                                     # S84 (A64-A65): the names under a thinking-loop freeze and the opportunity reserve (cash the baseline leaves alone)
+        from pflab import think
+        from pflab.think import cases as _tcases, reserve as _treserve
+        if think.on():
+            out["frozen"] = _tcases.frozen_isins(con, day, "IN")
+            out["reserve_frac"] = _treserve.hold_fraction("IN")
+    except Exception:
+        out.pop("frozen", None)
+        out.pop("reserve_frac", None)
     from pflab.us import wholebook                       # S82 (A57): the whole book beside the rupee book: `whole_value`, `us_book_inr`; `value` stays the rupee book's (the weights are its own)
     return wholebook.attach(con, out, root)
 
