@@ -62,6 +62,43 @@ def test_ordinary_news_is_not_a_leadership_crisis(head):
     assert kind != "leadership_crisis" and kind not in classify.THESIS_BREAK_KINDS and sev == "low"
 
 
+# shapes found on the real BSE filings 2010-2026 (company names synthetic): they looked like a shock to a first version of the rule and are not one
+NOT_SHOCKS = [
+    "Alpha Ltd has informed BSE that the Board approved the sanction of the Scheme by the Regional Director, subject to approvals",           # loan / scheme "sanction" + a director
+    "Outcome of Board Meeting: Board of Directors approved the sanction letter issued by the bank for a term loan",
+    "Mr X, Chief Executive Officer has tendered his resignation due to personal reasons with immediate effect",                           # a stated personal reason
+    "Mr X has resigned from the position of Chairman with immediate effect. He will continue as a whole-time director",                   # stays on the board
+    "Mr X, Independent Director and Chairman has resigned from the Board with immediate effect",
+    "Mr X, Vice Chairman has resigned with immediate effect",
+    "Intimation under Regulation 30 in case of Frauds/defaults/arrest(judicial custody) by promoter or KMP",                                # the exchange's template title
+    "There have been rumors in the market that an agency is investigating the company and its promoters",                                 # a reply to a rumour
+    "Mr X, promoter of the Company passed away following cardiac arrest",
+    "Settlement of class action lawsuit in the United States agreed by the company",                                                      # settled / dismissed / won: not new bad news
+    "Class action litigation against the subsidiary dismissed by the court in the company's favour",
+    "Appointment and Removal / Cessation of Chief Executive Officer",                                                                      # a form title, not an event
+    "Request for re-classification of promoter to public category and removal of his name from the promoter group",
+]
+
+
+@pytest.mark.parametrize("head", NOT_SHOCKS)
+def test_shapes_that_fooled_a_first_version_on_real_filings_are_not_a_shock(head):
+    kind, _ = classify.rule_kind(head)
+    assert kind != "leadership_crisis" and not (kind == "regulatory_action" and classify.rule_kind(head)[1] == "medium")
+
+
+@pytest.mark.parametrize("head", [
+    "Managing Director of the Company, with two other employees, has been detained by the State CID in connection with a commercial transaction",
+    "Mr X, a promoter of the Company, has been arrested by the Directorate of Enforcement on 24 March",
+    "Managing Director of the Company has been remanded under police custody on 29 August",
+    "Tax department conducts raids at the residence and office of the chairman of the company",
+    "Removal of Shri X, MD & CEO",
+    "The Board has approved removal of Mr X as CEO with immediate effect",
+    "Mr X, Chief Executive Officer has resigned with immediate effect",
+])
+def test_real_filing_shapes_that_are_a_shock(head):
+    assert classify.rule_kind(head) == ("leadership_crisis", "high")
+
+
 def test_the_old_rules_still_answer_as_before():
     assert classify.rule_kind("Resignation of Statutory Auditors of the Company")[0] == "auditor_resignation"
     assert classify.rule_kind("Forensic audit appointed by the board") == ("fraud_investigation", "high")
