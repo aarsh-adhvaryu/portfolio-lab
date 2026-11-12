@@ -63,7 +63,7 @@ def con(tmp_path, monkeypatch, root):
 
 
 def _pick(con, pid=1, market="IN", isin=AAA, symbol="AAA", source="system", state="held", on=date(2026, 1, 2), changed=None):
-    con.execute("INSERT INTO picks_s83 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [pid, market, isin, symbol, source, "a thesis of at least sixty characters, written for the test", "breaks if x", "[]", "s1", None, state, on, changed, None])
+    con.execute("INSERT INTO picks_s83 (pick_id, market, isin, symbol, source, thesis, break_condition, storylines_json, session_ref, learned_from, state, proposed_on, state_changed_on, state_reason) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [pid, market, isin, symbol, source, "a thesis of at least sixty characters, written for the test", "breaks if x", "[]", "s1", None, state, on, changed, None])
 
 
 def _score(con, now, root):
