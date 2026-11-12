@@ -149,7 +149,7 @@ def test_bot_commands_route_to_agents_memory_and_questions(tmp_path):
     calls = []
     h = lambda t: bot.handle(con, t, NOW.date(), ask=lambda q, tl: calls.append((q, tl)) or "facts",
                              tradecheck=lambda: "checked", now=NOW)
-    assert h("/networth") == "facts" and calls[-1] == ("Summarise my networth.", ["networth"])
+    assert h("/networth").startswith("I don't know that command") and calls == []                  # S85: the v1 agent commands are retired
     assert h("why did my portfolio fall?") == "facts" and calls[-1] == ("why did my portfolio fall?", None)
     assert h("/decide gold: stay at the target") .startswith("Kept as decision")
     assert mem.recall(con, subject="gold", asof=NOW.date())[0].text == "stay at the target"

@@ -8,32 +8,25 @@ the ledger; the investor's answers and notes go to the memory table.
     the PM store is opened per batch of messages and closed while waiting, so the CLI and the jobs can use it
     one bot at a time (a lock): two pollers would steal each other's updates
 
-Commands: /help, /networth /guards /fds /plan /risk /tax (that agent's facts, written up if a model is chosen),
-/questions, /answer N text, /decide subject: text, /remember text, /feedback text, /memory [words],
-/tradecheck, /research SYMBOL; any other text is a question for the centre.
+S85 (E6): with the entrance (`service/tg_entrance.py`, built when the intake exists) plain words, files and photos go to the intake and the commands are
+/new /model /think /status /help; the legacy commands that remain are /questions, /answer N text, /decide subject: text, /remember text, /feedback text,
+/memory [words], /tradecheck and /spend. The text-only commands that read the retired v1 agents (/networth /guards /fds /plan /risk /tax /taxplan /deep /event
+/quant /theses /research and the HQ board commands) are gone: say it in plain words. Without the entrance the old reply path serves plain text.
 """
 from __future__ import annotations
 
+import logging
 import re
 import time
 from datetime import date, datetime
 from typing import Callable, Dict, List, Optional, Tuple
 
 from pflab.service import telegram as tgm
+from pflab.service import tg_entrance
 
+log = logging.getLogger("pflab.tg")
 POLL_TIMEOUT = 50
-TOOL_COMMANDS = ("networth", "guards", "fds", "plan", "risk", "tax", "taxplan")
-HELP = ("Ask me anything about your portfolio in plain words. Commands:\n"
-        "/networth /guards /fds /plan /risk /tax /taxplan: what that agent knows today\n"
-        "/questions: what I need from you;  /answer N text: answer question N\n"
-        "/decide subject: text  /remember text  /feedback text: kept in memory\n"
-        "/memory [words]: what you decided or told me\n"
-        "/tradecheck: compare Kite with the ledger (needs today's Kite login)\n"
-        "/research SYMBOL: what changed lately and the latest brief\n"
-        "/deep question: deep research by the API analyst (public information only; costs money)\n"
-        "/event news: is it confirmed, peers, what happened after similar filings, a plan\n"
-        "/quant idea: run a tested study template; /theses: your theses with evidence and exposure\n"
-        "I only read and explain. I never place orders.")
+HELP = tg_entrance.HELP                          # S85: one help text for both paths
 
 Transport = Callable[[str, Dict], Tuple[int, dict]]
 
@@ -78,8 +71,6 @@ def handle(con, text: str, asof: date, *, ask: Callable, tradecheck: Callable[[]
     rest = rest.strip()
     if cmd in ("/start", "/help"):
         return HELP
-    if cmd[1:] in TOOL_COMMANDS:
-        return ask(rest or f"Summarise my {cmd[1:]}.", [cmd[1:]])
     if cmd == "/questions":
         open_ = qs.open_questions(con)
         return "\n\n".join(f"#{q} ({agent}): {txt}" for q, agent, txt in open_) if open_ else "No open questions."
@@ -105,23 +96,6 @@ def handle(con, text: str, asof: date, *, ask: Callable, tradecheck: Callable[[]
         return "\n".join(m.line() for m in rows) if rows else "Nothing kept on that yet."
     if cmd == "/tradecheck":
         return tradecheck()
-    if cmd in ("/deep", "/deep!"):
-        if not rest:
-            return "Write /deep followed by the research question (public information only)."
-        from pflab.agents import analyst
-        return analyst.ask_deep(con, rest, asof, approved=cmd == "/deep!", now=now)
-    if cmd == "/event":
-        from pflab.agents import event
-        return event.research(con, rest, asof) if rest else "Paste the news after /event."
-    if cmd == "/quant":
-        from pflab.agents import quant
-        return quant.run(rest) if rest else "Write the idea after /quant, e.g. /quant how do stocks move after downgrades"
-    if cmd == "/theses":
-        from pflab.agents import thesis
-        return thesis.render(thesis.update(con, asof, with_cost=False))
-    if cmd == "/research":
-        from pflab.agents import researcher as rs
-        return rs.show(con, rest.split()[0], asof) if rest else "Write /research SYMBOL."
     if cmd:
         return "I don't know that command.\n\n" + HELP
     return ask(t, None)
@@ -158,14 +132,17 @@ def make_ack(token: str, transport: Transport) -> Callable[[str, str], None]:
     return ack
 
 
-def _callback(con, u: dict, chat_id: str, send: Callable[[str], None], ack: Optional[Callable[[str, str], None]], now: datetime) -> int:
+def _callback(con, u: dict, chat_id: str, send: Callable[[str], None], ack: Optional[Callable[[str, str], None]], now: datetime, entrance=None) -> int:
     """S79 (item 6): a reply button on a question. Only his chat; `q:<id>:<option>` answers question <id> with that option."""
     cb = u.get("callback_query") or {}
     uid = int(u["update_id"])
     ok = str((((cb.get("message") or {}).get("chat")) or {}).get("id")) == str(chat_id)
     con.execute("INSERT INTO bot_updates VALUES (?,?,?,?,?)", [uid, now, ok, "callback" if ok else None, None])
     if not ok:
+        log.warning("telegram: a button press from a chat that is not his was ignored")
         return 0
+    if entrance is not None and entrance.owns_callback(str(cb.get("data") or "")):          # S85: card Yes/No, Undo, the model and thinking pickers
+        return entrance.callback(con, cb, now)
     from pflab.agents import voice
     try:
         reply = voice.handle_callback(con, str(cb.get("data") or ""), now)
@@ -183,21 +160,35 @@ def _callback(con, u: dict, chat_id: str, send: Callable[[str], None], ack: Opti
 
 
 def process(con, updates: List[dict], chat_id: str, send: Callable[[str], None], reply_for: Callable[[str], str],
-            now: datetime, ack: Optional[Callable[[str, str], None]] = None) -> int:
-    """Handle new updates in order; returns how many got a reply. Each update is recorded once."""
+            now: datetime, ack: Optional[Callable[[str, str], None]] = None, entrance=None) -> int:
+    """Handle new updates in order; returns how many got a reply. Each update is recorded once. With an `entrance` (S85) documents, photos and plain words go to
+    the intake, whose answer arrives later through the entrance's reply callback; without one the old reply path serves."""
     n = 0
     for u in sorted(updates, key=lambda x: x["update_id"]):
         uid = int(u["update_id"])
         if con.execute("SELECT 1 FROM bot_updates WHERE update_id=?", [uid]).fetchone():
             continue
         if u.get("callback_query"):
-            n += _callback(con, u, chat_id, send, ack, now)
+            n += _callback(con, u, chat_id, send, ack, now, entrance)
             continue
         msg = u.get("message") or {}
-        ok = str((msg.get("chat") or {}).get("id")) == str(chat_id) and isinstance(msg.get("text"), str)
-        head = msg["text"].strip().split(" ", 1)[0][:32] if ok and msg["text"].strip().startswith("/") else None
+        mine = str((msg.get("chat") or {}).get("id")) == str(chat_id)
+        ok = mine and (isinstance(msg.get("text"), str) or (entrance is not None and tg_entrance.has_payload(msg)))
+        head = msg["text"].strip().split(" ", 1)[0][:32] if ok and isinstance(msg.get("text"), str) and msg["text"].strip().startswith("/") else None
         con.execute("INSERT INTO bot_updates VALUES (?,?,?,?,?)", [uid, now, ok, head, None])
         if not ok:
+            if not mine:
+                log.warning("telegram: a message from a chat that is not his was ignored (update %s)", uid)
+            continue
+        if entrance is not None:
+            try:
+                n += entrance.message(con, msg, uid, now)
+            except Exception as e:                                  # the poll never dies on one message
+                log.warning("telegram: the entrance failed on update %s: %s", uid, type(e).__name__)
+                try:
+                    n += entrance._say(con, f"Sorry, that failed: {type(e).__name__}.", now)
+                except Exception:
+                    pass
             continue
         try:
             reply = reply_for(msg["text"])

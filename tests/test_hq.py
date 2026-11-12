@@ -350,18 +350,19 @@ def test_batch_results_priced_at_the_calls_own_model(con):
 
 # --- phone and rounds ---------------------------------------------------------------------------------------------------
 
-def test_phone_posts_orders_and_keeps_the_bots_commands(con, tmp_path, monkeypatch):
+def test_phone_posts_plain_words_to_the_board_and_retires_the_hq_commands(con, tmp_path, monkeypatch):
+    """S85 (E6): without the intake the plain-words path still posts to the board; the HQ agent commands (/calc /agents /board /order ...) are retired
+    (the bot's own handle says so), /help and /spend remain."""
     from pflab.hq import phone
     from pflab.service import bot
     rt = _desk(con, tmp_path)
     monkeypatch.setattr(bot, "handle", lambda con, t, asof, **k: f"bot: {t}")
-    assert "on it (task #1)" in phone.reply_for(rt, "/calc CAGR of NIFTY 50 since 2020")
-    assert "on it (task #2)" in phone.reply_for(rt, "remind me to call tomorrow at 9")
-    assert phone.reply_for(rt, "/networth") == "bot: /networth"
-    assert "/calc" in phone.reply_for(rt, "/help") and "Simulation" in phone.reply_for(rt, "/agents")
-    assert phone.reply_for(rt, "/order nobody hi").startswith("No agent")
+    assert "on it (task #1)" in phone.reply_for(rt, "remind me to call tomorrow at 9")
+    for gone in ("/calc CAGR of NIFTY 50 since 2020", "/networth", "/agents", "/board", "/order nobody hi"):
+        assert phone.reply_for(rt, gone) == f"bot: {gone}"
+    assert "/new" in phone.reply_for(rt, "/help") and phone.reply_for(rt, "/spend").startswith("API this month")
     t = board.recent(con)
-    assert [(x["to"], x["channel"]) for x in reversed(t)] == [("calc", "telegram"), ("messenger", "telegram")]
+    assert [(x["to"], x["channel"]) for x in reversed(t)] == [("messenger", "telegram")]
 
 
 def test_round_runs_orders_and_free_work_without_paid_agents(con, tmp_path, monkeypatch):
