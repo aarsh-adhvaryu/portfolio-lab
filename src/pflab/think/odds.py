@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import math
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Dict, List, Optional
 
 import numpy as np
@@ -36,6 +37,7 @@ PARAMS = {
     "base_rate_min_n": 20,
     "default_weights": [0.3, 0.4, 0.3],                 # Swanson's rule for a 10 / 50 / 90 split: used when the model gave no words
     "trim_fraction": 0.5,
+    "history_min_turnover_inr": 50000000.0,              # a move counts as a case only for a name that traded at least this much that day (`[picks] min_liquidity_inr`: what the book could trade)
 }
 FALLBACK_VOL = 0.30                                      # a name with too little history: the same stated, deliberately high number `core/state.py` uses
 MIN_OBS = 60                                             # closes needed for an own range
@@ -50,7 +52,13 @@ AMBIGUOUS = ("sell", "trim", "hold")
 
 def settings() -> dict:
     s = think.settings()
-    return {**PARAMS, "base_rate_min_n": int(s.get("base_rate_min_n", PARAMS["base_rate_min_n"])), "bet_worst_pct_book": float(s["bet_worst_pct_book"])}
+    out = {**PARAMS, "base_rate_min_n": int(s.get("base_rate_min_n", PARAMS["base_rate_min_n"])), "bet_worst_pct_book": float(s["bet_worst_pct_book"])}
+    try:
+        from pflab.core import picks
+        out["history_min_turnover_inr"] = float(picks.settings("IN")["min_liquidity_inr"])
+    except Exception:
+        pass
+    return out
 
 
 def _day(x) -> date:
@@ -65,6 +73,39 @@ def _root(root):
         return data_dir()
     except Exception:
         return None
+
+
+def _panel(root) -> Optional[str]:
+    """The long adjusted-close panel of the collectors (`data/panel/prices.parquet`, 2004 on), when it is there."""
+    try:
+        p = Path(_root(root)) / "panel" / "prices.parquet"
+        return str(p) if p.exists() else None
+    except Exception:
+        return None
+
+
+def _hist(con, root, asof: date, start: date, isins=None, stocks_only: bool = False) -> tuple:
+    """(sql, params): rows (isin, date, close, turnover) from `start` to `asof`: the panel's adjusted closes up to its last day, then the store's own closes after it (the store holds only the recent
+    weeks; the panel holds the history a base rate needs). Without a panel the store alone."""
+    ph, ip = "", []
+    if isins:
+        ph, ip = " AND isin IN (" + ",".join("?" for _ in isins) + ")", list(isins)
+    parts, params, pmax = [], [], None
+    pan = _panel(root)
+    if pan:
+        try:
+            pmax = con.execute("SELECT max(date) FROM read_parquet(?)", [pan]).fetchone()[0]
+        except Exception:
+            pan = None
+    if pan:
+        parts.append("SELECT isin, date, adj_close AS close, turnover FROM read_parquet(?) WHERE date <= ? AND date >= ? AND series = 'EQ' AND adj_close > 0" + (" AND instrument_type = 'STK'" if stocks_only else "") + ph)
+        params += [pan, asof, start] + ip
+    sw, sp = "", []
+    if pan and pmax:                                         # the store fills the days after the panel ends, and every day of a name the panel does not have at all (a new listing)
+        sw, sp = " AND (date > ? OR isin NOT IN (SELECT DISTINCT isin FROM read_parquet(?) WHERE date >= ?))", [pmax, pan, pmax - timedelta(days=30)]
+    parts.append("SELECT isin, date, arg_max(close, fetched_at) AS close, NULL::DOUBLE AS turnover FROM prices WHERE date <= ? AND date >= ? AND close > 0" + (" AND isin LIKE 'INE%'" if stocks_only else "") + sw + ph + " GROUP BY isin, date")
+    params += [asof, start] + sp + ip
+    return " UNION ALL ".join(parts), params
 
 
 # --- price series ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -84,7 +125,8 @@ def closes(con, market: str, isin: Optional[str], symbol: Optional[str], asof: d
             return pd.Series(dtype=float)
     if not isin:
         return pd.Series(dtype=float)
-    rows = con.execute("SELECT date, arg_max(close, fetched_at) FROM prices WHERE isin=? AND date<=? AND close>0 GROUP BY date ORDER BY date DESC LIMIT ?", [isin, asof, int(n)]).fetchall()
+    sql, params = _hist(con, root, asof, asof - timedelta(days=int(n * 1.6) + 30), [isin])
+    rows = con.execute(f"SELECT date, close FROM ({sql}) ORDER BY date DESC LIMIT ?", params + [int(n)]).fetchall()
     if not rows:
         return pd.Series(dtype=float)
     rows.sort()
@@ -154,55 +196,60 @@ def _cluster(rows: List[tuple], gap_days: int = 14) -> List[tuple]:
     return kept
 
 
-def _forward(con, isin: str, start_after: date, asof: date, horizons, ix, same_day: bool = False) -> Dict[int, float]:
-    """The name's return from the first close strictly after `start_after` (the investor learns of it that day and acts at the next close) over each horizon, against the index when there is one."""
-    op = ">=" if same_day else ">"
-    rows = con.execute(f"SELECT date, arg_max(close, fetched_at) FROM prices WHERE isin=? AND date {op} ? AND date<=? AND close>0 GROUP BY date ORDER BY date LIMIT ?",
-                       [isin, start_after, asof, max(horizons) + 1]).fetchall()
-    out = {}
-    if not rows:
-        return out
-    d0, p0 = rows[0][0], float(rows[0][1])
-    for h in horizons:
-        if len(rows) > h:
-            d1, p1 = rows[h][0], float(rows[h][1])
-            r = p1 / p0 - 1.0
-            ir = _idx_ret(ix, d0, d1)
-            out[int(h)] = r - ir if ir is not None else r
-    return out
-
-
-def _event_history(con, kind: str, asof: date, horizons, ix, limit: int = 400) -> Dict[int, List[float]]:
+def _event_history(con, kind: str, asof: date, horizons, ix, root=None, limit: int = 400) -> Dict[int, List[float]]:
+    """What names did after an event of this kind (the graph's `kg2_event`): from the first close strictly after the event's day (the investor learns of it that day and acts at the next close),
+    over each horizon, against the index when there is one."""
     out: Dict[int, List[float]] = {int(h): [] for h in horizons}
     try:
         if not con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name='kg2_event'").fetchone()[0]:
             return out
         ev = con.execute("SELECT isin, ts FROM kg2_event WHERE kind=? AND ts IS NOT NULL AND isin IS NOT NULL AND ts <= ? ORDER BY ts DESC LIMIT ?",
                          [kind, datetime.combine(asof, datetime.max.time()), int(limit)]).fetchall()
+        ev = _cluster([(i, _day(t)) for i, t in ev])
+        if not ev:
+            return out
+        isins = sorted({e[0] for e in ev})
+        sql, params = _hist(con, root, asof, min(e[1] for e in ev), isins)
+        rows = con.execute(f"SELECT isin, date, close FROM ({sql}) ORDER BY isin, date", params).fetchall()
     except Exception:
         return out
-    for isin, ts in _cluster([(i, _day(t)) for i, t in ev]):
-        for h, v in _forward(con, isin, ts, asof, horizons, ix).items():
-            out[h].append(v)
+    by: Dict[str, tuple] = {}
+    for i, d, c in rows:
+        by.setdefault(i, ([], []))
+        by[i][0].append(d)
+        by[i][1].append(float(c))
+    for isin, day in ev:
+        if isin not in by:
+            continue
+        ds, cs = by[isin]
+        k = next((j for j, d in enumerate(ds) if d > day), None)
+        if k is None:
+            continue
+        for h in horizons:
+            if k + h < len(ds):
+                r = cs[k + h] / cs[k] - 1.0
+                ir = _idx_ret(ix, ds[k], ds[k + h])
+                out[int(h)].append(r - ir if ir is not None else r)
     return out
 
 
-def _move_history(con, move: float, asof: date, horizons, ix, window: int = 1) -> Dict[int, List[float]]:
-    """Names (Indian equities in the store) whose trailing `window`-session move was between 0.7 and 1.4 times `move` (same sign): what they did next, against the index."""
+def _move_history(con, move: float, asof: date, horizons, ix, window: int = 1, root=None, min_turnover: float = 0.0) -> Dict[int, List[float]]:
+    """Indian equities (with a day's turnover of at least `min_turnover` rupees on the day of the move: the names the book could trade) whose trailing `window`-session move was between
+    0.7 and 1.4 times `move` (same sign): what they did next, against the index."""
     out: Dict[int, List[float]] = {int(h): [] for h in horizons}
     lo, hi = sorted((move * BAND[0], move * BAND[1]))
-    hmax = max(horizons)
     leads = ", ".join(f"LEAD(close, {int(h)}) OVER w / close - 1 AS f{int(h)}, LEAD(date, {int(h)}) OVER w AS d{int(h)}" for h in horizons)
     try:
+        sql, params = _hist(con, root, asof, asof - timedelta(days=LOOKBACK_DAYS), None, True)
         rows = con.execute(f"""
-            WITH p AS (SELECT isin, date, arg_max(close, fetched_at) AS close FROM prices WHERE date <= ? AND date >= ? AND close > 0 AND isin LIKE 'INE%' GROUP BY isin, date),
-            q AS (SELECT isin, date, close, close / LAG(close, {int(window)}) OVER w - 1 AS trail, {leads} FROM p WINDOW w AS (PARTITION BY isin ORDER BY date))
-            SELECT isin, date, close, {", ".join(f"f{int(h)}, d{int(h)}" for h in horizons)} FROM q WHERE trail IS NOT NULL AND trail >= ? AND trail <= ?
-            """, [asof, asof - timedelta(days=LOOKBACK_DAYS), lo, hi]).fetchall()
+            WITH p AS ({sql}),
+            q AS (SELECT isin, date, close, turnover, close / LAG(close, {int(window)}) OVER w - 1 AS trail, {leads} FROM p WINDOW w AS (PARTITION BY isin ORDER BY date))
+            SELECT isin, date, close, {", ".join(f"f{int(h)}, d{int(h)}" for h in horizons)} FROM q WHERE trail IS NOT NULL AND trail >= ? AND trail <= ? AND (turnover IS NULL OR turnover >= ?)
+            """, params + [lo, hi, float(min_turnover)]).fetchall()
     except Exception:
         return out
     by = {(r[0], r[1]): r for r in rows}
-    for isin, d in [(k[0], k[1]) for k in _cluster([(r[0], r[1]) for r in rows])]:
+    for isin, d in _cluster([(r[0], r[1]) for r in rows]):
         r = by[(isin, d)]
         for i, h in enumerate(horizons):
             f, dh = r[3 + 2 * i], r[4 + 2 * i]
@@ -213,21 +260,32 @@ def _move_history(con, move: float, asof: date, horizons, ix, window: int = 1) -
     return out
 
 
-def base_rates(con, kind: Optional[str], *, move: Optional[float] = None, isin: Optional[str] = None, asof, market: str = "IN", symbol: Optional[str] = None, window: int = 1, root=None) -> dict:
+def base_rates(con, kind: Optional[str], *, move: Optional[float] = None, isin: Optional[str] = None, asof, market: str = "IN", symbol: Optional[str] = None, window: int = 1, root=None, cache: Optional[dict] = None) -> dict:
     """{5: {n, p10, p50, p90}, 20: {...}, 60: {...}, "basis": "history" | "own range", ...}: the spread of what such names did against their index over the next 5, 20 and 60 sessions.
     `kind` is an event kind (read from the graph's events) or a move kind; `move` (a signed fraction over `window` sessions) selects names that moved alike. Point in time: nothing after
-    `asof`. With fewer than `base_rate_min_n` cases at 20 sessions the count is said and the name's own range stands in (basis "own range", `history_n` keeps the count)."""
+    `asof`. With fewer than `base_rate_min_n` cases at 20 sessions the count is said and the name's own range stands in (basis "own range", `history_n` keeps the count).
+    `cache` is a dict the caller keeps for one case (the scan of the history takes a few seconds): the same question is answered from it."""
     asof = _day(asof)
+    key = (kind, None if move is None else round(float(move), 6), isin, asof, (market or "IN").upper(), symbol, window)
+    if cache is not None and key in cache:
+        return cache[key]
+    out = _base_rates(con, kind, move, isin, asof, market, symbol, window, root)
+    if cache is not None:
+        cache[key] = out
+    return out
+
+
+def _base_rates(con, kind, move, isin, asof, market, symbol, window, root) -> dict:
     hz = [int(h) for h in PARAMS["base_rate_horizons"]]
     min_n = settings()["base_rate_min_n"]
     ix = _index_series(market, root) if (market or "IN").upper() == "IN" else None
     hist: Dict[int, List[float]] = {h: [] for h in hz}
     how = None
     if kind and kind not in MOVE_KINDS:
-        hist = _event_history(con, kind, asof, hz, ix)
+        hist = _event_history(con, kind, asof, hz, ix, root)
         how = f"events of kind {kind}"
     if len(hist[20]) < min_n and move is not None and (market or "IN").upper() == "IN":
-        h2 = _move_history(con, float(move), asof, hz, ix, window)
+        h2 = _move_history(con, float(move), asof, hz, ix, window, root, settings()["history_min_turnover_inr"])
         if len(h2[20]) > len(hist[20]):
             hist, how = h2, f"names whose {window}-session move was {move:+.1%} (0.7 to 1.4 times, same sign)"
     out = {h: _pct(hist[h], min_n) for h in hz}
@@ -484,7 +542,7 @@ def _outcome_row(case, option, isin, symbol, vals, w, size, tax, whole, basis, h
 
 
 def outcomes(con, case, option: str, *, isin: Optional[str] = None, asof, bet_inr: Optional[float] = None, words: Optional[dict] = None, rates: Optional[dict] = None,
-             market: Optional[str] = None, symbol: Optional[str] = None, root=None) -> dict:
+             market: Optional[str] = None, symbol: Optional[str] = None, root=None, cache: Optional[dict] = None) -> dict:
     """Worst, likely and best in rupees of one option, the expected rupees (the words' weights, 30/40/30 without them) and the share of the whole book. `case` is the case dict or its id.
     {"worst_inr", "likely_inr", "best_inr", "expected_inr", "worst_pct_book", "tax_inr", "size_inr", "basis", ...}. A buy with no `bet_inr` is sized by A66 (`bet_size`), before the reserve
     and the rails (`rule.decide` applies those)."""
@@ -502,7 +560,7 @@ def outcomes(con, case, option: str, *, isin: Optional[str] = None, asof, bet_in
     w = weights(words, probs)
     kind, move, window = case_kind_move(con, case)
     if rates is None:
-        rates = base_rates(con, kind, move=move, isin=isin, asof=asof, market=market, symbol=symbol, window=window, root=root)
+        rates = base_rates(con, kind, move=move, isin=isin, asof=asof, market=market, symbol=symbol, window=window, root=root, cache=cache)
     moves = _scenario_moves(rates, h)
     rates = {**rates, "_moves": moves}
     whole = whole_book(con, asof, root)
@@ -570,7 +628,7 @@ def applicable(held: bool) -> List[str]:
     return list(think.OPTIONS) if held else ["freeze", "wait", "buy_in_parts", "nothing"]
 
 
-def option_table(con, case_id: int, answer: dict, asof, *, root=None, kind: Optional[str] = None, move: Optional[float] = None) -> List[dict]:
+def option_table(con, case_id: int, answer: dict, asof, *, root=None, kind: Optional[str] = None, move: Optional[float] = None, cache: Optional[dict] = None) -> List[dict]:
     """The menu with its rupees for each name of the model's answer: one row per (name, option), the model's own choice flagged (`track` "model", `chosen` true; the rest "alt"). The
     answer's likelihood WORDS go through `cases.probabilities` (the store's table) to scenario weights; everything else is code. A choice with no isin takes the case's."""
     asof = _day(asof)
@@ -578,7 +636,7 @@ def option_table(con, case_id: int, answer: dict, asof, *, root=None, kind: Opti
     ans = norm_answer(answer)
     k0, m0, window = case_kind_move(con, case)
     probs = cases.probabilities(con)
-    rows, cache = [], {}
+    rows, by_name = [], {}
     for c in ans["choices"] or [{"isin": case.get("isin"), "symbol": case.get("symbol"), "option": None, "words": {}, "base_rate_set": None, "reason": ""}]:
         isin, symbol = c.get("isin") or case.get("isin"), c.get("symbol") or case.get("symbol")
         market = case.get("market") or "IN"
@@ -586,18 +644,18 @@ def option_table(con, case_id: int, answer: dict, asof, *, root=None, kind: Opti
         bset = c.get("base_rate_set")
         k = kind or (bset if bset and bset not in ("history", "own range", "own_range") else k0)
         key = (isin, k, bset == "own range")
-        if key not in cache:
-            r = base_rates(con, k, move=move if move is not None else m0, isin=isin, asof=asof, market=market, symbol=symbol, window=window, root=root)
+        if key not in by_name:
+            r = base_rates(con, k, move=move if move is not None else m0, isin=isin, asof=asof, market=market, symbol=symbol, window=window, root=root, cache=cache)
             if bset in ("own range", "own_range") and r["basis"] != "own range":
                 own = own_range(con, market, isin, symbol, asof, PARAMS["base_rate_horizons"], root, n_found=r["history_n"])
                 r = {**r, **{h: own[h] for h in PARAMS["base_rate_horizons"]}, "basis": "own range", "detail": "the model chose the name's own range (from its volatility)"}
-            cache[key] = r
+            by_name[key] = r
         for opt in applicable(pos["held"]):
             try:
-                o = outcomes(con, case, opt, isin=isin, asof=asof, words=c.get("words"), rates=cache[key], market=market, symbol=symbol, root=root)
+                o = outcomes(con, case, opt, isin=isin, asof=asof, words=c.get("words"), rates=by_name[key], market=market, symbol=symbol, root=root)
             except Exception as e:
                 o = {"isin": isin, "symbol": symbol, "option": opt, "error": f"{type(e).__name__}: {e}", "worst_inr": 0.0, "likely_inr": 0.0, "best_inr": 0.0, "expected_inr": 0.0,
-                     "worst_pct_book": 0.0, "size_inr": 0.0, "tax_inr": 0.0, "basis": cache[key]["basis"]}
+                     "worst_pct_book": 0.0, "size_inr": 0.0, "tax_inr": 0.0, "basis": by_name[key]["basis"]}
             o.update({"track": "model" if opt == c.get("option") else "alt", "chosen": opt == c.get("option"), "words": c.get("words"), "held": pos["held"],
                       "position_inr": pos["value_inr"], "probabilities": {w: probs[w] for w in think.WORDS}})
             rows.append(o)

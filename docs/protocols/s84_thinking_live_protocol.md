@@ -22,7 +22,9 @@ every rupee, size, price and probability comes from code (rule 8).
 ## 3. Outcomes in rupees (code: `think/odds.py`)
 
 * Base rates: from the system's own stored price history and events, point in time (only closes dated on or before the day), the spread of what names with the same event kind, or
-  a move of the same size and sign, did against their index over the next 5, 20 and 60 sessions, with the count. Under 20 cases (`base_rate_min_n`) the loop says the count and
+  a move of the same size and sign (names that traded at least Rs 5 crore that day, `history_min_turnover_inr`: the names the book could trade, 0.7 to 1.4 times the move, one case per
+  name per two weeks), did against their index over the next 5, 20 and 60 sessions, with the count. The history is the collectors' adjusted-close panel (2004 on) with the store's own
+  closes after it. Under 20 cases (`base_rate_min_n`) the loop says the count and
   falls back to the name's own range from its volatility (a zero-drift lognormal on its last 250 sessions; a name with too little history takes the stated 30% a year).
 * Worst, likely and best = the 10th, 50th and 90th percentile of the move over the decision horizon (20 sessions). The "worst" is therefore a bad case (1 chance in 10), not the
   worst that can happen, and it is called that wherever it is shown. The index's own drift over the horizon is taken as zero (labelled).
@@ -44,6 +46,7 @@ every rupee, size, price and probability comes from code (rule 8).
   "default_weights": [0.3, 0.4, 0.3],
   "word_p_start": {"very unlikely": 0.05, "unlikely": 0.25, "even": 0.50, "likely": 0.75, "very likely": 0.95},
   "trim_fraction": 0.5,
+  "history_min_turnover_inr": 50000000.0,
   "bet_worst_pct_book": 0.01,
   "reserve_third_per_name": 0.3333333333333333,
   "market_fall_reserve_share": 0.5,

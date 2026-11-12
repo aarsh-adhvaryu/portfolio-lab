@@ -188,7 +188,14 @@ def _buy(con, case: dict, klass: Optional[str], ch: dict, pos: dict, asof: date,
     rs = reserve(con, market, asof, free_override)
     share = c["market_fall_reserve_share"] if fall else c["reserve_third_per_name"]
     cap_reserve = min(rs["free_inr"], share * rs["reserve_inr"])
-    cap_rail = max(0.0, (MAX_BROAD_ETF if fall else MAX_STOCK) * whole - pos["value_inr"])
+    rail_base = whole
+    if market == "US":                                   # A62: a US stock is at most 10% of the SUB-BOOK (not of the whole book)
+        try:
+            from pflab.us import wholebook
+            rail_base = float(wholebook.whole_book_inr(con, asof, root)["us_book_inr"]) or whole
+        except Exception:
+            rail_base = whole
+    cap_rail = max(0.0, (MAX_BROAD_ETF if fall else MAX_STOCK) * rail_base - pos["value_inr"])
     limit_total = b["size_inr"] if b["size_inr"] is not None else float("inf")
     total = min(limit_total, cap_rail, cap_reserve)
     parts = {"n": c["parts"], "this_part": prior["done"] + 1, "gap_sessions": c["parts_gap_sessions"], "total_inr": total}
@@ -211,7 +218,7 @@ def _buy(con, case: dict, klass: Optional[str], ch: dict, pos: dict, asof: date,
 
 # --- the rule ---------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def _decide_one(con, case: dict, ans: dict, ch: dict, asof: date, free_override: Optional[float], root) -> dict:
+def _decide_one(con, case: dict, ans: dict, ch: dict, asof: date, free_override: Optional[float], root, cache: Optional[dict] = None) -> dict:
     c = cfg()
     isin, symbol = ch.get("isin") or case.get("isin"), ch.get("symbol") or case.get("symbol")
     market = (case.get("market") or "IN").upper()
@@ -221,7 +228,7 @@ def _decide_one(con, case: dict, ans: dict, ch: dict, asof: date, free_override:
     pos = odds.position(con, market, isin, symbol, asof, root)
     kind, move, window = odds.case_kind_move(con, case)
     rates = odds.base_rates(con, ch.get("base_rate_set") if ch.get("base_rate_set") not in (None, "history", "own range", "own_range") else kind, move=move, isin=isin, asof=asof,
-                            market=market, symbol=symbol, window=window, root=root)
+                            market=market, symbol=symbol, window=window, root=root, cache=cache)
     whole = odds.whole_book(con, asof, root)
 
     def out(option, reason, size=0.0, guards=None, refused=False, parts=None, thesis=False, extra=None):
@@ -285,12 +292,13 @@ def option_row(d: dict) -> dict:
             "size_inr": float(d.get("size_inr") or 0.0), "reason": d.get("reason", "")}
 
 
-def decide(con, case_id: int, answer: Optional[dict], asof, *, reserve_free_inr: Optional[float] = None, root=None) -> dict:
-    """The rule's decision for the case. The returned dict is the case's own name's decision; `all` lists one per name in the answer. `reserve_free_inr` states the free reserve (tests)."""
+def decide(con, case_id: int, answer: Optional[dict], asof, *, reserve_free_inr: Optional[float] = None, root=None, cache: Optional[dict] = None) -> dict:
+    """The rule's decision for the case. The returned dict is the case's own name's decision; `all` lists one per name in the answer. `reserve_free_inr` states the free reserve (tests). `cache`: the dict
+    passed to `odds.option_table` for the same case, so the history is scanned once."""
     asof = asof.date() if isinstance(asof, datetime) else asof
     case = cases.get_case(con, case_id) or {"case_id": case_id}
     ans = odds.norm_answer(answer)
     choices = ans["choices"] or [{"isin": case.get("isin"), "symbol": case.get("symbol"), "option": None, "words": {}, "base_rate_set": None, "reason": ""}]
-    res = [_decide_one(con, case, ans, ch, asof, reserve_free_inr, root) for ch in choices]
+    res = [_decide_one(con, case, ans, ch, asof, reserve_free_inr, root, cache) for ch in choices]
     primary = next((r for r in res if r["isin"] == case.get("isin")), res[0])
     return {**primary, "all": res, "case_id": case_id, "asof": str(asof)}

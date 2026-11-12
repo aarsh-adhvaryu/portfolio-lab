@@ -39,6 +39,7 @@ def _path(seed: int, end: float, n: int, vol: float = 0.015) -> np.ndarray:
 @pytest.fixture
 def con(tmp_path, monkeypatch):
     monkeypatch.setenv("PFLAB_PM_DIR", str(tmp_path))
+    monkeypatch.setenv("PFLAB_DATA_DIR", str(tmp_path / "data"))                          # no panel: the store alone
     c = store.connect(tmp_path / "l.duckdb")
     for isin, cls, tc, sym, name, sec in ((WIN, "equity", "EQUITY", "WIN", "Win Ltd", "Banks"), (NEW, "equity", "EQUITY", "NEW", "New Ltd", "Auto"), (OPP, "equity", "EQUITY", "OPP", "Opp Ltd", "Pharma"),
                                           (IDX, "etf", "LISTED_NONEQUITY", "IDXBEES", "Index Bees", None)):
@@ -129,6 +130,32 @@ def test_base_rates_come_from_stored_history_with_the_count_and_never_look_ahead
     con.execute("UPDATE prices SET close = close * 0.2 WHERE date > ?", [asof])           # a crash after the day changes nothing the day could know
     b = odds.base_rates(con, "move", move=-0.08, isin=WIN, asof=asof, market="IN")
     assert json.dumps(b, default=str) == before
+
+
+def test_the_long_panel_of_the_collectors_is_the_history_and_the_store_adds_the_recent_days(con, tmp_path):
+    """data/panel/prices.parquet (adjusted closes since 2004) is where the base rates' history is; the store holds only the recent weeks and is read for the days after the panel ends."""
+    days = [d.date() for d in pd.bdate_range("2023-01-02", "2026-10-30")]
+    rows = []
+    for k in range(25):
+        isin = f"INE8{k:05d}01"
+        r = np.random.default_rng(500 + k).normal(0.0004, 0.01, len(days))
+        for j in range(80 + k, len(days) - 70, 150):
+            r[j] = -0.08
+            r[j + 1:j + 21] += 0.003
+        p = 100.0 * np.exp(np.cumsum(r))
+        rows += [{"date": d, "isin": isin, "series": "EQ", "instrument_type": "STK", "adj_close": float(x), "turnover": 1e9} for d, x in zip(days, p)]
+    (tmp_path / "data" / "panel").mkdir(parents=True)
+    pd.DataFrame(rows).to_parquet(tmp_path / "data" / "panel" / "prices.parquet")
+    asof = date(2026, 10, 30)
+    r = odds.base_rates(con, "move", move=-0.08, isin=WIN, asof=asof, market="IN")
+    assert r["basis"] == "history" and r["history_n"] >= 20 and r[20]["p10"] < r[20]["p50"] < r[20]["p90"] and "cases of names" in r["detail"]
+    r2 = odds.base_rates(con, "move", move=-0.08, isin=WIN, asof=date(2025, 6, 30), market="IN")        # the same call a year earlier sees only what was dated by then
+    assert r2["history_n"] < r["history_n"]
+    s = odds.closes(con, "IN", WIN, "WIN", DAY, 400)                                                  # WIN is only in the store: the store's closes are read where the panel has none
+    assert len(s) == len(DAYS) and s.index.max() == pd.Timestamp(DAY)
+    first = f"INE8{0:05d}01"
+    s2 = odds.closes(con, "IN", first, None, date(2026, 11, 12), 100)                                 # a panel name: the panel's closes up to its last day
+    assert len(s2) == 100 and s2.index.max() == pd.Timestamp(days[-1])
 
 
 def test_under_twenty_cases_the_count_is_said_and_the_own_range_stands_in(con):
@@ -381,6 +408,7 @@ MV = [-0.20, 0.0, 0.20]
 def sc(tmp_path, monkeypatch):
     """A store with one name whose closes are all 100 (so a decision's realised move is 0 unless a test sets a price), 120 sessions, and a fixed 10/50/90 curve of moves."""
     monkeypatch.setenv("PFLAB_PM_DIR", str(tmp_path))
+    monkeypatch.setenv("PFLAB_DATA_DIR", str(tmp_path / "data"))
     c = store.connect(tmp_path / "s.duckdb")
     c.executemany("INSERT INTO prices VALUES (?, ?, ?, 'EQ', 'nse_bhavcopy', now())", [[FLAT, d, 100.0] for d in DAYS])
     from pflab.think import score
@@ -512,8 +540,21 @@ def test_the_live_test_is_registered_once_with_the_protocols_hash_and_a_changed_
     ok = score.protocol_ok(sc)
     assert ok["registered"] and ok["unchanged"] and s84.protocol_sha() == json.loads(sc.execute("SELECT params_json FROM learn_tests WHERE note='s84:thinking_live'").fetchone()[0])["protocol_sha256"]
     copy = tmp_path / "p.md"
-    copy.write_bytes(PROTOCOL.read_bytes().replace(b"\n", b"\r\n"))                                  # a checkout that turns LF into CRLF is not an edit
+    copy.write_bytes(PROTOCOL.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))          # a checkout that turns LF into CRLF is not an edit
     monkeypatch.setattr(s84, "PROTOCOL", copy)
     assert score.protocol_ok(sc)["unchanged"] is True
     copy.write_bytes(copy.read_bytes() + b"\nan edit\n")
     assert score.protocol_ok(sc)["unchanged"] is False and "changed" in score.protocol_ok(sc)["why"]
+
+
+def test_a_us_stock_is_capped_at_ten_percent_of_the_sub_book_not_of_the_whole_book(con, fixed_rates, monkeypatch):
+    from pflab.us import wholebook
+    cid = cases.open_case(con, NOW, market="US", kind="move", isin="ZZ0000000001", symbol="XYZ", title="XYZ fell", exposure_inr=0, exposure_pct=0.0, score=1.0)
+    ser = pd.Series(np.linspace(80.0, 100.0, 120), index=pd.to_datetime(DAYS[-120:]))                    # a steady climb: no new lows
+    monkeypatch.setattr(odds, "closes", lambda con, market, isin, symbol, asof, n=320, root=None: ser)
+    monkeypatch.setattr(odds, "position", lambda con, market, isin, symbol, asof, root=None: {"held": False, "qty": 0.0, "price": 100.0, "value_inr": 0.0, "ccy": "USD", "fx": 90.0, "canon": isin, "market": "US"})
+    real = wholebook.whole_book_inr
+    monkeypatch.setattr(wholebook, "whole_book_inr", lambda con, day, root=None: {**real(con, day, root), "us_book_inr": 500_000.0})
+    ans = _answer("temporary", "buy_in_parts", isin="ZZ0000000001", symbol="XYZ")
+    d = rule.decide(con, cid, ans, DAY, reserve_free_inr=60_000_000.0)
+    assert d["rule_option"] == "buy_in_parts" and d["parts"]["total_inr"] == pytest.approx(50_000.0) and "the stock rail" in " ".join(d["guards"])      # 10% of the Rs 5 lakh sub-book
