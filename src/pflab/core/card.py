@@ -240,6 +240,11 @@ def today_extras(con) -> dict:
         out["picks"] = {"line": first_session_s82.picks_line(con), "IN": b["IN"], "US": b["US"], "learned": b["learned"]}
     except Exception:
         out["picks"] = None
+    try:                                                                    # S84: the thinking block (open cases), the reserve lines, the knowledge line, the desk plan, the decision scorecard
+        from pflab.think import wire as think_wire
+        out["think"] = think_wire.today_block(con, date.today())
+    except Exception:
+        out["think"] = None
     return out
 
 

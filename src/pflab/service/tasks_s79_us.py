@@ -16,7 +16,15 @@ def _enabled(ctx):
 def _run(ctx) -> dict:
     from pflab.us import adapter, instruments as uins
     sec = uins.refresh_if_due(ctx.data_root, now=ctx.now)          # S82: SEC's ticker file with the contact User-Agent, once a month; without it the US:SYMBOL keys stay (said in the result)
+    think = None
+    try:                                                    # S84 T1: the US morning's watch (everything since the last US close) BEFORE the US decisions; never raises
+        from pflab.think import wire
+        think = wire.sweep(ctx.con, ctx.now, ctx.data_root, only_market="US")
+    except Exception:
+        pass
     out = adapter.close_us(ctx.con, ctx.now, ctx.data_root)
+    if isinstance(out, dict) and think and (think.get("sessions") or think.get("failed")):
+        out = {**out, "thinking": {"sessions": think.get("sessions"), "thought": len(think.get("thought") or []), "failed": len(think.get("failed") or [])}}
     return {**out, "sec_ciks": sec} if isinstance(out, dict) else out
 
 

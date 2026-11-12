@@ -470,6 +470,12 @@ def run_once(con, now: datetime, quotes: Optional[Dict[str, float]] = None, bars
         for e in evs:
             if said(con, now, f"event:{e.get('ref') or e['isin'] + str(e['ts'])}"):
                 log(con, now, "thesis", f"a filing was released at {e['ts']:%H:%M} on a held name: {e['kind']} ({e.get('severity')}); with no live quote nothing is sold now, the post-close loop decides [{src}]", e["isin"])
+    if quotes:                                                                  # S84 T1: the thinking loop's watch on the live quotes (cheap; never raises; a failure is a visible line)
+        try:
+            from pflab.think import wire as think_wire
+            out["think"] = think_wire.session_tick(con, now, quotes, data_root)
+        except Exception as e:
+            log(con, now, "degrade", f"thinking failed: the watch hook: {type(e).__name__}: {str(e)[:120]}")
     n_fill = len(out["fills"])
     summary = {"quotes": len(quotes or {}), "checks": checks, "fills": n_fill, "queued": len(out["queued"]), "waiting": len(out["waiting"]), "degraded": out["degraded"], "breaker": bool(br.get("on")),
                "source": "live" if live else "injected"}
@@ -649,6 +655,11 @@ def report_day(con, day: date, market: str = MARKET) -> str:
         pass
     core = con.execute("SELECT status, orders_json FROM core_runs_s80 WHERE day=?", [day]).fetchone()
     tail = [strategist_line(con, day)] if strategist_line(con, day) else []                        # S82 C9: one plain line on the strategist's newest note
+    try:                                                                                # S84: what the thinking loop is on, the reserve and what it learned (up to three lines)
+        from pflab.think import wire as think_wire
+        tail = think_wire.report_lines(con, day) + tail
+    except Exception:
+        pass
     tail.append("Post-close loop: " + (f"{core[0]} ({len(json.loads(core[1] or '[]'))} order(s))." if core else "not yet; it runs when NSE's closing files arrive this evening."))
     return "\n".join(L[:15 - len(tail)] + tail)
 
