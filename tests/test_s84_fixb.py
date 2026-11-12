@@ -215,7 +215,7 @@ def scon(tmp_path, monkeypatch):
         pd.DataFrame({"date": s.index.date, "close": s.to_numpy()}).to_parquet(p, index=False)
     ret = n[n.index >= "2021-12-01"].pct_change().fillna(0.0)
     frames = []
-    for isin, beta in (("INE00H0000001", 3.5), ("INE00L0000002", 0.1)):          # a high-beta late listing (the JIOFIN case) and a near-zero-beta one
+    for isin, beta in (("INE00H0000001", 3.5), ("INE00L0000002", 0.1)):          # a high-beta late listing (a late listing) and a near-zero-beta one
         b = 50.0 * (1.0 + beta * ret).cumprod()
         frames.append(pd.DataFrame({"date": b.index.date, "isin": isin, "adj_close": b.to_numpy()}))
     p = r / "panel" / "prices.parquet"
