@@ -40,11 +40,20 @@ def extra_weights(con, state: dict) -> dict:
     floor = float(c["us_spy_floor"])
     by_key = {r["isin"]: r for r in state["rows"]}
     withdrawn = {p["isin"] for p in picks.managed(con, "US") if p["state"] == "withdrawn"}
+    try:                                                                  # S84 (A65): a name under a thinking-loop freeze is not bought (its target is what the sub-book holds)
+        from pflab.think import cases as _tcases
+        frozen = set(_tcases.frozen_isins(con, state.get("day"), "US"))
+    except Exception:
+        frozen = set()
+    total_v = float(state.get("value") or 0.0)
     for k, w in pk.items():
         r = by_key.get(k)
         if r is None or not r.get("buyable"):
             continue
         out[r["symbol"]] = 0.0 if k in withdrawn else float(w)
+        if k in frozen and k not in withdrawn and total_v > 0:
+            out[r["symbol"]] = min(out[r["symbol"]], float(r["value"]) / total_v)
+            notes.append(f"{r['symbol']} is frozen (no new buying) by an open case")
     total = sum(out.values())
     room = max(0.0, invested - floor)                                   # SPY's target is at least the floor: the picks' total never passes what is left of the invested share
     if total > room + 1e-12 and total > 0:

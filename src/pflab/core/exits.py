@@ -30,7 +30,7 @@ from pflab.core import tax_rows as tr
 from pflab.tax import rules
 
 MARKET = "IN"
-KINDS = ("target", "stop", "time", "thesis", "harvest", "trim", "withdraw")
+KINDS = ("target", "stop", "time", "thesis", "harvest", "trim", "withdraw", "case")      # S84: `case` = a sale decided by the thinking loop (think/session.py)
 SEVERITY_WORDS = {"low": 0.25, "minor": 0.25, "medium": 0.5, "moderate": 0.5, "high": 0.75, "major": 0.75, "severe": 0.9, "critical": 1.0}
 REBUY_WAIT_DAYS = 10                    # a harvest sale whose buy-back has not happened in this many days: the plan is closed instead of waiting
 

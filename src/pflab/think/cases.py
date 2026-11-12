@@ -231,3 +231,11 @@ def thinking_block(con, day: Optional[date] = None, limit: int = 5) -> dict:
                      "line": f"{c['symbol'] or c['title']}{kl}: {c['title']}{pend}{look}"})
     noticed = int(con.execute("SELECT count(*) FROM think_cases_s84 WHERE opened_on=? AND state='noticed'", [day]).fetchone()[0])
     return {"open": rows, "noticed_not_examined_today": noticed, "text": ("Thinking about: " + " | ".join(r["line"] for r in rows)) if rows else "Thinking about: nothing open."}
+
+
+def frozen_isins(con, day: Optional[date] = None, market: Optional[str] = None) -> List[str]:
+    """The names under a system-made freeze on `day` (added by the `case` agent for the baseline's state key `frozen`)."""
+    try:
+        return sorted({f["isin"] for f in active_freezes(con, day, market)})
+    except Exception:
+        return []
