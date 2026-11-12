@@ -25,23 +25,33 @@ _TOP = r"(?:" + _EXEC + r"|promoters?)"
 _NOW = r"(?:immediate effect|effective immediately|with immediate)"
 _PERSON = r"(?:executives?|officers?|ceo|cfo|directors?|chairman|chief executive)"
 # a securities class action is a regulatory matter of medium weight: it is checked FIRST so the word "fraud" inside it does not make it a fraud investigation
-_CLASS_ACTION = r"(class[- ]action|securities (?:fraud )?(?:suit|lawsuit|litigation)|shareholders?'? (?:lawsuit|suit)|investors? (?:lawsuit|suit)\b)"
+# (a settlement, a dismissal or a ruling in the company's favour is not new bad news: it falls through to the later rules)
+_CLASS_ACTION = (r"(?s)^(?!.*(?:settle\w*|dismiss\w*|in favou?r))"
+                 r".*?(?:class[- ]action|securities (?:fraud )?(?:suit|lawsuit|litigation)|shareholders?'? (?:lawsuit|suit)|investors? (?:lawsuit|suit)\b)")
 # a governance shock = leadership_crisis (high): an investigation of the top person, the chief executive or chair ousted / removed / on leave / leaving at once, a promoter or
 # chief executive arrested, an executive tied to espionage, sanctions or a criminal case. A plain appointment or an ordinary resignation stays `management_change` (low).
 _INV = r"(?:investigat\w+|probe\w*|inquiry|inquiries)"
-_LEADERSHIP = "|".join([
+# What is NOT a governance shock, checked first (found on the real filings, 2010-2026): the exchange's disclosure TEMPLATES ("in case of arrest of promoter or KMP", SEBI circulars), a
+# company's reply to a RUMOUR, loan / scheme "sanction" papers. A plain resignation that gives a personal reason, keeps the person on the board, or is an independent, non-executive or
+# vice chair is `management_change`.
+_NOT_A_SHOCK = r"(?!.*(?:frauds?/defaults?|appointment and removal|removal ?/ ?cessation|cardiac arrest|passed away|\bdemise\b|\bformat\b|\brumou?rs?\b|\bsanction letter\b))"
+_NOT_A_QUIET_EXIT = r"(?!.*(?:personal|health|family|pursue|pursuing|continue|independent|non[- ]executive|vice[- ]chair|retire|other (?:commitments|opportunities|engagements)))"
+_GENERAL = "|".join([
     _INV + r".{0,70}\b" + _TOP + r"\b",
     r"\b" + _TOP + r"\b.{0,70}" + _INV,
     r"\b" + _EXEC + r"\b.{0,60}\b(?:ousted|ouster|removed|removal|fired|sacked|dismissed|placed on (?:administrative |medical )?leave|on (?:administrative )?leave)\b",
-    r"\b(?:oust\w*|removing|firing|sacking)\b.{0,40}\b" + _EXEC + r"\b",
-    r"\b" + _EXEC + r"\b.{0,60}\b(?:resign\w*|steps? down|stepping down|exits?|leaves?|leaving|departs?|quits?)\b.{0,30}" + _NOW,
-    r"\b(?:resign\w*|removal|termination)\b.{0,40}\b" + _EXEC + r"\b.{0,40}" + _NOW,
+    r"\b(?:oust\w*|removing|removal of|removed|firing|sacking)\b.{0,40}\b" + _EXEC + r"\b",
     r"board.{0,40}to oust",
-    r"\b" + _TOP + r"\b.{0,40}\b(?:arrest\w*|detained|indicted|taken into custody)",
-    r"\b(?:arrest\w*|detained|indicted)\b.{0,40}\b" + _TOP + r"\b",
-    r"\b" + _PERSON + r"\b.{0,70}\b(?:espionage|spy\w*|sanction\w*|criminal (?:case|charges?|complaint|probe))",
+    r"\b" + _TOP + r"\b.{0,70}\b(?:arrest\w*|detained|indicted|taken into custody|judicial custody|remanded|police custody)",
+    r"\b(?:arrest\w*|detained|indicted|raids?|custody)\b.{0,90}\b" + _TOP + r"\b",
+    r"\b" + _PERSON + r"\b.{0,70}\b(?:espionage|spy\w*|sanctions|ofac|criminal (?:case|charges?|complaint|probe))",
     r"\b(?:espionage|spy\w*)\b.{0,70}\b" + _PERSON + r"\b",
 ])
+_QUIT_AT_ONCE = "|".join([
+    r"\b" + _EXEC + r"\b.{0,60}\b(?:resign\w*|steps? down|stepping down|exits?|leaves?|leaving|departs?|quits?)\b.{0,30}" + _NOW,
+    r"\b(?:resign\w*|removal|termination)\b.{0,40}\b" + _EXEC + r"\b.{0,40}" + _NOW,
+])
+_LEADERSHIP = r"(?s)^" + _NOT_A_SHOCK + r"(?:.*?(?:" + _GENERAL + r")|" + _NOT_A_QUIET_EXIT + r".*?(?:" + _QUIT_AT_ONCE + r"))"
 
 RULES: List[Tuple[str, str, "re.Pattern"]] = [(k, s, re.compile(p)) for k, s, p in [
     ("regulatory_action", "medium", _CLASS_ACTION),

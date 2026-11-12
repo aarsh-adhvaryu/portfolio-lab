@@ -242,6 +242,12 @@ def news_events(root: Path, asof: date, since: date, scope: dict, cache: Dict[st
         c = cache.get(eid)
         if c and kind == "news":
             kind, sev = c["kind"], c["severity"]
+            if kind == "leadership_crisis":
+                # S84: a sale-grade kind from an article needs the company named in the HEADLINE itself (real run 2026-11-12: of four model-confirmed leads, two were about another body,
+                # a school-board chairman and "a Mumbai-based firm", linked only because the company was named in the article's text). Otherwise it stays a lead.
+                hn = " " + _WS.sub(" ", re.sub(r"[^a-z0-9&+ ]", " ", head.lower())) + " "
+                if not any(f" {a} " in hn for a in n["aliases"]):
+                    kind, sev = "news", "low"
         events.append({"event_id": eid, "isin": r.isin, "source": "gdelt_gkg1", "ref": r.url, "ts": ts, "event_date": day, "kind": kind, "severity": sev,
                        "headline": head[:500], "link_rule": rule, "link_proof": proof, "dedupe_key": f"{r.isin}|{norm_headline(head)}|{day.isoformat()}",
                        "ts_rule": ft.RULE_NEWS})
