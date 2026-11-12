@@ -32,7 +32,8 @@ Branch `s84/drillfix` (worktree `D:\s84_wt\drillfix`), based on `pm/s84-thinking
 ## Results
 
 * `accelerated`: PASS (157.9 s); `accelerated_picks`: PASS (249.1 s); the harvest step stays OFF as before (no harvesting sale in ten sessions; `harvest_core`/`harvest_longterm` are off).
-* The other twelve drills: see the final report (run once after the fixes).
+* The other thirteen drills, run once after the fixes (`--only smoke,kill_switch,off_fri_mon,off_10_days,ollama_down,docker_down,kite_logged_out,budget_exhausted,failing_champion,kill9,probation_withdrawn,net_down,accelerated_long`): all PASS
+  (smoke 24 s, kill_switch 15, docker_down 19, budget_exhausted 21, failing_champion 31, kite_logged_out 32, ollama_down 36, kill9 44, off_fri_mon 44, off_10_days 50, net_down 212, probation_withdrawn 283, accelerated_long 358).
 
 ## Shared files touched
 
