@@ -49,3 +49,15 @@ the desk, recall and the gateway on a synthetic store and synthetic bars, with a
 
 ## Shared files touched
 `think/session.py`, `think/odds.py`, `think/rule.py`, `think/score.py`, `think/wire.py`, `think/desk.py` (all S84 modules); `tests/test_s84_case.py` (the fakes, one track name). No migration. No change to `core/*`, `service/*`, `app/*`.
+
+## Replay findings (docs/s84_replay_notes.md), fixed here with a regression test each (tests/test_s84_integration.py)
+- **(3) egress gate and US names.** `session.scrub` replaces a pseudo-ISIN (`ZZ` + ten digits) in every message sent to the model (`_gcall`, and the desk's `_call`) by `US:<symbol>` ("a US stock" without one). Test: the real door and gate accept the scrubbed text and refuse the raw one.
+- **(2) US order date.** `session._act_us` places the order with the last closed US session's date (`us.clock.session_closed_by(now)`), so it fills at the next open (Tuesday morning IST: Monday's date, fills Tuesday's open).
+- **(1) Sunday news on Monday.** `watch._us_morning` runs the pass of the session that is STILL the latest US session on the real clock (it took Saturday 08:00); `wire._us_carry` (called from `sweep`) runs one extra `us_morning` pass per IST day, from 07:00, on a morning that has no new US session before it (weekend, US holiday), marker `watch USAM <day>`.
+  Residual: the price signals of that repeat pass are the same Friday bars (deduped per day, so they join an open case rather than opening a new one).
+- **(5) a case's order and the close.** `core/loop.py` (shared file, one SQL line): the "orders from an earlier session have not filled yet" wait ignores orders whose note starts `case #`. Residual risk: while a case's sale is open the baseline may decide on the pre-sale position (the exit manager's pending-sell guard still protects the sold name); watch the first live close.
+- **(6) refused on a timing guard.** `follow_up` now calls `_retry_refused`: a buy the model chose and the rule refused (new lows, damage wait, stretched) is decided again by the rule alone (no model, no cost) at each look; the first part is bought when the guard has cleared.
+- **(7) index names** (S&P 500, Nasdaq 100, Nifty 500, ...) are names, not figures, in `validate_answer`.
+- **(8) non-security cases** (MARKET:/MACRO:/STORY:) store the model's track too (valued as nothing, labelled). Scoring them still needs a price path for the pseudo-name (S85).
+- **(9)** the sale's Telegram text shows what holding risked (already in item 10 above).
+- Two failing fixb tests (picks_s83 got a 15th column from recall's migration): the tests' positional insert now has the extra NULL.
