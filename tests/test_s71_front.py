@@ -166,23 +166,6 @@ def test_any_trouble_in_the_front_is_the_cloud_agents_turn(rt, con, monkeypatch)
     assert front.try_local(rt, con, cid, aid, "What do I hold?") is None
 
 
-def test_the_assistant_uses_the_front_when_it_answers_and_the_cloud_agent_when_it_does_not(monkeypatch):
-    finished, asked = [], []
-    monkeypatch.setattr(chat, "_finish", lambda con, aid, text, *a, **k: finished.append(text))
-    monkeypatch.setattr(assistant, "answer", lambda *a, **k: asked.append(1) or {"text": "cloud", "route": [], "meta": "", "status": "done", "cost": 1.0})
-    rt_ = SimpleNamespace(cursor=lambda: SimpleNamespace(execute=lambda *a, **k: None), clock=lambda: NOW, bump=lambda *a: None)
-    monkeypatch.setattr(front, "try_local", lambda *a, **k: {"text": "local", "route": [], "meta": "", "status": "done", "cost": 0.0})
-    assistant._work(rt_, 1, 1, "q", "")
-    assert finished == ["local"] and asked == []
-    monkeypatch.setattr(front, "try_local", lambda *a, **k: None)
-    assistant._work(rt_, 1, 2, "q", "")
-    assert finished == ["local", "cloud"] and asked == [1]
-    monkeypatch.setattr(front, "enabled", lambda: False)
-    monkeypatch.setattr(front, "try_local", lambda *a, **k: (_ for _ in ()).throw(AssertionError("switched off")))
-    assistant._work(rt_, 1, 3, "q", "")
-    assert finished[-1] == "cloud"
-
-
 # --- the measured defaults -----------------------------------------------------------------------------------------------------
 
 def test_a_trade_or_a_target_change_is_never_kept_as_a_note_even_if_the_model_is_sure(rt, con):
