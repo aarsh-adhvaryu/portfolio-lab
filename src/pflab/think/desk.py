@@ -527,7 +527,8 @@ def _work_case(con, now, it, sid, root) -> tuple:
         if s is not None and hasattr(s, "think_case"):
             try:
                 r = s.think_case(con, now, cid, root=root)
-                extra = f" The case was thought through again by the desk: {r.get('summary') or r.get('status') or 'done'}."
+                extra = (f" The case was thought through again by the desk: it is {str(r.get('class') or 'unclear').replace('_', ' ')}, now {r.get('state')}." if r.get("ok")
+                         else f" The case's own session did not finish ({str(r.get('failed') or r.get('skipped') or 'no answer')[:120]}).")
             except Exception as e:
                 extra = f" (the case's own session failed: {type(e).__name__})"
     spent = sum(float(s["cost_rupees"] or 0) for s in cases.steps(con, cid)) - cost_before

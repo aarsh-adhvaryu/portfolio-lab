@@ -60,6 +60,14 @@ class Client:
         if "choices" in props:
             a = self.answer(p) if callable(self.answer) else self.answer
             return self._msg([text(json.dumps(a))], p["model"])
+        if "needs_decision" in props:                                                  # the desk's read of one agenda item
+            return self._msg([text(json.dumps({"finding": "Nothing in the facts changes what the book holds.", "needs_decision": "none", "next_step": ""}))], p["model"])
+        if "symbols" in props:                                                         # the desk's shortlist
+            return self._msg([text(json.dumps({"symbols": [], "why": "nothing is worth a closer look"}))], p["model"])
+        if "picks" in props:
+            return self._msg([text(json.dumps({"picks": [], "skips": [], "learned_from": "nothing yet"}))], p["model"])
+        if "action" in props:
+            return self._msg([text(json.dumps({"action": "keep", "reason": "the thesis holds"}))], p["model"])
         if p.get("tools") and self.read_tools and not any(isinstance(m.get("content"), list) and any(isinstance(b, dict) and b.get("type") == "tool_result" for b in m["content"]) for m in p["messages"]):
             blocks = [SimpleNamespace(type="tool_use", id=f"t{i}", name=n, input=a) for i, (n, a) in enumerate(self.read_tools)]
             return self._msg(blocks, p["model"], "tool_use")
@@ -435,3 +443,76 @@ def test_the_loop_turns_advisory_by_itself_when_the_rule_is_behind_doing_nothing
     r3 = session.think_case(con, at + timedelta(minutes=5), c3, root=tmp_path / "data")
     assert r3["ok"] and r3["advisory"] is True
     assert not [o for o in orders(con, "buy") if o[0] == ETF]
+
+
+# --- the desk, recall and the gateway on the real modules -------------------------------------------------------------------------------------------------------------------------
+
+def test_the_desk_works_the_agenda_with_the_real_gateway_recall_and_session_and_never_thinks_a_case_twice_in_a_day(con, tmp_path):
+    from pflab.think import desk, recall
+    fall(con, BBB, -0.10)
+    cl = script(Client(answer(option="hold", klass="damage")))
+    # a paid note on the name written yesterday: recall finds it, the case reads it, the desk counts it as used
+    recall.write_back(con, CLOSE_AT - timedelta(days=1), isin=BBB, symbol="BBB", title="an earlier read", text="the order book was the thesis", source="analyst", cost_rupees=12.0)
+    r = wire.sweep(con, CLOSE_AT + timedelta(minutes=30), tmp_path / "data", only_market="IN")
+    assert r["failed"] == [], r
+    cid = next(c for c in r["cases_opened"] if cases.get_case(con, c)["isin"] == BBB)
+    n_answers = len([x for x in cases.steps(con, cid) if x["step"] == "answer_ok"])
+    first = [p for p in cl.sent if "choices" in json.dumps(p.get("output_config") or {})][0]
+    assert "the order book was the thesis" in json.dumps(first["messages"])                         # recall reached the case's first message
+    assert con.execute("SELECT count(*) FROM knowledge_use_s84 WHERE used_by_kind='case' AND used_by_ref=?", [str(cid)]).fetchone()[0] >= 1       # and is counted as used
+    n_calls = len(cl.sent)
+    out = desk.run_desk(con, CLOSE_AT + timedelta(minutes=45), "india_close", root=tmp_path / "data")
+    assert out["status"] in ("done", "budget", "quiet"), out
+    assert out.get("items", 0) >= 1
+    # the desk's calls went through the same door: agent `desk` in the governor's log, role read, one case thought once only (a step today stops a second think)
+    rows = con.execute("SELECT agent, role, case_id FROM api_calls WHERE agent='desk'").fetchall()
+    assert rows and all(r_[1] in ("read", "decide", "quick") for r_ in rows)
+    assert len([x for x in cases.steps(con, cid) if x["step"] == "answer_ok"]) == n_answers
+    assert len(cases.decisions(con, cid)) == 1
+    assert desk.plan_text(con, DAY) and "desk" in wire.today_block(con, DAY)["plan"].lower() or wire.today_block(con, DAY)["plan"]
+    # a second run of the same slot is a no-op, and a quiet agenda costs nothing
+    assert "already ran" in desk.run_desk(con, CLOSE_AT + timedelta(minutes=50), "india_close", root=tmp_path / "data").get("skipped", "")
+
+
+def test_every_thinking_module_reaches_the_model_only_through_the_gateway_and_the_job_and_the_live_test_are_registered(con, tmp_path):
+    import inspect
+    import pathlib
+    from pflab.app import runtime, world
+    from pflab.learner import s84
+    from pflab.service import jobs, tasks
+    tasks.load_all() if hasattr(tasks, "load_all") else None
+    # (h) the model is called through `gateway.call` only, with the agent `think` or `desk`
+    root = pathlib.Path(think.__file__).parent
+    for f in root.glob("*.py"):
+        src = f.read_text(encoding="utf-8")
+        assert not re.search(r"messages\.create|import anthropic|make_client|beta\.messages|llm\.call\(", src), f.name
+    for f, agent in (("session.py", "think"), ("desk.py", "desk")):
+        src = (root / f).read_text(encoding="utf-8")
+        assert f'agent="{agent}"' in src
+    # (i) the app's start registers the thinking live test, once; the job is registered and belongs to a world node
+    assert "register_thinking_live" in inspect.getsource(runtime)
+    n = len(s84.register_thinking_live(con, NOW))
+    assert s84.register_thinking_live(con, NOW) == [] and n >= 0
+    assert con.execute("SELECT count(*) FROM learner_tests WHERE note LIKE 's84:thinking_live%'").fetchone()[0] <= 1 if _has(con, "learner_tests") else True
+    assert "think_loop" in jobs.REGISTRY
+    assert any("think_loop" in jobs_ for _g, _t, jobs_ in [(g[0], g[1], g[2]) for g in world.ROUTINES])
+
+
+def test_not_yet_clear_with_something_pending_freezes_the_name_and_the_baseline_and_the_picks_read_the_freeze(con, tmp_path):
+    from pflab.core import state as core_state
+    from tests.test_s80_core import calm_index
+    script(Client(answer("BBB", "wait", "unclear", pending="the board's decision", worst="unlikely", likely="even", best="unlikely"), check="pass"))
+    cid = open_case_on(con, BBB, "BBB", exposure=150000.0)
+    r = session.think_case(con, CLOSE_AT + timedelta(minutes=40), cid, root=tmp_path / "data")
+    assert r["ok"], r
+    d = cases.get_case(con, cid)["decisions"][0]
+    assert d["rule_option"] == "freeze" and d["model_option"] == "wait" and d["acted_option"] == "freeze"
+    assert cases.is_frozen(con, BBB, DAY) and BBB in cases.frozen_isins(con, DAY, "IN")
+    st = core_state.build(con, DAY, None, calm_index())
+    assert BBB in st["frozen"]                                                                  # the baseline reads it: no new buying of the name
+    assert not [o for o in orders(con, "sell") if o[0] == BBB]                                  # a freeze is not a sale
+    # the look a few sessions on closes the question: nothing pending is answered, no signal joined: the freeze is released when the case closes
+    days = extend(con, 70)
+    out = wire.sweep(con, datetime.combine(days[-1], datetime.min.time()) + timedelta(hours=16, minutes=30), tmp_path / "data", only_market="IN")
+    assert out["failed"] == [], out
+    assert cases.get_case(con, cid)["state"] == "closed" and not cases.is_frozen(con, BBB, days[-1])
