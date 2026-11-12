@@ -516,3 +516,22 @@ def test_not_yet_clear_with_something_pending_freezes_the_name_and_the_baseline_
     out = wire.sweep(con, datetime.combine(days[-1], datetime.min.time()) + timedelta(hours=16, minutes=30), tmp_path / "data", only_market="IN")
     assert out["failed"] == [], out
     assert cases.get_case(con, cid)["state"] == "closed" and not cases.is_frozen(con, BBB, days[-1])
+
+
+def test_the_history_is_scanned_once_per_case_and_once_per_decision_when_scoring(con, tmp_path, monkeypatch):
+    calls = []
+    real = odds._base_rates
+    monkeypatch.setattr(odds, "_base_rates", lambda *a, **k: calls.append(a[1:3]) or real(*a, **k))
+    script(Client(answer("BBB", "hold", "damage", pending="the board's decision"), check="pass"))          # no read tools: the model's own tool loop would ask for its own table
+    cid = open_case_on(con, BBB, "BBB", exposure=150000.0)
+    assert session.think_case(con, CLOSE_AT + timedelta(minutes=40), cid, root=tmp_path / "data")["ok"]
+    assert len(calls) == 1, calls                                                                          # the table and the rule share one cache dict
+    days = extend(con, 25)
+    calls.clear()
+    assert score.score_due(con, days[-1]) > 0
+    n_first = len(calls)
+    assert n_first == 1                                                                                    # one scan for the decision, kept as a `moves` step
+    score.calibrate(con, days[-1])
+    score.score_due(con, days[-1])
+    assert len(calls) == n_first                                                                           # the calibration and a second scoring read it back: no further scan
+    assert [s for s in cases.steps(con, cid) if s["step"] == "moves"] and not any(s["step"] == "moves" and str(s["step_at"])[:10] == str(days[-1]) for s in cases.steps(con, cid))

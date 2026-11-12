@@ -333,13 +333,13 @@ def test_a_case_over_the_two_percent_line_is_thought_through_once_a_day_by_the_c
     def think_case(con, now, case_id, *, root=None):
         seen.append(case_id)
         cases.add_step(con, case_id, now, "understand", engine="anthropic", model="opus", thinking="high", cost_rupees=7.0)
-        return {"summary": "freeze and wait for the board"}
+        return {"case_id": case_id, "ok": True, "class": "unclear", "state": "waiting"}              # what the real `think_case` returns (the integration proved a "summary" key wrong)
     desk.modules["session"] = SimpleNamespace(think_case=think_case)
     ag = desk.agenda(con, NOW, "india_close")
     assert ag[0]["kind"] == "case" and ag[0]["over_2pct"]
     r = desk.run_desk(con, NOW, "india_close")
     assert seen == [cid] and r["cost_rupees"] == 17.0                                          # 7 for the case's own step + 10 for the desk's read
-    assert "freeze and wait" in m.calls[0]["text"]
+    assert "unclear, now waiting" in m.calls[0]["text"]
     con.execute("UPDATE desk_sessions_s84 SET status='failed'")
     desk.run_desk(con, NOW.replace(minute=30), "india_close")
     assert seen == [cid]                                                                        # a case that has a step today is not thought through again

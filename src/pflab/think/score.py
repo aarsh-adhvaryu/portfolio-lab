@@ -58,14 +58,32 @@ def curve_value(m: float, pts: List[tuple]) -> float:
 
 
 def _moves(con, case: dict, isin, symbol, decided_on: date, root=None) -> Optional[List[float]]:
-    """The three moves (10th, 50th, 90th percentile at the decision horizon) the decision saw, recomputed point in time as of its day."""
+    """The three moves (10th, 50th, 90th percentile at the decision horizon) the decision saw, recomputed point in time as of its day. The history scan takes seconds on the real panel and the
+    scoring and the calibration both need it every day, so the answer is kept once as a step `moves` of the case (dated the decision day: it is not "a step today"); a later call reads it back."""
+    cid = case.get("case_id")
+    key = {"isin": isin, "day": str(decided_on)}
+    if cid is not None:
+        try:
+            for st in cases.steps(con, cid):
+                if st["step"] == "moves":
+                    p = json.loads(st.get("payload_json") or "{}")
+                    if p.get("isin") == isin and p.get("day") == key["day"] and p.get("moves"):
+                        return [float(x) for x in p["moves"]]
+        except Exception:
+            pass
     try:
         market = (case.get("market") or "IN").upper()
         kind, move, window = odds.case_kind_move(con, case)
         r = odds.base_rates(con, kind, move=move, isin=isin, asof=decided_on, market=market, symbol=symbol, window=window, root=root)
-        return odds._scenario_moves(r, int(odds.PARAMS["outcome_horizon_sessions"]))
+        mv = odds._scenario_moves(r, int(odds.PARAMS["outcome_horizon_sessions"]))
     except Exception:
         return None
+    if cid is not None:
+        try:
+            cases.add_step(con, cid, datetime.combine(decided_on, datetime.min.time()) + timedelta(hours=23, minutes=59), "moves", payload={**key, "moves": mv, "basis": r.get("basis")})
+        except Exception:
+            pass
+    return mv
 
 
 def _path(con, market: str, isin, symbol, d0: date, day: date, root=None):
@@ -132,6 +150,9 @@ def _score_decision(con, d: dict, day: date, done: set, root, next_id) -> int:
     isin, symbol, d0 = d["isin"] or case.get("isin"), d["symbol"] or case.get("symbol"), _day(d["decided_on"])
     s = _path(con, market, isin, symbol, d0, day, root)
     if s is None or len(s) < 2:
+        return 0
+    due = [h for h in HORIZONS if len(s) > h and not any(k[0] == int(d["decision_id"]) and k[1] == h for k in done)]
+    if not due:                                                       # everything due is scored already: no scan of the history
         return 0
     curves = _option_curves(con, d["case_id"], isin)
     if not curves:
