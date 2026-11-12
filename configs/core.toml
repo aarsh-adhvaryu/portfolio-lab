@@ -53,6 +53,8 @@ weekly_days = 7
 max_turns = 18
 model = "claude-opus-5-5"
 weeks_to_win = 8              # after this many weeks with no AI-written challenger beating the baseline the strategist's budget halves and the system tells him
+daily_budget_rupees = 30.0    # S84 T10: the daily desk's most in a day (Sonnet reads, Opus decides); halves from throttle_after while the decision scorecard has 20 scored decisions and is behind "do nothing"
+desk_on = true                # S84 T10: the daily desk (one session after the Indian close, one in the IST morning after a US session, one catch-up after a gap)
 
 [checker]
 on = true                     # Sonnet's pass-or-veto on big trades (phase 3)
@@ -174,6 +176,7 @@ slippage_bps = 5.0            # ESTIMATE: a buy fills this much above the next o
 min_trade_usd = 25.0
 band_pts = 1.5                # rebalance a name only when it is this many points of the sub-book from its target
 w8ben = true                  # a valid W-8BEN is on file: US dividend withholding 25% (the treaty rate for an individual); false: 30%
+exempt_day_share = 0.25       # S84 F2: a named pick's purchase, a reserve buy and the full exit of a withdrawn pick are outside the monthly churn cap, limited to this share of the sub-book a day
 
 # S83 L1/L5 (A61-A63): the picks sleeve (core/picks.py, core/pick_share.py; protocol docs/protocols/s83_picks_live_protocol.md). The numbers of the share rule are pinned to the protocol's
 # text by tests/test_s83_picks.py: change one without the other and the test fails. `on` per market: a market's picks work only when both [picks] on and its own on are true.

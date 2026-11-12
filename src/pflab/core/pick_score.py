@@ -23,7 +23,7 @@ Public: `score_all`, `scorecard`, `scorecard_text`, `sleeve_record`, `update_sle
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -309,11 +309,48 @@ def _insert(con, rec: dict) -> None:
                  json.dumps(rec["detail"], default=str)])
 
 
+def first_fill(con, market: str, isin: Optional[str], symbol: Optional[str] = None) -> Optional[date]:
+    """The day of the first BUY fill of a name in the market's book (India `paper_trades`, US `us_trades_s81`), None when it was never bought (S84 F3)."""
+    if market == "US":
+        rows = _rows(con, "SELECT min(day) FROM us_trades_s81 WHERE side='buy' AND (isin=? OR upper(symbol)=upper(?))", [isin or "", symbol or ""])
+    else:
+        rows = _rows(con, "SELECT min(day) FROM paper_trades WHERE side='buy' AND isin=?", [isin or ""])
+    return _d(rows[0][0]) if rows and rows[0][0] is not None else None
+
+
+def pick_started(con, market: str, isin: Optional[str], symbol: Optional[str], source: Optional[str], state: Optional[str]) -> Tuple[bool, Optional[date]]:
+    """(held yet, first fill). A pick's record starts at its FIRST FILL (S84 F3). A pick named and not bought is "named, not yet held" and is not in the record. His Kite stocks are held
+    from the start of the book, and a pick whose state is 'held' holds shares (an old row with no trade of its own keeps the first session after it was proposed)."""
+    ff = first_fill(con, market, isin, symbol)
+    if ff is not None:
+        return True, ff
+    return (source == "kite" or state == "held"), None
+
+
+def started_ids(con, market: str) -> set:
+    """The pick ids of a market that have started their record (see `pick_started`)."""
+    return {int(pid) for pid, isin, sym, src, st in _rows(con, "SELECT pick_id, isin, symbol, source, state FROM picks_s83 WHERE market=?", [market]) if pick_started(con, market, isin, sym, src, st)[0]}
+
+
+def named_not_held(con, market: str) -> List[str]:
+    """Symbols of the market's live picks (proposed or buying) that have not been bought yet."""
+    out = []
+    for isin, sym, src, st in _rows(con, "SELECT isin, symbol, source, state FROM picks_s83 WHERE market=? AND state IN ('proposed','buying') ORDER BY pick_id", [market]):
+        if not pick_started(con, market, isin, sym, src, st)[0]:
+            out.append(sym or isin)
+    return out
+
+
 def _score_picks_and_skips(con, today: date, root, done: set, out: dict) -> None:
     idxs = {m: index_series(m, root) for m in MARKETS}
     items = []
-    for pid, mk, isin, sym, state, prop, chg in _rows(con, "SELECT pick_id, market, isin, symbol, state, proposed_on, state_changed_on FROM picks_s83"):
-        items.append(("pick", int(pid), mk or "IN", isin, sym or isin, _d(prop), _d(chg) if state in ENDED else None))
+    for pid, mk, isin, sym, state, prop, chg, src in _rows(con, "SELECT pick_id, market, isin, symbol, state, proposed_on, state_changed_on, source FROM picks_s83"):
+        held, ff = pick_started(con, mk or "IN", isin, sym, src, state)
+        if not held:
+            out["named_not_held"] += 1                                # S84 F3: a named, unbought pick has no record yet (its skip-style score is not a pick's)
+            continue
+        on = (ff - timedelta(days=1)) if ff is not None else _d(prop)    # the first session ON the first fill (the day before is "proposed on" for the first-session-after rule)
+        items.append(("pick", int(pid), mk or "IN", isin, sym or isin, on, _d(chg) if state in ENDED else None))
     for sid, mk, isin, sym, on in _rows(con, "SELECT skip_id, market, isin, symbol, skipped_on FROM skips_s83"):
         items.append(("skip", int(sid), mk or "IN", isin, sym or isin, _d(on), None))
     for kind, ref, mk, isin, sym, on, ended in items:
@@ -337,7 +374,7 @@ def _score_picks_and_skips(con, today: date, root, done: set, out: dict) -> None
                 out["unscorable"].append(f"{kind} {sym} {h}m: a price or rate is missing")
                 continue
             ret, iret, raw_i, tcp, after, det = _finish(con, kind, mk, isin, sym, start, w[1], g[0], g[1], g[2], price_only=(kind == "skip"))
-            det.update({"horizon_date": str(w[0]), "ended_early_on": str(ended) if ended and ended < w[0] else None, "start_rule": "first session after the day it was proposed"})
+            det.update({"horizon_date": str(w[0]), "ended_early_on": str(ended) if ended and ended < w[0] else None, "start_rule": "a pick: its first fill; a skip: the first session after the day it was proposed"})
             rec = _record(kind, ref, mk, isin, sym, h, start, w[1], ret, iret, raw_i, tcp, after, today, det)
             _insert(con, rec)
             done.add((kind, mk, ref, h))
@@ -417,7 +454,7 @@ def score_all(con, now: datetime, root=None) -> dict:
     """Score whatever has become due (idempotent: an item and horizon already stored is never rewritten). -> {'scored': {pick, sale, skip}, 'waiting', 'unscorable': [...]}."""
     today = now.date() if isinstance(now, datetime) else now
     root = _root(root)
-    out = {"scored": {"pick": 0, "sale": 0, "skip": 0}, "waiting": 0, "unscorable": [], "no_index_or_date": 0}
+    out = {"scored": {"pick": 0, "sale": 0, "skip": 0}, "waiting": 0, "unscorable": [], "no_index_or_date": 0, "named_not_held": 0}
     done = _done(con)
     _score_picks_and_skips(con, today, root, done, out)
     for fn in (_score_sales_in, _score_sales_us):
@@ -694,7 +731,8 @@ def _longest(rows: List[dict]) -> List[dict]:
 
 def scorecard(con, market: str = "IN", day: Optional[date] = None) -> dict:
     """The scorecard of one market as a JSON-able dict (see the module docstring). Under 20 scored picks `ahead_rate` is None and `note` says 'a count, not a rate'."""
-    picks = _score_rows(con, market, "pick", day)
+    live = started_ids(con, market)
+    picks = [r for r in _score_rows(con, market, "pick", day) if int(r["ref_id"]) in live]          # S84 F3: only picks that have been bought (a score stored before the fix for an unbought one stays out)
     heads = _longest(picks)
     src = {int(i): s for i, s in _rows(con, "SELECT pick_id, source FROM picks_s83 WHERE market=?", [market])}
     by_source = {}
@@ -707,7 +745,7 @@ def scorecard(con, market: str = "IN", day: Optional[date] = None) -> dict:
     sa = _longest(_score_rows(con, market, "sale", day))
     skips = {**_summ(sk), "missed_chances": sum(1 for r in sk if (r["excess_pct"] or 0) > 0), "meaning": "a skip is price only; 'ahead' = the idea beat the index (a chance missed)"}
     sales = {**_summ(sa), "sold_right": sum(1 for r in sa if (r["excess_pct"] or 0) <= 0), "meaning": "'ahead' = the shares sold went on to beat the index (selling cost something)"}
-    allr = [(r, k) for k in ("pick", "sale", "skip") for r in _score_rows(con, market, k, day)]
+    allr = [(r, k) for k in ("pick", "sale", "skip") for r in _score_rows(con, market, k, day) if k != "pick" or int(r["ref_id"]) in live]
     allr.sort(key=lambda t: (t[0]["scored_on"] or date.min, t[0]["score_id"]), reverse=True)
     recent = [{"kind": k, "symbol": r["symbol"], "horizon_months": r["horizon_months"], "excess_pct": r["excess_pct"],
                "sentence": _sentence(k, r["symbol"] or r["isin"] or "?", r["horizon_months"], r["return_pct"], r["index_return_pct"], bool(r["after_tax"]), market, r["excess_pct"])} for r, k in allr[:5]]
@@ -717,7 +755,7 @@ def scorecard(con, market: str = "IN", day: Optional[date] = None) -> dict:
            "mean_excess_pct": top["mean_excess_pct"], "by_horizon": by_h, "by_source": by_source,
            "sleeve": {"return_vs_index_points_a_year": sl["points_a_year"], "worst_fall_sleeve": sl["worst_fall_sleeve"], "worst_fall_index": sl["worst_fall_index"], "sessions": sl["sessions"],
                       "sleeve_return_after_tax": sl["sleeve_return_after_tax"], "index_return": sl["index_return"], "excess_points": sl["excess_points"], "since": sl["since"]},
-           "recent": recent, "skips": skips, "sales": sales, "label": ESTIMATE}
+           "recent": recent, "skips": skips, "sales": sales, "named_not_held": named_not_held(con, market), "label": ESTIMATE}
     if top["scored"] < MIN_RATE_N:
         out["note"] = "a count, not a rate"
     return out
@@ -728,8 +766,9 @@ def scorecard_text(con, market: str = "IN") -> str:
     sc = scorecard(con, market)
     nm = "India" if market == "IN" else "US"
     idx = INDEX_NAMES[market].replace("'s", "")
+    nnh = ("  named, not yet held (no record until bought): " + ", ".join(sc["named_not_held"])) if sc.get("named_not_held") else ""
     if not sc["picks_scored"] and not sc["skips"]["scored"] and not sc["sales"]["scored"]:
-        return f"{nm} picks: nothing has been scored yet (a pick is scored once 1 month has passed since it was proposed)."
+        return f"{nm} picks: nothing has been scored yet (a pick is scored once 1 month has passed since its first purchase)." + ("\n" + nnh if nnh else "")
     lines = []
     if sc["picks_scored"]:
         r = sc["ahead_rate"]
@@ -751,5 +790,7 @@ def scorecard_text(con, market: str = "IN") -> str:
         lines.append(f"  ideas skipped and scored: {sc['skips']['scored']}, {sc['skips']['missed_chances']} would have beaten the index")
     for r in sc["recent"][:3]:
         lines.append("  " + r["sentence"])
+    if nnh:
+        lines.append(nnh)
     lines.append("  (estimates: tax at the engine's rates, no yearly exemption taken per pick)")
     return "\n".join(lines)

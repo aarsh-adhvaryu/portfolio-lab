@@ -66,6 +66,7 @@ def run(con, root: Path, now: datetime) -> dict:
             con.execute("UPDATE catchup_s79 SET state='failed', stage='scoring', finished_at=?, detail=? WHERE catch_id=?", [now, f"{type(e).__name__}: {e}"[:300], cid])
             out[market] = {"failed": f"{type(e).__name__}: {e}"[:300]}
             continue
+        think_res = _think_sweep(con, now, root, market)         # S84 T1/T7: every missed session watched in order, point-in-time (once each), then the new cases thought through (the US one BEFORE the US step decides)
         if market == "US":                                       # S82 (A59): the US sub-book's step runs for every missed US session, oldest first, once each (the `us_close` job is the same step)
             try:
                 from pflab import us
@@ -74,9 +75,21 @@ def run(con, root: Path, now: datetime) -> dict:
                     res = {**res, "us_book": {k: ub[k] for k in ("day", "status", "caught_up", "waiting", "skipped") if k in ub}}
             except Exception as e:                               # never stops the catch-up: the `us_close` job tries again
                 res = {**res, "us_book": {"failed": f"{type(e).__name__}: {str(e)[:160]}"}}
+        if think_res:
+            res = {**res, "thinking": think_res}
         con.execute("UPDATE catchup_s79 SET state='done', stage='done', finished_at=?, detail=? WHERE catch_id=?", [now, json.dumps(res, default=str)[:900], cid])
         out[market] = {"done": str(closed), "new": True, **({"scoring": res} if res else {})}
     return out
+
+
+def _think_sweep(con, now: datetime, root: Path, market: str) -> dict:
+    """S84: the thinking loop's catch-up for this market (never raises; a failure is its own visible line and never stops the catch-up)."""
+    try:
+        from pflab.think import wire
+        r = wire.sweep(con, now, root, only_market=market)
+        return {"sessions": r.get("sessions"), "thought": len(r.get("thought") or []), "failed": len(r.get("failed") or [])} if r.get("sessions") or r.get("failed") or r.get("thought") else {}
+    except Exception as e:
+        return {"failed": f"{type(e).__name__}: {str(e)[:120]}"}
 
 
 def us_adapter_close(con, now: datetime, root: Path) -> dict:

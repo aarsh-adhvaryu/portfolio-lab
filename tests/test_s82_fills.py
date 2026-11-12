@@ -193,7 +193,7 @@ def test_today_carries_the_fills_and_the_strategist_blocks(con):
     assert v["fills"]["source"] == "defaults" and "defaults" in v["fills"]["text"]
     assert v["strategist"]["note"] is None
     x = card.today_extras(con)
-    assert set(x) == {"fills", "strategist", "picks"}                                    # S83 L8: and the picks block ("no picks yet: ..." until the system names one)
+    assert set(x) == {"fills", "strategist", "picks", "think"}                                    # S84: and the thinking block; S83 L8: and the picks block ("no picks yet: ..." until the system names one)
 
 
 # --- C9: the first real strategist session ------------------------------------------------------------------------------------------------------

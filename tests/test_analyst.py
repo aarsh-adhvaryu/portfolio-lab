@@ -211,11 +211,12 @@ def test_budget_cap_and_per_job_approval(tmp_path):
     with pytest.raises(an.NeedsApproval):
         an.ring(con, req(), big, now=NOW, cfg=CFG)
     assert an.ring(con, req(), big, now=NOW, cfg=CFG, approved=True).status == "done"
+    other = lambda q: an.Request(q, "BBB", [doc()], ["INE000B01012"], True)      # S84 never pay twice: a second question on AAA would be answered from its note, so the budget is tested on another name
     with pytest.raises(an.BudgetRefused):
-        an.ring(con, req("A different question on margins"), FakeClient(tokens=4_000_000), now=NOW, cfg=CFG,
+        an.ring(con, other("A different question on margins"), FakeClient(tokens=4_000_000), now=NOW, cfg=CFG,
                 approved=True)
     with pytest.raises(an.BudgetRefused):
-        an.ring(con, req("Another one"), FakeClient(), now=NOW, cfg={**CFG, "cap": 0.0})
+        an.ring(con, other("Another one"), FakeClient(), now=NOW, cfg={**CFG, "cap": 0.0})
 
 
 def test_a_refusal_is_recorded_not_kept_as_a_note(tmp_path):
