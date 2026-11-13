@@ -241,6 +241,7 @@ wide_run_pts = 20.0           # a name this many points ahead of its index over 
 fund_exposure = true          # S85 L1 (think/exposure.py): exposure counts what held funds hold of a company, through their portfolio files or index weights (a labelled proxy)
 missed_job = true             # S85 L1 (think/missed.py, job think_missed): "what did I miss" after each close
 missed_top_n = 10             # the biggest rises and the biggest falls (5 and 20 sessions) it looks at
+reserve_protect_sessions = 10 # S86 (W2.4, his to change): a reserve buy is not cut by the baseline's fall gauge for its first 10 sessions (S85 replay finding 2); its risk rule, stop and a thesis break still act
 tune_thresholds = false       # S85 L1 (think/tuning.py): OFF by default (coordinator's decision); true = one threshold a week, at most 10%, inside [0.5x, 2x], and nothing before 40 scored decisions or 60 stored misses exist (Amendment A2)
 alarm = true                  # S86 (A73): the alarm lane (think/alarm.py): fast headlines on what the book is exposed to, RED ones heard on Telegram and thought through at once
 alarm_heard_per_day = 6       # at most this many "Heard" messages a day, then one summary line

@@ -324,3 +324,35 @@ def test_the_switch_off_replays_nothing(con, tmp_path, monkeypatch):
     from pflab.think import fastforward as ff
     monkeypatch.setattr(ff, "enabled", lambda: False)
     assert ff.hook() is None
+
+
+# ------------------------------------------------------------------ W2.2: one name, one day, one sale order whichever road decides first
+
+def test_the_case_sale_and_the_exit_managers_thesis_sale_never_both_place_an_order_for_one_name(con, tmp_path):
+    from pflab.core import exits
+    day = date(2026, 10, 30)
+    now = datetime(2026, 10, 30, 11, 20)
+    exits.backfill_plans(con, day, "IN", now)
+    con.execute("UPDATE exit_plans_s81 SET thesis_break_kinds=? WHERE isin=? AND market='IN'", [json.dumps(["leadership_crisis", "auditor_resignation"]), AAA])
+    plan = exits._plans(con, "IN", isin=AAA)[0]
+    from pflab.paper import book
+    pos = float(book.positions(con)[AAA])
+    cfg = exits.settings()
+    first = exits._sell(con, now, day, plan, AAA, "case", pos, pos, 100.0, "the case decided to sell", cfg, override_guard=True, ref=f"case:1:{day}")
+    assert first is not None
+    ev = {"isin": AAA, "kind": "leadership_crisis", "severity": "high", "ts": datetime(2026, 10, 30, 11, 25), "source": "bse_announcement", "ref": "r9", "text": "ceo ousted"}
+    second = exits.check_thesis(con, day, [ev], prices={AAA: 100.0})
+    assert second == []                                                                            # the exit manager's own sale is held back: one road sold, one order exists
+    assert con.execute("SELECT count(*) FROM exit_events_s81 WHERE isin=? AND side='sell' AND status='emitted'", [AAA]).fetchone()[0] == 1
+
+
+# ------------------------------------------------------------------ W2.4: a reserve buy is not cut by the fall gauge for its first 10 sessions
+
+def test_a_reserve_buy_is_protected_from_the_fall_gauge_for_ten_sessions(con):
+    from pflab.core import baseline_v2
+    from pflab.think import reserve
+    day = date(2026, 10, 30)
+    cases.add_step(con, 1, datetime(2026, 10, 28, 12, 0), "part", payload={"isin": GLD, "symbol": "GLDBEES", "n": 1, "of": 3, "inr": 5000.0, "day": "2026-10-28"})
+    cases.add_step(con, 1, datetime(2026, 9, 1, 12, 0), "part", payload={"isin": BBB, "symbol": "BBB", "n": 1, "of": 3, "inr": 5000.0, "day": "2026-09-01"})        # long ago: not protected
+    w = reserve.protected_weights(con, day, "IN", 1_000_000.0)
+    assert w == {GLD: pytest.approx(0.005)}

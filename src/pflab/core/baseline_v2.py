@@ -63,6 +63,7 @@ def decide(state: dict) -> dict:
     cur = {r["isin"]: r["value"] / total for r in rows}
     no_buy = set(state.get("no_buy") or ())                       # B8: an international ETF trading far above its NAV is skipped
     gauge = bool(state["gauge"]["fired"])
+    prot = dict(state.get("reserve_protected") or {})               # S86 (W2.4, his to change): the weight a reserve buy added in the last 10 sessions; the fall gauge does not cut it (its own risk rule, stop and a thesis break still act)
     weights: Dict[str, float] = {}
     inc_core: Dict[str, float] = {}
     inc_lt: Dict[str, float] = {}
@@ -80,7 +81,7 @@ def decide(state: dict) -> dict:
             k = r["isin"]
             t = want.get(k, 0.0)
             if gauge:
-                weights[k] = cur[k] * (1.0 - cut)                           # a risk cut: equity only (gold and international are not equity)
+                weights[k] = cur[k] * (1.0 - cut) + cut * min(cur[k], prot.get(k, 0.0))      # a risk cut: equity only (gold and international are not equity); S86 W2.4: what a reserve buy added is not cut for its first sessions
                 if grp != "index":
                     weights[k] = cur[k]
                 continue
@@ -103,7 +104,7 @@ def decide(state: dict) -> dict:
         for r in lt:
             k = r["isin"]
             if gauge:
-                weights[k] = cur[k] * (1.0 - cut)
+                weights[k] = cur[k] * (1.0 - cut) + cut * min(cur[k], prot.get(k, 0.0))
                 continue
             t = want.get(k, 0.0)
             hi = caps[k]
