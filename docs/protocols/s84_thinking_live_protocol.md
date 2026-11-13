@@ -117,3 +117,50 @@ For one name of a case, in this order:
 
 `think/rule.py` carries the numbers of section 4 as `RULE`. `tests/test_s84_odds.py` reads the JSON block above and compares it with `RULE`, with the defaults in `configs/core.toml [think]`
 and with `think.WORD_P`. Changing a number here or there without the other fails the test; changing it after registration needs a dated amendment and a re-registration.
+
+## 9. Amendment A2, 2026-11-13: bounded threshold tuning (S85)
+
+Written BEFORE any code path can change a threshold. Section 5 said "S85 adds the nightly 'what did I miss' job and the automatic tuning". The claims of section 1, the measurement of section 2, the
+outcomes of section 3, the rule of section 4, the scoring and the fallback of sections 5 and 6 and the verdict of section 7 are unchanged. What is added is a rule for the loop's own thresholds
+(`think/tuning.py`), and it changes nothing about a decision: it changes only HOW OFTEN the watch opens a case.
+
+**What may change.** One of the `[think]` thresholds of the watch: `move_sigmas`, `fall_pct_10d`, `rel_pts_5d`, `news_burst_x`, `storyline_jump_pts`, `market_down_20d`, `missed_run_pts`, `wide_run_pts`.
+Nothing else: no rail, no size, no option, no cap on cases (`max_cases_per_day`), no number of section 4. The config file is never edited: a change is a dated row (`think_tuning_s84`) and an override
+(`think_overrides_s84`) that `think.settings()` reads on top of the config.
+
+**Evidence.** The misses (`think/missed.py`: after each close, the biggest 5- and 20-session movers of the watched universe that the loop did not notice, each with a reason class and, for
+`below_threshold`, the value of the threshold that would have caught it) and the false alarms (cases thought through and closed "quiet": nothing happened).
+
+**The rule** (the block is `tuning.RULE`; `tests/test_s85_wide.py` reads it and compares it key for key):
+
+```json amendment_a2
+{
+  "step_max": 0.10,
+  "band": [0.5, 2.0],
+  "per_week": 1,
+  "min_scored": 40,
+  "min_misses": 60,
+  "window_days": 90,
+  "min_param_evidence": 5,
+  "cap_binding_share": 0.9,
+  "lower_to_percentile": 25,
+  "tunable": ["move_sigmas", "fall_pct_10d", "rel_pts_5d", "news_burst_x", "storyline_jump_pts", "market_down_20d", "missed_run_pts", "wide_run_pts"]
+}
+```
+
+1. **Gate.** Never on fewer than `min_scored` (40) scored decisions at 20 sessions AND fewer than `min_misses` (60) stored misses: either count opens the gate. Below both, the threshold stays at the
+   config's value and the report says how many are still needed.
+2. **Rhythm.** At most one threshold a week: none is changed if one was changed (or reverted) in the last 7 days.
+3. **Which one.** Over the last `window_days` (90): for each threshold, its misses (the `below_threshold` misses it would have caught) and its false alarms (quiet cases whose strongest signal it
+   governs). A threshold needs at least `min_param_evidence` (5) of the two together; the one with the largest |misses - false alarms| is the one changed.
+4. **Which way.** Misses ahead of false alarms: the threshold goes LOWER (more cases), but only while the cases a day are under `cap_binding_share` (90%) of `max_cases_per_day` (a lower line adds
+   nothing that the cap would not drop: "toward fewer misses at the same cases-per-day"), and never below the `lower_to_percentile` (25th) percentile of the values that would have caught the misses.
+   False alarms ahead: the threshold goes HIGHER.
+5. **How far.** At most `step_max` (10%) of its value today, and never outside `band` ([0.5x, 2x]) of the CONFIG value. A threshold already at the edge of its band is not moved.
+6. **Recorded and reversible.** The row keeps what the rule saw (the counts, the cases a day) and why; `tuning.revert` puts the threshold back to its value before (the config's, or the earlier tuned
+   one); the row stays, marked reverted. A reverted change counts as the week's change.
+7. **Not evidence of anything.** Tuning moves a line, it does not claim an edge: the claim of section 1 is still measured on the decisions only (sections 5 to 7). The report states the date of every change, so a
+   reader can set the decisions before it beside those after it.
+
+Counted in the learner as one more test (`s84:thinking_live_a2`, `learner/s84.register_thinking_amendment_a2`); after it, `protocol_ok` compares the file with the amended hash. The tuning code refuses
+to change anything until this amendment is registered.
