@@ -145,6 +145,11 @@ def score_due(con, day, root=None) -> int:
         n += score_shadow(con, day, root)
     except Exception:
         pass
+    try:                                                                      # S85 E7: his overrules, scored on the `user` track beside the loop's own choice
+        from pflab.think import chat_hooks
+        n += chat_hooks.score_user(con, day, root)
+    except Exception:
+        pass
     return n
 
 

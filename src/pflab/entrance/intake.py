@@ -474,7 +474,14 @@ def _read_file(con, now, att: dict, chat_id: int, msg_id: int) -> Optional[dict]
         from pflab.entrance import readers
     except ImportError:
         return None
-    return readers.read_attachment(con, now, att["path"], att["name"], att.get("mime") or "", chat_id=chat_id, msg_id=msg_id)
+    rd = readers.read_attachment(con, now, att["path"], att["name"], att.get("mime") or "", chat_id=chat_id, msg_id=msg_id)
+    if rd and rd.get("document_id") and rd.get("facts") and not rd.get("refused"):          # S85 E7: what he sent is a signal for the thinking loop (a case per name it bears on; the answer is what the cases did)
+        try:
+            from pflab.think import chat_hooks
+            rd["loop_text"] = chat_hooks.note_text(chat_hooks.note_from_him(con, now, int(rd["document_id"]), chat_id))
+        except Exception:
+            pass
+    return rd
 
 
 def _drop_refused(con, uid: int, att: dict) -> None:
@@ -532,7 +539,8 @@ def answer_item(rt, it: dict, progress: Callable[[str], None]) -> dict:
             file_blocks.append(f"- {att['name']}: kept; no reader is available for it in this build.")
         else:
             facts = "; ".join(str(f.get("claim") if isinstance(f, dict) else f)[:200] for f in (rd.get("facts") or [])[:12])
-            file_blocks.append(f"- {att['name']} ({rd.get('kind', 'file')}): {rd.get('summary_text', '')[:1500]}" + (f"\n  facts: {facts}" if facts else ""))
+            file_blocks.append(f"- {att['name']} ({rd.get('kind', 'file')}): {rd.get('summary_text', '')[:1500]}" + (f"\n  facts: {facts}" if facts else "")
+                               + (f"\n  WHAT THE LOOP DID WITH IT (cases opened or joined by code; report this, never decide by yourself): {rd['loop_text'][:1500]}" if rd.get("loop_text") else ""))
             for w in rd.get("warnings") or []:
                 notes.append(f"{att['name']}: {w}")
     if refused_any and not usable:                                # nothing left to send: the API gets no call at all

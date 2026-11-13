@@ -345,6 +345,13 @@ def scope(con, day: date, *, market: Optional[str] = None, root=None, held_only:
                 r = con.execute("SELECT isin FROM instruments WHERE upper(symbol)=? ORDER BY listed DESC NULLS LAST LIMIT 1", [sym]).fetchone()
                 if r:
                     put(mk, r[0], sym, "screened name", 0.0, False, base_day=d0, base_why=f"looked at in a screen on {d0}", ref=f"screen:{mk}:{sym}")
+        try:                                                                  # S85 E7: the names he suggested through the chat stay on the watch list for 120 sessions
+            from pflab.think import chat_hooks as _ch
+            for x in _ch.scope_entries(con, day):
+                if market in (None, x["market"]):
+                    put(x["market"], x["isin"], x["symbol"], x["why"], 0.0, False, base_day=x["base_day"], base_why=x["base_why"], ref=x["ref"])
+        except Exception:
+            pass
     rows = []
     for e in out.values():
         if not e["held"]:
@@ -564,6 +571,12 @@ def _commit(con, sig_now: datetime, raws: List[dict]) -> dict:
     """Store every new signal once (name, signal, day), join open cases, open the day's cap of new cases (largest score first), store the rest as noticed."""
     cfg = settings()
     day = sig_now.date()
+    try:                                                                      # S85 E7: his queued cases take the day's free slots first; a name he suggested that waited for an event is checked (code only)
+        from pflab.think import chat_hooks as _ch
+        _ch.release_queued(con, sig_now)
+        _ch.scan(con, sig_now)
+    except Exception:
+        pass
     res = {"signals": [], "cases_opened": [], "joined": [], "cases_noticed": [], "noticed": 0}
     fresh: Dict[str, List[tuple]] = {}
     ent: Dict[str, dict] = {}
