@@ -868,6 +868,11 @@ def tell(con, now: datetime, case_id: int, *, force: bool = False) -> Optional[i
     case = cases.get_case(con, case_id)
     if not case:
         return None
+    try:                                                                         # S85 E7: a case that came from the entrance (his look, his note, a name he suggested) is told in THAT chat as well
+        from pflab.think import chat_hooks
+        chat_hooks.tell_chat(con, now, case_id)
+    except Exception:
+        pass
     day = now.date()
     acted = [d for d in case["decisions"] if d["acted_option"] and not d["acted_option"].startswith(("nothing", "advisory", "hold")) and d["decided_on"] == day]
     big = _exposure_share(con, case, day) > float(think.settings()["big_trade_share"])

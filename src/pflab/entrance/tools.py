@@ -154,3 +154,10 @@ try:
     register("standing_instruction", _ri.TOOL, _standing)
 except Exception:                                                  # pragma: no cover
     pass
+
+
+try:                                                                # S85 E7: the thinking loop's chat tools (cases, outcomes, scorecard, reserve, what do you know, look into, suggest a stock, overrule)
+    from pflab.think import chat_hooks as _ch
+    _ch.register_tools()
+except Exception:                                                  # pragma: no cover
+    pass
