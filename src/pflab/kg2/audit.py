@@ -25,7 +25,7 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
-from pflab.kg2 import build as kb, classify, filing_time as ft, scope as sc, sec_8k
+from pflab.kg2 import build as kb, classify, filing_time as ft, headlines as hl, scope as sc, sec_8k
 
 FILING_LINK_MIN = 0.95
 DUP_MAX = 0.01
@@ -114,7 +114,7 @@ def run_audit(con, root: Path, day: date, graph: Optional[dict] = None, store: b
     ev, fa = g["event"], g["fact"]
     derived = (ev["ts_rule"] == ft.RULE_DERIVED) if len(ev) else pd.Series([], dtype=bool)
     # a derived time is the next open after the event's own date, so it may sit after `day` (the day's own filings): the event's DATE is what may not
-    is_sec = ev["source"].map(sec_8k.is_sec_source) if len(ev) else pd.Series([], dtype=bool)       # S85: a US filing may sit up to the next Indian open (`sec_8k.known_by`), no later
+    is_sec = ev["source"].map(lambda x: sec_8k.is_sec_source(x) or hl.is_headline_source(x)) if len(ev) else pd.Series([], dtype=bool)       # S85: a US filing may sit up to the next Indian open (`sec_8k.known_by`), no later
     limit = sec_8k.known_by(day)
     late_e = int((pd.to_datetime(ev["ts"]).dt.date[~derived & ~is_sec] > day).sum() + (pd.to_datetime(ev["ts"])[is_sec] > pd.Timestamp(limit)).sum()) if len(ev) else 0
     late_e2 = int((pd.to_datetime(ev["event_date"]).dt.date[~is_sec] > day).sum() + (pd.to_datetime(ev["event_date"]).dt.date[is_sec] > limit.date()).sum()) if len(ev) else 0

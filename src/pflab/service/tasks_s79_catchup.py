@@ -8,6 +8,8 @@ from pflab.service.schedule import Interval
 
 def _catch_up(ctx) -> dict:
     from pflab.service import away, catchup
+    from pflab.think import alarm
+    alarm.first(ctx)                                    # S86: after a gap the alarm lane's backlog and the fast-forward come BEFORE the catch-up and the live book
     out = catchup.run(ctx.con, ctx.data_root, ctx.now)
     failed = {m: v["failed"] for m, v in out.items() if isinstance(v, dict) and "failed" in v}
     res: dict = {"markets": out}

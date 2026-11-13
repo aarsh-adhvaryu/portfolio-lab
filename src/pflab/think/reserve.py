@@ -77,3 +77,31 @@ def text(con, day: Optional[date] = None) -> str:
     """The reserve lines for Today and the 15:45 report (both markets), plain words."""
     day = day or date.today()
     return " ".join(reserve_status(con, m, day)["text"] for m in ("IN", "US"))
+
+
+def protected_weights(con, day: date, market: str, total: float) -> dict:
+    """S86 (W2.4, S85's replay finding 2; recorded as HIS to change): a reserve buy is not cut by the baseline's FALL GAUGE for its first `reserve_protect_sessions` (10) sessions: the case's part
+    bought a fund and the baseline sold the same fund two sessions later, the reserve bet netted out. -> {isin: weight of the whole book those parts added in the window}. Its own risk rule (one bet may
+    lose at most 1% of the book), an exit plan's stop and a thesis break still act; the protection is scored both ways with every decision (the case's scorecard, `think/score.py`)."""
+    out: dict = {}
+    try:
+        n = int(think.settings().get("reserve_protect_sessions", 10))
+        if n <= 0 or total <= 0:
+            return out
+        from pflab import markets
+        m = markets.get(market)
+        lo = day
+        for _ in range(n):
+            lo = m.previous_session(lo)
+        import json as _json
+        for payload, in con.execute("SELECT payload_json FROM think_steps_s84 WHERE step='part'").fetchall():
+            p = _json.loads(payload or "{}")
+            try:
+                d = date.fromisoformat(str(p.get("day")))
+            except Exception:
+                continue
+            if lo < d <= day and p.get("isin") and not str(p["isin"]).startswith("ZZ"):
+                out[p["isin"]] = out.get(p["isin"], 0.0) + float(p.get("inr") or 0.0) / total
+    except Exception:
+        return {}
+    return out

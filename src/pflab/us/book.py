@@ -169,30 +169,37 @@ def fill_orders(con, now: datetime, day: date, bars: Dict[str, "object"], slippa
             if waited > max_wait_sessions:
                 con.execute("UPDATE us_orders_s81 SET status='cancelled', fill_day=?, reason=reason || ' [cancelled: no bar for this name in the sessions since]' WHERE order_id=?", [day, o["order_id"]])
             continue
-        if o["side"] == "buy":
-            px = bar["open"] * (1.0 + slip)
-            budget = min(float(o["amount_usd"]), cash(con))
-            q = budget / px
-            for _ in range(30):                                          # value + charges = the budget (the charges are almost proportional, so this settles at once)
-                ch = costs.charges("buy", q, px, day)["total"]
-                nq = max(0.0, (budget - ch) / px)
-                if abs(nq - q) < 1e-12:
-                    break
-                q = nq
-            while q > 0 and q * px + costs.charges("buy", q, px, day)["total"] > budget + 1e-9:   # never over the budget
-                q *= 1 - 1e-9
-            if q * px < 1.0:
-                con.execute("UPDATE us_orders_s81 SET status='skipped', fill_day=?, reason=reason || ' [skipped: not enough cash]' WHERE order_id=?", [day, o["order_id"]])
-                continue
-            fills.append(_buy(con, now, day, o, q, px, root))
-        else:
-            held = positions(con).get(uins.canonical(con, o["isin"], day), 0.0)
-            q = min(float(o["qty"]), held)
-            if q <= 1e-6:
-                con.execute("UPDATE us_orders_s81 SET status='skipped', fill_day=?, reason=reason || ' [skipped: nothing held]' WHERE order_id=?", [day, o["order_id"]])
-                continue
-            fills.append(_sell(con, now, day, o, q, bar["open"] * (1.0 - slip), root))
+        f = fill_one(con, now, day, o, bar["open"], slip, root)
+        if f is not None:
+            fills.append(f)
     return fills
+
+
+def fill_one(con, now: datetime, day: date, o: dict, ref_price: float, slip: float, root=None) -> Optional[dict]:
+    """Fill ONE open order at `ref_price` (the session's open for the close loop, a live quote for the session loop) moved by `slip` (a fraction) against the order, with the charges, lots and
+    tax of the sub-book (S86: the arithmetic that was inside `fill_orders`, unchanged). None when the order was skipped (not enough cash, nothing held)."""
+    if o["side"] == "buy":
+        px = ref_price * (1.0 + slip)
+        budget = min(float(o["amount_usd"]), cash(con))
+        q = budget / px
+        for _ in range(30):                                          # value + charges = the budget (the charges are almost proportional, so this settles at once)
+            ch = costs.charges("buy", q, px, day)["total"]
+            nq = max(0.0, (budget - ch) / px)
+            if abs(nq - q) < 1e-12:
+                break
+            q = nq
+        while q > 0 and q * px + costs.charges("buy", q, px, day)["total"] > budget + 1e-9:   # never over the budget
+            q *= 1 - 1e-9
+        if q * px < 1.0:
+            con.execute("UPDATE us_orders_s81 SET status='skipped', fill_day=?, reason=reason || ' [skipped: not enough cash]' WHERE order_id=?", [day, o["order_id"]])
+            return None
+        return _buy(con, now, day, o, q, px, root)
+    held = positions(con).get(uins.canonical(con, o["isin"], day), 0.0)
+    q = min(float(o["qty"]), held)
+    if q <= 1e-6:
+        con.execute("UPDATE us_orders_s81 SET status='skipped', fill_day=?, reason=reason || ' [skipped: nothing held]' WHERE order_id=?", [day, o["order_id"]])
+        return None
+    return _sell(con, now, day, o, q, ref_price * (1.0 - slip), root)
 
 
 def _sessions(a: date, b: date) -> List[date]:

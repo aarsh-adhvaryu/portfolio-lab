@@ -93,9 +93,11 @@ def build(con, day: date, root=None, index: Optional[pd.Series] = None, cfg: Opt
         if think.on():
             out["frozen"] = _tcases.frozen_isins(con, day, "IN")
             out["reserve_frac"] = _treserve.hold_fraction("IN")
+            out["reserve_protected"] = _treserve.protected_weights(con, day, "IN", float(out.get("value") or 0.0))      # S86 (W2.4): see think/reserve.py
     except Exception:
         out.pop("frozen", None)
         out.pop("reserve_frac", None)
+        out.pop("reserve_protected", None)
     from pflab.us import wholebook                       # S82 (A57): the whole book beside the rupee book: `whole_value`, `us_book_inr`; `value` stays the rupee book's (the weights are its own)
     return wholebook.attach(con, out, root)
 

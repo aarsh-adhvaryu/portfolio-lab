@@ -268,6 +268,11 @@ def _learn(con, now: datetime, out: dict, new_session: bool) -> None:
         return
     try:
         n = sc.score_due(con, day)
+        try:                                                                  # S86 (A77): the ghost decisions of a replayed gap are scored apart, in their own column
+            from pflab.think import fastforward
+            fastforward.score_ghosts(con, day)
+        except Exception:
+            pass
         cal = sc.calibrate(con, day)
         out["learned"] = {"scored": int(n or 0), "calibration": cal}
         from pflab.paper import cadence
@@ -368,11 +373,24 @@ def report_lines(con, day: date) -> List[str]:
     if not b:
         return []
     out: List[str] = []
+    try:                                                                  # S86 (A76): the alarm lane's day, with its latency, in one line
+        from pflab.think import alarm as _alarm
+        if _alarm.status(con, day)["alarms"]:                       # nothing to say: the report stays as it was
+            out.append(_alarm.report_line(con, day))
+    except Exception:
+        pass
     th = b["thinking"] or {}
     if th.get("open") or th.get("noticed_not_examined_today"):
         out.append((_one(th.get("text")) or "Thinking about: nothing open.") + (f" ({th['noticed_not_examined_today']} noticed, not examined)" if th.get("noticed_not_examined_today") else ""))
     if b["reserve"]:
         out.append(_one("Reserve: " + " | ".join(b["reserve"])))
+    try:
+        from pflab.think import fastforward as _ff
+        g = _ff.scorecard_line(con)
+        if g:
+            out.append(_one(g))
+    except Exception:
+        pass
     learn = " ".join(x for x in (b["scorecard"], b["knowledge"]) if x)
     if learn and (b["scorecard"] and "none scored" not in b["scorecard"] or b["knowledge"]):
         out.append(_one(learn))

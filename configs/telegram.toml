@@ -2,5 +2,5 @@
 # A message of an `urgent` kind goes out at once. A `direct` kind answers something he asked for (a bot reply, his
 # reminder, a test) or says the system itself is broken, so it goes out at once too. Every other kind is stored with
 # status 'held' and appears in the next morning (09:00) or evening (21:45) summary, then counts as sent.
-urgent = ["watch", "market_state", "guard", "security", "crash"]
+urgent = ["watch", "alarm", "market_state", "guard", "security", "crash"]
 direct = ["reply", "reminder", "test", "job_failure", "summary", "question"]   # S79: a question carries a default and a deadline and goes out at once with reply buttons

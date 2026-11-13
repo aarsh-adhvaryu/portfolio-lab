@@ -527,7 +527,7 @@ def target_weights(con, state: dict, market: str = "IN") -> Dict[str, float]:
         if k not in rows or not rows[k]["buyable"] and p["state"] != "withdrawn":
             continue
         if p["source"] == "kite" or p["state"] == "withdrawn":
-            out[k] = cur.get(k, 0.0) * ((1.0 - cut) if gauge and p["state"] != "withdrawn" else 1.0)
+            out[k] = cur.get(k, 0.0) * ((1.0 - cut) if gauge and p["state"] != "withdrawn" else 1.0) + (cut * min(cur.get(k, 0.0), (state.get("reserve_protected") or {}).get(k, 0.0)) if gauge and p["state"] != "withdrawn" else 0.0)
             occupied += cur.get(k, 0.0)
             hi = float(c["us_stock_cap"]) if market == "US" else policy.cap_of(rows[k])
             if p["state"] != "withdrawn" and cur.get(k, 0.0) > hi + 1e-9:       # a holding over the company rail is brought down to it (a rail trim, as the baseline always did), never bought
@@ -544,7 +544,7 @@ def target_weights(con, state: dict, market: str = "IN") -> Dict[str, float]:
         for p in system:
             k = p["isin"]
             if gauge:
-                out[k] = cur.get(k, 0.0) * (1.0 - cut)                       # no buying while the gauge fires; held picks are cut like the rest of the equity
+                out[k] = cur.get(k, 0.0) * (1.0 - cut) + cut * min(cur.get(k, 0.0), (state.get("reserve_protected") or {}).get(k, 0.0))      # no buying while the gauge fires; held picks are cut like the rest of the equity (S86: but not what a reserve buy added in the last 10 sessions)
             elif k in frozen:
                 out[k] = cur.get(k, 0.0)                                     # S84: a name under a thinking-loop freeze is not bought (what is held stays)
             else:

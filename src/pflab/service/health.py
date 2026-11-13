@@ -79,6 +79,14 @@ def check(ctx: jobs.Ctx, backup_target: Optional[Path] = None) -> List[Item]:
     gd = con.execute("SELECT max(date) FROM gold_rates").fetchone()[0]
     items.append(_fresh("gold rates", gd, _last_weekday(now.date() - timedelta(days=1)), max_age_days=4))
 
+    try:                                                                  # S86 (A76): the eyes, each source the system sees with, and how long each has been silent
+        from pflab.think import alarm as _alarm
+        for e in _alarm.eyes(con, now):
+            old = e["age_min"] is None or e["age_min"] > 180
+            items.append(Item(f"eyes:{e['source']}", "WARN" if e["blind_since"] else "OK" if not old else "WARN",
+                              ("silent since %s" % e["blind_since"].strftime("%H:%M")) if e["blind_since"] else ("no answer yet" if e["last_ok"] is None else f"answered {e['age_min']:.0f} min ago")))
+    except Exception:
+        pass
     # telegram outbox
     n = telegram.undelivered(con)
     items.append(Item("telegram outbox", "OK" if n == 0 else "WARN", "nothing undelivered" if n == 0 else f"{n} undelivered message(s)"))

@@ -27,7 +27,7 @@ from urllib.parse import urlparse
 
 import pandas as pd
 
-from pflab.kg2 import classify, filing_time as ft, news, scope as sc, sec_8k, you
+from pflab.kg2 import classify, filing_time as ft, headlines as hl, news, scope as sc, sec_8k, you
 
 NODE_COLS = ["isin", "name", "symbol", "origin", "source", "as_of"]
 FACT_COLS = ["isin", "fkey", "fvalue", "value_num", "source", "as_of", "known_from"]
@@ -405,6 +405,10 @@ def build(root: Path, asof: date, scope: Optional[dict] = None, since: Optional[
         if n["isin"] not in known:
             nodes.append(n)
             known.add(n["isin"])
+    hl_ev, hl_st = hl.events(root, asof, cache)                  # S86: fast headlines from the alarm lane's raw lines `<root>/headlines_s86/` (none: nothing added)
+    for n in hl.nodes_for(hl_ev, known):
+        nodes.append(n)
+        known.add(n["isin"])
     m = scrip_map(root)
     for e in fl_ev + nw_ev + you_ev:                          # an event's ISIN that is not in scope (an older ISIN of a scope scrip) still needs its node
         if e["isin"] not in known:
@@ -416,8 +420,8 @@ def build(root: Path, asof: date, scope: Optional[dict] = None, since: Optional[
     facts = [f for f in facts if f["known_from"] <= asof]
     out = {"node": nodes_df, "fact": _frame(facts, FACT_COLS, KEYS["fact"]),
            "relation": _frame(relations(nodes, facts, groups if groups is not None else groups_config()), REL_COLS, KEYS["relation"]),
-           "event": _frame(fl_ev + nw_ev + sec_ev + you_ev, EVENT_COLS, KEYS["event"]), "unlinked": _frame(fl_un + nw_un, UNLINKED_COLS, KEYS["unlinked"])}
-    out["stats"] = {**fl_st, **nw_st, **sec_st, **you_st, **{k: int(len(v)) for k, v in out.items() if k in TABLES}}
+           "event": _frame(fl_ev + nw_ev + sec_ev + hl_ev + you_ev, EVENT_COLS, KEYS["event"]), "unlinked": _frame(fl_un + nw_un, UNLINKED_COLS, KEYS["unlinked"])}
+    out["stats"] = {**fl_st, **nw_st, **sec_st, **hl_st, **you_st, **{k: int(len(v)) for k, v in out.items() if k in TABLES}}
     return out
 
 

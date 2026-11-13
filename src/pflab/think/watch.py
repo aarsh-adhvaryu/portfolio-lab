@@ -677,11 +677,16 @@ def _india_pass(con, sig_now: datetime, day: date, until: datetime, *, quotes: O
     return _commit(con, sig_now, raws)
 
 
-def _us_pass(con, sig_now: datetime, s_day: date, until: datetime, *, quotes: Optional[dict], root, cfg: dict) -> dict:
+def _us_pass(con, sig_now: datetime, s_day: date, until: datetime, *, quotes: Optional[dict], root, cfg: dict, intraday: bool = False) -> dict:
     """`s_day`: the US session just closed. `quotes` (symbol -> price), when given, are the after-hours prices and stand as one more bar after the close."""
     entries = scope(con, s_day, market="US", root=root)
     whole = _whole_inr(con, s_day, root)
     ix = _index("US", root)
+    if intraday and quotes and ix is not None and quotes.get("SPY"):             # S86 H4: the market's own live level, so a name is measured against SPY NOW, not against its last close
+        ix = ix.copy()
+        base = _spy_last(s_day, root)                                       # the index series may be adjusted for dividends: scale the live quote the way the last close is scaled
+        ix.loc[pd.Timestamp(s_day) + pd.Timedelta(days=1)] = float(quotes["SPY"]) * (float(ix.iloc[-1]) / base if base else 1.0)
+        ix = ix.sort_index()
     raws: List[dict] = []
     for e in entries:
         if not e["held"] and "pick" not in e["why"]:
@@ -704,11 +709,22 @@ def _us_pass(con, sig_now: datetime, s_day: date, until: datetime, *, quotes: Op
                 raws.append({**fs, "entry": e})
     us_eq = _equity_inr(entries, "US")
     raws += _thesis_signals(con, [e for e in entries if e["held"]], sig_now.date(), until, cfg)      # the graph holds events on US names only once US filings reach it (S85) or a drill writes one
-    raws += _market_signal(ix, "US", s_day, cfg, us_eq, whole)
-    raws += _macro_signals(s_day, sig_now, cfg, us_eq + _equity_inr(scope(con, s_day, market="IN", root=root, held_only=True), "IN"), whole, root)
-    raws += _storyline_signals(con, sig_now.date(), "US", cfg, 0.0, whole)
-    raws += _missed_signals(con, entries, s_day, "US", cfg, root)
+    if not intraday:                                                       # the live pass (every 5 minutes) is the cheap one: price signals and the graph's events only
+        raws += _market_signal(ix, "US", s_day, cfg, us_eq, whole)
+        raws += _macro_signals(s_day, sig_now, cfg, us_eq + _equity_inr(scope(con, s_day, market="IN", root=root, held_only=True), "IN"), whole, root)
+        raws += _storyline_signals(con, sig_now.date(), "US", cfg, 0.0, whole)
+        raws += _missed_signals(con, entries, s_day, "US", cfg, root)
     return _commit(con, sig_now, raws)
+
+
+def _spy_last(s_day: date, root) -> Optional[float]:
+    try:
+        from pflab.core import pick_score
+        s = pick_score.us_series("SPY", root)
+        s = s[s.index <= pd.Timestamp(s_day)]
+        return float(s.iloc[-1]) if len(s) else None
+    except Exception:
+        return None
 
 
 # --- the runs ---------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -797,7 +813,7 @@ def run(con, now: datetime, *, mode: str, quotes: Optional[dict] = None, root=No
     from pflab import markets
     cfg = settings()
     out = {"signals": [], "cases_opened": [], "joined": [], "noticed": 0, "cases_noticed": [], "mode": mode, "errors": []}
-    if mode not in ("session", "close", "us_morning", "catchup"):
+    if mode not in ("session", "close", "us_morning", "catchup", "us_live"):
         raise ValueError(f"unknown watch mode {mode!r}")
     if not _on():
         out["off"] = True
@@ -808,6 +824,12 @@ def run(con, now: datetime, *, mode: str, quotes: Optional[dict] = None, root=No
                 out["note"] = "no live quotes: nothing to watch in the session"
                 return out
             _merge(out, _india_pass(con, now, now.date(), now, quotes=quotes, light=True, root=root, cfg=cfg))
+        elif mode == "us_live":                                   # S86 H4: the US names on live quotes (regular hours, pre-market, after-hours): the cheap price signals against the last close and SPY now
+            if not quotes:
+                out["note"] = "no live US quotes: nothing to watch"
+                return out
+            from pflab.us import clock as uc
+            _merge(out, _us_pass(con, now, uc.session_closed_by(now, settle_minutes=0), now, quotes=quotes, root=root, cfg=cfg, intraday=True))
         elif mode == "close":
             _merge(out, _india_close(con, now, markets.get("IN").session_closed_by(now), root, cfg))
         elif mode == "us_morning":

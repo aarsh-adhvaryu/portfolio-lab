@@ -32,6 +32,12 @@ from urllib.parse import urlparse
 
 from pflab.entrance import screen
 
+
+def _gw_vendor_client(secrets=None):
+    """S86: the model client for the batch road comes from the gateway (`llm/gateway.py`), the one door; nothing here builds a client itself."""
+    from pflab.llm import gateway
+    return gateway.vendor_client(secrets)
+
 log = logging.getLogger("pflab.readers")
 
 PART_PAGES = 30                    # pages of a PDF in one request (A72)
@@ -661,7 +667,7 @@ def _web_lookup(con, now: datetime, question: str) -> dict:
     try:
         from pflab.agents import analyst as an
         from pflab.llm import gateway
-        client = gateway.client_override or an.make_client(None)
+        client = gateway.client_override or _gw_vendor_client(None)
         o = an.web_search(con, question, client, now=now, topic="link_check")
         urls = re.findall(r"https?://[^\s)\]]+", o.text or "")
         return {"text": o.text if o.status in ("done", "reused") else "", "urls": urls, "cost": float(o.cost_inr or 0.0)}

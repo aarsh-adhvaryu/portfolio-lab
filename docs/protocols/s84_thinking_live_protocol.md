@@ -164,3 +164,18 @@ Nothing else: no rail, no size, no option, no cap on cases (`max_cases_per_day`)
 
 Counted in the learner as one more test (`s84:thinking_live_a2`, `learner/s84.register_thinking_amendment_a2`); after it, `protocol_ok` compares the file with the amended hash. The tuning code refuses
 to change anything until this amendment is registered.
+
+
+## Amendment A3 (2026-11-14, S86; written before the first replayed decision was scored): the column `replayed_while_off`
+
+His words of 2026-11-13: "if the system is off, it covers the backlog, aligns news, data, maths, what caused what, and uses that as a forward test: the same loop, but in fast forward."
+
+1. **What is replayed.** After an app open that follows a gap containing at least one session of either market, the loop's rule is run over the gap by `think/fastforward.py`, point in time: an item counts from
+   its publication time plus the alarm lane's own median delay, a price from the close that follows the decision, `recall` as of that moment; no live web search (today's web knows the ending).
+2. **Ghost, not real.** The decisions fill `ghost_s86`, never the paper book. The live book then decides now from today's prices.
+3. **A forward test.** The code that replays was frozen before the gap happened; a gap that began before the running release's own date is not replayed (that would be a backtest of code written after the data).
+4. **Scored apart.** A ghost sale is scored at 5, 20 and 60 sessions after its fill (the share of the fill price the name has since fallen, pre-tax; tax is not replayed) in its OWN column `replayed_while_off`,
+   never mixed with the live scorecard, and counted in the learner as one more test.
+5. **Code decisions only, tonight.** Every ghost row carries `source = code` (a HIGH-severity break sells, a medium one only freezes buying). A replayed model look (at most three cases a gap, RED first) is not built;
+   when it is, it is a new amendment and its rows are labelled apart.
+6. **Not evidence of an edge.** The column measures whether the loop's rule, run on what was stored by the time, would have beaten waiting; it claims nothing before 20 decisions are scored.

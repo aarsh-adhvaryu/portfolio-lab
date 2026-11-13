@@ -7,6 +7,12 @@ import sys
 from datetime import date, timedelta
 
 
+def _gw_vendor_client(secrets=None):
+    """S86: the model client for the batch road comes from the gateway (`llm/gateway.py`), the one door; nothing here builds a client itself."""
+    from pflab.llm import gateway
+    return gateway.vendor_client(secrets)
+
+
 def _d(s: str) -> date:
     return date.fromisoformat(s)
 
@@ -261,6 +267,8 @@ def main(argv=None):
     sup.add_argument("action", choices=["secrets", "status"])
     sup.add_argument("--only", nargs="*", choices=["kite", "telegram", "anthropic", "openai", "sec"], help="just these sections")
     sup.add_argument("--change", action="store_true", help="ask again for values already set")
+    alp = sub.add_parser("alarm", help="S86: the alarm lane: status (the day's alarms and their latency, the eyes) | run (one pass now, workshop: sources are public, no paid call unless a case is thought)")
+    alp.add_argument("action", choices=["status", "run"])
     enp = sub.add_parser("engine", help="S85: the model engines behind the one door: list | test NAME [--thinking medium,high] | use NAME | shadow NAME | unshadow NAME")
     enp.add_argument("action", choices=["list", "test", "use", "shadow", "unshadow"])
     enp.add_argument("name", nargs="?")
@@ -289,6 +297,8 @@ def main(argv=None):
                          offline=a.offline)
         print(rep.text())
         return verify.exit_code(rep)
+    if a.cmd == "alarm":
+        return _alarm(a)
     if a.cmd == "engine":
         return _engine(a)
     if a.cmd == "update":
@@ -541,6 +551,24 @@ def _setup(a) -> int:
     return 0
 
 
+def _alarm(a) -> int:
+    """`pflab alarm status|run` (S86): the day's alarms, the median and worst published-to-heard minutes, and the eyes (each source's last answer)."""
+    import json
+    from datetime import datetime
+    from pflab.pm import store
+    from pflab.think import alarm
+    con = store.connect()
+    now = datetime.now()
+    if a.action == "run":
+        from pflab.data import data_dir
+        r = alarm.run(con, now, data_dir())
+        print(json.dumps({k: v for k, v in r.items() if k in ("new", "lanes", "problems", "requests", "off", "blind", "stopped")}, default=str))
+    print(alarm.report_line(con, now.date()))
+    print(json.dumps(alarm.status(con, now.date()), default=str))
+    print(alarm.eyes_text(con, now))
+    return 0
+
+
 def _engine(a) -> int:
     """pflab engine list|test|use|shadow|unshadow (S85): the switch. Close the dashboard first (one process holds the store). A key is never printed."""
     from datetime import datetime
@@ -717,7 +745,7 @@ def _agents_cli(a) -> int:
         return 0
     if a.cmd == "analyst" and a.action == "collect" and a.wait:
         from pflab.agents import analyst as an
-        print(an.collect_until_done(store.connect, an.make_client(sec.load()), a.wait))
+        print(an.collect_until_done(store.connect, _gw_vendor_client(sec.load()), a.wait))
         return 0
     con = store.connect()
     if a.cmd == "analyst":
@@ -758,7 +786,7 @@ def _agents_cli(a) -> int:
                 p = ac.prepare(lst, names)
                 print(f"{p}\nSHA-256 {ac.sha(p)}: record it in docs/STUDIES.md before 'run'")
             elif stage == "run":
-                print(ac.run(con, a.asof, br.chosen_llm(), an.make_client(sec.load())))
+                print(ac.run(con, a.asof, br.chosen_llm(), _gw_vendor_client(sec.load())))
             elif stage == "run-local":
                 from pflab.llm import registry as _reg
                 print(ac.run_local(con, a.asof, ac.local_llm(_reg.chosen("general"))))
@@ -772,7 +800,7 @@ def _agents_cli(a) -> int:
                 print("compare needs a stage: prepare | run | sheet | score")
                 return 2
             return 0
-        client = an.make_client(sec.load())
+        client = _gw_vendor_client(sec.load())
         print(an.submit_batch(con, client) if a.action == "submit" else an.collect_batches(con, client))
         return 0
     if a.cmd == "research":

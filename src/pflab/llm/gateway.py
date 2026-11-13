@@ -851,3 +851,10 @@ def engines_status(con=None, st: Optional[dict] = None) -> List[dict]:
                 row["exam"]["ts"] = str(row["exam"]["ts"])
         out.append(row)
     return out
+
+
+def vendor_client(secrets=None):
+    """S86: the ONE place a model client is made for the batch road (the overnight notes, the batch collector, the chat's web search, the readers). Everything that spends money still goes through
+    `agents/analyst.py` `ring` / `web_search` (the egress gate, his monthly cap, the pricing and the log) with the client this returns; no other module builds a client (a test greps for it)."""
+    from pflab.agents import analyst as an
+    return an.make_client(secrets)                                     # the workshop's paid-call guard (--paid) applies before any key is read

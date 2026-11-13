@@ -18,7 +18,8 @@ def _enabled(ctx):
 
 
 def _run(ctx) -> dict:
-    from pflab.think import wire
+    from pflab.think import alarm, wire
+    alarm.first(ctx)                                    # S86: a no-op when the catch-up already did it
     r = wire.sweep(ctx.con, ctx.now, ctx.data_root)
     if r.get("off"):
         return {"skipped": "switched off"}

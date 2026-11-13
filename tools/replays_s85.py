@@ -433,8 +433,15 @@ def drill_governance(c) -> None:
     case_sale = [e for e in res["exit_events"] if e[0] == "case"]
     sold_on_day = [x for x in res["sells"] if str(x[3]) >= ts.date().isoformat()]
     # S85: since the case is re-looked at once when a new thesis-break event joins it (fix3), the thinking loop's damage sale can reach the book on the day the event becomes usable, before the exit manager's own close-time check: either road is the sale this check wants
-    c.ok((bool(thesis) and all(day_s in e[1] for e in thesis)) or (bool(case_sale) and bool(sold_on_day)),
-         f"HELD: the thesis break (the exit manager's, or the thinking loop's damage sale) acts on the day the event became usable ({day_s}): thesis {thesis[:1]}, case sale {case_sale[:1]}, sold on or after the day {sold_on_day[:1]}", "core/exits.py check_thesis, think/session.py follow_up")
+    # S86 (W2.2): the drill says WHICH road sold and why, and fails if neither did on the day the event became usable; one name on one day has exactly one sale order whichever road got there first
+    by_exit_manager = bool(thesis) and all(day_s in e[1] for e in thesis)
+    by_case = bool(case_sale) and bool(sold_on_day)
+    road = ("the exit manager's thesis check" if by_exit_manager else "the thinking loop's damage sale (a case's sell)" if by_case else "NEITHER")
+    why = (thesis[0][1] if by_exit_manager else case_sale[0][1] if by_case else "no thesis exit event and no case sale reached the book")
+    c.note(f"HELD: the sale came from {road}: {str(why)[:220]}")
+    c.ok(by_exit_manager or by_case, f"HELD: the thesis break acts on the day the event became usable ({day_s}) through ONE of the two roads, and the drill names it: {road}", "core/exits.py check_thesis, think/session.py follow_up")
+    one_day = [x for x in res["sells"] if str(x[3]) == ts.date().isoformat()]
+    c.ok(len(one_day) <= 1, f"HELD: at most one sale order for the name on the day the event became usable (found {len(one_day)}: {one_day[:3]})", "core/exits.py _sell (a pending sale blocks a second)")
     sold = [s for s in res["sells"] if date.fromisoformat(s[3]) >= ts.date()]
     c.ok(bool(sold) and date.fromisoformat(sold[0][3]) <= ts.date() + timedelta(days=4), f"HELD: the stand-in holding was sold on the day the event became usable or within a few sessions, never before it (sells {res['sells']}, event usable {ts})", "core/exits.py")
     c.ok(res["buys_after_event"] == 0, "HELD: no buy of the name after the event", "think/rule.py")

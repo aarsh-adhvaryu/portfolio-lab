@@ -173,6 +173,7 @@ stock_cap = 0.10              # one company, of the sub-book (stock picks come i
 invested_share = 0.95         # the policy holds this share of the sub-book in its core ETF(s), the rest stays dollars (fees, tax, withholding)
 deploy_turnover_day = 1.0     # while the sub-book holds mostly uninvested dollars (a fresh account or a fresh tranche) the day's turnover cap is this share of the sub-book, and the monthly cap is not applied
 settle_minutes = 30           # a session counts as closed this long after its close (the daily bar is final)
+session_loop = true           # S86 (A77, CHANGES A59): the US session loop (core/us_session.py): quotes every 5 minutes in regular hours and every 15 in pre-market and after-hours; orders fill at the first quote after the decision (a closed laptop: the next open, as before)
 slippage_bps = 5.0            # ESTIMATE: a buy fills this much above the next open, a sell this much below
 min_trade_usd = 25.0
 band_pts = 1.5                # rebalance a name only when it is this many points of the sub-book from its target
@@ -241,7 +242,14 @@ wide_run_pts = 20.0           # a name this many points ahead of its index over 
 fund_exposure = true          # S85 L1 (think/exposure.py): exposure counts what held funds hold of a company, through their portfolio files or index weights (a labelled proxy)
 missed_job = true             # S85 L1 (think/missed.py, job think_missed): "what did I miss" after each close
 missed_top_n = 10             # the biggest rises and the biggest falls (5 and 20 sessions) it looks at
+reserve_protect_sessions = 10 # S86 (W2.4, his to change): a reserve buy is not cut by the baseline's fall gauge for its first 10 sessions (S85 replay finding 2); its risk rule, stop and a thesis break still act
 tune_thresholds = false       # S85 L1 (think/tuning.py): OFF by default (coordinator's decision); true = one threshold a week, at most 10%, inside [0.5x, 2x], and nothing before 40 scored decisions or 60 stored misses exist (Amendment A2)
+alarm = true                  # S86 (A73): the alarm lane (think/alarm.py): fast headlines on what the book is exposed to, RED ones heard on Telegram and thought through at once
+alarm_heard_per_day = 6       # at most this many "Heard" messages a day, then one summary line
+alarm_outlets = 4             # a RED by volume: at least this many different outlets on one name within alarm_outlet_minutes, and 3x its own usual hour
+alarm_blind_minutes = 60      # a news source silent this long while the app is open: one line on Telegram, one when it returns
+alarm_gap_minutes = 30        # the app open after a gap this long: the backlog first, one "Off from X to Y" message
+fast_forward = true           # S86 (A77, think/fastforward.py): after a gap the same loop is replayed over it as a ghost book and scored as a forward test (replayed_while_off)
 sec_scope = "book"           # S85: whose 8-Ks (items 5.02, 4.01, 4.02) the SEC collector reads: "book" = US names held, picked, skipped or watched; "sp500" adds the index members
 
 

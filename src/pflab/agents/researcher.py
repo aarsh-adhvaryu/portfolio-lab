@@ -28,6 +28,12 @@ import pandas as pd
 from pflab.data import red_flags
 from pflab.llm.eval12 import MATERIAL, ROUTINE
 
+
+def _gw_vendor_client(secrets=None):
+    """S86: the model client for the batch road comes from the gateway (`llm/gateway.py`), the one door; nothing here builds a client itself."""
+    from pflab.llm import gateway
+    return gateway.vendor_client(secrets)
+
 NEWS_MIN, NEWS_X = 5, 3.0
 BRIEF_DAYS = 30
 FRESH_RESULT_DAYS = 150       # a quarter's results are news only if published within this many days of its end
@@ -292,7 +298,7 @@ def deep_queue(con, asof: date, stock_list: List[dict], everyone: bool = False, 
     flagged = {r[0] for r in con.execute("SELECT DISTINCT symbol FROM research_flags WHERE detected_at >= ?",
                                          [now - timedelta(days=2)]).fetchall()}
     out: Dict[str, str] = {}
-    client = client or an.make_client(_secrets())
+    client = client or _gw_vendor_client(_secrets())
     for s in stock_list:
         sym = s["symbol"]
         if not (everyone or sym in flagged) or len([v for v in out.values() if v == "queued"]) >= max_n:
