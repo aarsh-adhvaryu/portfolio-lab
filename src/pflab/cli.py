@@ -573,8 +573,8 @@ def _engine(a) -> int:
             return 1
         levels = [x.strip() for x in a.thinking.split(",") if x.strip()] or None
         r = exam.run(con, a.name, thinking=levels, now=datetime.now())
-        print(r if isinstance(r, str) else getattr(r, "text", lambda: str(r))() if callable(getattr(r, "text", None)) else r)
-        return 0
+        print(r.get("text") if isinstance(r, dict) else r)
+        return 0 if not isinstance(r, dict) or not r.get("refused") else 1
     fn = {"use": gateway.use, "shadow": gateway.shadow}.get(a.action)
     r = fn(con, a.name, yes=a.yes, now=datetime.now()) if fn else gateway.unshadow(con, a.name)
     if r.get("notice"):
