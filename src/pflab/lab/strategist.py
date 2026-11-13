@@ -162,6 +162,13 @@ def _first_message(con, reason: str, budget: float, now: Optional[datetime] = No
         c = without_picks(c)                                                # S84 F5: the card holds the same two blocks (kept as it is for Today); the message carries them once, fresh
     except Exception as e:
         alloc += f"PICKS: unreadable now ({type(e).__name__})\n\n"
+    try:                                                                    # S85 E4: what he said in the chat that fits no standing rule (read once, then marked read)
+        from pflab.entrance import rules_intake
+        from pflab.hq import rules as _hq_rules
+        in_force = _hq_rules.active_text(con, now.date())
+        alloc += (in_force + "\n(the code applies the ones about buying and selling at every order; plan inside them)\n\n" if in_force else "") + rules_intake.take_notes_text(con, now)
+    except Exception:
+        pass
     return (f"WHY THIS SESSION: {reason}\nBUDGET: about Rs {budget:,.0f} for the whole session (it ends when it is used).\n"
             f"TRIALS SO FAR: {service.n_trials(con)} variants (each raises the bar for the next).\n\n{c}\n\n{alloc}"
             "YOUR EARLIER NOTES (newest first):\n" + ("\n".join(f"- ({n['at']}) {n['text']}" + (f" [learned: {n['learned']}]" if n.get("learned") else "") for n in notes) if notes else "none yet: this is the first session.")

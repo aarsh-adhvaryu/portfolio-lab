@@ -63,6 +63,14 @@ def _views(con) -> str:
         return "unreadable"
 
 
+def _rules_text(con, day) -> str:
+    try:
+        from pflab.core import rules_gate
+        return rules_gate.card_text(con, day)
+    except Exception:
+        return "unreadable"
+
+
 def _storylines(con, day) -> str:
     try:
         from pflab.story import numbers
@@ -178,6 +186,7 @@ def build(con, state: dict, decision: dict, placed: list, prev: Optional[dict] =
         "STORYLINES: " + _storylines(con, day),
         "POLICIES: " + _policies(con, day),
         "TACTICAL VIEWS: " + _views(con),
+        "STANDING INSTRUCTIONS (his rules in force; what they held back today): " + _rules_text(con, day),
         "LAST 10 DECISIONS (with how their claims scored):\n" + _decisions(con),
         "CHANGED SINCE THE LAST CARD: " + _changed(con, facts, prev),
     ]

@@ -186,6 +186,15 @@ def run(con, now: datetime, root=None, index: Optional[pd.Series] = None, live_d
     chk = rails.check(con, s, dec, skip={o["isin"] for o in exit_orders}, used=sum(float(o["value"]) for o in exit_orders if o.get("kind") == "harvest"))    # harvesting is discretionary tax planning: it takes room off the rebalance; stops, targets, thesis breaks and rail trims are risk exits and never wait for it
     if exit_orders:
         chk = {**chk, "orders": exit_orders + chk["orders"]}
+    try:                                                                   # S85 E4: his standing instructions (pause_buys, hold_name, no_new_names, cash_floor) read at every order; a held-back order names its rule
+        from pflab.core import rules_gate
+        from pflab.hq import rules as _rules
+        _rules.sweep(con, day)
+        chk = rules_gate.apply_close(con, now, day, s, chk)
+        dec = {**dec, "notes": list(dec["notes"]) + chk.get("rule_notes", [])}
+    except Exception as e:
+        cadence.act(con, now, "core_loop", f"the standing instructions could not be applied ({type(e).__name__}: {str(e)[:160]}): no buying at this close", False)
+        chk = {**chk, "orders": [o for o in chk["orders"] if o["side"] != "buy"]}
     checked = {"checked": 0, "vetoed": [], "unchecked": None}
     try:                                                                   # the big-trade check (Sonnet), never allowed to stop the book
         from pflab.core import checker
