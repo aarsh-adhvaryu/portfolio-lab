@@ -544,7 +544,7 @@ def test_a_case_runs_through_the_real_gateway_and_stores_the_engine_model_thinki
         gateway.set_client(None)
     assert r["ok"], r
     steps = [s for s in cases.get_case(con, cid)["steps"] if s["engine"]]
-    assert {s["model"] for s in steps} == {"claude-sonnet-5-5", "claude-opus-5-5"} and all(s["engine"] == "anthropic" and s["thinking"] and s["cost_rupees"] > 0 and s["cached_tokens"] == 1500 for s in steps)
+    assert {s["model"] for s in steps} == {"claude-sonnet-5-5", "claude-opus-5-5"} and all(s["engine"] == "claude" and s["thinking"] and s["cost_rupees"] > 0 and s["cached_tokens"] == 1500 for s in steps)
     assert con.execute("SELECT count(*) FROM api_calls WHERE case_id=? AND agent='think'", [cid]).fetchone()[0] == len(steps)
     assert all("output_config" in p and p["output_config"].get("effort") for p in sent) and any("format" in p["output_config"] for p in sent)
 

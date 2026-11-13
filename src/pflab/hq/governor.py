@@ -36,7 +36,9 @@ LAYERS: Dict[str, tuple] = {"readers": (0.06, 15.0), "workers": (0.55, 80.0), "b
                             # S80 (v2): what the cloud money is FOR: the strategist's lab sessions (about 70% of the cap), the big-trade and anomaly checks (20%), the local model's escalations (10%)
                             "strategist": (0.70, 450.0), "checker": (0.20, 150.0), "escalation": (0.10, 100.0),
                             # S84: the thinking loop's cases and the daily desk, called through `llm/gateway.py` (A55: the day figure is generous; the desk has its own daily budget and his monthly cap is the hard limit)
-                            "thinking": (0.60, 400.0)}
+                            "thinking": (0.60, 400.0),
+                            # S85: the chat (his messages) and the reading of what he sends; his cap is still the only hard limit (A55) and his messages are `his_order`
+                            "chat": (0.60, 400.0), "reading": (0.40, 300.0)}
 
 
 @dataclass(frozen=True)
@@ -70,6 +72,9 @@ LIMITS: Dict[str, Limits] = {
     # S84: the one door (`llm/gateway.py`): a case's reading and decision (`think`) and the daily desk (`desk`); thinking counts as output, so a call may ask for a lot of room
     "think": Limits("thinking", 120_000, 20_000, {"off": 0, "economy": 60, "normal": 200}),
     "desk": Limits("thinking", 120_000, 20_000, {"off": 0, "economy": 60, "normal": 200}),
+    # S85: the chat's replies and the reading of documents he sends (through the same door); thinking counts as output
+    "chat": Limits("chat", 200_000, 20_000, {"off": 0, "economy": 200, "normal": 400}),
+    "reading": Limits("reading", 300_000, 24_000, {"off": 0, "economy": 120, "normal": 300}),
 }
 COUNTED = ("done", "sending", "queued", "submitted", "refused")
 
@@ -89,10 +94,25 @@ def passes_per_day(cfg: dict, agent: str, mode: str) -> int:
     return int(over.get(m, LIMITS[agent].per_day.get(m, 0)))
 
 
+CACHE_WRITE_OF: Dict[str, float] = {}
+
+
+def register_model(model: str, price_in: float, price_out: float, cached_in: Optional[float] = None, cache_write: Optional[float] = None) -> None:
+    """S85 (engines): another vendor's model, priced from that vendor's own price list (dollars per million tokens; the source and date are in the engine's table in configs/core.toml). A model that is
+    not here is priced as Opus (the safe side), and an engine whose model has no price cannot be used (`gateway.engine_problems`)."""
+    PRICES[model] = (float(price_in), float(price_out))
+    if cached_in is not None and price_in:
+        CACHE_READ_OF[model] = float(cached_in) / float(price_in)
+    if cache_write is not None and price_in:
+        CACHE_WRITE_OF[model] = float(cache_write) / float(price_in)
+    elif model not in (OPUS, SONNET, HAIKU):
+        CACHE_WRITE_OF.setdefault(model, 1.0)
+
+
 def cost_inr(model: str, input_tokens: int, output_tokens: int, usd_inr: float, cache_read: int = 0,
              cache_write: int = 0, batch: bool = False) -> float:
     pin, pout = PRICES.get(model, PRICES[OPUS])
-    usd = (input_tokens * pin + cache_read * pin * CACHE_READ_OF.get(model, CACHE_READ) + cache_write * pin * CACHE_WRITE
+    usd = (input_tokens * pin + cache_read * pin * CACHE_READ_OF.get(model, CACHE_READ) + cache_write * pin * CACHE_WRITE_OF.get(model, CACHE_WRITE)
            + output_tokens * pout) / 1e6
     return usd * (BATCH if batch else 1.0) * usd_inr
 
