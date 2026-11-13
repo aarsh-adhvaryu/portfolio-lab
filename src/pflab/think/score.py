@@ -89,6 +89,8 @@ def _moves(con, case: dict, isin, symbol, decided_on: date, root=None) -> Option
 def _path(con, market: str, isin, symbol, d0: date, day: date, root=None):
     """The closes from the decision day (or the last close before it) up to `day`: a Series indexed by Timestamp."""
     s = odds.closes(con, market, isin, symbol, day, 500, root)
+    if (s is None or not len(s)) and str(isin or "").startswith(("MARKET:", "MACRO:")):      # S85: a market or macro case is scored on its index's path
+        s = proxy_closes(con, isin, symbol, day, root)
     if s is None or not len(s):
         return s
     before = s[s.index <= np.datetime64(d0)]
@@ -453,3 +455,31 @@ def protocol_ok(con) -> dict:
 def register(con, now: datetime) -> list:
     from pflab.learner import s84
     return s84.register_thinking_live(con, now)
+
+
+# --- S85 replay3: a price path for a market or macro case ------------------------------------------------------------------------------------------------------------------------
+
+PROXY_NOTE = "a market or macro case is scored on the close of the index (or series) it names: MARKET:IN the Nifty 500 total return index, MARKET:US SPY, MACRO:<series> the stored series"
+
+
+def proxy_closes(con, isin, symbol, asof, root=None):
+    """The closes (a Series indexed by Timestamp, dated on or before `asof`) of the index or series a MARKET:/MACRO: pseudo-name stands for; an empty Series when it has none stored.
+    MARKET:<IN|US> is the watch's own index (`watch._index`: the Nifty 500 total return index, SPY); MACRO:<KEY> is the stored series of `story.series`. Point in time: nothing after `asof`."""
+    import pandas as pd
+    key = str(isin or "")
+    s = None
+    try:
+        if key.startswith("MARKET:"):
+            from pflab.think import watch
+            s = watch._index(key.split(":", 1)[1].upper(), root)
+        elif key.startswith("MACRO:"):
+            from pflab.story import series
+            s = series.load(key.split(":", 1)[1], root)
+    except Exception:
+        s = None
+    if s is None or not len(s):
+        return pd.Series(dtype=float)
+    s = s.copy()
+    s.index = pd.to_datetime(s.index).normalize()
+    s = s[~s.index.duplicated(keep="last")].sort_index()
+    return s[s.index <= pd.Timestamp(_day(asof))].dropna()
