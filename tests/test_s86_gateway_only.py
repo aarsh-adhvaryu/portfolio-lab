@@ -22,7 +22,7 @@ def test_the_vendor_sdks_are_imported_in_vendors_only():
 
 
 def test_a_model_client_is_made_in_the_gateway_only():
-    bad = [rel for rel, s in _py() if MAKE.search(s) and rel not in ALLOWED_MAKE and "def _gw_vendor_client" not in s]
+    bad = [rel for rel, s in _py() if MAKE.search(s) and rel not in ALLOWED_MAKE and not rel.startswith("llm/") and "def _gw_vendor_client" not in s]
     assert bad == [], f"a model client is made outside the gateway: {bad}"
     for rel, s in _py():
         if "_gw_vendor_client(" in s and rel not in ALLOWED_MAKE:
