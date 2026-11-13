@@ -12,7 +12,8 @@ from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 THESIS_BREAK_KINDS = ("results_miss", "guidance_cut", "auditor_resignation", "promoter_pledge_increase", "regulatory_action", "rating_downgrade",
-                      "fraud_investigation", "large_order_loss", "leadership_crisis")       # S84 (A68): leadership_crisis, a governance shock
+                      "fraud_investigation", "large_order_loss", "leadership_crisis",       # S84 (A68): leadership_crisis, a governance shock
+                      "accounting_concern")                                    # S85: a US 8-K item 4.02 (the company says its published numbers cannot be relied on); no earlier kind meant that
 OTHER_KINDS = ("results", "board_meeting", "dividend", "corporate_action", "order_win", "rating_upgrade", "management_change", "fund_raise", "news", "routine", "other")
 KINDS = THESIS_BREAK_KINDS + OTHER_KINDS
 SEVERITIES = ("low", "medium", "high")
@@ -109,7 +110,7 @@ SYSTEM = ("You label stock-exchange filings and news about one listed company. C
           "and a severity (low, medium, high) for how much it could hurt a long-term holder. Never write numbers. Answer with JSON only. "
           "leadership_crisis (severity high) is a governance shock at the top: a board or regulator investigating the chief executive, chair or founder; a chief executive or chair "
           "ousted, removed, put on leave or leaving with immediate effect; an executive linked to espionage, sanctions or a criminal case; a promoter arrested. "
-          "A securities class action is regulatory_action with severity medium. An ordinary appointment or a planned retirement is none.")
+          "accounting_concern (severity high) is a company saying its published financial statements must be restated or can no longer be relied on. A securities class action is regulatory_action with severity medium. An ordinary appointment or a planned retirement is none.")
 
 
 def model_classify(headline: str, text: str = "", *, chat: Optional[Callable] = None) -> Optional[dict]:

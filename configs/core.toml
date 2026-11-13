@@ -234,6 +234,7 @@ big_trade_share = 0.02
 opus_exposure_share = 0.02
 advisory_after_scored = 20
 wide_watch = false            # S85: the Nifty 500 and S&P 500 members (T1 scope); OFF, not built tonight
+sec_scope = "book"           # S85: whose 8-Ks (items 5.02, 4.01, 4.02) the SEC collector reads: "book" = US names held, picked, skipped or watched; "sp500" adds the index members
 
 # S84 gate (llm/gateway.py): the one door for model calls. A ROLE names a model and a THINKING level on one scale (low / medium / high / max); the door maps the level to the vendor's own control
 # (Anthropic: adaptive thinking plus `output_config.effort`; a fixed thinking budget is rejected by these models). `min_tokens` is the least room a call gets (thinking counts as output).

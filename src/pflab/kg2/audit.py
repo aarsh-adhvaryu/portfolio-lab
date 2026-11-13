@@ -25,7 +25,7 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
-from pflab.kg2 import build as kb, classify, filing_time as ft, scope as sc
+from pflab.kg2 import build as kb, classify, filing_time as ft, scope as sc, sec_8k
 
 FILING_LINK_MIN = 0.95
 DUP_MAX = 0.01
@@ -114,8 +114,10 @@ def run_audit(con, root: Path, day: date, graph: Optional[dict] = None, store: b
     ev, fa = g["event"], g["fact"]
     derived = (ev["ts_rule"] == ft.RULE_DERIVED) if len(ev) else pd.Series([], dtype=bool)
     # a derived time is the next open after the event's own date, so it may sit after `day` (the day's own filings): the event's DATE is what may not
-    late_e = int((pd.to_datetime(ev["ts"]).dt.date[~derived] > day).sum()) if len(ev) else 0
-    late_e2 = int((pd.to_datetime(ev["event_date"]).dt.date > day).sum()) if len(ev) else 0
+    is_sec = ev["source"].map(sec_8k.is_sec_source) if len(ev) else pd.Series([], dtype=bool)       # S85: a US filing may sit up to the next Indian open (`sec_8k.known_by`), no later
+    limit = sec_8k.known_by(day)
+    late_e = int((pd.to_datetime(ev["ts"]).dt.date[~derived & ~is_sec] > day).sum() + (pd.to_datetime(ev["ts"])[is_sec] > pd.Timestamp(limit)).sum()) if len(ev) else 0
+    late_e2 = int((pd.to_datetime(ev["event_date"]).dt.date[~is_sec] > day).sum() + (pd.to_datetime(ev["event_date"]).dt.date[is_sec] > limit.date()).sum()) if len(ev) else 0
     late_f = int((pd.to_datetime(fa["known_from"]).dt.date > day).sum()) if len(fa) else 0
     no_ts = int(ev["ts"].isna().sum()) if len(ev) else 0
     checks.append(_chk("point_in_time", late_e + late_e2 + late_f + no_ts == 0, value={"events_after_day": late_e + late_e2, "facts_known_after_day": late_f, "events_without_timestamp": no_ts},
@@ -124,7 +126,7 @@ def run_audit(con, root: Path, day: date, graph: Optional[dict] = None, store: b
     if len(ev):
         for r in ev[derived].itertuples():
             ts, ed = pd.Timestamp(r.ts).to_pydatetime(), pd.Timestamp(r.event_date).date()
-            if ts != ft.next_open(ed):
+            if ts != ft.next_open(ed, sec_8k.FILING_MARKET if sec_8k.is_sec_source(r.source) else "IN"):      # a US filing's derived time is the US calendar's next open (S85)
                 bad_rule += 1
         bad_rule += int((~ev["ts_rule"].isin(ft.RULES)).sum())
     checks.append(_chk("derived_time_rule", bad_rule == 0, value=bad_rule, threshold=0,
