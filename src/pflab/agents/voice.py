@@ -47,14 +47,25 @@ def dispatch(con, qid: int, now: datetime) -> bool:
     if r is None or r[4] is not None or r[6] not in ("open",):
         return False
     default, deadline, urgent, opts, _, text, _st = r
+    try:                                                 # S85 (E5): the card is on the screen at once, even when the daily cap holds Telegram back
+        from pflab.entrance import cards
+        cards.ensure_question_card(con, now, qid)
+    except Exception:
+        pass
     if not urgent and sent_today(con, now) >= DAILY_CAP:
         return False
     options = json.loads(opts)
     deadline = max(deadline, now + timedelta(hours=2))          # a question held back by the cap still gets time to be read once it goes out
     con.execute("UPDATE question_terms_s79 SET deadline=? WHERE q_id=?", [deadline, qid])
-    rows = [[((o + " (default)") if i == 0 else o)[:60], f"q:{qid}:{i}"] for i, o in enumerate(options)]
-    tgm.enqueue_with_buttons(con, message(text, default, deadline), "question", [[tuple(b) for b in row] for row in [[x] for x in rows]],
-                             dedup_key=f"question:{qid}", now=now)
+    try:                                                 # S85 (E5): the question is a card in the chat and its Telegram buttons are the card's (`entrance/cards.py`)
+        from pflab.entrance import cards
+        carded = cards.deliver(con, now, qid, message(text, default, deadline))
+    except Exception:
+        carded = False
+    if not carded:
+        rows = [[((o + " (default)") if i == 0 else o)[:60], f"q:{qid}:{i}"] for i, o in enumerate(options)]
+        tgm.enqueue_with_buttons(con, message(text, default, deadline), "question", [[tuple(b) for b in row] for row in [[x] for x in rows]],
+                                 dedup_key=f"question:{qid}", now=now)
     con.execute("UPDATE question_terms_s79 SET sent_at=? WHERE q_id=?", [now, qid])
     return True
 
@@ -109,4 +120,10 @@ def sweep(con, now: datetime) -> dict:
                               "ORDER BY coalesce(t.urgent, FALSE) DESC, t.q_id").fetchall():
         if dispatch(con, qid, now):
             out["sent"].append(qid)
+    try:                                                 # S85 (E5): every open question has its card in the chat; a card follows its question's state
+        from pflab.entrance import cards
+        cards.ensure_cards(con, now)
+        cards.sweep(con, now)
+    except Exception:
+        pass
     return out

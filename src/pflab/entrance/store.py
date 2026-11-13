@@ -22,7 +22,7 @@ EARLIER = "Earlier: "
 CHANNELS = ("laptop", "telegram", "system")
 _ROLE = {"me": "me", "ai": "ai", "user": "me", "assistant": "ai", "system": "ai", "him": "me"}
 _CHAT_LOCK = threading.RLock()                             # two windows asking for the active chat at the same moment must get the SAME chat
-NO_MIRROR = ("reply", "test")                              # outbox kinds that are answers or tests, not the system speaking first
+NO_MIRROR = ("reply", "test", "question", "decision")                              # outbox kinds that are answers or tests, not the system speaking first
 
 
 def retry(fn: Callable[[], Any], tries: int = 8, pause: float = 0.05):
