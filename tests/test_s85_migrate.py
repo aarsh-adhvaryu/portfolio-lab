@@ -112,9 +112,32 @@ def test_no_module_outside_llm_imports_a_vendor_sdk_by_any_spelling():
 
 
 def test_the_strategist_and_the_doorbell_call_no_client_method_themselves():
-    for rel in ("src/pflab/lab/strategist.py", "src/pflab/core/checker.py", "src/pflab/think/session.py", "src/pflab/hq/converse.py"):
+    for rel in ("src/pflab/lab/strategist.py", "src/pflab/core/checker.py", "src/pflab/think/session.py", "src/pflab/hq/converse.py", "src/pflab/hq/security.py", "src/pflab/verify.py", "src/pflab/story/reader.py"):
         text = (ROOT / rel).read_text(encoding="utf-8")
         assert not re.search(r"messages\.create|beta\.messages|\bllm\.call\(", text), rel
     ana = (ROOT / "src/pflab/agents/analyst.py").read_text(encoding="utf-8")
     assert "messages.create" not in ana.replace("messages.batches", "")                       # the batch API (submit/collect) is the one thing left on the client
     assert ana.count("count_tokens(") == 1                                                      # only the queue's estimate
+
+
+# --- the weekly code review and the verify ping ------------------------------------------------------------------------------------------
+
+def test_the_weekly_code_review_asks_through_the_door(tmp_path, monkeypatch):
+    from tests import test_s62_security as ts
+    from pflab.hq import security as sec
+    con = store.connect(tmp_path / "s.duckdb")
+    rt = ts._desk(con, tmp_path)
+    monkeypatch.setattr(sec, "_git", lambda repo, *a: {"rev-parse": "h" * 40}.get(a[0], "+x = 1 / n" if a[0] == "diff" else "b" * 40))
+    monkeypatch.setattr(an, "config", lambda path=None: CFG)
+    body = '{"findings": [{"file": "src/x.py", "severity": "high", "problem": "divides by zero"}]}'
+    reply = NS(content=[NS(type="text", text=body)], stop_reason="end_turn", usage=NS(input_tokens=900, output_tokens=60))
+    seen = []
+
+    def create(**kw):
+        seen.append(kw)
+        return reply
+    client = NS(messages=NS(count_tokens=lambda **k: NS(input_tokens=900)), beta=NS(messages=NS(create=create)))
+    out = sec.review(rt, client=client, gate=ts._gate(con))
+    assert out["reviewed"] == 1 and out["findings"] == 1 and out["cost"] > 0
+    assert seen[0]["output_config"]["format"]["type"] == "json_schema"
+    assert con.execute("SELECT agent, engine, purpose FROM api_calls").fetchone() == ("reading", "claude", "security review")

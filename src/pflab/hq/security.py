@@ -344,7 +344,7 @@ def review_due(con, now: datetime) -> bool:
 
 def review(rt, client=None, gate=None, draft=None) -> dict:
     """The diff since the last reviewed commit (code folders only), read by the review model."""
-    from pflab.hq import egress as eg, governor as gv, llm, models
+    from pflab.hq import egress as eg, governor as gv
     con, now, repo = rt.cursor(), rt.clock(), Path(rt.repo)
     gate = gate or eg.load(con)
     head = _git(repo, "rev-parse", "HEAD")
@@ -368,19 +368,19 @@ def review(rt, client=None, gate=None, draft=None) -> dict:
     text = diff[:REVIEW_CHARS]
     if draft is None:
         from pflab.hq import service
+        from pflab.llm import gateway
         client = client or service.client(rt)
-        model = models.model_id("review", rt.settings)
 
-        def draft(system, prompt, schema):
-            p = {"model": model, "max_tokens": 4000, "system": system,
-                 "output_config": {"effort": "medium", "format": {"type": "json_schema", "schema": schema}},
-                 "messages": [{"role": "user", "content": prompt}]}
+        def draft(system, prompt, schema):                    # S85 (G3): through the door (role `read`, agent `reading`)
             # code, not his data: his list was checked above line by line (the generic patterns would read the
             # egress module's own examples as account numbers)
-            s = llm.call(con, "worker", p, client, now=now, mode=rt.settings.get("brain", "economy"), private_text="",
-                         gate=gate, doc_kinds=(), topic="security review", question=f"review {base[:8]}..{head[:8]}")
-            draft.cost = s.cost_inr
-            return s.json()
+            s = gateway.call(con, "read", system, [{"role": "user", "content": prompt}], schema=schema, max_tokens=4000, thinking="medium", agent="reading", purpose="security review",
+                             now=now, mode=rt.settings.get("brain", "economy"), private_text="", gate=gate, topic="security review", question=f"review {base[:8]}..{head[:8]}",
+                             client=client)
+            draft.cost = s["cost_rupees"]
+            if s.get("json_error"):
+                raise ValueError(s["json_error"])
+            return s["json"]
         draft.cost = 0.0
     out = draft(REVIEW_SYSTEM, f"DIFF {base[:10]}..{head[:10]}" + (" (cut)" if len(diff) > REVIEW_CHARS else "") + f":\n{text}",
                 REVIEW_SCHEMA)

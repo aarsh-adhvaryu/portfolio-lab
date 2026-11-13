@@ -679,7 +679,8 @@ def accumulate(ctx: Ctx, rep: Report) -> Report:
 def live_model(ctx: Ctx, rep: Report) -> None:
     """One tiny call through the app's own outbound gate and budget (the same road a brain pass takes). Only with --live-model."""
     from pflab.agents import analyst as an
-    from pflab.hq import egress, governor as gv, llm
+    from pflab.hq import egress
+    from pflab.llm import gateway
     from pflab.pm import secrets as sec, store
     try:
         secrets = sec.load()
@@ -690,15 +691,15 @@ def live_model(ctx: Ctx, rep: Report) -> None:
         nonce = f"v{ctx.now:%H%M%S}"
         tool = {"name": "echo_code", "description": "Report the verification code you were given.",
                 "input_schema": {"type": "object", "additionalProperties": False, "properties": {"code": {"type": "string"}}, "required": ["code"]}}
-        p = {"model": gv.HAIKU, "max_tokens": 60, "system": "You must call the tool echo_code with the code you are given.",
-             "tools": [tool], "tool_choice": {"type": "tool", "name": "echo_code"},
-             "messages": [{"role": "user", "content": f"The verification code is {nonce}."}]}
-        s = llm.call(con, "gatekeeper", p, client, now=ctx.now, mode="economy", private_text="", gate=gate, topic="verify", question="verify tool call")
+        # S85 (G3): through the door (role quick of the engine in use; a forced tool choice is refused by these models, so the system text says to call it)
+        s = gateway.call(con, "quick", "You must call the tool echo_code with the code you are given, and say nothing else.", [{"role": "user", "content": f"The verification code is {nonce}."}],
+                         tools=[tool], max_tokens=300, thinking="low", agent="reading", purpose="verify tool call", now=ctx.now, mode="economy", private_text="", gate=gate,
+                         topic="verify", question="verify tool call", client=client)
         con.close()
-        used = [b for b in (getattr(s.message, "content", None) or []) if getattr(b, "type", "") == "tool_use"]
-        ok = bool(used) and used[0].name == "echo_code" and (used[0].input or {}).get("code") == nonce
+        used = [c for c in s["tool_calls"] if c["name"] == "echo_code"]
+        ok = bool(used) and (used[0]["input"] or {}).get("code") == nonce
         rep.add("live model call", PASS if ok else FAIL,
-                (f"the model chose the tool and used it correctly through the privacy gate and the budget (cost Rs {s.cost_inr:.2f}; recorded on the copy only)"
+                (f"the model chose the tool and used it correctly through the privacy gate and the budget (cost Rs {s['cost_rupees']:.2f}; recorded on the copy only)"
                  if ok else "the model answered but did not call the tool with the given code: a ping is not tool use"))
     except Exception as e:
         rep.add("live model call", FAIL, f"{type(e).__name__}: {str(e)[:160]}", "check the key, the monthly cap and the network")

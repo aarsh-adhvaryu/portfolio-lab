@@ -55,7 +55,7 @@ DEFAULTS: Dict[str, Any] = {
         },
     },
 }
-AGENTS = ("think", "desk", "chat", "strategist", "checker", "reading", "analyst")      # the governor's names for what the door serves (`hq/governor.LIMITS`)
+AGENTS = ("think", "desk", "chat", "strategist", "checker", "reading", "analyst", "escalation")      # the governor's names for what the door serves (`hq/governor.LIMITS`)
 MAX_BREAKPOINTS = 4                                     # the vendor's limit of cache markers in one request
 WEB_USD_PER_SEARCH = 0.01                               # Anthropic's server web search, on top of tokens ($10 per 1,000)
 client_override: Any = None                             # a scripted fake (tests) for every engine; `set_client(None)` removes it
