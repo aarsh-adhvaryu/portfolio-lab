@@ -77,3 +77,41 @@ def test_without_a_stored_series_a_market_case_is_not_scored_and_nothing_breaks(
     monkeypatch.setattr(watch, "_index", lambda market, root=None: None)
     _market_case_with_decision(con, "MARKET:IN", "Nifty 500", "wait")
     assert score.score_due(con, days[-1]) == 0
+
+
+# --- the replay tools (tools/replays_s85.py): the parts that need no world --------------------------------------------------------------------------------------------------------------
+
+def test_every_scripted_answer_of_the_three_replays_passes_the_validator_and_has_no_number():
+    import replays_s85 as R3
+    from pflab.think import session
+    for case in ({"kind": "market", "symbol": "Nifty 500"}, {"kind": "fall", "symbol": "SYNFMCG1"}, {"kind": "event", "symbol": "SYNIT1", "title": "auditor resigned"},
+                 {"kind": "event", "symbol": "SYNPICK1", "title": "auditor resigned"}, {"kind": "missed_run", "symbol": "SOMEIT"}, {"kind": "move", "symbol": "SYNBANK1"}):
+        for fn in (R3.march_answers, R3.gov_answers, R3.rot_answers):
+            a = fn(case, 1)
+            known = f"{case['symbol']} Nifty 500 NIFTYBEES SYNFMCG1 SYNIT1 SYNPICK1 SYNBANK1"           # the names carry digits: the first message of a case holds them
+            assert session.validate_answer(a, known) == [], (fn.__name__, case, session.validate_answer(a, known))
+
+
+def test_lay_real_keeps_the_seed_close_and_makes_every_later_move_the_real_one(tmp_path):
+    import replays_s85 as R3
+    from datetime import date
+    from pflab.pm import store
+    base = tmp_path / "b"
+    (base / "pm").mkdir(parents=True)
+    con = store.connect(base / "pm" / "ledger.duckdb")
+    days = [d.date() for d in pd.bdate_range("2020-02-24", periods=8)]
+    start = days[4]
+    for k, d in enumerate(days):
+        if d < start:
+            con.execute("INSERT INTO prices VALUES ('X', ?, ?, 'EQ', 'nse_bhavcopy', now())", [d, 100.0 + k])
+    pd.DataFrame({"isin": ["X"] * 4, "date": days[4:], "close": [110.0] * 4, "series": "EQ", "source": "nse_bhavcopy", "fetched_at": datetime(2020, 1, 1)}).to_parquet(base / "held_prices.parquet")
+    con.execute("CHECKPOINT")
+    con.close()
+    real = pd.Series([50.0, 51.0, 52.0, 53.0, 54.0, 55.0, 49.5, 60.0], index=days)
+    out = R3.lay_real(base, start, "X", real)
+    con = store.connect(base / "pm" / "ledger.duckdb")
+    seed = con.execute("SELECT close FROM prices WHERE isin='X' AND date=?", [days[3]]).fetchone()[0]
+    assert seed == pytest.approx(103.0)                                               # the profile's own seed close is kept (scale 103/53)
+    held = pd.read_parquet(base / "held_prices.parquet").sort_values("date")
+    assert list(held["close"]) == [round(v * 103.0 / 53.0, 4) for v in (54.0, 55.0, 49.5, 60.0)]
+    assert out["scale"] == pytest.approx(103.0 / 53.0, abs=1e-3)
