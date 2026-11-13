@@ -798,6 +798,11 @@ def think_case(con, now: datetime, case_id: int, *, root=None, web: Optional[Cal
             pass
         adv = _advisory(con, day)
         res = _decide_all(con, now, day, case, ans, adv)
+        try:                                                                    # S85: a shadow engine thinks the same case beside this one; stored and scored, never acts, never an error
+            from pflab.think import shadow as _shadow
+            _shadow.run(con, now, case, first, ctx.texts, day)
+        except Exception:
+            pass
     except Exception as e:
         why = f"{type(e).__name__}: {str(e)[:240]}"
         try:                                                                    # a refusal (his cap, the egress gate, the workshop guard) is said in the door's plain words
