@@ -37,7 +37,7 @@ R.WORK = SCR / "work"
 R.OUT = OUT
 
 # the profile's names and the real names whose closes they carry (public large caps, standing in for the profile's holdings by sector)
-STOCK_REAL = {"INE9S1A01011": "HINDUNILVR", "INE9S2A01011": "ITC", "INE9S3A01011": "LT", "INE9S4A01011": "INFY", "INE9S5A01011": "HDFCBANK", "INE9S6A01011": "MARUTI",
+STOCK_REAL = {"INE9S1A01011": "HINDUNILVR", "INE9S2A01011": "ITC", "INE9S3A01011": "LT", "INE9S4A01011": "TCS", "INE9S5A01011": "HDFCBANK", "INE9S6A01011": "MARUTI",
               "INE9S7A01011": "SUNPHARMA", "INE9S8A01011": "PIDILITIND"}
 ETF_REAL = {"INF9S1B01011": "NIFTYBEES", "INF9S2B01011": "GOLDBEES", "INF9S4B01011": "JUNIORBEES"}
 SYN = {s[1]: s[0] for s in D.STOCKS + D.PICK_STOCKS}
@@ -357,7 +357,7 @@ def replay_governance(held: bool, *, last: date = date(2018, 5, 16)) -> dict:
     stand_in = "INE9S4A01011" if held else "INE9S7A01011"          # SYNIT1 (held) or SYNPICK1 (a name in the store the book does not hold)
     lay = {**{k: v for k, v in STOCK_REAL.items() if k != stand_in and k != "INE9S4A01011"}, **ETF_REAL, stand_in: real_ref}
     if not held:
-        lay["INE9S4A01011"] = "INFY"
+        lay["INE9S4A01011"] = "TCS"
     env, laid = build_world("governance_held" if held else "governance_not_held", start, lay=lay, lo=start - timedelta(days=700), hi=last + timedelta(days=30))
     r = Run("governance", gov_answers, env)
     undo = None
@@ -440,8 +440,8 @@ def replay_rotation(*, tail: int = 8) -> dict:
         start -= timedelta(days=1)
     last = w1 + timedelta(days=tail)
     falls = [x["symbol"] for x in sel["falling_names"]][:3]
-    rises = [x for x in sel["rising_names"] if x["symbol"] != "INFY"][:4]
-    lay = {"INE9S1A01011": falls[0], "INE9S2A01011": falls[1], "INE9S3A01011": falls[2], "INE9S4A01011": "INFY", "INE9S5A01011": "HDFCBANK", "INE9S6A01011": "MARUTI", "INE9S7A01011": "SUNPHARMA", "INE9S8A01011": "PIDILITIND",
+    rises = [x for x in sel["rising_names"] if x["symbol"] != "TCS"][:4]
+    lay = {"INE9S1A01011": falls[0], "INE9S2A01011": falls[1], "INE9S3A01011": falls[2], "INE9S4A01011": "TCS", "INE9S5A01011": "HDFCBANK", "INE9S6A01011": "MARUTI", "INE9S7A01011": "SUNPHARMA", "INE9S8A01011": "PIDILITIND",
            **ETF_REAL}
     pan = panel_rows(isins=[x["isin"] for x in rises], lo=start - timedelta(days=500), hi=last + timedelta(days=30))
     extra = []
