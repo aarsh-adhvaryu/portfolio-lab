@@ -372,6 +372,48 @@ def _classify_new(con, now: datetime, items: List[dict], by_isin: Dict[str, dict
     return out
 
 
+def bse_today(con, now: datetime, root, entries: List[dict], hours: int = 36) -> List[dict]:
+    """H3: the company's OWN filings on Indian names the book holds or picked, released in the last `hours` (the 15-minute `filings` job brings BSE's announcements), classified by the graph's own
+    rule (`classify.rule_kind`): a thesis-break kind at medium or high is a RED item, so a case opens within one 15-minute cycle instead of after the nightly rebuild. Nothing is written to the graph
+    (the nightly rebuild makes the same events from the same files). Never raises."""
+    out: List[dict] = []
+    try:
+        import hashlib
+        from pathlib import Path
+        import pandas as pd
+        from pflab.data import bse_scrip_isin
+        from pflab.kg2 import filing_time as ft
+        by = {e["isin"]: e for e in entries if e["market"] == "IN" and e.get("red_ok")}
+        if not by:
+            return out
+        m = bse_scrip_isin.load(Path(root))
+        m = m[m["isin"].isin(list(by))]
+        codes = {str(r.scrip_code): r.isin for r in m.itertuples()}
+        for k in range(2):
+            day = (now - timedelta(days=k)).date()
+            f = Path(root) / "bse_announcements" / str(day.year) / f"{day.isoformat()}.parquet"
+            if not codes or not f.exists():
+                continue
+            df = pd.read_parquet(f)
+            for r in df[df["scrip_code"].astype(str).isin(codes)].itertuples():
+                ts, rule, _own = ft.filing_time(r.dissem_dt, getattr(r, "news_dt", None), day)
+                if ts is None or not (now - timedelta(hours=hours) <= ts <= now):
+                    continue
+                kind, sev = classify.rule_kind(str(r.headline or ""), str(r.category or ""), str(r.subcategory or ""))
+                if kind not in classify.THESIS_BREAK_KINDS or sev not in ("medium", "high"):
+                    continue
+                isin = codes[str(r.scrip_code)]
+                ref = f"{r.scrip_code}:{ts:%Y%m%d%H%M%S}"
+                iid = hashlib.sha1(f"bse|{isin}|{ref}".encode()).hexdigest()[:16]
+                if con.execute("SELECT 1 FROM alarm_s86 WHERE item_id=?", [iid]).fetchone():
+                    continue
+                out.append({"id": iid, "isin": isin, "symbol": by[isin]["symbol"], "market": "IN", "title": str(r.headline or "")[:300], "outlet": "BSE filing (the company's own)", "source": "bse_announcement",
+                            "published": ts, "first_seen": now, "lane": "red", "kind": kind, "sev": sev, "entry": by[isin], "confirmed": True})
+    except Exception:
+        return out
+    return out
+
+
 def last_try(con) -> Optional[datetime]:
     try:
         return con.execute("SELECT max(last_try) FROM eyes_s86 WHERE source IN ('google_news','yahoo','gdelt_doc')").fetchone()[0]
@@ -408,7 +450,7 @@ def run(con, now: datetime, root, *, client: Optional[ing.Client] = None, entrie
                 out["lanes"][it["lane"]] += 1
             if cfg["alarm_graph_sync"] and items:
                 out["graph"] = kg.sync_store(con, root, now)
-            reds = [it for it in items if it["lane"] == "red"]
+            reds = [it for it in items if it["lane"] == "red"] + bse_today(con, now, root, entries)
             seen_burst = set()
             for e in entries:                                                                      # the many-outlets rule
                 if e["isin"] in seen_burst or any(it["entry"]["isin"] == e["isin"] for it in reds):

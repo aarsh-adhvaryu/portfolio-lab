@@ -30,6 +30,8 @@ DEFAULTS = {
     "universe": ["SPY", "QQQ", "XLC", "XLY", "XLP", "XLE", "XLF", "XLV", "XLI", "XLB", "XLRE", "XLK", "XLU"],      # the list the collector tracks; NOT a holding list since S82
     "broad_index_etfs": ["SPY"], "broad_index_cap": 1.0, "etf_cap": 0.35, "stock_cap": 0.10,
     "invested_share": 0.95, "deploy_turnover_day": 1.0, "settle_minutes": 30, "slippage_bps": 5.0, "min_trade_usd": 25.0, "band_pts": 1.5, "w8ben": True,
+    "session_loop": False,         # S86 (A77, H4): the US session loop (core/us_session.py): quotes every 5 minutes in regular hours and 15 in pre-market and after-hours, orders fill at the first quote after the decision
+    "session_regular_minutes": 5, "session_off_minutes": 15, "max_quote_delay_minutes": 20,
     "exempt_day_share": 0.25,      # S84 F2: the day's limit (share of the sub-book) on what is OUTSIDE the monthly cap: a named pick's purchase, a reserve buy, the full exit of a withdrawn pick
 }
 

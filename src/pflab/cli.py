@@ -261,6 +261,8 @@ def main(argv=None):
     sup.add_argument("action", choices=["secrets", "status"])
     sup.add_argument("--only", nargs="*", choices=["kite", "telegram", "anthropic", "openai", "sec"], help="just these sections")
     sup.add_argument("--change", action="store_true", help="ask again for values already set")
+    alp = sub.add_parser("alarm", help="S86: the alarm lane: status (the day's alarms and their latency, the eyes) | run (one pass now, workshop: sources are public, no paid call unless a case is thought)")
+    alp.add_argument("action", choices=["status", "run"])
     enp = sub.add_parser("engine", help="S85: the model engines behind the one door: list | test NAME [--thinking medium,high] | use NAME | shadow NAME | unshadow NAME")
     enp.add_argument("action", choices=["list", "test", "use", "shadow", "unshadow"])
     enp.add_argument("name", nargs="?")
@@ -289,6 +291,8 @@ def main(argv=None):
                          offline=a.offline)
         print(rep.text())
         return verify.exit_code(rep)
+    if a.cmd == "alarm":
+        return _alarm(a)
     if a.cmd == "engine":
         return _engine(a)
     if a.cmd == "update":
@@ -538,6 +542,24 @@ def _setup(a) -> int:
     except Exception:
         names = []                                  # no sources file yet: Setup writes it, then run this again for the passwords
     ss.prompt(a.only, None if a.only else names, change=a.change)
+    return 0
+
+
+def _alarm(a) -> int:
+    """`pflab alarm status|run` (S86): the day's alarms, the median and worst published-to-heard minutes, and the eyes (each source's last answer)."""
+    import json
+    from datetime import datetime
+    from pflab.pm import store
+    from pflab.think import alarm
+    con = store.connect()
+    now = datetime.now()
+    if a.action == "run":
+        from pflab.data import data_dir
+        r = alarm.run(con, now, data_dir())
+        print(json.dumps({k: v for k, v in r.items() if k in ("new", "lanes", "problems", "requests", "off", "blind", "stopped")}, default=str))
+    print(alarm.report_line(con, now.date()))
+    print(json.dumps(alarm.status(con, now.date()), default=str))
+    print(alarm.eyes_text(con, now))
     return 0
 
 

@@ -368,6 +368,11 @@ def report_lines(con, day: date) -> List[str]:
     if not b:
         return []
     out: List[str] = []
+    try:                                                                  # S86 (A76): the alarm lane's day, with its latency, in one line
+        from pflab.think import alarm as _alarm
+        out.append(_alarm.report_line(con, day))
+    except Exception:
+        pass
     th = b["thinking"] or {}
     if th.get("open") or th.get("noticed_not_examined_today"):
         out.append((_one(th.get("text")) or "Thinking about: nothing open.") + (f" ({th['noticed_not_examined_today']} noticed, not examined)" if th.get("noticed_not_examined_today") else ""))

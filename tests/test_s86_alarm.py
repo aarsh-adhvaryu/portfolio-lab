@@ -254,3 +254,25 @@ def test_the_graph_rebuild_gives_the_same_events_and_waits_for_the_next_day_afte
 def test_the_switch_off_does_nothing(con, tmp_path, monkeypatch):
     monkeypatch.setattr(alarm, "on", lambda: False)
     assert alarm.run(con, T0, tmp_path, client=client({}), entries=entries_for(con, tmp_path))["off"] is True
+
+
+# ------------------------------------------------------------------ H3: the company's own filing reaches the loop the same day
+
+def test_an_indian_filing_at_1120_is_heard_and_a_case_by_1140(con, tmp_path):
+    import pandas as pd
+    from pflab.data import bse_scrip_isin
+    d = date(2026, 10, 30)
+    (tmp_path / "bse_announcements" / "2026").mkdir(parents=True)
+    pd.DataFrame([{"scrip_code": "500001", "headline": "Resignation of the statutory auditors of the Company", "category": "Company Update", "subcategory": "Auditors",
+                   "dissem_dt": datetime(2026, 10, 30, 11, 20), "news_dt": None}]).to_parquet(tmp_path / "bse_announcements" / "2026" / f"{d.isoformat()}.parquet")
+    monkey = pd.DataFrame([{"scrip_code": "500001", "isin": AAA}])
+    import pflab.data.bse_scrip_isin as b
+    orig = b.load
+    b.load = lambda root: monkey
+    try:
+        think = fake_think()
+        r = alarm.run(con, datetime(2026, 10, 30, 11, 35), tmp_path, client=client({"google_news": rss([])}), entries=entries_for(con, tmp_path), sources=("google_news",), think_fn=think,
+                      tell_fn=lambda c, n, cid: None)
+    finally:
+        b.load = orig
+    assert len(r["alarms"]) == 1 and tg(con)[0].startswith("Heard at 11:35") and "BSE filing" in tg(con)[0] and len(think.calls) == 1
