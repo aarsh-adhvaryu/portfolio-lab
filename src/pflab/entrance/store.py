@@ -12,6 +12,7 @@ Every function takes the cursor it is given, retries a write conflict a few time
 from __future__ import annotations
 
 import json
+import threading
 import time
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
@@ -20,6 +21,7 @@ ACTIVE = "Assistant"
 EARLIER = "Earlier: "
 CHANNELS = ("laptop", "telegram", "system")
 _ROLE = {"me": "me", "ai": "ai", "user": "me", "assistant": "ai", "system": "ai", "him": "me"}
+_CHAT_LOCK = threading.RLock()                             # two windows asking for the active chat at the same moment must get the SAME chat
 NO_MIRROR = ("reply", "test")                              # outbox kinds that are answers or tests, not the system speaking first
 
 
@@ -77,13 +79,19 @@ def _label(con, cid: int) -> str:
 
 def latest_chat(con, now: datetime) -> int:
     """The chat every window writes to now: the active one (made when there is none)."""
-    cid = _active(con)
-    return cid if cid is not None else _make(con, now, ACTIVE, "laptop")
+    with _CHAT_LOCK:
+        cid = _active(con)
+        return cid if cid is not None else _make(con, now, ACTIVE, "laptop")
 
 
 def start_new(con, now: datetime, title: str = "New chat", channel: str = "laptop") -> Dict[str, Any]:
     """A clean thread. The current one is kept under "Earlier: <what he first asked>"; what he pinned comes with him. A chat he has not written in is not archived (no empty chats pile up):
     -> {"chat_id", "new": bool}."""
+    with _CHAT_LOCK:
+        return _start_new(con, now, title, channel)
+
+
+def _start_new(con, now: datetime, title: str, channel: str) -> Dict[str, Any]:
     cur = latest_chat(con, now)
     if not _has_user_message(con, cur):
         return {"chat_id": cur, "new": False}

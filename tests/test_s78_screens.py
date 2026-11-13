@@ -134,7 +134,7 @@ def test_files_are_chosen_shown_in_a_tray_and_sent_with_the_message(server, tmp_
     assert errors == [], errors
     assert "one.csv" in res[2] and "two.txt" in res[2]                                      # both are shown, nothing is sent yet
     assert "one.csv" not in res[4] and "two.txt" in res[4]                                  # one was taken off again
-    assert "Attached: two.txt" in res[6] and "what does it say?" in res[6]                  # sent together with the words
+    assert "two.txt" in res[6] and "what does it say?" in res[6]                  # sent together with the words
     assert int(res[7]) == 0                                                                 # the tray is empty after Send
-    names = [r[0] for r in rt.cursor().execute("SELECT name FROM inbox_items WHERE status <> 'removed'").fetchall()]
+    names = [r[0] for r in rt.cursor().execute("SELECT name FROM chat_attachments_s85").fetchall()]      # S85: files go with the message into the chat's attachments (the intake reads them)
     assert names == ["two.txt"]                                                             # only the file left in the tray was received

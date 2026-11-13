@@ -437,6 +437,20 @@ def create_app(rt) -> FastAPI:
         rt.bump("chat")
         return out
 
+    @app.post("/api/assistant/messages/{msg_id}/action")
+    def assistant_card_action(msg_id: int, action: str = Body(..., embed=True)):
+        """A button on a card in the chat (Yes / No on a question, an Undo): handed to `entrance/cards.py` (built beside this one); the same card answered from Telegram shows here too."""
+        try:
+            from pflab.entrance import cards
+        except ImportError:
+            raise HTTPException(501, "cards are not built in this version")
+        try:
+            out = cards.answer_card(rt.cursor(), msg_id, action, "laptop")
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        rt.bump("chat", "notifications")
+        return json.loads(json.dumps(out, default=str)) if isinstance(out, (dict, list)) else {"ok": True}
+
     @app.get("/api/assistant/queue")
     def assistant_queue():
         """"Working on what you sent": the intake's queue (what is waiting, what is being read, what just finished)."""
