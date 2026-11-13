@@ -141,3 +141,52 @@ def test_the_weekly_code_review_asks_through_the_door(tmp_path, monkeypatch):
     assert out["reviewed"] == 1 and out["findings"] == 1 and out["cost"] > 0
     assert seen[0]["output_config"]["format"]["type"] == "json_schema"
     assert con.execute("SELECT agent, engine, purpose FROM api_calls").fetchone() == ("reading", "claude", "security review")
+
+
+# --- the slider's Claude road, the learner and the wording ----------------------------------------------------------------------------------
+
+def _client(text, seen):
+    reply = NS(content=[NS(type="text", text=text)], stop_reason="end_turn", usage=NS(input_tokens=400, output_tokens=40))
+
+    def create(**kw):
+        seen.append(kw)
+        return reply
+    return NS(messages=NS(count_tokens=lambda **k: NS(input_tokens=400), create=create), beta=NS(messages=NS(create=create)))
+
+
+def test_the_slider_road_the_learner_and_the_wording_ask_through_the_door(con, monkeypatch):
+    from pflab.hq import egress, governor as gv, models
+    from pflab.learner import claims
+    monkeypatch.setattr(an, "config", lambda path=None: CFG)
+    seen = []
+    road = models.Road(con, _client("Fine.", seen), egress.Gate())
+    assert models.claude_llm(road, gv.HAIKU, "Be brief.")("What is the weather?") == "Fine."
+    assert seen[0]["model"] == gv.HAIKU and seen[0]["system"][0]["text"] == "Be brief."
+    chat = models.claude_chat(road, gv.HAIKU)
+    assert chat("m", [{"role": "system", "content": "Route."}, {"role": "user", "content": "net worth?"}]).text == "Fine."
+    seen2 = []
+    draft = claims.claude_draft(con, _client('{"claims": []}', seen2), egress.Gate(), gv.SONNET, NOW)
+    assert draft("Read.", "A filing says nothing.", {"type": "object", "properties": {"claims": {"type": "array", "items": {}}}, "required": ["claims"]}) == {"claims": []}
+    assert seen2[0]["output_config"]["format"]["type"] == "json_schema" and seen2[0]["model"] == gv.SONNET
+    rows = con.execute("SELECT agent, engine FROM api_calls ORDER BY call_id").fetchall()
+    assert rows == [("wording", "claude"), ("router", "claude"), ("reader", "claude")]
+
+
+def test_a_named_claude_model_the_engine_does_not_price_is_answered_by_the_role_of_its_tier(con, monkeypatch):
+    monkeypatch.setattr(gateway, "current_engine", lambda con=None, st=None: "openai")
+    assert gateway.prefer(con, "claude-opus-5-5") == (None, "decide")
+    assert gateway.prefer(con, "claude-sonnet-5-5") == (None, "read")
+    monkeypatch.setattr(gateway, "current_engine", lambda con=None, st=None: "claude")
+    assert gateway.prefer(con, "claude-opus-5-5") == ("claude-opus-5-5", "quick")
+
+
+def test_no_module_outside_llm_calls_the_old_road_except_the_web_fetch_tool():
+    left = []
+    for f in (ROOT / "src").rglob("*.py"):
+        rel = "/".join(f.relative_to(ROOT).parts)
+        if rel.startswith("src/pflab/llm/") or rel == "src/pflab/hq/llm.py":
+            continue
+        for n, line in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            if re.search(r"\bllm\.call\(", line) and not line.lstrip().startswith("#"):
+                left.append(f"{rel}:{n}")
+    assert sorted({x.split(":")[0] for x in left}) == ["src/pflab/hq/fetch.py"]               # the one site left: Anthropic's server-side web_fetch tool (no engine but `claude` has it)

@@ -211,7 +211,7 @@ def run_session(con, pm_dir: Path, root, now: datetime, reason: str, *, client, 
             status = "budget"
             break
         try:                                                             # S85 G3: through the one door (role `decide`, agent `strategist`): the engine in use answers (Opus on `claude`); the egress gate, the governor and his cap are the door's
-            s = gateway.call(con, "decide", sys_blocks, messages, tools=tools.definitions(), max_tokens=6000, thinking="medium", agent="strategist", purpose=f"strategist session {sid}",
+            s = gateway.call(con, "decide", sys_blocks, messages, tools=tools.definitions(), max_tokens=6000, thinking="medium", agent="strategist", purpose="strategist",
                              tool_choice="none" if (turn == int(st["max_turns"]) or ctx.finished) else None, now=now, mode="normal", private_text=first if turn == 1 else "", gate=gate,
                              topic="strategist", question=f"strategist session {sid}, turn {turn}", cfg=cfg, client=client)
         except Exception as e:                                           # refused, blocked or failed: the session ends here, with what it has

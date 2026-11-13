@@ -565,13 +565,7 @@ def _door(con, req: Request, *, model: str, now: datetime, cfg: dict, system: st
     """S85 (G3): one analyst call through the door (`llm/gateway.py`, agent `analyst`: egress gate, price, governor, his cap, the row in `api_calls`; the doorbell's own gate ran before this).
     The slider's model is asked for by name when the engine in use prices it; otherwise the role of that tier answers (`web=True` stays on an engine with a web tool, by the door's rule)."""
     from pflab.llm import gateway
-    st = gateway.settings()
-    override = None
-    try:
-        override = gateway.model_id(st, gateway.current_engine(con, st), model)
-    except ValueError:
-        pass
-    role = "quick" if override else ("decide" if "opus" in model else "read" if "sonnet" in model else "quick")
+    override, role = gateway.prefer(con, model)
     thinking = effort if effort in gateway.LEVELS else None
     return gateway.call(con, role, system, [{"role": "user", "content": content}], documents=documents, max_tokens=max_tokens, thinking=thinking, model=override, agent="analyst",
                         purpose=purpose, now=now, mode="normal", private_text=req.question if private_text is None else private_text, topic=req.topic, question=req.question, cfg=cfg, client=client, approved=approved,

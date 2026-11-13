@@ -204,35 +204,32 @@ def claude_llm(r: Road, model: str, system: str = "", max_out: int = 1500, effor
                topic: str = "answer") -> Callable[[str], str]:
     """prompt -> text on a Claude model through the governed road (his portfolio may go; identity never)."""
     from datetime import datetime
-    from pflab.hq import llm
+    from pflab.llm import gateway
 
     def call(prompt: str) -> str:
         prompt, back = tokens(prompt, r)
-        p = {"model": model, "max_tokens": max_out, "output_config": {"effort": effort},
-             "messages": [{"role": "user", "content": prompt}]}
-        if system:
-            p["system"] = system
-        return restore(llm.call(r.con, agent_for(model), p, r.client, now=datetime.now(), mode=r.mode,
-                                private_text=prompt, gate=r.gate, doc_kinds=("portfolio",), topic=topic,
-                                question=prompt[:200], cfg=r.cfg).text, back)
+        override, role = gateway.prefer(r.con, model)
+        s = gateway.call(r.con, role, system or [], [{"role": "user", "content": prompt}], max_tokens=max_out, thinking=effort if effort in gateway.LEVELS else "low", model=override,
+                         agent=agent_for(model), purpose=topic, now=datetime.now(), mode=r.mode, private_text=prompt, gate=r.gate, topic=topic, question=prompt[:200], cfg=r.cfg,
+                         client=r.client)
+        return restore(s["text"], back)
     return call
 
 
 def claude_chat(r: Road, model: str, agent: str = "router") -> Callable:
     """eval12's Chat signature (model, messages, fmt, num_predict) on a Claude model: a JSON schema goes in the system."""
     from datetime import datetime
-    from pflab.hq import llm
+    from pflab.llm import gateway
 
     def chat(_model, messages, fmt=None, num_predict=400, **_):
         system = "\n".join(m["content"] for m in messages if m["role"] == "system")
         if fmt:
             system += "\nReply with JSON only, matching this JSON schema: " + json.dumps(fmt)
         user = tokens("\n".join(m["content"] for m in messages if m["role"] != "system"), r)[0]
-        p = {"model": model, "max_tokens": max(1024, num_predict * 4), "output_config": {"effort": "low"},
-             "system": system, "messages": [{"role": "user", "content": user}]}
-        s = llm.call(r.con, agent, p, r.client, now=datetime.now(), mode=r.mode, private_text=user, gate=r.gate,
-                     doc_kinds=("portfolio",), topic="routing", question=user[-200:], cfg=r.cfg)
-        return SimpleNamespace(text=s.text, tokens_in=None, tokens_out=None, seconds=None, digest=None)
+        override, role = gateway.prefer(r.con, model)
+        s = gateway.call(r.con, role, system or [], [{"role": "user", "content": user}], max_tokens=max(1024, num_predict * 4), thinking="low", model=override, agent=agent, purpose="routing",
+                         now=datetime.now(), mode=r.mode, private_text=user, gate=r.gate, topic="routing", question=user[-200:], cfg=r.cfg, client=r.client)
+        return SimpleNamespace(text=s["text"], tokens_in=None, tokens_out=None, seconds=None, digest=None)
     return chat
 
 

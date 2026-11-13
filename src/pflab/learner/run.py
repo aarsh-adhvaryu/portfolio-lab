@@ -35,16 +35,18 @@ def drafts(rt, paid: bool) -> List[Tuple[str, object]]:
 
 
 def proposal_draft(rt):
-    from pflab.hq import llm, models, service
+    from pflab.hq import models, service
+    from pflab.llm import gateway
 
     def draft(system: str, prompt: str, schema: dict) -> dict:
-        p = {"model": models.model_id("learner_proposals", rt.settings), "max_tokens": 3000, "system": system,
-             "output_config": {"effort": "medium", "format": {"type": "json_schema", "schema": schema}},
-             "messages": [{"role": "user", "content": prompt}]}
-        g = service.gate(rt)
-        return llm.call(rt.cursor(), "worker", p, service.client(rt), now=rt.clock(), mode=rt.settings.get("brain", "economy"),
-                        private_text=prompt, gate=g, doc_kinds=("portfolio",), topic="learner",
-                        question="the learner's proposals").json()
+        con = rt.cursor()
+        override, role = gateway.prefer(con, models.model_id("learner_proposals", rt.settings))
+        s = gateway.call(con, role, system, [{"role": "user", "content": prompt}], schema=schema, max_tokens=3000, thinking="medium", model=override, agent="worker", purpose="learner proposals",
+                         now=rt.clock(), mode=rt.settings.get("brain", "economy"), private_text=prompt, gate=service.gate(rt), topic="learner", question="the learner's proposals",
+                         client=service.client(rt))
+        if s.get("json_error"):
+            raise ValueError(s["json_error"])
+        return s["json"]
     return draft
 
 

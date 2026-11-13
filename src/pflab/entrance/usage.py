@@ -8,7 +8,11 @@ from typing import Dict, List, Optional
 
 COUNTED = ("done", "sending", "queued", "submitted", "refused")
 PURPOSE_OF_AGENT = {"w_assistant": "chat", "chat": "chat", "assistant": "chat", "think": "cases", "desk": "desk", "strategist": "strategist", "checker": "checker", "reader": "reading",
-                    "reading": "reading", "gatekeeper": "reading", "wording": "chat", "router": "chat", "worker": "lab", "fetch": "reading", "brain": "strategist", "escalation": "chat"}
+                    "reading": "reading", "gatekeeper": "reading", "wording": "chat", "router": "chat", "worker": "lab", "fetch": "reading", "brain": "strategist", "escalation": "chat",
+                    # S85 (G3): the purposes of the call sites moved onto the door
+                    "analyst": "reading", "analyst ring": "reading", "analyst web search": "reading", "analyst trial": "reading", "workshop calculation": "lab", "security review": "reading",
+                    "storyline escalation": "reading", "learner claims": "reading", "learner proposals": "lab", "routing": "chat", "portfolio wording": "chat", "answer": "chat",
+                    "verify tool call": "reading"}
 _PURPOSE_SQL = "coalesce(nullif(purpose, ''), agent, 'other')"
 _STATUS = "status IN (" + ",".join(f"'{s}'" for s in COUNTED) + ")"
 

@@ -222,16 +222,17 @@ def word_facts(rt, question: str, facts: dict) -> Tuple[str, float]:
     to the API; the egress list still stops identity and banking details). Every sentence with a number not in the
     facts is removed. Raises when blocked, over a limit, or with nothing left."""
     from pflab.agents import analyst as an
-    from pflab.hq import governor as gv, llm, service
+    from pflab.hq import governor as gv, service
+    from pflab.llm import gateway
     text = "FACTS:\n" + "\n".join(f"{k} = {_num(v)}" for k, v in facts.items()) + f"\n\nQUESTION: {question}"
-    p = {"model": gv.HAIKU, "max_tokens": gv.LIMITS["wording"].max_out, "system": WORD_SYSTEM,
-         "output_config": {"effort": "low"}, "messages": [{"role": "user", "content": text}]}
-    s = llm.call(rt.cursor(), "wording", p, service.client(rt), now=rt.clock(), mode=rt.settings.get("brain", "economy"),
-                 private_text=text, gate=service.gate(rt), doc_kinds=("portfolio",), topic="portfolio", question=question)
-    out, _ = an.only_sourced_numbers(s.text, an.Request(text, "portfolio"))
+    con = rt.cursor()
+    override, role = gateway.prefer(con, gv.HAIKU)
+    s = gateway.call(con, role, WORD_SYSTEM, [{"role": "user", "content": text}], max_tokens=gv.LIMITS["wording"].max_out, thinking="low", model=override, agent="wording", purpose="portfolio wording",
+                     now=rt.clock(), mode=rt.settings.get("brain", "economy"), private_text=text, gate=service.gate(rt), topic="portfolio", question=question, client=service.client(rt))
+    out, _ = an.only_sourced_numbers(s["text"], an.Request(text, "portfolio"))
     if not out.strip():
         raise ValueError("nothing left after the number check")
-    return out, s.cost_inr
+    return out, s["cost_rupees"]
 
 
 def _portfolio(rt, t: dict) -> Reply:

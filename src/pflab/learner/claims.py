@@ -176,15 +176,16 @@ def local_draft(model: Optional[str] = None) -> Draft:
 
 
 def claude_draft(con, client, gate, model: str, now: datetime, mode: str = "economy") -> Draft:
-    """A Claude model through HQ's road (public text: nothing private in the prompt; priced, governed as a reader)."""
-    from pflab.hq import llm
+    """A Claude model through the one door (public text: nothing private in the prompt; priced, governed as a reader)."""
+    from pflab.llm import gateway
 
     def draft(system: str, prompt: str, schema: dict) -> dict:
-        p = {"model": model, "max_tokens": 2000, "system": system,
-             "output_config": {"effort": "low", "format": {"type": "json_schema", "schema": schema}},
-             "messages": [{"role": "user", "content": prompt}]}
-        return llm.call(con, "reader", p, client, now=now, mode=mode, private_text="", gate=gate,
-                        doc_kinds=("article",), topic="learner", question=prompt[:200]).json()
+        override, role = gateway.prefer(con, model)
+        s = gateway.call(con, role, system, [{"role": "user", "content": prompt}], schema=schema, max_tokens=2000, thinking="low", model=override, agent="reader", purpose="learner claims",
+                         now=now, mode=mode, private_text="", gate=gate, topic="learner", question=prompt[:200], client=client)
+        if s.get("json_error"):
+            raise ValueError(s["json_error"])
+        return s["json"]
     return draft
 
 

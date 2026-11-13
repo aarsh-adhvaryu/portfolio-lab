@@ -55,7 +55,7 @@ DEFAULTS: Dict[str, Any] = {
         },
     },
 }
-AGENTS = ("think", "desk", "chat", "strategist", "checker", "reading", "analyst", "escalation")      # the governor's names for what the door serves (`hq/governor.LIMITS`)
+AGENTS = ("think", "desk", "chat", "strategist", "checker", "reading", "analyst", "escalation", "reader", "wording", "router", "worker")      # the governor's names for what the door serves (`hq/governor.LIMITS`)
 MAX_BREAKPOINTS = 4                                     # the vendor's limit of cache markers in one request
 WEB_USD_PER_SEARCH = 0.01                               # Anthropic's server web search, on top of tokens ($10 per 1,000)
 client_override: Any = None                             # a scripted fake (tests) for every engine; `set_client(None)` removes it
@@ -564,6 +564,17 @@ def case_engine(con, case_id: Optional[int], now: datetime, minutes: float) -> O
 
 
 # --- the door ---------------------------------------------------------------------------------------------------------------------------
+
+def prefer(con, model: Optional[str], st: Optional[dict] = None) -> Tuple[Optional[str], str]:
+    """(model override, role) for a caller that names a Claude model of its own (the slider, the analyst's job): the model is asked for by name when the engine in use prices it (role `quick`,
+    whose floor of output tokens is the smallest); on another engine the role of that tier answers (opus: decide, sonnet: read, anything else: quick)."""
+    st = st or settings()
+    m = str(model or "")
+    try:
+        return model_id(st, current_engine(con, st), m), "quick"
+    except ValueError:
+        return None, ("decide" if "opus" in m else "read" if "sonnet" in m else "quick")
+
 
 def _text_of_content(c) -> str:
     if isinstance(c, str):

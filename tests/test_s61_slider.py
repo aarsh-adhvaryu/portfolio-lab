@@ -75,14 +75,15 @@ def test_the_ask_centre_tries_each_model_of_the_chain_until_one_passes_the_guard
 
 
 def test_claude_answers_get_the_facts_with_ids_as_tokens(monkeypatch):
-    from pflab.hq import egress, llm
+    from pflab.hq import egress
+    from pflab.llm import gateway
     sent = []
 
-    def fake_call(con, agent, p, client, **kw):
+    def fake_call(con, role, system, messages, **kw):             # S85 (G3): the Claude road is the one door
         egress.check(kw["private_text"], kw["gate"])               # the road's own check passes
-        sent.append(p["messages"][0]["content"])
-        return SimpleNamespace(text="The first to mature is [ID-A] on 2027-01-30.")
-    monkeypatch.setattr(llm, "call", fake_call)
+        sent.append(messages[0]["content"])
+        return {"text": "The first to mature is [ID-A] on 2027-01-30.", "cost_rupees": 0.0}
+    monkeypatch.setattr(gateway, "call", fake_call)
     r = models.Road(None, None, egress.Gate(ids={"FD1234567890", "SB12345678"}))
     out = models.claude_llm(r, gv.HAIKU)("fd.next = FD1234567890 matures 2027-01-30; fd.other = FD1234567890; SB12345678")
     assert "FD1234567890" not in sent[0] and sent[0].count("[ID-A]") == 2 and "[ID-B]" in sent[0]
