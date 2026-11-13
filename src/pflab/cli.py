@@ -259,8 +259,13 @@ def main(argv=None):
     upp.add_argument("--check", action="store_true", help="only say whether a newer release exists")
     sup = sub.add_parser("setup", help="S65: secrets (typed, never echoed or printed) and which are set")
     sup.add_argument("action", choices=["secrets", "status"])
-    sup.add_argument("--only", nargs="*", choices=["kite", "telegram", "anthropic", "sec"], help="just these sections")
+    sup.add_argument("--only", nargs="*", choices=["kite", "telegram", "anthropic", "openai", "sec"], help="just these sections")
     sup.add_argument("--change", action="store_true", help="ask again for values already set")
+    enp = sub.add_parser("engine", help="S85: the model engines behind the one door: list | test NAME [--thinking medium,high] | use NAME | shadow NAME | unshadow NAME")
+    enp.add_argument("action", choices=["list", "test", "use", "shadow", "unshadow"])
+    enp.add_argument("name", nargs="?")
+    enp.add_argument("--thinking", default="", help="test: thinking levels to grade, comma list (low,medium,high,max)")
+    enp.add_argument("--yes", action="store_true", help="use / shadow: his Yes to the notice that is shown (recorded, dated)")
     stp = sub.add_parser("studies", help="results of the S45 split study and the S49 memory comparison")
     stp.add_argument("which", choices=["split", "memory"])
     fcp = sub.add_parser("forecast", help="S64 forecasts: price ranges, turnover (tickets), results; run | show | test (calibration, long)")
@@ -284,6 +289,8 @@ def main(argv=None):
                          offline=a.offline)
         print(rep.text())
         return verify.exit_code(rep)
+    if a.cmd == "engine":
+        return _engine(a)
     if a.cmd == "update":
         return _update(a)
     if a.cmd == "learner":
@@ -532,6 +539,48 @@ def _setup(a) -> int:
         names = []                                  # no sources file yet: Setup writes it, then run this again for the passwords
     ss.prompt(a.only, None if a.only else names, change=a.change)
     return 0
+
+
+def _engine(a) -> int:
+    """pflab engine list|test|use|shadow|unshadow (S85): the switch. Close the dashboard first (one process holds the store). A key is never printed."""
+    from datetime import datetime
+
+    from pflab.llm import gateway
+    from pflab.pm import store
+    con = store.connect()
+    st = gateway.settings()
+    if a.action == "list":
+        for e in gateway.engines_status(con, st):
+            flags = ("IN USE" if e["in_use"] else "") + (" SHADOW" if e["shadow"] else "")
+            print(f"{e['name']:8} {e['vendor']:10} key {e['key']:7} {'usable' if e['usable'] else 'NOT usable'} {flags}".rstrip())
+            for r, d in e["roles"].items():
+                print(f"    {r:7} {d['model']:16} thinking {d['thinking']:6} ${d['price_in']}/{d['price_out']} per million tokens in/out")
+            ex = e.get("exam")
+            print("    exam:   " + (f"{'passed' if ex['form_pass'] else 'FAILED'} the form part; {ex['grade']}" if ex else "not run (pflab engine test " + e["name"] + ")"))
+            if e["lacks"]:
+                print("    lacks:  " + ", ".join(e["lacks"]) + " (the door degrades these by rule)")
+            for p in e["problems"]:
+                print("    problem: " + p)
+        return 0
+    if not a.name:
+        print("name the engine: pflab engine " + a.action + " NAME")
+        return 2
+    if a.action == "test":
+        try:
+            from pflab.llm import exam
+        except ImportError:
+            print("the exam is not built in this checkout yet (llm/exam.py); nothing was run")
+            return 1
+        levels = [x.strip() for x in a.thinking.split(",") if x.strip()] or None
+        r = exam.run(con, a.name, thinking=levels, now=datetime.now())
+        print(r if isinstance(r, str) else getattr(r, "text", lambda: str(r))() if callable(getattr(r, "text", None)) else r)
+        return 0
+    fn = {"use": gateway.use, "shadow": gateway.shadow}.get(a.action)
+    r = fn(con, a.name, yes=a.yes, now=datetime.now()) if fn else gateway.unshadow(con, a.name)
+    if r.get("notice"):
+        print(r["notice"])
+    print(r["reason"])
+    return 0 if r["ok"] else 1
 
 
 def _learner(a) -> int:
