@@ -125,6 +125,11 @@ def enqueue(con, text: str, kind: str = "alert", dedup_key: Optional[str] = None
     mid = next_id(con, "outbox", "msg_id")
     con.execute("INSERT INTO outbox VALUES (?,?,?,?,?,?,?,?,?)",
                 [mid, now or datetime.now(), kind, text, dedup_key, "pending" if goes_at_once(kind) else "held", 0, None, None])
+    try:                                                 # S85 (E1): what the system says by itself appears in the chat as well (an answer, kind "reply", does not)
+        from pflab.entrance import store as _chat_store
+        _chat_store.mirror_outbox(con, mid, text, kind, dedup_key, now)
+    except Exception:
+        pass
     return mid
 
 

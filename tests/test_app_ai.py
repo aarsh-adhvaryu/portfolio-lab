@@ -22,34 +22,48 @@ def rt(tmp_path):
     return runtime.Runtime(tmp_path / "pm", tmp_path / "data", tmp_path, con=con, clock=lambda: NOW)
 
 
-def wait_done(rt, chat_id, timeout=5.0):
+@pytest.fixture(autouse=True)
+def _intake_clean():
+    from pflab.entrance import intake
+    intake.stop()
+    yield
+    intake.stop()
+    intake.gateway_call = None
+
+
+def wait_done(rt, chat_id, timeout=8.0):
     end = time.time() + timeout
     while time.time() < end:
         m = chat.messages(rt.cursor(), chat_id)
-        if m and m[-1]["status"] != "working":
+        if m and m[-1]["status"] not in ("working", "queued"):
             return m
         time.sleep(0.05)
     raise AssertionError("the worker did not finish")
 
 
-def test_a_chat_answers_on_a_worker_and_keeps_its_route(rt, monkeypatch):
-    monkeypatch.setattr(centre, "ask", lambda con, q, asof: centre.Answer(q, ["networth"], "Net worth is in the ledger [F:x].",
-                                                                          True, {}, "keywords"))
+def test_a_chat_answers_on_a_worker_and_shows_its_model_and_price(rt):
+    """S85: the old ask road is gone; chat.post hands the question to the intake, which answers on the model the router picks (a scripted gateway here)."""
+    from pflab.entrance import intake
+    intake.gateway_call = lambda con, role, system, messages, **kw: {"text": "Net worth is in the ledger.", "tool_calls": [], "assistant_content": [], "cost_rupees": 0.4, "model": "claude-sonnet-5-5",
+                                                                     "thinking": "medium", "engine": "anthropic"}
     r = chat.post(rt, 0, "What is my net worth?", "ask")
     m = wait_done(rt, r["chat_id"])
-    assert [x["role"] for x in m] == ["me", "ai"] and m[1]["status"] == "done"
-    assert m[1]["route"] == ["routing (keywords, local)", "tool: networth", "local model, checked by the guard"]
-    assert chat.listing(rt.cursor())[0]["title"] == "What is my net worth?"
+    assert [x["role"] for x in m] == ["me", "ai"] and m[1]["status"] == "done" and m[1]["text"] == "Net worth is in the ledger."
+    assert m[1]["model"] == "claude-sonnet-5-5" and m[1]["cost_inr"] == 0.4 and "Sonnet 5.5" in m[1]["meta"]
+    assert chat.listing(rt.cursor())[0]["title"] == "Assistant"                       # one conversation: a new question is not a new chat
     with pytest.raises(ValueError):
         chat.post(rt, r["chat_id"], "x", "telepathy")
 
 
 def test_a_failed_answer_is_shown_not_hidden(rt, monkeypatch):
-    def boom(con, q, asof):
-        raise RuntimeError("Ollama is not running")
-    monkeypatch.setattr(centre, "ask", boom)
+    from pflab.entrance import intake
+    monkeypatch.setitem(intake.DEFAULTS, "retry_pause_s", 0.0)
+
+    def boom(con, role, system, messages, **kw):
+        raise RuntimeError("the provider is not reachable")
+    intake.gateway_call = boom
     m = wait_done(rt, chat.post(rt, 0, "q", "ask")["chat_id"])
-    assert m[1]["status"] == "failed" and "Ollama is not running" in m[1]["text"]
+    assert m[1]["status"] == "failed" and "did not answer" in m[1]["text"]
 
 
 class WebClient:

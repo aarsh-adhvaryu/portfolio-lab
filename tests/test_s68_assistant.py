@@ -1,6 +1,7 @@
-"""S68 P6: the assistant is one persistent conversation that answers from tools, starts investigations, remembers, hears what the system does, and is
+"""S68 P6 (kept through S85): the assistant is one persistent conversation that answers from tools, remembers, hears what the system does, and is
 bound by the same governor, egress gate and tool allow-list as the workers. A scripted model stands in for the API (development test; the calibration
-set `tools/assistant_eval.py` is the live check). Synthetic data only."""
+set `tools/assistant_eval.py` is the live check). Since S85 the answer is worked out by `entrance/intake.converse` through the gateway (`assistant.answer` is its synchronous door).
+Synthetic data only."""
 from __future__ import annotations
 
 import json

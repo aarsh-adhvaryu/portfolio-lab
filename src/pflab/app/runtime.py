@@ -152,12 +152,22 @@ class Runtime:
             t = threading.Thread(target=self._guard(fn), name=name, daemon=True)
             t.start()
             self.threads.append(t)
+        try:                                                 # S85 (A69): the intake, the chat's own workers: its own threads and queue, never the scheduler's; a queue a stopped process left is resumed
+            from pflab.entrance import intake
+            intake.start(self)
+        except Exception:
+            log.exception("the chat intake did not start")
 
     def shutdown(self, wait_s: float = 30.0, others_s: float = 3.0) -> None:
         """A running job gets `wait_s` to finish (it writes the store); the screen's own computations (watch list,
         Monte Carlo, simulations: caches written whole) get `others_s` and are dropped with the process."""
         self.stop.set()
         self._wake.set()
+        try:                                                 # S85: the intake's workers end with the app (an item in progress stays `working` and is resumed at the next start)
+            from pflab.entrance import intake
+            intake.stop()
+        except Exception:
+            pass
         try:                                                 # S70: the local-call record belongs to this runtime's store
             from pflab.llm import client
             client.set_sink(None)
