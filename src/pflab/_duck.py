@@ -18,4 +18,11 @@ def sql(query: str):
     con = getattr(_local, "con", None)
     if con is None:
         con = _local.con = duckdb.connect()
-    return con.sql(query)
+    try:
+        return con.sql(query)
+    except duckdb.TransactionException:                    # S85: a thread's connection left in an aborted transaction by an earlier failed statement: roll back, then once more
+        try:
+            con.execute("ROLLBACK")
+        except Exception:
+            con = _local.con = duckdb.connect()
+        return con.sql(query)
