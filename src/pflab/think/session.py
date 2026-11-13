@@ -21,7 +21,7 @@ import importlib
 import json
 import re
 from datetime import date, datetime, timedelta
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, Iterable, List, Optional
 
 from pflab import think
 from pflab.think import cases, reserve
@@ -163,9 +163,18 @@ def _session_after(market: str, day: date, n: int) -> date:
 _INDEX_NAMES = re.compile(r"\b(?:S&P ?(?:500|100|400|600)|Nasdaq[- ]?(?:100|Composite)?|Nifty ?(?:50|100|200|500|Next 50|Midcap ?(?:50|100|150)|Smallcap ?(?:50|100|250))|Dow(?: Jones)?(?: 30)?|Russell ?(?:1000|2000|3000)|FTSE ?(?:100|250)|BSE ?(?:500|100|200)|Sensex ?(?:30)?|Nikkei ?225|CAC ?40|DAX ?40?|Hang Seng ?\d*)\b", re.I)
 
 
-def _numbers(text: str) -> set:
-    """The figures in a text; the digits that are part of an index's NAME (S&P 500, Nasdaq 100, Nifty 500) are names, not figures."""
-    return {t.replace(",", "").rstrip(".") for t in re.findall(r"\d[\d,]*\.?\d*", _INDEX_NAMES.sub(" ", text or ""))}
+# S85 fix3: a ticker with digits in it (ICICIB22, BHARAT22, NIFTY50, GOLDBEES2) is a NAME: three or more letters then digits, never a currency code glued to an amount (INR500, USD50)
+_TICKER_DIGITS = re.compile(r"(?<![A-Za-z0-9])(?!(?:INR|USD|EUR|GBP)\d)[A-Za-z]{3,}\d+[A-Za-z0-9]*(?![A-Za-z0-9])")
+
+
+def _numbers(text: str, names: Iterable[str] = ()) -> set:
+    """The figures in a text; the digits that are part of an index's NAME (S&P 500, Nasdaq 100, Nifty 500) or of an instrument's name (ICICIB22, BHARAT22, and any name the answer itself
+    chooses as an option target) are names, not figures."""
+    t = _TICKER_DIGITS.sub(" ", _INDEX_NAMES.sub(" ", text or ""))
+    for n in names:
+        if n and any(ch.isdigit() for ch in n):
+            t = re.sub(r"(?<![A-Za-z0-9])" + re.escape(n) + r"(?![A-Za-z0-9])", " ", t, flags=re.I)
+    return {x.replace(",", "").rstrip(".") for x in re.findall(r"\d[\d,]*\.?\d*", t)}
 
 
 def _walk(x, path=""):
@@ -213,15 +222,16 @@ def validate_answer(ans: object, known_text: str = "") -> List[str]:
         elif isinstance(v, (int, float)) and not isinstance(v, bool):
             out.append(f"`{path.lstrip('.')}` is a number: write words or names only")
     known = _numbers(known_text)
+    syms = [str(c.get("symbol")) for c in (ans.get("choices") or []) if isinstance(c, dict) and c.get("symbol")]
     for k in ("happened", "known", "pending"):
         v = ans.get(k)
         if isinstance(v, str):
-            bad = sorted(n for n in _numbers(v) if n not in known)
+            bad = sorted(n for n in _numbers(v, syms) if n not in known)
             if bad:
                 out.append(f"`{k}` carries figures the sources did not give ({', '.join(bad[:4])}): leave them out or take them from a tool result")
     for i, c in enumerate(ans.get("choices") or []):
         if isinstance(c, dict) and isinstance(c.get("reason"), str):
-            bad = sorted(n for n in _numbers(c["reason"]) if n not in known)
+            bad = sorted(n for n in _numbers(c["reason"], syms) if n not in known)
             if bad:
                 out.append(f"choice {i + 1}'s reason carries figures the sources did not give ({', '.join(bad[:4])})")
     return out[:8]
@@ -992,7 +1002,8 @@ def _retry_refused(con, now: datetime, case: dict) -> List[str]:
             latest[d["isin"]] = d
     out: List[str] = []
     for isin, d in latest.items():
-        if d["model_option"] != "buy_in_parts" or d["rule_option"] not in ("nothing", "wait") or isin in plans or d["decided_on"] >= day or not d["symbol"]:
+        waiting = d["rule_option"] in ("nothing", "wait") or (d["rule_option"] == "hold" and _mod("rule").BUY_WAITS in str(d.get("reason") or ""))   # a held name's refused buy is a hold that says "The buy waits"
+        if d["model_option"] != "buy_in_parts" or not waiting or isin in plans or d["decided_on"] >= day or not d["symbol"]:
             continue
         sym = str(d["symbol"]).upper()
         nans = _normal({**ans, "choices": [{"symbol": sym, "option": "buy_in_parts", "reason": "looked at again"}]}, {sym: isin})
@@ -1021,6 +1032,73 @@ def _unfinished(con, case_id: int) -> bool:
     return any(len(p) < n for p in _part_plans(con, case_id).values())
 
 
+def _last_model_step(con, case_id: int) -> Optional[datetime]:
+    return con.execute("SELECT max(step_at) FROM think_steps_s84 WHERE case_id=? AND step IN ('answer_ok','failed')", [case_id]).fetchone()[0]
+
+
+def _break_signal(con, case: dict) -> Optional[int]:
+    """S85 fix3 (a): the id of the newest NEW thesis-break-kind or high-severity event that joined this open case after its last model step and that no re-look has answered yet (None when there is none)."""
+    from pflab.kg2.classify import THESIS_BREAK_KINDS
+    last = _last_model_step(con, case["case_id"])
+    done = 0
+    for st in cases.steps(con, case["case_id"]):
+        if st["step"] == "relook":
+            try:
+                done = max(done, int(json.loads(st["payload_json"]).get("signal_id") or 0))
+            except Exception:
+                pass
+    best = None
+    for sg in cases.signals(con, case_id=case["case_id"]):
+        if sg["signal"] != "thesis_event" or sg["signal_id"] <= done or (last is not None and (sg["ts"] is None or sg["ts"] <= last)):
+            continue
+        try:
+            det = json.loads(sg["detail_json"] or "{}")
+        except Exception:
+            det = {}
+        if det.get("kind") in THESIS_BREAK_KINDS or det.get("severity") == "high":
+            best = max(best or 0, sg["signal_id"])
+    return best
+
+
+def _relooks_today(con, day: date) -> int:
+    return int(con.execute("SELECT count(*) FROM think_steps_s84 WHERE step='relook' AND CAST(step_at AS DATE)=?", [day]).fetchone()[0])
+
+
+def _guard_checked_today(con, case_id: int, day: date) -> bool:
+    return bool(con.execute("SELECT 1 FROM think_steps_s84 WHERE case_id=? AND step='guard_checked' AND CAST(step_at AS DATE)=? LIMIT 1", [case_id, day]).fetchone())
+
+
+def _off_calendar(con, now: datetime, day: date, due_ids: set, out: dict, root, web) -> None:
+    """S85 fix3: a case is re-looked on its calendar AND (a) when a NEW thesis-break or high-severity event joins it after its last model step (the model re-reads it, once per trigger, inside the
+    day's cap of `max_cases_per_day` minus the cases already opened and re-looked today), (b) on the first look after a timing guard that made a buy wait has cleared (the rule alone decides on the
+    stored answer: code, no model call; checked once a day, and only for a case whose last decision was a waiting buy)."""
+    cap = int(think.settings()["max_cases_per_day"])
+    rows = con.execute("SELECT case_id FROM think_cases_s84 WHERE state IN ('open','waiting','acted','advisory') ORDER BY score DESC, case_id").fetchall()
+    for (cid,) in rows:
+        c = cases.get_case(con, cid)
+        try:
+            sid = _break_signal(con, c)
+            if sid and cases.cases_opened_on(con, day) + _relooks_today(con, day) < cap:
+                cases.add_step(con, cid, now, "relook", payload={"trigger": "thesis_break_signal", "signal_id": sid, "day": str(day)})
+                out["relooked"] = out.get("relooked", 0) + 1
+                out["rethought"] += 1
+                r = think_case(con, now, cid, root=root, web=web)
+                if not r.get("ok"):
+                    out["failed"].append(f"#{cid}: {r.get('failed')}")
+                continue
+            if cid in due_ids or _guard_checked_today(con, cid, day):
+                continue
+            if not any(d["model_option"] == "buy_in_parts" for d in cases.decisions(con, cid)):
+                continue
+            refs = _retry_refused(con, now, c)
+            cases.add_step(con, cid, now, "guard_checked", payload={"day": str(day), "refs": refs})
+            if any(x.startswith(("paper_order", "us_order")) for x in refs):
+                out["parts"] += 1
+                out["guard_cleared"] = out.get("guard_cleared", 0) + 1
+        except Exception as e:
+            out["failed"].append(f"#{cid}: {type(e).__name__}: {str(e)[:120]}")
+
+
 def follow_up(con, now: datetime, day: Optional[date] = None, *, root=None, web: Optional[Callable] = None) -> dict:
     """T7: every due look. A look is re-thought only when something changed (a new joined signal since the last answer); a part of a buy in parts is bought when it is due; a case is closed
     when nothing is pending and the position is decided, or after `quiet_close_sessions` quiet sessions. Releases a closed case's freezes. Never raises for one case. Idempotent per day."""
@@ -1029,7 +1107,9 @@ def follow_up(con, now: datetime, day: Optional[date] = None, *, root=None, web:
     day = day or now.date()
     out = {"looked": 0, "rethought": 0, "parts": 0, "closed": 0, "extended": 0, "failed": []}
     st = think.settings()
-    for c in cases.looks_due(con, day):
+    due = cases.looks_due(con, day)
+    _off_calendar(con, now, day, {x["case_id"] for x in due}, out, root, web)
+    for c in due:
         cid = c["case_id"]
         try:
             if _last_think_day(con, cid) == day:
