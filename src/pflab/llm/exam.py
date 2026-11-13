@@ -73,6 +73,7 @@ class _Run:
     def __init__(self, con, engine: str, level: str, now, fake, cap: float):
         self.con, self.engine, self.level, self.now, self.fake, self.cap = con, engine, level, now, fake, cap
         self.cost, self.calls, self.secs, self.stopped = 0.0, 0, 0.0, False
+        self.blocked = None                                    # a refusal of the door (the workshop guard, the cap, the egress gate): nothing was asked, so the exam did not run
 
     def ask(self, role: str, system, messages, **kw) -> Optional[dict]:
         """One call through the door; None on an error (counted by the caller as malformed), never raises. Stops at the spend cap."""
@@ -89,6 +90,13 @@ class _Run:
         except Exception as e:
             self.secs += time.perf_counter() - t0
             self.calls += 1
+            try:
+                from pflab.llm import gateway as _g
+                why = _g.refusal_reason(e)
+            except Exception:
+                why = None
+            if why:
+                self.blocked, self.stopped = why, True
             return {"error": f"{type(e).__name__}: {str(e)[:120]}", "cost_rupees": 0.0}
         self.secs += time.perf_counter() - t0
         self.calls += 1
@@ -267,6 +275,9 @@ def run(con, engine: str, *, thinking=("medium",), now: Optional[datetime] = Non
     for lv in levels:
         rn = _Run(con, engine, lv, now, fake, max(0.0, spend_cap_rupees - spent))
         form = form_part(rn)
+        if rn.blocked:                                         # the door refused (not the engine's fault): nothing is recorded, so the engine is neither passed nor failed
+            return {"engine": engine, "refused": f"the exam did not run: {rn.blocked}", "levels": out,
+                    "text": f"{engine}: the exam did not run, the door refused the calls ({rn.blocked}). Nothing was recorded."}
         judg = judgment_part(rn) if not rn.stopped else {"agree": 0, "n": 0, "rows": [], "missing": ["stopped at the spend cap"]}
         read = reading_part(rn) if not rn.stopped else {"docs": 0, "facts_total": 0, "facts_found": 0, "missed": 0, "invented_numbers": 0}
         cost = cost_part(rn, form, judg, read)
