@@ -1963,6 +1963,14 @@ def drill_accelerated_thinking(env: "Env", c: Check) -> None:
         c.ok(False, f"steps failed: {[s['name'] for s in bad]}", "tools/drills_s81.py ACCELERATED_STEPS")
 
 
+@drill("accelerated_week", 30)
+def drill_accelerated_week(env: "Env", c: Check) -> None:
+    """S85: a working week of the whole system (chat from both windows, the thinking loop and the desk, the app closed every night and for a whole day, an engine switch in the middle), every model and the
+    Bot API scripted. The week itself is in tools/drills_s85_week.py."""
+    import drills_s85_week
+    drills_s85_week.run(env, c, sys.modules[__name__])
+
+
 @drill("accelerated_long", 20)
 def drill_accelerated_long(env: "Env", c: Check) -> None:
     """The standing assertions over 30 sessions (six weeks, a month boundary, the 28-day claims coming due, the strategist's weekly trigger): what ten sessions cannot show."""
