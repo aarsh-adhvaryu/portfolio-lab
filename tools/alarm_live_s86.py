@@ -14,8 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-NAMES = [("INE002A01018", "RELIANCE", "IN", "Reliance Industries"), ("INE467B01029", "TCS", "IN", "Tata Consultancy Services"), ("INE040A01034", "HDFCBANK", "IN", "HDFC Bank"),
-         ("INE009A01021", "INFY", "IN", "Infosys"), ("INE154A01025", "ITC", "IN", "ITC"), ("ZZ0001045810", "NVDA", "US", "Nvidia")]
+NAMES: list = []   # (isin, symbol, market, name): read from --names (a JSON file kept outside the repo: public names only, never his list in git)
 
 
 def main() -> int:
@@ -23,8 +22,10 @@ def main() -> int:
     ap.add_argument("--minutes", type=int, default=60)
     ap.add_argument("--every", type=int, default=15)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--names", required=True, help="JSON file: [[isin, symbol, market, name], ...]")
     a = ap.parse_args()
     out = Path(a.out)
+    NAMES.extend(json.loads(Path(a.names).read_text(encoding="utf-8")))
     out.mkdir(parents=True, exist_ok=True)
     os.environ["PFLAB_PM_DIR"] = str(out / "pm")
     from pflab.ingest import headlines as ing
