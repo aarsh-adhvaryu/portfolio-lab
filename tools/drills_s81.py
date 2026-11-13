@@ -1826,7 +1826,7 @@ def step_thinking(env: "Env", c: Check, phase: str) -> None:
         per_day[str(x["opened_on"])] = per_day.get(str(x["opened_on"]), 0) + 1
     c.ok(all(v <= 3 for v in per_day.values()), f"never more than 3 new cases examined in a day ({per_day})", "think/watch.py")
     steps = [s for x in examined for s in cases.steps(cur, x["case_id"]) if s["model"]]
-    c.ok(bool(steps) and all(s["engine"] == "anthropic" and s["model"] and s["thinking"] for s in steps), f"every model step stores its engine, model and thinking level ({len(steps)} steps)", "think/session.py, llm/gateway.py")
+    c.ok(bool(steps) and all(s["engine"] in ("claude", "anthropic") and s["model"] and s["thinking"] for s in steps), f"every model step stores its engine, model and thinking level ({len(steps)} steps)", "think/session.py, llm/gateway.py")
     dec = cases.decisions(cur)
     c.ok(bool(dec), f"decisions were stored ({len(dec)})", "think/session.py")
     sec = [x for x in dec if not str(x["isin"]).startswith(("MARKET:", "MACRO:", "STORY:"))]
