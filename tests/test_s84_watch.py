@@ -333,8 +333,8 @@ def test_an_after_hours_quote_counts_as_one_more_bar(con, tmp_path):
     assert json.loads(s["detail_json"])["after_hours_quote"] == pytest.approx(last * 0.9)
 
 
-def test_the_watch_is_off_when_the_loop_is_off_and_the_wide_watch_stays_off(con, tmp_path, monkeypatch):
-    assert think.settings()["wide_watch"] is False and watch.settings()["wide_watch"] is False
+def test_the_watch_is_off_when_the_loop_is_off_and_the_wide_watch_is_on_in_s85(con, tmp_path, monkeypatch):
+    assert think.settings()["wide_watch"] is True and watch.settings()["wide_watch"] is True          # S85 L1 turned it on (think/wide.py); the loop's own switch still stops all of it
     _reshape(con, BBB, [-0.05])
     monkeypatch.setattr(think, "on", lambda: False)
     assert watch.run(con, NOW, mode="close", root=tmp_path)["off"] is True and cases.signals(con) == []

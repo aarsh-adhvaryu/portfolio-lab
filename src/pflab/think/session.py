@@ -290,6 +290,11 @@ def _first_message(con, now: datetime, case: dict, names: List[dict], recalled: 
     held = _held(con, case.get("market") or "IN", case.get("isin"))
     hold_txt = (f"about Rs {float(case.get('exposure_inr') or 0):,.0f} of it ({100 * _exposure_share(con, case, day):.1f}% of the whole book)" if held > 0
                 else "none of it: this is a chance, not a holding")
+    try:                                                                  # S85 L1: what the funds the book holds add (an estimate, with what is not covered)
+        from pflab.think import exposure as _exposure
+        hold_txt += _exposure.case_text(con, day, case)
+    except Exception:
+        pass
     return (f"CASE #{case['case_id']} (opened {case['opened_on']}, market {case['market']}, kind {case['kind']}): {case['title']}\n"
             f"The book holds {hold_txt}.\n"
             f"The whole book is about Rs {whole:,.0f}. {res}\n\nSIGNALS (from code):\n" + ("\n".join(lines) or "- none stored") +

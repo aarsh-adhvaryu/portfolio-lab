@@ -132,6 +132,7 @@ class Runtime:
             s83.register_picks_live(self.cursor(), self.clock())        # S83 L5: the picks sleeve's live test, one per market
             from pflab.learner import s84
             s84.register_thinking_live(self.cursor(), self.clock())     # S84 T8: the thinking loop's live test, once
+            s84.register_thinking_amendment_a2(self.cursor(), self.clock())     # S85 L1: its Amendment A2 (bounded threshold tuning), once
             s79.register_c4(self.cursor(), self.clock())               # S82 C4
             s79.apply_verdicts(self.cursor())
         except Exception:

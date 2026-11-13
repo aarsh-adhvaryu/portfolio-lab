@@ -24,7 +24,7 @@ Score = surprise x exposure in rupees. The exposure of a name the book does not 
 macro signal's exposure is `market_exposure_factor` of the equity the book holds (a ranking weight only, never a rupee claim). A new signal on a name with an open case JOINS that case; at most
 `max_cases_per_day` NEW cases a day are opened (the largest score first), the rest are stored as state `noticed` (never examined). Every signal is stored once per (name, signal, day).
 Point in time: a price, a filing and a probability dated after the pass's day, or after `now`, is never read. Pseudo keys for non-security cases: 'MARKET:IN', 'MARKET:US', 'MACRO:<series>', 'STORY:<id>'.
-`[think] wide_watch` (the Nifty 500 and S&P 500 members, S85) is read and stays OFF: no wide-watch code is written here.
+`[think] wide_watch` (S85 L1): the Nifty 500 and S&P 500 members are watched by `think/wide.py` after each close and US morning pass (cheap signals only; `_wide` below).
 """
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ from pflab import think
 from pflab.think import cases
 
 WATCH_DEFAULTS = {
-    "wide_watch": False,                # S85: the Nifty 500 and S&P 500 members. OFF; nothing here reads it beyond saying so.
+    "wide_watch": False,                # S85 L1: the Nifty 500 and S&P 500 members (think/wide.py); configs/core.toml [think] turns it on
     "history_sessions": 260, "min_history": 60, "sigma_min_obs": 40,
     "news_burst_min": 3, "news_norm_days": 60,
     "market_exposure_factor": 0.25,     # a market or macro signal's ranking exposure: this share of the equity the book holds
@@ -352,6 +352,11 @@ def scope(con, day: date, *, market: Optional[str] = None, root=None, held_only:
         e["exposure_pct"] = e["exposure_inr"] / whole if whole > 0 else 0.0
         e["why"] = "; ".join(e["why"])
         rows.append(e)
+    try:                                                                  # S85 L1: the exposure THROUGH FUNDS (a held index ETF holds the company too); no held fund, no work
+        from pflab.think import exposure as _fx
+        _fx.apply_to_scope(con, day, rows, whole, cfg, root)
+    except Exception:
+        pass
     rows.sort(key=lambda e: (-e["exposure_inr"], e["symbol"] or ""))
     if held_only:
         return [e for e in rows if e["held"]]
@@ -572,6 +577,8 @@ def _commit(con, sig_now: datetime, raws: List[dict]) -> dict:
             continue
         det = dict(x["detail"])
         det.update({"why_in_scope": e.get("why"), "exposure_basis": e.get("exposure_basis", "held")})
+        if e.get("via_funds_inr"):
+            det["exposure_via_funds_inr"] = round(float(e["via_funds_inr"]), 2)
         score = x["surprise"] * e["exposure_inr"]
         sid = cases.record_signal(con, sig_now, market=e["market"], isin=e["isin"], symbol=e["symbol"], signal=x["signal"], value=x["value"], threshold=x["threshold"], surprise=x["surprise"],
                                   exposure_inr=e["exposure_inr"], score=score, detail=det)
@@ -710,13 +717,29 @@ def _merge(into: dict, res: dict) -> dict:
         into.setdefault(k, [])
         into[k] += [x for x in res.get(k, []) if x not in into[k]]
     into["noticed"] = into.get("noticed", 0) + res.get("noticed", 0)
+    if res.get("wide"):
+        into.setdefault("wide", {}).update(res["wide"])
     return into
+
+
+def _wide(con, sig_now: datetime, day: date, until: datetime, market: str, res: dict, root, cfg: dict) -> None:
+    """S85 L1: the wide watch (the Nifty 500 and S&P 500 members, `think/wide.py`) after the close's own pass, behind `[think] wide_watch`. Never raises; its result joins `res`."""
+    if not cfg.get("wide_watch"):
+        return
+    try:
+        from pflab.think import wide
+        w = wide.run_pass(con, sig_now, day, until, market, root=root)
+        _merge(res, {k: v for k, v in w.items() if k != "wide"})
+        res.setdefault("wide", {})[market] = w.get("wide")
+    except Exception as ex:
+        res.setdefault("wide", {})[market] = {"error": repr(ex)[:200]}
 
 
 def _india_close(con, now: datetime, d: date, root, cfg: dict) -> dict:
     sig_now = now if d == now.date() else datetime.combine(d, time(15, 45))
     until = now if d == now.date() else datetime.combine(d, time(23, 59, 59))
     res = _india_pass(con, sig_now, d, until, quotes=None, light=False, root=root, cfg=cfg)
+    _wide(con, sig_now, d, until, "IN", res, root, cfg)
     ready = bool(con.execute("SELECT count(*) FROM prices WHERE date=? AND source='nse_bhavcopy'", [d]).fetchone()[0])
     if ready or (now.date() - d).days > 3:                                  # a close whose prices have not arrived is not logged as done: the next catch-up runs it again
         _log_run(con, now, "close", "IN", d, res)
@@ -741,6 +764,7 @@ def _us_morning(con, now: datetime, s: date, root, cfg: dict, quotes: Optional[d
             pass
     sig_now = now if live else datetime.combine(ist_day, time(8, 0))
     res = _us_pass(con, sig_now, s, now if live else datetime.combine(ist_day, time(8, 0)), quotes=quotes if live else None, root=root, cfg=cfg)
+    _wide(con, sig_now, s, now if live else datetime.combine(ist_day, time(8, 0)), "US", res, root, cfg)
     _log_run(con, now, "us_morning", "US", s, res)
     return res
 
@@ -765,8 +789,6 @@ def run(con, now: datetime, *, mode: str, quotes: Optional[dict] = None, root=No
     if not _on():
         out["off"] = True
         return out
-    if cfg.get("wide_watch"):
-        out["wide_watch"] = "on in config but not built (S85): ignored"
     try:
         if mode == "session":
             if not quotes:
