@@ -31,7 +31,7 @@ from pflab.kg2 import classify, headlines as kg
 from pflab.think import cases
 
 DEFAULTS = {"alarm": True, "alarm_heard_per_day": 6, "alarm_outlets": 4, "alarm_outlet_minutes": 60, "alarm_story_hours": 36, "alarm_seconds": 110.0, "alarm_target_minutes": 30,
-            "alarm_blind_minutes": 60, "alarm_gap_minutes": 30, "alarm_gap_days": 7, "alarm_graph_sync": True}
+            "alarm_blind_minutes": 60, "alarm_gap_minutes": 30, "alarm_gap_days": 7, "alarm_graph_sync": True, "alarm_fresh_hours": 8}
 EYE_LABELS = {"google_news": "news (Google News)", "yahoo": "news (Yahoo Finance)", "gdelt_doc": "news (GDELT)", "filings": "Indian company filings (BSE)", "sec_8k": "US company filings (SEC)",
               "india_quotes": "Indian quotes", "us_quotes": "US quotes"}
 LOCK = threading.RLock()
@@ -62,13 +62,14 @@ def _id(con, table: str, col: str) -> int:
 
 # --- lanes -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def lane_of(title: str, entry: dict) -> tuple:
-    """(lane, kind, severity) of one headline on one name, by code."""
+def lane_of(title: str, entry: dict, fresh: bool = True) -> tuple:
+    """(lane, kind, severity) of one headline on one name, by code. `fresh` False (published long before it was seen: a week fetched for a name asked about for the first time, a feed that keeps
+    old items): never RED, the news is not new."""
     kind, sev = kg.kind_of(title)
     named = ing.linked_by(title, entry) == "title"
     if not named:
         return "grey", kind, sev
-    if kind in classify.THESIS_BREAK_KINDS and sev in ("medium", "high") and entry.get("red_ok"):
+    if kind in classify.THESIS_BREAK_KINDS and sev in ("medium", "high") and entry.get("red_ok") and fresh:
         return "red", kind, sev
     return "amber", kind, sev
 
@@ -78,13 +79,16 @@ def burst(con, now: datetime, entry: dict, cfg: dict) -> Optional[dict]:
     if not entry.get("red_ok"):
         return None
     lo = now - timedelta(minutes=int(cfg["alarm_outlet_minutes"]))
-    rows = con.execute("SELECT outlet, title FROM headlines_s86 WHERE isin=? AND first_seen > ? AND first_seen <= ?", [entry["isin"], lo, now]).fetchall()
+    when = "coalesce(published, first_seen)"                                                    # the story's own time: a week fetched at once is not an hour of coverage
+    rows = con.execute(f"SELECT outlet, title FROM headlines_s86 WHERE isin=? AND {when} > ? AND {when} <= ?", [entry["isin"], lo, now]).fetchall()
     outlets = {o for o, t in rows if o and ing.linked_by(t, entry) == "title"}
     if len(outlets) < int(cfg["alarm_outlets"]):
         return None
-    hist = con.execute("SELECT date_trunc('hour', first_seen) h, count(DISTINCT outlet) FROM headlines_s86 WHERE isin=? AND first_seen > ? AND first_seen <= ? GROUP BY 1",
+    hist = con.execute(f"SELECT date_trunc('hour', {when}) h, count(DISTINCT outlet) FROM headlines_s86 WHERE isin=? AND {when} > ? AND {when} <= ? GROUP BY 1",
                        [entry["isin"], now - timedelta(days=14), lo]).fetchall()
-    norm = statistics.median([int(c) for _h, c in hist]) if len(hist) >= 6 else 1
+    if len(hist) < 24:
+        return None                                                                              # "against its norm" needs a norm: under 24 busy hours of history there is none, and no alarm by volume
+    norm = statistics.median([int(c) for _h, c in hist])
     if len(outlets) < 3 * norm:
         return None
     return {"outlets": sorted(outlets), "norm": norm}
@@ -359,14 +363,17 @@ def report_line(con, day: date) -> Optional[str]:
 
 # --- one pass ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def _classify_new(con, now: datetime, items: List[dict], by_isin: Dict[str, dict]) -> List[dict]:
+def _classify_new(con, now: datetime, items: List[dict], by_isin: Dict[str, dict], gap_mode: bool = False) -> List[dict]:
     """Lane, kind and severity of each new item (by code), stored on its row. Returns the items with `lane`, `kind`, `sev`, `entry`."""
     out = []
     for it in items:
         e = by_isin.get(it["isin"])
         if e is None:
             continue
-        lane, kind, sev = lane_of(it["title"], e)
+        pub = it.get("published")
+        pub = datetime.fromisoformat(str(pub)) if pub and not isinstance(pub, datetime) else pub
+        fresh = pub is None or (now - pub) <= timedelta(hours=float(settings()["alarm_fresh_hours"]) if gap_mode is False else 24.0 * float(settings()["alarm_gap_days"]))
+        lane, kind, sev = lane_of(it["title"], e, fresh)
         con.execute("UPDATE headlines_s86 SET lane=?, kind=?, severity=? WHERE item_id=?", [lane, kind, sev, it["id"]])
         out.append({**it, "lane": lane, "kind": kind, "sev": sev, "entry": e})
     return out
@@ -444,7 +451,7 @@ def run(con, now: datetime, root, *, client: Optional[ing.Client] = None, entrie
             out["problems"] += r["problems"]
             for src, b in r["by_source"].items():
                 record_eye(con, src, now, ok=(None if not b["asked"] else b["ok"] > 0), items=b["items"], error="; ".join(p for p in r["problems"] if p.startswith(src))[:200], requests=b["asked"])
-            items = _classify_new(con, now, r["items"], by_isin)
+            items = _classify_new(con, now, r["items"], by_isin, gap_mode=is_gap)
             out["new"] = len(items)
             for it in items:
                 out["lanes"][it["lane"]] += 1

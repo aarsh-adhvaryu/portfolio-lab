@@ -276,3 +276,51 @@ def test_an_indian_filing_at_1120_is_heard_and_a_case_by_1140(con, tmp_path):
     finally:
         b.load = orig
     assert len(r["alarms"]) == 1 and tg(con)[0].startswith("Heard at 11:35") and "BSE filing" in tg(con)[0] and len(think.calls) == 1
+
+
+# ------------------------------------------------------------------ H7: the fast-forward
+
+def _gap_run(con, tmp_path, pub, think=None, now=datetime(2026, 10, 30, 16, 0), prev=datetime(2026, 10, 26, 18, 0)):
+    from pflab.think import fastforward
+    alarm.record_eye(con, "google_news", prev, ok=True)
+    return alarm.run(con, now, tmp_path, client=client({"google_news": rss([(RED_TITLE, "Reuters", pub)])}), entries=entries_for(con, tmp_path), sources=("google_news",),
+                     think_fn=think or fake_think(), tell_fn=lambda c, n, cid: None, gap=fastforward.hook())
+
+
+def test_the_gap_is_replayed_as_a_ghost_and_the_cost_of_being_off_is_in_the_message(con, tmp_path):
+    from pflab.paper import book
+    held_before = dict(book.positions(con))
+    r = _gap_run(con, tmp_path, datetime(2026, 10, 27, 10, 0))
+    g = con.execute("SELECT option, source, label, fill_price, live_price, qty, cost_of_being_off_inr, decided_at FROM ghost_s86").fetchall()
+    assert len(g) == 1 and g[0][0] == "sell" and g[0][1] == "code" and g[0][2] == "replayed_while_off" and g[0][5] > 0
+    assert g[0][7] == datetime(2026, 10, 27, 10, 0) + timedelta(minutes=15)                         # publication + the lane's own default delay
+    assert g[0][6] == pytest.approx(g[0][5] * (g[0][3] - g[0][4]))
+    msg = [t for t in tg(con) if t.startswith("Off from")][0]
+    assert "Had I been on: sells AAA" in msg and ("cost Rs" in msg or "saved Rs" in msg)
+    assert dict(book.positions(con)) == held_before                                                # the REAL book was not touched by the replay
+    assert r["gap"]["fast_forward"]["ghosts"][0]["symbol"] == "AAA"
+
+
+def test_a_gap_is_not_replayed_twice_and_one_before_the_release_is_not_replayed(con, tmp_path, monkeypatch):
+    from pflab.think import fastforward as ff
+    _gap_run(con, tmp_path, datetime(2026, 10, 27, 10, 0))
+    assert ff.run_gap(con, datetime(2026, 10, 30, 16, 0), tmp_path, datetime(2026, 10, 26, 18, 0), [])["skipped"] == "this gap was replayed already"
+    monkeypatch.setattr(ff, "release_start", lambda: date(2026, 10, 28))
+    r = ff.run_gap(con, datetime(2026, 10, 30, 16, 0), tmp_path, datetime(2026, 10, 26, 18, 0), [])
+    assert "before this release" in r["skipped"]
+
+
+def test_ghost_decisions_are_scored_in_their_own_column(con, tmp_path):
+    from pflab.think import fastforward as ff
+    _gap_run(con, tmp_path, datetime(2026, 10, 20, 10, 0), prev=datetime(2026, 10, 19, 18, 0), now=datetime(2026, 10, 26, 16, 0))
+    n = ff.score_ghosts(con, date(2026, 10, 30))
+    sc = ff.scorecard(con)
+    assert n >= 1 and sc["label"] == "replayed_while_off" and sc["right"]["5"]["scored"] == 1 and sc["decisions"] == 1
+    assert ff.scorecard_line(con).startswith("While off (replayed_while_off)")
+    assert ff.score_ghosts(con, date(2026, 10, 30)) == 0                                            # idempotent
+
+
+def test_the_switch_off_replays_nothing(con, tmp_path, monkeypatch):
+    from pflab.think import fastforward as ff
+    monkeypatch.setattr(ff, "enabled", lambda: False)
+    assert ff.hook() is None

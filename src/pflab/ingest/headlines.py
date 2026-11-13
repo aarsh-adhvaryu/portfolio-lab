@@ -293,7 +293,7 @@ def collect(con, root, entries: List[dict], now: datetime, *, client: Optional[C
             row = _src_row(con, src, e["isin"])
             if not _due(row, e, now, force):
                 continue
-            url = queries(e, src, when)
+            url = queries(e, src, "7d" if (row is None and src == "google_news" and when == "6h") else when)      # a name asked about for the first time: its week, so the norm has a baseline
             if not url:
                 continue
             gdelt_n += src == "gdelt_doc"
