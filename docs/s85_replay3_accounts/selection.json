@@ -1,0 +1,151 @@
+{
+ "rotation": {
+  "window_start": "2018-11-12",
+  "window_end": "2018-11-27",
+  "sessions": 10,
+  "falling_industry": "METALS",
+  "falling_pct": -9.2,
+  "falling_members": 16,
+  "rising_industry": "IT",
+  "rising_pct": 9.8,
+  "rising_members": 10,
+  "nifty500_tri_10d_pct": 1.43,
+  "why": "the largest min(fall, rise) among 10-session windows with the index flat (within 1.5 points), baskets of at least 6 members, Feb-Jun 2020 left out; the names are the six most liquid of each basket, the wide target the one of them with the largest 5-session gain against the index",
+  "wide_target": {
+   "isin": "INE111B01023",
+   "symbol": "63MOONS",
+   "rel_5d_pct": 22.1
+  },
+  "rising_names": [
+   {
+    "isin": "INE111B01023",
+    "symbol": "63MOONS",
+    "rel_5d_pct": 22.1
+   },
+   {
+    "isin": "INE051B01021",
+    "symbol": "VAKRANGEE",
+    "rel_5d_pct": 12.4
+   },
+   {
+    "isin": "INE161A01038",
+    "symbol": "NIITLTD",
+    "rel_5d_pct": 1.0
+   },
+   {
+    "isin": "INE236A01020",
+    "symbol": "HCL-INSYS",
+    "rel_5d_pct": 0.8
+   },
+   {
+    "isin": "INE093A01033",
+    "symbol": "HEXAWARE",
+    "rel_5d_pct": -0.8
+   },
+   {
+    "isin": "INE018I01017",
+    "symbol": "MINDTREE",
+    "rel_5d_pct": -2.1
+   }
+  ],
+  "falling_names": [
+   {
+    "isin": "INE274V01019",
+    "symbol": "SHANKARA",
+    "pct_10d": -27.2
+   },
+   {
+    "isin": "INE603A01013",
+    "symbol": "PRAKASH",
+    "pct_10d": -21.3
+   },
+   {
+    "isin": "INE081A01012",
+    "symbol": "TATASTEEL",
+    "pct_10d": -10.4
+   },
+   {
+    "isin": "INE422C01014",
+    "symbol": "TINPLATE",
+    "pct_10d": -5.5
+   },
+   {
+    "isin": "INE490G01020",
+    "symbol": "MOIL",
+    "pct_10d": -5.0
+   },
+   {
+    "isin": "INE674A01014",
+    "symbol": "TATASTLLP",
+    "pct_10d": -3.0
+   }
+  ]
+ },
+ "governance": {
+  "event": {
+   "isin": "INE122R01018",
+   "company": "Manpasand Beverages Ltd",
+   "flag": "AUDITOR_RESIGNATION",
+   "usable_from": "2018-05-28 00:00:00",
+   "headline": "Pursuant to Regulation 30 of SEBI (Listing Obligations and Disclosure Requirements) Regulations, 2015, we would like to inform you that subsequent to resignation of M/s. Deloitte Haskins ....",
+   "category": "Company Update",
+   "fall_5": -0.4422,
+   "median_turnover": 57314889.55,
+   "day0": "2018-05-28",
+   "key_source": "DissemDT"
+  },
+  "why": "the stored governance/regulatory flag event with the largest 5-session fall after it among names with above-median traded value and 250 sessions of history",
+  "runners_up": [
+   {
+    "company": "Reliance Capital Ltd",
+    "flag": "AUDITOR_RESIGNATION",
+    "usable_from": "2019-06-12 00:00:00",
+    "fall_5": -0.385
+   },
+   {
+    "company": "Sammaan Capital Ltd",
+    "flag": "REGULATORY_ACTION",
+    "usable_from": "2020-03-16 00:00:00",
+    "fall_5": -0.373
+   },
+   {
+    "company": "Gitanjali Gems Ltd",
+    "flag": "REGULATORY_ACTION",
+    "usable_from": "2018-02-08 00:00:00",
+    "fall_5": -0.335
+   },
+   {
+    "company": "Gitanjali Gems Ltd",
+    "flag": "FRAUD",
+    "usable_from": "2018-02-19 00:00:00",
+    "fall_5": -0.302
+   },
+   {
+    "company": "Securekloud Technologies Ltd",
+    "flag": "FRAUD",
+    "usable_from": "2018-10-24 00:00:00",
+    "fall_5": -0.266
+   },
+   {
+    "company": "IDBI Bank Ltd",
+    "flag": "REGULATORY_ACTION",
+    "usable_from": "2018-03-05 00:00:00",
+    "fall_5": -0.234
+   },
+   {
+    "company": "IDBI Bank Ltd",
+    "flag": "FRAUD",
+    "usable_from": "2018-03-05 00:00:00",
+    "fall_5": -0.234
+   }
+  ]
+ },
+ "march2020": {
+  "first_line_crossed": "2020-03-09",
+  "fall_20d_pct": -13.6,
+  "window_start": "2020-02-07",
+  "window_end": "2020-04-20",
+  "trough_close_day": "2020-03-23",
+  "why": "the first session the 20-session fall of the stored Nifty 500 TRI passes the watch's 10% line"
+ }
+}
