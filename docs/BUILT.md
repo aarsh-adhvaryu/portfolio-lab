@@ -307,6 +307,8 @@ Local models are free. API spend is priced before every call and refused above h
 | macro_attribution | every 180 min | splits each closed session's index move into crude, rupee, US yield, Nasdaq, foreign flows and Asia, plus unexplained |
 | fills_calibrate | every 3 hours | refits the fill-cost model's spread and impact from real session fills once 30 exist, then monthly, inside stated bounds; before that the defaults (S82, free) |
 | think_loop | every 30 min, when a close, the US step or the catch-up has finished | the thinking loop: notices what changed for the book (the watch), thinks new cases through (at most 3 a day), follows up the open ones, scores and calibrates (S84; the model parts go through the one door and his cap) |
+| think_missed | after each close (on demand, S85) | the nightly "what did I miss": the biggest movers the watch did not notice, why (outside scope, below threshold, no event, the daily cap), the threshold that would have caught them |
+| sec_8k | every 2 hours inside SEC filing hours, or at app start after a gap of 6 hours or more (S85) | US 8-K items 5.02, 4.01 and 4.02 for the names the book holds, picked, skipped or watches, into the graph (polite rate, bounded) |
 | pick_score | after the close (when its input is newer) | scores every pick, sale and skipped idea against the index at 1, 3, 6 and 12 months after estimated tax, and stores the picks sleeve's daily record (S83, free) |
 | stress_daily | daily | the five stress scenarios on what the India book, the US sub-book and the whole book actually hold (S83, free) |
 

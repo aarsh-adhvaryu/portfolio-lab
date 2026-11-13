@@ -29,7 +29,7 @@ def _n(con, t):
 
 
 def test_a_fresh_start_clears_the_mind_and_keeps_the_account_the_money_record_and_the_learner(con):
-    con.execute("INSERT INTO chats VALUES (1, 'Assistant', now(), now())")
+    con.execute("INSERT INTO chats (chat_id, title, created_at, updated_at) VALUES (1, 'Assistant', now(), now())")
     con.execute("INSERT INTO kg_nodes VALUES ('c:AAA', 'company', 'AAA', NULL, now())")
     con.execute("INSERT INTO paper_decisions (decision_id, made_at, case_id, action, isin, symbol, amount, reason, alternatives, status) VALUES (1, now(), 7, 'WAIT', NULL, NULL, NULL, 'keep cash for now', 'x', 'executed')")
     con.execute("INSERT INTO questions VALUES (1, now(), 'planner', 'k', 'How much will you add each month?', 'open', NULL, NULL)")

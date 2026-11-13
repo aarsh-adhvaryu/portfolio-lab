@@ -487,7 +487,11 @@ def read_attachment(con, now: datetime, path, name: str = "", mime: str = "", *,
     try:
         from pflab.entrance import store as estore          # the chat's own store, when it is merged: the attachment is shown in the thread
         if msg_id and not old:
-            estore.attach(con, msg_id, str(kept), name, mime, kind)
+            have = con.execute("SELECT attachment_id FROM chat_attachments_s85 WHERE msg_id=? AND name=? LIMIT 1", [msg_id, name]).fetchone()
+            if have:                                          # the intake already attached it when the message came in: only fill in what was read
+                estore.set_attachment(con, int(have[0]), kind=kind)
+            else:
+                estore.attach(con, msg_id, str(kept), name, mime, kind)
     except Exception:
         pass
     try:

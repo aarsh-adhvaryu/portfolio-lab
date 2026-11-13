@@ -297,6 +297,12 @@ def check_file(path, name: str = "", mime: str = "", con=None) -> dict:
         data = path.read_bytes()
     except OSError as e:
         return _refuse(kind, f"unreadable: {e}", "I could not open that file here.")
+    try:                                                              # the file's NAME (Zerodha's and the depositories' own names) is enough: a tradebook is a broker record whatever its rows say
+        from pflab.app import inbox
+        if inbox.classify(name) in ("tradebook", "contract_note", "funds_ledger", "cas"):
+            return {"ok": False, "kind": "statement", "refused": LINE_REFUSED, "reason": "named like a broker or depository statement", "score": REFUSE_AT, "mask_needed": False}
+    except Exception:
+        pass
     from pflab.ingest import sniff
     try:
         info = sniff.sniff(data, name)                                # the ledger's own recogniser (tradebooks, contract notes, CAS, bank statements, FD papers)
