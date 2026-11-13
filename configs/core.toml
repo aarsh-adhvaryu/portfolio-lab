@@ -265,6 +265,7 @@ key_name = "anthropic.api_key"
 cache = true                  # the fixed part (system text, tools, the book card) is marked cacheable; cached tokens are logged beside the cost
 
 [engines.claude.decide]       # a decision: a pick, a withdrawal, a case over the 2% line
+model = "claude-opus-5-5"
 thinking = "high"
 min_tokens = 8000
 
