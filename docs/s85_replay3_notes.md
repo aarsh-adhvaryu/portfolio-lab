@@ -17,9 +17,9 @@ Every episode is a DRILL, never a result: history is not evidence (rule 2); each
 ## Verdicts (each drill PASSES; checks in the drill's evidence)
 | drill | result | choice (by code) |
 |---|---|---|
-| `replay_rotation` | PASS (real run, 424 s) | 12-27 Nov 2018: METALS basket -9.2% (16 members), IT basket +9.8% (10), Nifty 500 TRI +1.4% in 10 sessions |
-| `replay_governance` | PASS (real run, 498 s; held and not held in one drill) | Manpasand Beverages, statutory auditor resigned, stored 28 May 2018 |
-| `replay_march2020` | PASS (real run 525 s; its last check was rewritten after the run and re-evaluated on the stored result with `S85_REPLAY_REUSE=1`) | Nifty 500 TRI first 20-session fall past -10% on 9 Mar 2020 (-13.6%) |
+| `replay_rotation` | PASS (real run, 418 s) | 12-27 Nov 2018: METALS basket -9.2% (16 members), IT basket +9.8% (10), Nifty 500 TRI +1.4% in 10 sessions |
+| `replay_governance` | PASS (real run, 524 s; held and not held in one drill) | Manpasand Beverages, statutory auditor resigned, stored 28 May 2018 |
+| `replay_march2020` | PASS (real run, 521 s) | Nifty 500 TRI first 20-session fall past -10% on 9 Mar 2020 (-13.6%) |
 
 ### (1) India rotation, why this window
 Chosen by `select_rotation`: equal-weight industry baskets of at least 6 members from the stored sector map (Nifty 500/200/100 members), the panel's split-safe closes, every 5th session from 2012 except Feb-Jun 2020; a window where one basket fell
