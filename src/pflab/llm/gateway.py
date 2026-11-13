@@ -55,7 +55,7 @@ DEFAULTS: Dict[str, Any] = {
         },
     },
 }
-AGENTS = ("think", "desk", "chat", "strategist", "checker", "reading")      # the governor's names for what the door serves (`hq/governor.LIMITS`)
+AGENTS = ("think", "desk", "chat", "strategist", "checker", "reading", "analyst")      # the governor's names for what the door serves (`hq/governor.LIMITS`)
 MAX_BREAKPOINTS = 4                                     # the vendor's limit of cache markers in one request
 WEB_USD_PER_SEARCH = 0.01                               # Anthropic's server web search, on top of tokens ($10 per 1,000)
 client_override: Any = None                             # a scripted fake (tests) for every engine; `set_client(None)` removes it
@@ -752,6 +752,11 @@ def _continue_pause(con, eng, kw: dict, params: dict, r: dict, out: dict, now: d
         sent = eng.send(con, **{**kw, "params": p2})
         cur = eng.read(sent)
         total += float(sent.cost_inr)
+        n_s = int(cur.get("web_searches") or 0)
+        if n_s:                                                            # S85 (G3): the resumed turn's searches are billed too (they were counted but not charged)
+            con.execute("UPDATE api_calls SET cost_usd = coalesce(cost_usd, 0) + ?, cost_inr = coalesce(cost_inr, 0) + ? WHERE call_id=?",
+                        [n_s * WEB_USD_PER_SEARCH, n_s * WEB_USD_PER_SEARCH * cfg["usd_inr"], sent.call_id])
+            total += n_s * WEB_USD_PER_SEARCH * cfg["usd_inr"]
         out.update({"text": cur["text"], "text_blocks": cur.get("text_blocks", []), "stop_reason": cur["stop_reason"], "truncated": cur["stop_reason"] == "max_tokens",
                     "tool_calls": cur["tool_calls"], "assistant_content": cur["assistant_content"], "web_searches": out["web_searches"] + int(cur.get("web_searches") or 0)})
     out["cost_rupees"] = total

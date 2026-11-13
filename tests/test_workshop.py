@@ -168,7 +168,7 @@ def test_opus_writes_code_through_the_gate_and_the_budget(tmp_path):
     c = FakeClient(reply())
     text = an.write_calculation(con, "QUESTION:\nworst fall of the index?", wk.WRITER_SYSTEM, c, cfg=CFG,
                                 pv=an.Private(), now=datetime(2026, 10, 20, 15))
-    assert wk.parse_spec(text).datasets == ["index:X"] and c.sent["system"] == wk.WRITER_SYSTEM
+    assert wk.parse_spec(text).datasets == ["index:X"] and c.sent["system"][0]["text"] == wk.WRITER_SYSTEM
     assert con.execute("SELECT status, topic FROM api_calls").fetchone() == ("done", "workshop")
     with pytest.raises(an.EgressBlocked):                    # a ledger amount in the question never leaves
         an.write_calculation(con, "if the portfolio adds 123456 rupees", "s", FakeClient("{}"), cfg=CFG,
