@@ -35,6 +35,15 @@ with no `release.toml`: the beta, where development happens. It sends nothing ou
 There is nothing to do. It wakes with the laptop, watches, researches, simulates, runs its paper portfolio, and writes only when it matters (plus a 09:00 and a
 21:45 summary). Taxes: `pflab pm quicko --fy 2027` writes the Quicko inputs to `pm\reports\quicko`.
 
+## What it watches, how fast, and when it is blind (S86)
+- **Headlines on what the book is exposed to** (held, picked, reserve, names you suggested; both markets): Google News and Yahoo Finance every 15 minutes, day and night, while the app is open (GDELT as a third, often refused). A serious one (a leadership shock, fraud, an auditor leaving, a regulator, a default, a guidance cut, or many outlets at once) reaches your phone as "Heard at HH:MM ..." within minutes (target 20), new buying in that name is frozen, and a case is thought through at once.
+- **The company's own filings** (BSE every 15 minutes in market hours, the SEC every 2 hours) open a case in the same cycle.
+- **US names** are looked at every 5 minutes in US regular hours and every 15 in pre-market and after-hours, each quote's delay stored; orders fill at the first quote after the decision. India: the 5-minute session loop as before.
+- **Eyes:** `pflab service status` and `pflab alarm status` list each source's last answer. A news source silent for an hour (app open) is one line on Telegram, and one when it returns. If the day's alarms took too long, the 15:45 report says so with the cause.
+- **After a gap** (laptop off 30 minutes or more): the lane fetches everything since (7 days at most) first and sends one message, "Off from X to Y. While off: ...", then replays the gap as a ghost book and says what being off cost (or saved).
+- **Honest limit:** nothing on a closed laptop can watch. A serious headline at 2 a.m. with the laptop off is read at the next open, not at 2 a.m. An always-on watcher outside the laptop is on the parked list, not built.
+- **Not seen:** anything the sources do not carry, a headline that names the company only in its body, a rumour on social media, and (tonight) a model's reading of a headline the rules cannot place.
+
 ## Updates
 Each start of "Portfolio Lab" takes the newest release first (or run `pflab update` with the app closed). It backs the store up, installs the newest release tag,
 runs a self-test, and undoes itself on a failure. `pflab update --check` only looks; `pflab update --rollback` returns to the previous release. The record is

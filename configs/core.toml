@@ -173,6 +173,7 @@ stock_cap = 0.10              # one company, of the sub-book (stock picks come i
 invested_share = 0.95         # the policy holds this share of the sub-book in its core ETF(s), the rest stays dollars (fees, tax, withholding)
 deploy_turnover_day = 1.0     # while the sub-book holds mostly uninvested dollars (a fresh account or a fresh tranche) the day's turnover cap is this share of the sub-book, and the monthly cap is not applied
 settle_minutes = 30           # a session counts as closed this long after its close (the daily bar is final)
+session_loop = true           # S86 (A77, CHANGES A59): the US session loop (core/us_session.py): quotes every 5 minutes in regular hours and every 15 in pre-market and after-hours; orders fill at the first quote after the decision (a closed laptop: the next open, as before)
 slippage_bps = 5.0            # ESTIMATE: a buy fills this much above the next open, a sell this much below
 min_trade_usd = 25.0
 band_pts = 1.5                # rebalance a name only when it is this many points of the sub-book from its target

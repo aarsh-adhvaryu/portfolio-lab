@@ -36,6 +36,7 @@ DEFAULTS = {"alarm": True, "alarm_heard_per_day": 6, "alarm_outlets": 4, "alarm_
 EYE_LABELS = {"google_news": "news (Google News)", "yahoo": "news (Yahoo Finance)", "gdelt_doc": "news (GDELT)", "filings": "Indian company filings (BSE)", "sec_8k": "US company filings (SEC)",
               "india_quotes": "Indian quotes", "us_quotes": "US quotes"}
 _TURN = re.compile(r"\b(?:resign\w*|steps? down|stepping down|ousted|ouster|removed|fired|dismiss\w*|terminated|arrest\w*|indict\w*|charged|restat\w+|defaults?|downgrad\w+|bankrupt\w*|interim (?:ceo|chief))\b", re.I)
+_DENIAL = re.compile(r"\b(?:denies|denied|denial|refutes?|rejects?|dismisses|baseless|unfounded|false report|clarif\w+|no truth)\b", re.I)
 LOCK = threading.RLock()
 _RUNNING = threading.Event()
 
@@ -425,6 +426,26 @@ def bse_today(con, now: datetime, root, entries: List[dict], hours: int = 36) ->
     return out
 
 
+def merge_scope(root, entries: List[dict]) -> Optional[int]:
+    """H1: the held and picked names (both markets, a US name by its company name and ticker) are handed to `kg2/scope.merge_held`, so the daily GDELT collection and the graph cover them too. Only when
+    the set of names changed (the scope file is not rewritten every 15 minutes) and only when a scope file exists. Never raises. Returns how many names were merged, or None."""
+    try:
+        from pathlib import Path
+        from pflab.kg2 import scope as sc
+        if not sc.scope_path(Path(root)).exists():
+            return None
+        want = {e["isin"]: list(e["aliases"]) + [t.lower() for t in e["tickers"] if len(t) >= sc.MIN_ALIAS] for e in entries if e.get("red_ok") and (e.get("held") or "pick" in str(e.get("why")))}
+        sig = json.dumps(sorted((k, sorted(v)) for k, v in want.items()))
+        mark = Path(root) / "kg" / "scope_held_s86.sig"
+        if mark.exists() and mark.read_text(encoding="utf-8") == sig:
+            return 0
+        sc.merge_held(Path(root), list(want), {k: v for k, v in want.items() if v})
+        mark.write_text(sig, encoding="utf-8")
+        return len(want)
+    except Exception:
+        return None
+
+
 def last_try(con) -> Optional[datetime]:
     try:
         return con.execute("SELECT max(last_try) FROM eyes_s86 WHERE source IN ('google_news','yahoo','gdelt_doc')").fetchone()[0]
@@ -450,6 +471,7 @@ def run(con, now: datetime, root, *, client: Optional[ing.Client] = None, entrie
             if entries is None:
                 entries = ing.scope_entries(con, now.date(), root)
             by_isin = {e["isin"]: e for e in entries}
+            out["scope_merged"] = merge_scope(root, entries)
             r = ing.collect(con, root, entries, now, client=client, sources=sources, when=when, max_seconds=float(cfg["alarm_seconds"]), force=force or is_gap)
             out["by_source"], out["requests"], out["stopped"] = r["by_source"], r.get("requests"), r["stopped"]
             out["problems"] += r["problems"]
@@ -462,6 +484,13 @@ def run(con, now: datetime, root, *, client: Optional[ing.Client] = None, entrie
             if cfg["alarm_graph_sync"] and items:
                 out["graph"] = kg.sync_store(con, root, now)
             reds = [it for it in items if it["lane"] == "red"] + bse_today(con, now, root, entries)
+            for it in items:                                                                       # the company's reply to a rumour joins the case it answers (an exchange filing or a headline): both are in the case
+                if it["lane"] == "amber" and _DENIAL.search(it["title"]):
+                    prior = _open_alarm(con, it["entry"]["isin"], now, int(cfg["alarm_story_hours"]))
+                    if prior and prior["case_id"]:
+                        _record_signal(con, now, it, it["entry"], "denial", "low", prior["case_id"])
+                        con.execute("UPDATE alarm_s86 SET joined_items=coalesce(joined_items,0)+1 WHERE alarm_id=?", [prior["alarm_id"]])
+                        out.setdefault("denials", []).append(it["id"])
             seen_burst = set()
             for e in entries:                                                                      # the many-outlets rule
                 if e["isin"] in seen_burst or any(it["entry"]["isin"] == e["isin"] for it in reds):

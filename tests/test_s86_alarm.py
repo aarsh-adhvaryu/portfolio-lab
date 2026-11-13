@@ -151,7 +151,8 @@ def test_a_rumour_then_the_denial_freezes_then_lifts_and_nothing_is_sold(con, tm
     assert cases.is_frozen(con, AAA, T0.date()) is None                                                  # decided: hold, so the freeze is lifted
     r2 = alarm.run(con, T0 + timedelta(minutes=15), tmp_path, client=client({"google_news": rss([(f"{NAME} denies CEO report, calls it false", "Reuters", T0 + timedelta(minutes=12))])}),
                    entries=es, sources=("google_news",), think_fn=think, tell_fn=lambda c, n, cid: None)
-    assert r2["lanes"]["red"] == 0 and r2["lanes"]["amber"] == 1
+    assert r2["lanes"]["red"] == 0 and r2["lanes"]["amber"] == 1 and len(r2["denials"]) == 1
+    assert con.execute("SELECT count(*) FROM think_signals_s84 WHERE detail_json LIKE '%denies CEO report%' AND case_id IS NOT NULL").fetchone()[0] == 1       # the denial is in the case beside the rumour
     assert con.execute("SELECT count(*) FROM think_decisions_s84 WHERE acted_option LIKE 'sell%' OR acted_option LIKE 'trim%'").fetchone()[0] == 0
 
 
@@ -366,3 +367,50 @@ def test_amendment_a3_is_counted_once_and_the_protocol_stays_ok(con):
     assert s84.register_thinking_amendment_a2(con, NOW) == ["s84:thinking_live_a2"]
     assert s84.register_thinking_amendment_a3(con, NOW) == ["s84:thinking_live_a3"] and s84.register_thinking_amendment_a3(con, NOW) == []
     assert s84.protocol_ok(con)["unchanged"] is True
+
+
+# ------------------------------------------------------------------ H1: the daily collection covers the held names too (merge_held is wired)
+
+def test_the_held_names_are_merged_into_the_news_scope_once(con, tmp_path):
+    from pflab.kg2 import scope as sc
+    sc._atomic_write(sc.scope_path(tmp_path), json.dumps({"version": 1, "names": [], "extra_isins": []}))
+    es = entries_for(con, tmp_path)
+    n = alarm.merge_scope(tmp_path, es)
+    got = {x["isin"]: x for x in sc.load(tmp_path)["names"]}
+    assert n >= 1 and AAA in got and got[AAA]["text"] and "aardvark industries" in got[AAA]["aliases"]
+    assert alarm.merge_scope(tmp_path, es) == 0                                                   # unchanged names: the file is not rewritten
+
+
+# ------------------------------------------------------------------ the lane beside a busy writer: its own thread, its own cursor, no lost write, no late tick
+
+def test_the_lane_runs_on_its_own_cursor_beside_a_busy_writer_without_losing_a_write(con, tmp_path):
+    import threading
+    import time
+    con.execute("CREATE TABLE busy_s86 (k INTEGER, ts TIMESTAMP)")
+    es = entries_for(con, tmp_path)
+    errs, late = [], []
+    stop = threading.Event()
+
+    def lane():
+        cur = con.cursor()
+        try:
+            for k in range(6):
+                alarm.run(cur, T0 + timedelta(minutes=15 * k), tmp_path, client=client({"google_news": rss([(f"{NAME} opens plant number {k}", "Reuters", T0)])}), entries=es, sources=("google_news",), force=True)
+        except Exception as e:
+            errs.append(repr(e))
+        finally:
+            stop.set()
+
+    t = threading.Thread(target=lane)
+    t.start()
+    cur2, n, prev = con.cursor(), 0, time.monotonic()
+    while not stop.is_set():                                                                     # the "session loop": a tick every few milliseconds that must never wait long
+        t0 = time.monotonic()
+        cur2.execute("INSERT INTO busy_s86 VALUES (?, now())", [n])
+        late.append(time.monotonic() - t0)
+        n += 1
+        time.sleep(0.005)
+    t.join()
+    assert errs == [] and con.execute("SELECT count(*) FROM busy_s86").fetchone()[0] == n and n > 0
+    assert con.execute("SELECT count(*) FROM headlines_s86").fetchone()[0] == 6
+    assert max(late) < 5.0                                                                       # no tick of the writer was held for seconds by the lane

@@ -375,7 +375,8 @@ def report_lines(con, day: date) -> List[str]:
     out: List[str] = []
     try:                                                                  # S86 (A76): the alarm lane's day, with its latency, in one line
         from pflab.think import alarm as _alarm
-        out.append(_alarm.report_line(con, day))
+        if _alarm.status(con, day)["alarms"]:                       # nothing to say: the report stays as it was
+            out.append(_alarm.report_line(con, day))
     except Exception:
         pass
     th = b["thinking"] or {}
