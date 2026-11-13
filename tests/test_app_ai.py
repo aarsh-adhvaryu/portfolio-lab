@@ -95,9 +95,11 @@ def test_web_search_keeps_cited_figures_prices_searches_and_keeps_a_note(tmp_pat
     assert "[W1] A - https://a.example/1" in o.text
     assert len(c.sent) == 2 and c.sent[0]["tools"][0]["type"] == an.WEB_TOOL      # a paused turn is resumed
     tok_usd = (1000 * 4 + 500 * 20) / 1e6
-    row = con.execute("SELECT status, cost_usd, note_doc FROM api_calls").fetchone()
+    row = con.execute("SELECT status, cost_usd, note_doc FROM api_calls ORDER BY call_id").fetchone()
     assert row[0] == "done" and row[1] == pytest.approx(tok_usd + 2 * an.WEB_USD_PER_SEARCH) and row[2]
-    assert o.cost_inr == pytest.approx((tok_usd + 0.02) * 90.0)
+    # S85 (G3): through the door the resumed turn is paid for too (two calls' tokens and four searches here; the old path priced only the last turn)
+    assert o.cost_inr == pytest.approx((2 * tok_usd + 4 * an.WEB_USD_PER_SEARCH) * 90.0)
+    assert con.execute("SELECT count(*), round(sum(cost_inr), 4) FROM api_calls").fetchone() == (2, round((2 * tok_usd + 4 * an.WEB_USD_PER_SEARCH) * 90.0, 4))
     blocked = an.web_search(con, "should I sell 123456 rupees of it", c, now=NOW, cfg=CFG, pv=an.Private(amounts={123456.0}))
     assert blocked.status == "blocked"
 

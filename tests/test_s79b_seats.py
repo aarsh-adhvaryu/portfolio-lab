@@ -492,12 +492,14 @@ def test_exporter_writes_jsonl_from_a_copy(tmp_path, monkeypatch):
 
 
 def test_analyst_ring_hook_keeps_the_call(tmp_path):
+    """S85 (G3): the doorbell asks through the door, whose road (`hq/llm.call`) keeps every cloud call in the teacher log (the analyst's own hook went with the old path)."""
+    from datetime import datetime as _dt
     from pflab.agents import analyst as an
+    from tests.test_analyst import CFG, FakeClient, req
     con = store.connect(tmp_path / "a.duckdb")
-    msg = SimpleNamespace(content=[SimpleNamespace(type="text", text="note")], usage=SimpleNamespace(input_tokens=5, output_tokens=2))
-    an._teach(con, 3, {"model": "m", "system": "s", "messages": [{"role": "user", "content": "hello"}]}, msg, "analyst", NOW, 1.5)
-    assert con.execute("SELECT call_id, source, cost_inr FROM teacher_log_s79").fetchall() == [(3, "analyst", 1.5)]
-    an._teach(None, 3, {}, None, "analyst", NOW, 0.0)                                      # never raises
+    o = an.ring(con, req(), FakeClient(), now=_dt(2026, 10, 17, 21, 0), cfg=CFG)
+    assert o.status == "done"
+    assert con.execute("SELECT call_id, source FROM teacher_log_s79").fetchall() == [(o.call_id, "hq")]
 
 
 # --- the cost view --------------------------------------------------------------------------------------------------------------

@@ -38,7 +38,9 @@ LAYERS: Dict[str, tuple] = {"readers": (0.06, 15.0), "workers": (0.55, 80.0), "b
                             # S84: the thinking loop's cases and the daily desk, called through `llm/gateway.py` (A55: the day figure is generous; the desk has its own daily budget and his monthly cap is the hard limit)
                             "thinking": (0.60, 400.0),
                             # S85: the chat (his messages) and the reading of what he sends; his cap is still the only hard limit (A55) and his messages are `his_order`
-                            "chat": (0.60, 400.0), "reading": (0.40, 300.0)}
+                            "chat": (0.60, 400.0), "reading": (0.40, 300.0),
+                            # S85 (G3): the analyst's own paths (deep research, web search, the workshop's calculation, trial notes) now go through the door too; as before only his cap limits them
+                            "analyst": (1.0, 2500.0)}
 
 
 @dataclass(frozen=True)
@@ -75,6 +77,8 @@ LIMITS: Dict[str, Limits] = {
     # S85: the chat's replies and the reading of documents he sends (through the same door); thinking counts as output
     "chat": Limits("chat", 200_000, 20_000, {"off": 0, "economy": 200, "normal": 400}),
     "reading": Limits("reading", 300_000, 24_000, {"off": 0, "economy": 120, "normal": 300}),
+    # S85 (G3): the analyst's doorbell, web search, workshop calculation and trial notes, moved onto the door; no limit of its own beyond his cap (as before)
+    "analyst": Limits("analyst", 2_000_000, 64_000, {"off": 500, "economy": 500, "normal": 500}),
 }
 COUNTED = ("done", "sending", "queued", "submitted", "refused")
 
