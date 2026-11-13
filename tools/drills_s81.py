@@ -555,6 +555,9 @@ class Env:
 
             def join(self, t=None):
                 pass
+
+            def is_alive(self):                       # S85: the chat intake (entrance/intake.py) asks its worker thread
+                return False
         real = rtm.threading.Thread
         rtm.threading.Thread = NoThread
         try:
