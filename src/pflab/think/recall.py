@@ -343,8 +343,14 @@ def recall(con, now: datetime, *, isin: Optional[str] = None, symbol: Optional[s
     return {"items": chosen, "text": "\n".join(_line(i) for i in chosen), "n": len(chosen), "resolved": who}
 
 
+def _shown_id(i) -> str:
+    """The id as the model is shown it. A stored id can be a hash with a run of digits (`doc:analyst_note:4d675f8629119755`); a run of 9 or more digits is what the egress gate reads as a phone or account
+    number and refuses the WHOLE message (found by the S85 week drill: a case's read was blocked by a note's id). Display only: ids are never parsed back from the model's text."""
+    return re.sub(r"\d{5,}", lambda m: "-".join(re.findall(r"\d{1,4}", m.group(0))), str(i))
+
+
 def _line(it: dict) -> str:
-    return f"- {it['day']} [{it['kind']} {it['id']}; {it['source']}] {it['title']}" + (f": {it['text']}" if it["text"] else "")
+    return f"- {it['day']} [{it['kind']} {_shown_id(it['id'])}; {it['source']}] {it['title']}" + (f": {it['text']}" if it["text"] else "")
 
 
 # --- stored is not used until something reads it -----------------------------------------------------------------------------------------

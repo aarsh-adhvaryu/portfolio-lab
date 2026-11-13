@@ -221,16 +221,29 @@ def _score_decision(con, d: dict, day: date, done: set, root, next_id) -> int:
 
 # --- the scorecard ----------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def _track(con, track: str) -> dict:
+def _track(con, track: str, decisions: Optional[List[int]] = None) -> dict:
+    """A track's record at each horizon. `decisions`: only these decision ids (the ones one engine made: `engine_of_decisions`); None: all."""
     out = {"by_horizon": {}}
+    keep = "" if decisions is None else " AND decision_id IN (" + ",".join(str(int(x)) for x in decisions or [-1]) + ")"
     for h in HORIZONS:
-        r = con.execute("SELECT count(DISTINCT decision_id), coalesce(sum(vs_nothing_inr), 0) FROM think_scores_s84 WHERE track=? AND horizon_sessions=?", [track, h]).fetchone()
+        r = con.execute("SELECT count(DISTINCT decision_id), coalesce(sum(vs_nothing_inr), 0) FROM think_scores_s84 WHERE track=? AND horizon_sessions=?" + keep, [track, h]).fetchone()
         out["by_horizon"][h] = {"n": int(r[0]), "vs_nothing_inr": float(r[1])}
     out["n"], out["vs_nothing_inr"] = out["by_horizon"][20]["n"], out["by_horizon"][20]["vs_nothing_inr"]
     right = con.execute("""SELECT count(*) FROM think_scores_s84 t WHERE t.track=? AND t.horizon_sessions=20 AND t.result_inr >= (SELECT max(result_inr) FROM think_scores_s84 u
-                           WHERE u.decision_id=t.decision_id AND u.horizon_sessions=20) - 1e-9""", [track]).fetchone()[0]
+                           WHERE u.decision_id=t.decision_id AND u.horizon_sessions=20) - 1e-9""" + keep.replace("decision_id", "t.decision_id"), [track]).fetchone()[0]
     out["right"] = int(right)
     return out
+
+
+def engine_of_decisions(con) -> Dict[int, str]:
+    """{decision_id: the engine that read the case}: the engine of the case's newest model step on or before the day of the decision (every step stores its engine). A decision with no model step
+    is left out (a registered rule's decision on a case nobody read: no engine to credit)."""
+    try:
+        rows = con.execute("""SELECT d.decision_id, (SELECT s.engine FROM think_steps_s84 s WHERE s.case_id = d.case_id AND s.model <> '' AND s.engine <> '' AND CAST(s.step_at AS DATE) <= d.decided_on
+                                                    ORDER BY s.step_at DESC, s.step_id DESC LIMIT 1) FROM think_decisions_s84 d""").fetchall()
+    except Exception:
+        return {}
+    return {int(a): str(b) for a, b in rows if b}
 
 
 def _skips(con, ran_pts: float) -> dict:
@@ -317,12 +330,18 @@ def by_engine(con, rule_t: Optional[dict] = None, model_t: Optional[dict] = None
     except Exception:
         cur = "claude"
     out = {cur: {"in_use": True, "rule_track": rule_t or _track(con, "rule"), "model_track": model_t or _track(con, "model")}}
+    made = engine_of_decisions(con)
+    if set(made.values()) - {cur}:                       # an engine other than the one in use made decisions (the engine was switched): each engine's own record, never mixed
+        out = {}
+        for e in sorted(set(made.values()) | {cur}):
+            ids = [d for d, x in made.items() if x == e]
+            out[e] = {"in_use": e == cur, "rule_track": _track(con, "rule", ids), "model_track": _track(con, "model", ids)}
     try:
         engs = [r[0] for r in con.execute("SELECT DISTINCT engine FROM think_shadow_s85 ORDER BY engine").fetchall()]
     except Exception:
         engs = []
     for e in engs:
-        if e != cur:
+        if e != cur and e not in out:                    # (an engine that made real decisions before a switch keeps its own record, which the shadow's rows do not replace)
             out[e] = {"in_use": False, "rule_track": _track(con, f"shadow_rule:{e}"), "model_track": _track(con, f"shadow:{e}")}
     for e, row in out.items():
         words = {}
