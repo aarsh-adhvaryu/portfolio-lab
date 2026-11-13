@@ -43,30 +43,28 @@ Mon 02 Mar 21:00
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
   noticed: JUNIORBEES move_5d (value -0.058 against 0.053), examined
   noticed: SGBSYN33 rel_5d (value 0.06 against 0.051), joined
-  case #4 on JUNIORBEES: acted (market_fear): JUNIORBEES moved -5.8% in 5 sessions (2.7 times its usual 5-day move)
+  case #4 on JUNIORBEES: open (market_fear): JUNIORBEES moved -5.8% in 5 sessions (2.7 times its usual 5-day move)
   option [alt] case #4 JUNIORBEES sell: worst -114 likely -114 best -114 expected -114 (worst -0.01% of the book, size 94,980)
   option [alt] case #4 JUNIORBEES trim: worst -2,609 likely -129 best 2,488 expected -102 (worst -0.21% of the book, size 47,490)
   option [model] case #4 JUNIORBEES hold: worst -5,074 likely -114 best 5,120 expected -59 (worst -0.41% of the book, size 0) <- chosen
   option [alt] case #4 JUNIORBEES freeze: worst -5,074 likely -114 best 5,120 expected -59 (worst -0.41% of the book, size 0)
   option [alt] case #4 JUNIORBEES wait: worst -5,074 likely -114 best 5,120 expected -59 (worst -0.41% of the book, size 0)
-  option [alt] case #4 JUNIORBEES buy_in_parts: worst -12,302 likely -668 best 11,608 expected -539 (worst -1.00% of the book, size 222,542)
+  option [alt] case #4 JUNIORBEES buy_in_parts: worst -12,270 likely -666 best 11,578 expected -538 (worst -1.00% of the book, size 221,971)
   option [alt] case #4 JUNIORBEES nothing: worst -5,074 likely -114 best 5,120 expected -59 (worst -0.41% of the book, size 0)
-  option [rule] case #4 JUNIORBEES sell: worst -114 likely -114 best -114 expected -114 (worst -0.01% of the book, size 94,980) <- chosen
-  decision case #4 JUNIORBEES: rule sell, model hold, acted sell: the model chose hold, the rule chose sell; the rule acts. Sell: its expected result after tax and charges beats holding by Rs 1,442, more than the 1% of the pos
-  rupee order (3, datetime.datetime(2020, 3, 2, 21, 0), 3, 'INF9S4B01011', 'JUNIORBEES', 'sell', 397.0, None, 'open', None, 'case #4 decision #3')
-  rupee order (4, datetime.datetime(2020, 3, 2, 21, 0), 4, 'INE9S4A01011', 'SYNIT1', 'sell', 11.0, None, 'open', None, 'baseline_v2 decision #4')
-  rupee order (5, datetime.datetime(2020, 3, 2, 21, 0), 5, 'INF9S4B01011', 'JUNIORBEES', 'buy', None, 50415.09, 'open', None, 'baseline_v2 decision #5')
+  option [rule] case #4 JUNIORBEES hold: worst -5,074 likely -114 best 5,120 expected -59 (worst -0.41% of the book, size 0) <- chosen
+  decision case #4 JUNIORBEES: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 950).
+  rupee order (3, datetime.datetime(2020, 3, 2, 21, 0), 3, 'INF9S4B01011', 'JUNIORBEES', 'buy', None, 50022.27, 'open', None, 'baseline_v2 decision #3')
 Tue 03 Mar 07:00
   US order #2 buy SPY placed 2020-03-02: open (us_core_v2: weight 48.7% now, target 95.0% [outside the monthly cap: a funding purchase])
   US fill #1 SPY buy 11.9244 at USD 55.90 on 2020-03-02 (tax estimate Rs 0)
 Tue 03 Mar 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
-  rupee order (6, datetime.datetime(2020, 3, 3, 21, 0), 6, 'INE9S2A01011', 'SYNFMCG2', 'sell', 51.0, None, 'open', None, 'baseline_v2 decision #6')
-  rupee order (7, datetime.datetime(2020, 3, 3, 21, 0), 7, 'INE9S1A01011', 'SYNFMCG1', 'sell', 8.0, None, 'open', None, 'baseline_v2 decision #7')
-  rupee order (8, datetime.datetime(2020, 3, 3, 21, 0), 8, 'INF9S4B01011', 'JUNIORBEES', 'buy', None, 87977.34, 'open', None, 'baseline_v2 decision #8')
+  rupee order (4, datetime.datetime(2020, 3, 3, 21, 0), 4, 'INE9S4A01011', 'SYNIT1', 'sell', 14.0, None, 'open', None, 'baseline_v2 decision #4')
+  rupee order (5, datetime.datetime(2020, 3, 3, 21, 0), 5, 'INE9S2A01011', 'SYNFMCG2', 'sell', 50.0, None, 'open', None, 'baseline_v2 decision #5')
+  rupee order (6, datetime.datetime(2020, 3, 3, 21, 0), 6, 'INE9S1A01011', 'SYNFMCG1', 'sell', 8.0, None, 'open', None, 'baseline_v2 decision #6')
 Wed 04 Mar 07:00
-  US fill #2 SPY buy 11.2544 at USD 56.31 on 2020-03-03 (tax estimate Rs 0)
+  US fill #2 SPY buy 11.2241 at USD 56.31 on 2020-03-03 (tax estimate Rs 0)
 Wed 04 Mar 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
@@ -77,95 +75,90 @@ Fri 06 Mar 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
   noticed: SGBSYN33 rel_1d (value 0.024 against 0.023), joined
-  rupee order (9, datetime.datetime(2020, 3, 6, 21, 0), 9, 'INF9S4B01011', 'JUNIORBEES', 'sell', 27.0, None, 'open', None, 'baseline_v2 decision #9')
-  rupee order (10, datetime.datetime(2020, 3, 6, 21, 0), 10, 'INF9S1B01011', 'NIFTYBEES', 'sell', 24.0, None, 'open', None, 'baseline_v2 decision #10')
-  rupee order (11, datetime.datetime(2020, 3, 6, 21, 0), 11, 'INE9S4A01011', 'SYNIT1', 'sell', 3.0, None, 'open', None, 'baseline_v2 decision #11')
-  rupee order (12, datetime.datetime(2020, 3, 6, 21, 0), 12, 'INE9S2A01011', 'SYNFMCG2', 'sell', 12.0, None, 'open', None, 'baseline_v2 decision #12')
-  rupee order (13, datetime.datetime(2020, 3, 6, 21, 0), 13, 'INE9S1A01011', 'SYNFMCG1', 'sell', 1.0, None, 'open', None, 'baseline_v2 decision #13')
+  rupee order (7, datetime.datetime(2020, 3, 6, 21, 0), 7, 'INF9S4B01011', 'JUNIORBEES', 'sell', 107.0, None, 'open', None, 'baseline_v2 decision #7')
+  rupee order (8, datetime.datetime(2020, 3, 6, 21, 0), 8, 'INF9S1B01011', 'NIFTYBEES', 'sell', 89.0, None, 'open', None, 'baseline_v2 decision #8')
+  rupee order (9, datetime.datetime(2020, 3, 6, 21, 0), 9, 'INE9S4A01011', 'SYNIT1', 'sell', 11.0, None, 'open', None, 'baseline_v2 decision #9')
+  rupee order (10, datetime.datetime(2020, 3, 6, 21, 0), 10, 'INE9S1A01011', 'SYNFMCG1', 'sell', 7.0, None, 'open', None, 'baseline_v2 decision #10')
+  rupee order (11, datetime.datetime(2020, 3, 6, 21, 0), 11, 'INE9S2A01011', 'SYNFMCG2', 'sell', 44.0, None, 'open', None, 'baseline_v2 decision #11')
+  rupee order (12, datetime.datetime(2020, 3, 6, 21, 0), 12, 'INE9S3A01011', 'SYNCAPG1', 'sell', 2.0, None, 'open', None, 'baseline_v2 decision #12')
 Mon 09 Mar 07:00
   option [alt] case #1 SGBSYN33 sell: worst -54 likely -54 best -54 expected -54 (worst -0.00% of the book, size 36,924)
   option [alt] case #1 SGBSYN33 trim: worst -69 likely -69 best -69 expected -69 (worst -0.01% of the book, size 18,462)
   option [model] case #1 SGBSYN33 hold: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0) <- chosen
   option [alt] case #1 SGBSYN33 freeze: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
   option [alt] case #1 SGBSYN33 wait: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
-  option [alt] case #1 SGBSYN33 buy_in_parts: worst -12,301 likely -12,272 best -12,242 expected -12,272 (worst -1.00% of the book, size 4,090,628)
+  option [alt] case #1 SGBSYN33 buy_in_parts: worst -12,337 likely -12,307 best -12,278 expected -12,307 (worst -1.00% of the book, size 4,102,413)
   option [alt] case #1 SGBSYN33 nothing: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
   option [rule] case #1 SGBSYN33 hold: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0) <- chosen
   decision case #1 SGBSYN33: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 369).
 Mon 09 Mar 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
-  noticed: JUNIORBEES rel_1d (value 0.028 against 0.011), examined
+  noticed: JUNIORBEES rel_1d (value 0.028 against 0.011), joined
   noticed: Nifty 500 market_down_20d (value -0.136 against -0.1), examined
-  noticed: JUNIORBEES rel_5d (value 0.035 against 0.025), examined
-  noticed: SYNIT1 rel_1d (value 0.058 against 0.053), examined
-  noticed: SYNFMCG2 move_5d (value -0.093 against 0.084), not_examined
-  noticed: SYNCAPG1 move_1d (value -0.049 against 0.04), not_examined
+  noticed: JUNIORBEES rel_5d (value 0.035 against 0.025), joined
+  noticed: SYNIT1 move_1d (value -0.068 against 0.035), examined
+  noticed: SYNFMCG2 move_5d (value -0.093 against 0.084), examined
   noticed: MON100 rel_1d (value 0.053 against 0.036), not_examined
   noticed: SGBSYN33 rel_1d (value 0.047 against 0.023), joined
   noticed: MON100 rel_5d (value 0.112 against 0.08), not_examined
+  noticed: SYNCAPG1 move_1d (value -0.049 against 0.04), not_examined
   noticed: SGBSYN33 rel_5d (value 0.06 against 0.052), joined
-  case #5 on JUNIORBEES: open (market_fear): JUNIORBEES moved +2.8% in a day against its market (6.4 times its usual daily move); JUNIO
-  case #6 on Nifty 500: open (market_fear): Nifty 500 is down 14% in 20 sessions
-  case #7 on SYNIT1: open (market_fear): SYNIT1 moved +5.8% in a day against its market (2.8 times its usual daily move)
-  case #8 on SYNFMCG2: noticed: SYNFMCG2 moved -9.3% in 5 sessions (2.8 times its usual 5-day move)
+  case #5 on Nifty 500: open (market_fear): Nifty 500 is down 14% in 20 sessions
+  case #6 on SYNIT1: open (market_fear): SYNIT1 moved -6.8% in a day (4.8 times its usual daily move)
+  case #7 on SYNFMCG2: open (market_fear): SYNFMCG2 moved -9.3% in 5 sessions (2.8 times its usual 5-day move)
+  case #8 on MON100: noticed: MON100 moved +5.3% in a day against its market (3.7 times its usual daily move); MON100 mo
   case #9 on SYNCAPG1: noticed: SYNCAPG1 moved -4.9% in a day (3.1 times its usual daily move)
-  case #10 on MON100: noticed: MON100 moved +5.3% in a day against its market (3.7 times its usual daily move); MON100 mo
-  option [alt] case #5 JUNIORBEES sell: worst -147 likely -147 best -147 expected -147 (worst -0.01% of the book, size 126,979)
-  option [alt] case #5 JUNIORBEES trim: worst -3,555 likely -162 best 3,422 expected -124 (worst -0.29% of the book, size 63,489)
-  option [model] case #5 JUNIORBEES hold: worst -6,932 likely -147 best 7,022 expected -70 (worst -0.57% of the book, size 0) <- chosen
-  option [alt] case #5 JUNIORBEES freeze: worst -6,932 likely -147 best 7,022 expected -70 (worst -0.57% of the book, size 0)
-  option [alt] case #5 JUNIORBEES wait: worst -6,932 likely -147 best 7,022 expected -70 (worst -0.57% of the book, size 0)
-  option [alt] case #5 JUNIORBEES buy_in_parts: worst -12,121 likely -644 best 11,482 expected -514 (worst -1.00% of the book, size 214,564)
-  option [alt] case #5 JUNIORBEES nothing: worst -6,932 likely -147 best 7,022 expected -70 (worst -0.57% of the book, size 0)
-  option [rule] case #5 JUNIORBEES hold: worst -6,932 likely -147 best 7,022 expected -70 (worst -0.57% of the book, size 0) <- chosen
-  option [alt] case #6 NIFTYBEES sell: worst -141 likely -141 best -141 expected -141 (worst -0.01% of the book, size 121,520)
-  option [alt] case #6 NIFTYBEES trim: worst -34,482 likely -157 best 78,848 expected 33,625 (worst -2.84% of the book, size 60,760)
-  option [alt] case #6 NIFTYBEES hold: worst -68,793 likely -141 best 157,869 expected 67,422 (worst -5.68% of the book, size 0)
-  option [alt] case #6 NIFTYBEES freeze: worst -68,793 likely -141 best 157,869 expected 67,422 (worst -5.68% of the book, size 0)
-  option [alt] case #6 NIFTYBEES wait: worst -68,793 likely -141 best 157,869 expected 67,422 (worst -5.68% of the book, size 0)
-  option [model] case #6 NIFTYBEES buy_in_parts: worst -12,121 likely -64 best 27,687 expected 11,802 (worst -1.00% of the book, size 21,320) <- chosen
-  option [alt] case #6 NIFTYBEES nothing: worst -68,793 likely -141 best 157,869 expected 67,422 (worst -5.68% of the book, size 0)
-  option [rule] case #6 NIFTYBEES hold: worst -68,793 likely -141 best 157,869 expected 67,422 (worst -5.68% of the book, size 0) <- chosen
-  option [alt] case #7 SYNIT1 sell: worst -122 likely -122 best -122 expected -122 (worst -0.01% of the book, size 102,633)
-  option [alt] case #7 SYNIT1 trim: worst -5,749 likely -137 best 6,164 expected 1 (worst -0.47% of the book, size 51,317)
-  option [model] case #7 SYNIT1 hold: worst -11,345 likely -122 best 12,480 expected 154 (worst -0.94% of the book, size 0) <- chosen
-  option [alt] case #7 SYNIT1 freeze: worst -11,345 likely -122 best 12,480 expected 154 (worst -0.94% of the book, size 0)
-  option [alt] case #7 SYNIT1 wait: worst -11,345 likely -122 best 12,480 expected 154 (worst -0.94% of the book, size 0)
-  option [alt] case #7 SYNIT1 buy_in_parts: worst -12,121 likely -323 best 12,924 expected -33 (worst -1.00% of the book, size 107,779)
-  option [alt] case #7 SYNIT1 nothing: worst -11,345 likely -122 best 12,480 expected 154 (worst -0.94% of the book, size 0)
-  option [rule] case #7 SYNIT1 hold: worst -11,345 likely -122 best 12,480 expected 154 (worst -0.94% of the book, size 0) <- chosen
-  decision case #5 JUNIORBEES: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 1,270).
-  decision case #6 NIFTYBEES: rule hold, model buy_in_parts, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, 
-  decision case #7 SYNIT1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 1,026).
+  option [alt] case #5 NIFTYBEES sell: worst -124 likely -124 best -124 expected -124 (worst -0.01% of the book, size 105,098)
+  option [alt] case #5 NIFTYBEES trim: worst -29,827 likely -140 best 68,189 expected 29,077 (worst -2.47% of the book, size 52,549)
+  option [alt] case #5 NIFTYBEES hold: worst -59,498 likely -124 best 136,533 expected 58,309 (worst -4.93% of the book, size 0)
+  option [alt] case #5 NIFTYBEES freeze: worst -59,498 likely -124 best 136,533 expected 58,309 (worst -4.93% of the book, size 0)
+  option [alt] case #5 NIFTYBEES wait: worst -59,498 likely -124 best 136,533 expected 58,309 (worst -4.93% of the book, size 0)
+  option [model] case #5 NIFTYBEES buy_in_parts: worst -12,071 likely -64 best 27,573 expected 11,753 (worst -1.00% of the book, size 21,232) <- chosen
+  option [alt] case #5 NIFTYBEES nothing: worst -59,498 likely -124 best 136,533 expected 58,309 (worst -4.93% of the book, size 0)
+  option [rule] case #5 NIFTYBEES hold: worst -59,498 likely -124 best 136,533 expected 58,309 (worst -4.93% of the book, size 0) <- chosen
+  option [alt] case #6 SYNIT1 sell: worst -100 likely -100 best -100 expected -100 (worst -0.01% of the book, size 81,353)
+  option [alt] case #6 SYNIT1 trim: worst -3,417 likely -115 best 3,479 expected -57 (worst -0.28% of the book, size 40,677)
+  option [model] case #6 SYNIT1 hold: worst -6,704 likely -100 best 7,088 expected 17 (worst -0.56% of the book, size 0) <- chosen
+  option [alt] case #6 SYNIT1 freeze: worst -6,704 likely -100 best 7,088 expected 17 (worst -0.56% of the book, size 0)
+  option [alt] case #6 SYNIT1 wait: worst -6,704 likely -100 best 7,088 expected 17 (worst -0.56% of the book, size 0)
+  option [alt] case #6 SYNIT1 buy_in_parts: worst -12,071 likely -430 best 12,241 expected -224 (worst -1.00% of the book, size 143,261)
+  option [alt] case #6 SYNIT1 nothing: worst -6,704 likely -100 best 7,088 expected 17 (worst -0.56% of the book, size 0)
+  option [rule] case #6 SYNIT1 hold: worst -6,704 likely -100 best 7,088 expected 17 (worst -0.56% of the book, size 0) <- chosen
+  option [alt] case #7 SYNFMCG2 sell: worst -94 likely -94 best -94 expected -94 (worst -0.01% of the book, size 75,760)
+  option [alt] case #7 SYNFMCG2 trim: worst -3,271 likely -109 best 3,341 expected -52 (worst -0.27% of the book, size 37,880)
+  option [model] case #7 SYNFMCG2 hold: worst -6,418 likely -94 best 6,807 expected 21 (worst -0.53% of the book, size 0) <- chosen
+  option [alt] case #7 SYNFMCG2 freeze: worst -6,418 likely -94 best 6,807 expected 21 (worst -0.53% of the book, size 0)
+  option [alt] case #7 SYNFMCG2 wait: worst -6,418 likely -94 best 6,807 expected 21 (worst -0.53% of the book, size 0)
+  option [alt] case #7 SYNFMCG2 buy_in_parts: worst -12,071 likely -418 best 12,297 expected -206 (worst -1.00% of the book, size 139,448)
+  option [alt] case #7 SYNFMCG2 nothing: worst -6,418 likely -94 best 6,807 expected 21 (worst -0.53% of the book, size 0)
+  option [rule] case #7 SYNFMCG2 hold: worst -6,418 likely -94 best 6,807 expected 21 (worst -0.53% of the book, size 0) <- chosen
+  decision case #5 NIFTYBEES: rule hold, model buy_in_parts, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, 
+  decision case #6 SYNIT1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 814).
+  decision case #7 SYNFMCG2: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 758).
+  rupee order (13, datetime.datetime(2020, 3, 9, 21, 0), 13, 'INF9S4B01011', 'JUNIORBEES', 'sell', 107.0, None, 'open', None, 'baseline_v2 decision #13')
+  rupee order (14, datetime.datetime(2020, 3, 9, 21, 0), 14, 'INF9S1B01011', 'NIFTYBEES', 'sell', 91.0, None, 'open', None, 'baseline_v2 decision #14')
+  rupee order (15, datetime.datetime(2020, 3, 9, 21, 0), 15, 'INE9S1A01011', 'SYNFMCG1', 'sell', 7.0, None, 'open', None, 'baseline_v2 decision #15')
+  rupee order (16, datetime.datetime(2020, 3, 9, 21, 0), 16, 'INE9S4A01011', 'SYNIT1', 'sell', 11.0, None, 'open', None, 'baseline_v2 decision #16')
+  rupee order (17, datetime.datetime(2020, 3, 9, 21, 0), 17, 'INE9S2A01011', 'SYNFMCG2', 'sell', 44.0, None, 'open', None, 'baseline_v2 decision #17')
 Tue 10 Mar 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
   noticed: Nifty 500 market_down_20d (value -0.136 against -0.1), joined
   noticed: JUNIORBEES rel_5d (value 0.034 against 0.025), joined
-  noticed: SYNFMCG2 move_5d (value -0.086 against 0.084), examined
   noticed: MON100 rel_5d (value 0.113 against 0.081), examined
+  noticed: SYNFMCG2 move_5d (value -0.086 against 0.084), joined
   noticed: SGBSYN33 rel_5d (value 0.075 against 0.052), joined
-  case #11 on SYNFMCG2: open (market_fear): SYNFMCG2 moved -8.6% in 5 sessions (2.6 times its usual 5-day move)
-  case #12 on MON100: open (market_fear): MON100 moved +11.3% in 5 sessions against its market (3.5 times its usual 5-day move)
-  option [alt] case #11 SYNFMCG2 sell: worst -106 likely -106 best -106 expected -106 (worst -0.01% of the book, size 87,160)
-  option [alt] case #11 SYNFMCG2 trim: worst -3,759 likely -121 best 3,848 expected -55 (worst -0.31% of the book, size 43,580)
-  option [model] case #11 SYNFMCG2 hold: worst -7,381 likely -106 best 7,833 expected 27 (worst -0.61% of the book, size 0) <- chosen
-  option [alt] case #11 SYNFMCG2 freeze: worst -7,381 likely -106 best 7,833 expected 27 (worst -0.61% of the book, size 0)
-  option [alt] case #11 SYNFMCG2 wait: worst -7,381 likely -106 best 7,833 expected 27 (worst -0.61% of the book, size 0)
-  option [alt] case #11 SYNFMCG2 buy_in_parts: worst -12,116 likely -420 best 12,343 expected -207 (worst -1.00% of the book, size 139,980)
-  option [alt] case #11 SYNFMCG2 nothing: worst -7,381 likely -106 best 7,833 expected 27 (worst -0.61% of the book, size 0)
-  option [rule] case #11 SYNFMCG2 hold: worst -7,381 likely -106 best 7,833 expected 27 (worst -0.61% of the book, size 0) <- chosen
-  option [alt] case #12 MON100 sell: worst -70 likely -70 best -70 expected -70 (worst -0.01% of the book, size 52,602)
-  option [alt] case #12 MON100 trim: worst -1,633 likely -85 best 1,560 expected -66 (worst -0.13% of the book, size 26,301)
-  option [model] case #12 MON100 hold: worst -3,166 likely -70 best 3,220 expected -31 (worst -0.26% of the book, size 0) <- chosen
-  option [alt] case #12 MON100 freeze: worst -3,166 likely -70 best 3,220 expected -31 (worst -0.26% of the book, size 0)
-  option [alt] case #12 MON100 wait: worst -3,166 likely -70 best 3,220 expected -31 (worst -0.26% of the book, size 0)
-  option [alt] case #12 MON100 buy_in_parts: worst -12,116 likely -587 best 11,664 expected -443 (worst -1.00% of the book, size 195,699)
-  option [alt] case #12 MON100 nothing: worst -3,166 likely -70 best 3,220 expected -31 (worst -0.26% of the book, size 0)
-  option [rule] case #12 MON100 hold: worst -3,166 likely -70 best 3,220 expected -31 (worst -0.26% of the book, size 0) <- chosen
-  decision case #11 SYNFMCG2: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 363, trim Rs 166; the bar is Rs 872).
-  decision case #12 MON100: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 526).
+  case #10 on MON100: open (market_fear): MON100 moved +11.3% in 5 sessions against its market (3.5 times its usual 5-day move)
+  option [alt] case #10 MON100 sell: worst -70 likely -70 best -70 expected -70 (worst -0.01% of the book, size 52,602)
+  option [alt] case #10 MON100 trim: worst -1,633 likely -85 best 1,560 expected -66 (worst -0.14% of the book, size 26,301)
+  option [model] case #10 MON100 hold: worst -3,166 likely -70 best 3,220 expected -31 (worst -0.26% of the book, size 0) <- chosen
+  option [alt] case #10 MON100 freeze: worst -3,166 likely -70 best 3,220 expected -31 (worst -0.26% of the book, size 0)
+  option [alt] case #10 MON100 wait: worst -3,166 likely -70 best 3,220 expected -31 (worst -0.26% of the book, size 0)
+  option [alt] case #10 MON100 buy_in_parts: worst -12,082 likely -585 best 11,631 expected -441 (worst -1.00% of the book, size 195,147)
+  option [alt] case #10 MON100 nothing: worst -3,166 likely -70 best 3,220 expected -31 (worst -0.26% of the book, size 0)
+  option [rule] case #10 MON100 hold: worst -3,166 likely -70 best 3,220 expected -31 (worst -0.26% of the book, size 0) <- chosen
+  decision case #10 MON100: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 526).
 Wed 11 Mar 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
@@ -182,42 +175,43 @@ Thu 12 Mar 21:00
   noticed: JUNIORBEES move_1d (value -0.082 against 0.024), joined
   noticed: JUNIORBEES move_5d (value -0.146 against 0.055), joined
   noticed: SYNFMCG2 move_1d (value -0.113 against 0.038), joined
-  noticed: SYNIT1 rel_1d (value 0.084 against 0.053), joined
-  noticed: SYNFMCG2 move_5d (value -0.171 against 0.084), joined
-  noticed: SYNFMCG1 move_1d (value -0.046 against 0.032), joined
-  noticed: SYNCAPG1 move_1d (value -0.09 against 0.041), examined
+  noticed: SYNIT1 move_1d (value -0.094 against 0.037), joined
   noticed: SGBSYN33 rel_1d (value 0.083 against 0.024), joined
   noticed: MON100 rel_1d (value 0.086 against 0.037), joined
-  noticed: SYNFMCG1 rel_1d (value 0.037 against 0.03), joined
-  noticed: SYNIT1 rel_5d (value 0.132 against 0.119), joined
+  noticed: SYNCAPG1 move_1d (value -0.09 against 0.041), examined
+  noticed: SYNIT1 move_5d (value -0.167 against 0.082), joined
   noticed: MON100 rel_5d (value 0.167 against 0.082), joined
-  noticed: SYNFMCG1 rel_5d (value 0.075 against 0.067), joined
+  noticed: SYNFMCG2 move_5d (value -0.171 against 0.084), joined
   noticed: SGBSYN33 rel_5d (value 0.149 against 0.055), joined
-  noticed: SYNFMCG1 move_5d (value -0.073 against 0.072), joined
+  noticed: SYNFMCG1 move_1d (value -0.046 against 0.032), joined
   noticed: SYNCAPG1 move_5d (value -0.14 against 0.091), examined
+  noticed: SYNFMCG1 rel_1d (value 0.037 against 0.03), joined
+  noticed: SYNFMCG1 rel_5d (value 0.075 against 0.067), joined
+  noticed: SYNFMCG1 move_5d (value -0.073 against 0.072), joined
   noticed: SYNFMCG2 fall_10d (value -0.211 against -0.2), joined
-  case #13 on SYNCAPG1: open (market_fear): SYNCAPG1 moved -9.0% in a day (5.5 times its usual daily move); SYNCAPG1 moved -14.0% in 5
-  option [alt] case #13 SYNCAPG1 sell: worst -78 likely -78 best -78 expected -78 (worst -0.01% of the book, size 59,920)
-  option [alt] case #13 SYNCAPG1 trim: worst -2,906 likely -93 best 3,012 expected -34 (worst -0.25% of the book, size 29,960)
-  option [model] case #13 SYNCAPG1 hold: worst -5,704 likely -78 best 6,133 expected 39 (worst -0.49% of the book, size 0) <- chosen
-  option [alt] case #13 SYNCAPG1 freeze: worst -5,704 likely -78 best 6,133 expected 39 (worst -0.49% of the book, size 0)
-  option [alt] case #13 SYNCAPG1 wait: worst -5,704 likely -78 best 6,133 expected 39 (worst -0.49% of the book, size 0)
-  option [alt] case #13 SYNCAPG1 buy_in_parts: worst -11,727 likely -363 best 12,181 expected -127 (worst -1.00% of the book, size 120,899)
-  option [alt] case #13 SYNCAPG1 nothing: worst -5,704 likely -78 best 6,133 expected 39 (worst -0.49% of the book, size 0)
-  option [rule] case #13 SYNCAPG1 hold: worst -5,704 likely -78 best 6,133 expected 39 (worst -0.49% of the book, size 0) <- chosen
-  decision case #13 SYNCAPG1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 599).
+  case #11 on SYNCAPG1: open (market_fear): SYNCAPG1 moved -9.0% in a day (5.5 times its usual daily move); SYNCAPG1 moved -14.0% in 5
+  option [alt] case #11 SYNCAPG1 sell: worst -71 likely -71 best -71 expected -71 (worst -0.01% of the book, size 53,928)
+  option [alt] case #11 SYNCAPG1 trim: worst -2,619 likely -87 best 2,708 expected -34 (worst -0.22% of the book, size 26,964)
+  option [model] case #11 SYNCAPG1 hold: worst -5,135 likely -71 best 5,518 expected 34 (worst -0.44% of the book, size 0) <- chosen
+  option [alt] case #11 SYNCAPG1 freeze: worst -5,135 likely -71 best 5,518 expected 34 (worst -0.44% of the book, size 0)
+  option [alt] case #11 SYNCAPG1 wait: worst -5,135 likely -71 best 5,518 expected 34 (worst -0.44% of the book, size 0)
+  option [alt] case #11 SYNCAPG1 buy_in_parts: worst -11,736 likely -363 best 12,190 expected -127 (worst -1.00% of the book, size 120,990)
+  option [alt] case #11 SYNCAPG1 nothing: worst -5,135 likely -71 best 5,518 expected 34 (worst -0.44% of the book, size 0)
+  option [rule] case #11 SYNCAPG1 hold: worst -5,135 likely -71 best 5,518 expected 34 (worst -0.44% of the book, size 0) <- chosen
+  decision case #11 SYNCAPG1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 539).
 Fri 13 Mar 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
   noticed: Nifty 500 market_down_20d (value -0.186 against -0.1), joined
   noticed: JUNIORBEES rel_1d (value -0.03 against 0.013), joined
   noticed: JUNIORBEES move_5d (value -0.124 against 0.062), joined
+  noticed: SYNIT1 move_5d (value -0.147 against 0.089), joined
   noticed: SYNFMCG1 rel_1d (value -0.044 against 0.03), joined
   noticed: SYNFMCG2 move_5d (value -0.107 against 0.092), joined
-  noticed: SYNFMCG2 move_1d (value 0.041 against 0.041), joined
   noticed: MON100 rel_5d (value 0.103 against 0.087), joined
   noticed: SGBSYN33 rel_5d (value 0.1 against 0.062), joined
   noticed: MON100 rel_1d (value -0.041 against 0.039), joined
+  noticed: SYNFMCG2 move_1d (value 0.041 against 0.041), joined
   noticed: SGBSYN33 rel_1d (value -0.033 against 0.028), joined
 Mon 16 Mar 07:00
   option [alt] case #1 SGBSYN33 sell: worst -54 likely -54 best -54 expected -54 (worst -0.00% of the book, size 36,948)
@@ -225,285 +219,313 @@ Mon 16 Mar 07:00
   option [model] case #1 SGBSYN33 hold: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0) <- chosen
   option [alt] case #1 SGBSYN33 freeze: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
   option [alt] case #1 SGBSYN33 wait: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
-  option [alt] case #1 SGBSYN33 buy_in_parts: worst -11,764 likely -11,736 best -11,708 expected -11,736 (worst -1.00% of the book, size 3,911,998)
+  option [alt] case #1 SGBSYN33 buy_in_parts: worst -11,772 likely -11,744 best -11,715 expected -11,744 (worst -1.00% of the book, size 3,914,550)
   option [alt] case #1 SGBSYN33 nothing: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
   option [rule] case #1 SGBSYN33 hold: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0) <- chosen
-  option [alt] case #6 NIFTYBEES sell: worst -135 likely -135 best -135 expected -135 (worst -0.01% of the book, size 115,793)
-  option [alt] case #6 NIFTYBEES trim: worst -32,869 likely -151 best 75,187 expected 32,065 (worst -2.79% of the book, size 57,897)
-  option [alt] case #6 NIFTYBEES hold: worst -65,573 likely -135 best 150,541 expected 64,296 (worst -5.57% of the book, size 0)
-  option [alt] case #6 NIFTYBEES freeze: worst -65,573 likely -135 best 150,541 expected 64,296 (worst -5.57% of the book, size 0)
-  option [alt] case #6 NIFTYBEES wait: worst -65,573 likely -135 best 150,541 expected 64,296 (worst -5.57% of the book, size 0)
-  option [model] case #6 NIFTYBEES buy_in_parts: worst -11,764 likely -62 best 26,884 expected 11,460 (worst -1.00% of the book, size 20,686) <- chosen
-  option [alt] case #6 NIFTYBEES nothing: worst -65,573 likely -135 best 150,541 expected 64,296 (worst -5.57% of the book, size 0)
-  option [rule] case #6 NIFTYBEES hold: worst -65,573 likely -135 best 150,541 expected 64,296 (worst -5.57% of the book, size 0) <- chosen
-  option [alt] case #5 JUNIORBEES sell: worst -133 likely -133 best -133 expected -133 (worst -0.01% of the book, size 113,329)
-  option [alt] case #5 JUNIORBEES trim: worst -3,641 likely -148 best 3,574 expected -102 (worst -0.31% of the book, size 56,664)
-  option [model] case #5 JUNIORBEES hold: worst -7,118 likely -133 best 7,311 expected -41 (worst -0.61% of the book, size 0) <- chosen
-  option [alt] case #5 JUNIORBEES freeze: worst -7,118 likely -133 best 7,311 expected -41 (worst -0.61% of the book, size 0)
-  option [alt] case #5 JUNIORBEES wait: worst -7,118 likely -133 best 7,311 expected -41 (worst -0.61% of the book, size 0)
-  option [alt] case #5 JUNIORBEES buy_in_parts: worst -11,764 likely -546 best 11,411 expected -398 (worst -1.00% of the book, size 181,833)
-  option [alt] case #5 JUNIORBEES nothing: worst -7,118 likely -133 best 7,311 expected -41 (worst -0.61% of the book, size 0)
-  option [rule] case #5 JUNIORBEES hold: worst -7,118 likely -133 best 7,311 expected -41 (worst -0.61% of the book, size 0) <- chosen
-  option [alt] case #2 SYNFMCG1 sell: worst -111 likely -111 best -111 expected -111 (worst -0.01% of the book, size 91,995)
-  option [alt] case #2 SYNFMCG1 trim: worst -3,461 likely -126 best 3,470 expected -74 (worst -0.29% of the book, size 45,998)
-  option [model] case #2 SYNFMCG1 hold: worst -6,781 likely -111 best 7,082 expected -6 (worst -0.58% of the book, size 0) <- chosen
-  option [alt] case #2 SYNFMCG1 freeze: worst -6,781 likely -111 best 7,082 expected -6 (worst -0.58% of the book, size 0)
-  option [alt] case #2 SYNFMCG1 wait: worst -6,781 likely -111 best 7,082 expected -6 (worst -0.58% of the book, size 0)
-  option [alt] case #2 SYNFMCG1 buy_in_parts: worst -11,764 likely -467 best 11,715 expected -290 (worst -1.00% of the book, size 155,644)
-  option [alt] case #2 SYNFMCG1 nothing: worst -6,781 likely -111 best 7,082 expected -6 (worst -0.58% of the book, size 0)
-  option [rule] case #2 SYNFMCG1 sell: worst -111 likely -111 best -111 expected -111 (worst -0.01% of the book, size 91,995) <- chosen
-  option [alt] case #7 SYNIT1 sell: worst -120 likely -120 best -120 expected -120 (worst -0.01% of the book, size 100,873)
-  option [alt] case #7 SYNIT1 trim: worst -5,644 likely -135 best 6,049 expected 0 (worst -0.48% of the book, size 50,437)
-  option [model] case #7 SYNIT1 hold: worst -11,136 likely -120 best 12,249 expected 150 (worst -0.95% of the book, size 0) <- chosen
-  option [alt] case #7 SYNIT1 freeze: worst -11,136 likely -120 best 12,249 expected 150 (worst -0.95% of the book, size 0)
-  option [alt] case #7 SYNIT1 wait: worst -11,136 likely -120 best 12,249 expected 150 (worst -0.95% of the book, size 0)
-  option [alt] case #7 SYNIT1 buy_in_parts: worst -11,764 likely -314 best 12,541 expected -33 (worst -1.00% of the book, size 104,735)
-  option [alt] case #7 SYNIT1 nothing: worst -11,136 likely -120 best 12,249 expected 150 (worst -0.95% of the book, size 0)
-  option [rule] case #7 SYNIT1 hold: worst -11,136 likely -120 best 12,249 expected 150 (worst -0.95% of the book, size 0) <- chosen
+  option [alt] case #5 NIFTYBEES sell: worst -97 likely -97 best -97 expected -97 (worst -0.01% of the book, size 78,239)
+  option [alt] case #5 NIFTYBEES trim: worst -22,219 likely -112 best 50,792 expected 21,656 (worst -1.89% of the book, size 39,119)
+  option [alt] case #5 NIFTYBEES hold: worst -44,311 likely -97 best 101,712 expected 43,439 (worst -3.76% of the book, size 0)
+  option [alt] case #5 NIFTYBEES freeze: worst -44,311 likely -97 best 101,712 expected 43,439 (worst -3.76% of the book, size 0)
+  option [alt] case #5 NIFTYBEES wait: worst -44,311 likely -97 best 101,712 expected 43,439 (worst -3.76% of the book, size 0)
+  option [model] case #5 NIFTYBEES buy_in_parts: worst -11,772 likely -62 best 26,901 expected 11,468 (worst -1.00% of the book, size 20,699) <- chosen
+  option [alt] case #5 NIFTYBEES nothing: worst -44,311 likely -97 best 101,712 expected 43,439 (worst -3.76% of the book, size 0)
+  option [rule] case #5 NIFTYBEES hold: worst -44,311 likely -97 best 101,712 expected 43,439 (worst -3.76% of the book, size 0) <- chosen
+  option [alt] case #4 JUNIORBEES sell: worst -99 likely -99 best -99 expected -99 (worst -0.01% of the book, size 80,830)
+  option [alt] case #4 JUNIORBEES trim: worst -2,605 likely -115 best 2,540 expected -82 (worst -0.22% of the book, size 40,415)
+  option [model] case #4 JUNIORBEES hold: worst -5,081 likely -99 best 5,210 expected -34 (worst -0.43% of the book, size 0) <- chosen
+  option [alt] case #4 JUNIORBEES freeze: worst -5,081 likely -99 best 5,210 expected -34 (worst -0.43% of the book, size 0)
+  option [alt] case #4 JUNIORBEES wait: worst -5,081 likely -99 best 5,210 expected -34 (worst -0.43% of the book, size 0)
+  option [alt] case #4 JUNIORBEES buy_in_parts: worst -11,772 likely -546 best 11,418 expected -398 (worst -1.00% of the book, size 181,952)
+  option [alt] case #4 JUNIORBEES nothing: worst -5,081 likely -99 best 5,210 expected -34 (worst -0.43% of the book, size 0)
+  option [rule] case #4 JUNIORBEES hold: worst -5,081 likely -99 best 5,210 expected -34 (worst -0.43% of the book, size 0) <- chosen
+  option [alt] case #2 SYNFMCG1 sell: worst -81 likely -81 best -81 expected -81 (worst -0.01% of the book, size 62,826)
+  option [alt] case #2 SYNFMCG1 trim: worst -2,374 likely -96 best 2,360 expected -60 (worst -0.20% of the book, size 31,413)
+  option [model] case #2 SYNFMCG1 hold: worst -4,636 likely -81 best 4,831 expected -9 (worst -0.39% of the book, size 0) <- chosen
+  option [alt] case #2 SYNFMCG1 freeze: worst -4,636 likely -81 best 4,831 expected -9 (worst -0.39% of the book, size 0)
+  option [alt] case #2 SYNFMCG1 wait: worst -4,636 likely -81 best 4,831 expected -9 (worst -0.39% of the book, size 0)
+  option [alt] case #2 SYNFMCG1 buy_in_parts: worst -11,772 likely -467 best 11,722 expected -290 (worst -1.00% of the book, size 155,746)
+  option [alt] case #2 SYNFMCG1 nothing: worst -4,636 likely -81 best 4,831 expected -9 (worst -0.39% of the book, size 0)
+  option [rule] case #2 SYNFMCG1 hold: worst -4,636 likely -81 best 4,831 expected -9 (worst -0.39% of the book, size 0) <- chosen
+  option [alt] case #7 SYNFMCG2 sell: worst -72 likely -72 best -72 expected -72 (worst -0.01% of the book, size 54,551)
+  option [alt] case #7 SYNFMCG2 trim: worst -2,630 likely -87 best 2,717 expected -35 (worst -0.22% of the book, size 27,276)
+  option [model] case #7 SYNFMCG2 hold: worst -5,157 likely -72 best 5,537 expected 33 (worst -0.44% of the book, size 0) <- chosen
+  option [alt] case #7 SYNFMCG2 freeze: worst -5,157 likely -72 best 5,537 expected 33 (worst -0.44% of the book, size 0)
+  option [alt] case #7 SYNFMCG2 wait: worst -5,157 likely -72 best 5,537 expected 33 (worst -0.44% of the book, size 0)
+  option [alt] case #7 SYNFMCG2 buy_in_parts: worst -11,772 likely -367 best 12,212 expected -132 (worst -1.00% of the book, size 122,225)
+  option [alt] case #7 SYNFMCG2 nothing: worst -5,157 likely -72 best 5,537 expected 33 (worst -0.44% of the book, size 0)
+  option [rule] case #7 SYNFMCG2 hold: worst -5,157 likely -72 best 5,537 expected 33 (worst -0.44% of the book, size 0) <- chosen
+  option [alt] case #6 SYNIT1 sell: worst -77 likely -77 best -77 expected -77 (worst -0.01% of the book, size 59,603)
+  option [alt] case #6 SYNIT1 trim: worst -2,713 likely -93 best 2,781 expected -42 (worst -0.23% of the book, size 29,802)
+  option [model] case #6 SYNIT1 hold: worst -5,318 likely -77 best 5,670 expected 24 (worst -0.45% of the book, size 0) <- chosen
+  option [alt] case #6 SYNIT1 freeze: worst -5,318 likely -77 best 5,670 expected 24 (worst -0.45% of the book, size 0)
+  option [alt] case #6 SYNIT1 wait: worst -5,318 likely -77 best 5,670 expected 24 (worst -0.45% of the book, size 0)
+  option [alt] case #6 SYNIT1 buy_in_parts: worst -11,772 likely -388 best 12,095 expected -168 (worst -1.00% of the book, size 129,330)
+  option [alt] case #6 SYNIT1 nothing: worst -5,318 likely -77 best 5,670 expected 24 (worst -0.45% of the book, size 0)
+  option [rule] case #6 SYNIT1 hold: worst -5,318 likely -77 best 5,670 expected 24 (worst -0.45% of the book, size 0) <- chosen
   decision case #1 SGBSYN33: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 369).
-  decision case #6 NIFTYBEES: rule hold, model buy_in_parts, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, 
-  decision case #5 JUNIORBEES: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 1,133).
-  decision case #2 SYNFMCG1: rule sell, model hold, acted sell: the model chose hold, the rule chose sell; the rule acts. Sell: its expected result after tax and charges beats holding by Rs 1,981, more than the 1% of the pos
-  decision case #7 SYNIT1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 1,009).
-  rupee order (14, datetime.datetime(2020, 3, 16, 7, 0), 14, 'INE9S1A01011', 'SYNFMCG1', 'sell', 41.0, None, 'open', None, 'case #2 decision #14')
+  decision case #5 NIFTYBEES: rule hold, model buy_in_parts, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, 
+  decision case #4 JUNIORBEES: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 808).
+  decision case #2 SYNFMCG1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 628).
+  decision case #7 SYNFMCG2: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 546).
+  decision case #6 SYNIT1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 596).
 Mon 16 Mar 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
   noticed: Nifty 500 market_down_20d (value -0.241 against -0.1), joined
   noticed: JUNIORBEES rel_1d (value 0.034 against 0.014), joined
   noticed: JUNIORBEES move_5d (value -0.139 against 0.062), joined
-  noticed: SYNIT1 rel_1d (value 0.111 against 0.055), joined
   noticed: SYNFMCG2 move_1d (value -0.092 against 0.042), joined
   noticed: JUNIORBEES move_1d (value -0.035 against 0.028), joined
-  noticed: SYNFMCG2 move_5d (value -0.169 against 0.094), joined
-  noticed: SYNIT1 rel_5d (value 0.144 against 0.124), joined
   noticed: SYNCAPG1 move_1d (value -0.079 against 0.043), joined
   noticed: SGBSYN33 rel_1d (value 0.07 against 0.028), joined
-  noticed: SYNFMCG2 fall_10d (value -0.246 against -0.2), joined
-  noticed: MON100 rel_1d (value 0.06 against 0.04), joined
-  noticed: SYNCAPG1 move_5d (value -0.121 against 0.097), joined
-  noticed: SGBSYN33 rel_5d (value 0.121 against 0.063), joined
-  noticed: MON100 rel_5d (value 0.109 against 0.088), joined
+  noticed: SYNFMCG2 move_5d (value -0.169 against 0.094), joined
+  noticed: SYNIT1 move_5d (value -0.14 against 0.089), joined
+  noticed: SYNIT1 move_1d (value -0.061 against 0.04), joined
   noticed: SYNFMCG1 move_1d (value -0.045 against 0.033), joined
+  noticed: MON100 rel_1d (value 0.06 against 0.04), joined
+  noticed: SGBSYN33 rel_5d (value 0.121 against 0.063), joined
   noticed: SYNFMCG1 move_5d (value -0.085 against 0.074), joined
+  noticed: MON100 rel_5d (value 0.109 against 0.088), joined
+  noticed: SYNCAPG1 move_5d (value -0.121 against 0.097), joined
+  noticed: SYNFMCG2 fall_10d (value -0.246 against -0.2), joined
 Tue 17 Mar 07:00
-  option [alt] case #11 SYNFMCG2 sell: worst -90 likely -90 best -90 expected -90 (worst -0.01% of the book, size 72,429)
-  option [alt] case #11 SYNFMCG2 trim: worst -3,672 likely -106 best 3,850 expected -28 (worst -0.32% of the book, size 36,214)
-  option [model] case #11 SYNFMCG2 hold: worst -7,223 likely -90 best 7,822 expected 66 (worst -0.63% of the book, size 0) <- chosen
-  option [alt] case #11 SYNFMCG2 freeze: worst -7,223 likely -90 best 7,822 expected 66 (worst -0.63% of the book, size 0)
-  option [alt] case #11 SYNFMCG2 wait: worst -7,223 likely -90 best 7,822 expected 66 (worst -0.63% of the book, size 0)
-  option [alt] case #11 SYNFMCG2 buy_in_parts: worst -11,530 likely -341 best 12,072 expected -96 (worst -1.00% of the book, size 113,506)
-  option [alt] case #11 SYNFMCG2 nothing: worst -7,223 likely -90 best 7,822 expected 66 (worst -0.63% of the book, size 0)
-  option [rule] case #11 SYNFMCG2 hold: worst -7,223 likely -90 best 7,822 expected 66 (worst -0.63% of the book, size 0) <- chosen
-  option [alt] case #12 MON100 sell: worst -69 likely -69 best -69 expected -69 (worst -0.01% of the book, size 52,064)
-  option [alt] case #12 MON100 trim: worst -1,612 likely -85 best 1,538 expected -66 (worst -0.14% of the book, size 26,032)
-  option [model] case #12 MON100 hold: worst -3,125 likely -69 best 3,177 expected -31 (worst -0.27% of the book, size 0) <- chosen
-  option [alt] case #12 MON100 freeze: worst -3,125 likely -69 best 3,177 expected -31 (worst -0.27% of the book, size 0)
-  option [alt] case #12 MON100 wait: worst -3,125 likely -69 best 3,177 expected -31 (worst -0.27% of the book, size 0)
-  option [alt] case #12 MON100 buy_in_parts: worst -11,530 likely -560 best 11,094 expected -423 (worst -1.00% of the book, size 186,721)
-  option [alt] case #12 MON100 nothing: worst -3,125 likely -69 best 3,177 expected -31 (worst -0.27% of the book, size 0)
-  option [rule] case #12 MON100 hold: worst -3,125 likely -69 best 3,177 expected -31 (worst -0.27% of the book, size 0) <- chosen
-  decision case #11 SYNFMCG2: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 724).
-  decision case #12 MON100: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 521).
+  option [alt] case #10 MON100 sell: worst -69 likely -69 best -69 expected -69 (worst -0.01% of the book, size 52,064)
+  option [alt] case #10 MON100 trim: worst -1,612 likely -85 best 1,538 expected -66 (worst -0.14% of the book, size 26,032)
+  option [model] case #10 MON100 hold: worst -3,125 likely -69 best 3,177 expected -31 (worst -0.27% of the book, size 0) <- chosen
+  option [alt] case #10 MON100 freeze: worst -3,125 likely -69 best 3,177 expected -31 (worst -0.27% of the book, size 0)
+  option [alt] case #10 MON100 wait: worst -3,125 likely -69 best 3,177 expected -31 (worst -0.27% of the book, size 0)
+  option [alt] case #10 MON100 buy_in_parts: worst -11,527 likely -560 best 11,091 expected -423 (worst -1.00% of the book, size 186,679)
+  option [alt] case #10 MON100 nothing: worst -3,125 likely -69 best 3,177 expected -31 (worst -0.27% of the book, size 0)
+  option [rule] case #10 MON100 hold: worst -3,125 likely -69 best 3,177 expected -31 (worst -0.27% of the book, size 0) <- chosen
+  decision case #10 MON100: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 521).
 Tue 17 Mar 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
   noticed: Nifty 500 market_down_20d (value -0.254 against -0.1), joined
   noticed: JUNIORBEES move_5d (value -0.135 against 0.063), joined
   noticed: JUNIORBEES rel_1d (value 0.027 against 0.015), joined
-  noticed: SYNIT1 rel_5d (value 0.216 against 0.13), joined
+  noticed: SYNFMCG1 rel_1d (value 0.055 against 0.031), joined
+  noticed: SYNIT1 move_5d (value -0.159 against 0.091), joined
   noticed: SYNFMCG2 move_5d (value -0.158 against 0.099), joined
-  noticed: SYNFMCG2 fall_10d (value -0.231 against -0.2), joined
   noticed: MON100 rel_5d (value 0.136 against 0.09), joined
   noticed: SGBSYN33 rel_5d (value 0.141 against 0.068), joined
-  noticed: SYNFMCG2 rel_1d (value 0.036 against 0.036), joined
+  noticed: SYNFMCG1 rel_5d (value 0.085 against 0.07), joined
   noticed: SYNCAPG1 move_5d (value -0.132 against 0.101), joined
-  rupee order (15, datetime.datetime(2020, 3, 17, 21, 0), 15, 'INE9S4A01011', 'SYNIT1', 'sell', 9.0, None, 'open', None, 'baseline_v2 decision #15')
+  noticed: SYNFMCG2 fall_10d (value -0.231 against -0.2), joined
+  noticed: SYNFMCG2 rel_1d (value 0.036 against 0.036), joined
 Wed 18 Mar 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
   noticed: Nifty 500 market_down_20d (value -0.29 against -0.1), joined
   noticed: JUNIORBEES move_5d (value -0.148 against 0.063), joined
-  noticed: SYNIT1 rel_5d (value 0.304 against 0.131), joined
-  noticed: SYNIT1 rel_1d (value 0.102 against 0.059), joined
   noticed: JUNIORBEES move_1d (value -0.045 against 0.028), joined
-  noticed: SYNFMCG2 rel_1d (value 0.065 against 0.036), joined
-  noticed: JUNIORBEES rel_5d (value 0.039 against 0.034), joined
-  noticed: SYNFMCG2 move_5d (value -0.142 against 0.099), joined
-  noticed: JUNIORBEES fall_10d (value -0.201 against -0.2), joined
-  noticed: SYNIT1 move_5d (value 0.118 against 0.114), joined
   noticed: MON100 rel_5d (value 0.175 against 0.091), joined
   noticed: SGBSYN33 rel_5d (value 0.187 against 0.068), joined
+  noticed: SYNIT1 move_5d (value -0.153 against 0.091), joined
+  noticed: SYNFMCG2 rel_1d (value 0.065 against 0.036), joined
   noticed: SYNCAPG1 move_5d (value -0.19 against 0.101), joined
+  noticed: JUNIORBEES rel_5d (value 0.039 against 0.034), joined
+  noticed: SYNFMCG1 move_5d (value -0.107 against 0.077), joined
+  noticed: JUNIORBEES fall_10d (value -0.201 against -0.2), joined
+  noticed: SYNFMCG2 move_5d (value -0.142 against 0.099), joined
+  noticed: SYNIT1 rel_1d (value 0.053 against 0.04), joined
+  noticed: SYNFMCG1 move_1d (value -0.04 against 0.034), joined
   noticed: MON100 rel_1d (value 0.052 against 0.041), joined
   noticed: SGBSYN33 rel_1d (value 0.055 against 0.031), joined
+  noticed: SYNFMCG1 rel_5d (value 0.079 against 0.072), joined
   noticed: SYNCAPG1 move_1d (value -0.055 against 0.045), joined
+  noticed: SYNIT1 fall_10d (value -0.206 against -0.2), joined
   noticed: SYNCAPG1 fall_10d (value -0.231 against -0.2), joined
 Thu 19 Mar 07:00
-  option [alt] case #13 SYNCAPG1 sell: worst -71 likely -71 best -71 expected -71 (worst -0.01% of the book, size 53,319)
-  option [alt] case #13 SYNCAPG1 trim: worst -2,744 likely -86 best 2,867 expected -27 (worst -0.24% of the book, size 26,659)
-  option [model] case #13 SYNCAPG1 hold: worst -5,387 likely -71 best 5,835 expected 47 (worst -0.47% of the book, size 0) <- chosen
-  option [alt] case #13 SYNCAPG1 freeze: worst -5,387 likely -71 best 5,835 expected 47 (worst -0.47% of the book, size 0)
-  option [alt] case #13 SYNCAPG1 wait: worst -5,387 likely -71 best 5,835 expected 47 (worst -0.47% of the book, size 0)
-  option [alt] case #13 SYNCAPG1 buy_in_parts: worst -11,460 likely -334 best 12,025 expected -88 (worst -1.00% of the book, size 111,469)
-  option [alt] case #13 SYNCAPG1 nothing: worst -5,387 likely -71 best 5,835 expected 47 (worst -0.47% of the book, size 0)
-  option [rule] case #13 SYNCAPG1 hold: worst -5,387 likely -71 best 5,835 expected 47 (worst -0.47% of the book, size 0) <- chosen
-  decision case #13 SYNCAPG1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 533).
+  option [alt] case #11 SYNCAPG1 sell: worst -65 likely -65 best -65 expected -65 (worst -0.01% of the book, size 47,987)
+  option [alt] case #11 SYNCAPG1 trim: worst -2,473 likely -80 best 2,577 expected -27 (worst -0.22% of the book, size 23,993)
+  option [model] case #11 SYNCAPG1 hold: worst -4,850 likely -65 best 5,250 expected 41 (worst -0.43% of the book, size 0) <- chosen
+  option [alt] case #11 SYNCAPG1 freeze: worst -4,850 likely -65 best 5,250 expected 41 (worst -0.43% of the book, size 0)
+  option [alt] case #11 SYNCAPG1 wait: worst -4,850 likely -65 best 5,250 expected 41 (worst -0.43% of the book, size 0)
+  option [alt] case #11 SYNCAPG1 buy_in_parts: worst -11,387 likely -332 best 11,948 expected -87 (worst -1.00% of the book, size 110,756)
+  option [alt] case #11 SYNCAPG1 nothing: worst -4,850 likely -65 best 5,250 expected 41 (worst -0.43% of the book, size 0)
+  option [rule] case #11 SYNCAPG1 hold: worst -4,850 likely -65 best 5,250 expected 41 (worst -0.43% of the book, size 0) <- chosen
+  decision case #11 SYNCAPG1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 480).
 Thu 19 Mar 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
   noticed: Nifty 500 market_down_20d (value -0.307 against -0.1), joined
   noticed: SYNFMCG2 rel_1d (value 0.103 against 0.038), joined
   noticed: JUNIORBEES move_5d (value -0.118 against 0.065), joined
-  noticed: SYNIT1 rel_5d (value 0.243 against 0.136), joined
   noticed: JUNIORBEES move_1d (value -0.05 against 0.029), joined
   noticed: SYNFMCG2 rel_5d (value 0.177 against 0.084), joined
   noticed: JUNIORBEES rel_1d (value -0.022 against 0.015), joined
   noticed: SYNFMCG2 move_1d (value 0.074 against 0.044), joined
-  noticed: NIFTYBEES fall_10d (value -0.253 against -0.2), joined
   noticed: JUNIORBEES fall_10d (value -0.247 against -0.2), joined
-  noticed: SYNCAPG1 move_5d (value -0.171 against 0.102), joined
+  noticed: NIFTYBEES fall_10d (value -0.253 against -0.2), joined
   noticed: MON100 rel_5d (value 0.143 against 0.092), joined
-  noticed: SYNCAPG1 move_1d (value -0.068 against 0.046), joined
+  noticed: SYNFMCG1 move_5d (value -0.106 against 0.078), joined
+  noticed: SYNCAPG1 move_5d (value -0.171 against 0.102), joined
+  noticed: SYNFMCG1 move_1d (value -0.044 against 0.035), joined
   noticed: SGBSYN33 rel_5d (value 0.138 against 0.071), joined
+  noticed: SYNCAPG1 move_1d (value -0.068 against 0.046), joined
   noticed: SYNCAPG1 fall_10d (value -0.287 against -0.2), joined
-  noticed: SYNCAPG1 rel_1d (value -0.039 against 0.029), joined
+  noticed: SYNIT1 fall_10d (value -0.23 against -0.2), joined
   noticed: MON100 rel_1d (value 0.048 against 0.041), joined
+  noticed: SYNCAPG1 rel_1d (value -0.039 against 0.029), joined
 Fri 20 Mar 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
   noticed: Nifty 500 market_down_20d (value -0.281 against -0.1), joined
+  noticed: SYNFMCG1 move_1d (value 0.116 against 0.036), joined
+  noticed: SYNIT1 move_1d (value 0.098 against 0.041), joined
   noticed: SYNFMCG2 rel_5d (value 0.204 against 0.092), joined
+  noticed: SYNFMCG1 rel_1d (value 0.064 against 0.032), joined
+  noticed: SYNFMCG1 rel_5d (value 0.131 against 0.073), joined
   noticed: JUNIORBEES move_1d (value 0.046 against 0.03), joined
   noticed: SYNFMCG2 move_1d (value 0.084 against 0.046), joined
-  noticed: SYNIT1 rel_5d (value 0.214 against 0.135), joined
   noticed: JUNIORBEES move_5d (value -0.08 against 0.067), joined
   noticed: JUNIORBEES rel_5d (value 0.042 against 0.035), joined
-  noticed: SYNIT1 rel_1d (value -0.073 against 0.061), joined
-  noticed: NIFTYBEES fall_10d (value -0.207 against -0.2), joined
   noticed: SYNCAPG1 move_5d (value -0.178 against 0.105), joined
+  noticed: SYNIT1 rel_5d (value 0.117 against 0.09), joined
   noticed: MON100 rel_5d (value 0.134 against 0.094), joined
+  noticed: NIFTYBEES fall_10d (value -0.207 against -0.2), joined
+  noticed: SYNIT1 rel_1d (value 0.047 against 0.04), joined
   noticed: MON100 rel_1d (value -0.052 against 0.042), joined
-  noticed: SYNCAPG1 fall_10d (value -0.254 against -0.2), joined
   noticed: SGBSYN33 rel_5d (value 0.123 against 0.072), joined
   noticed: SGBSYN33 rel_1d (value -0.052 against 0.032), joined
+  noticed: SYNCAPG1 fall_10d (value -0.254 against -0.2), joined
 Mon 23 Mar 07:00
   option [alt] case #1 SGBSYN33 sell: worst -54 likely -54 best -54 expected -54 (worst -0.00% of the book, size 36,972)
   option [alt] case #1 SGBSYN33 trim: worst -69 likely -69 best -69 expected -69 (worst -0.01% of the book, size 18,486)
   option [model] case #1 SGBSYN33 hold: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0) <- chosen
   option [alt] case #1 SGBSYN33 freeze: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
   option [alt] case #1 SGBSYN33 wait: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
-  option [alt] case #1 SGBSYN33 buy_in_parts: worst -11,516 likely -11,489 best -11,461 expected -11,489 (worst -1.00% of the book, size 3,829,533)
+  option [alt] case #1 SGBSYN33 buy_in_parts: worst -11,536 likely -11,508 best -11,480 expected -11,508 (worst -1.00% of the book, size 3,836,044)
   option [alt] case #1 SGBSYN33 nothing: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
   option [rule] case #1 SGBSYN33 hold: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0) <- chosen
-  option [alt] case #6 NIFTYBEES sell: worst -120 likely -120 best -120 expected -120 (worst -0.01% of the book, size 101,216)
-  option [alt] case #6 NIFTYBEES trim: worst -28,748 likely -136 best 65,784 expected 28,055 (worst -2.50% of the book, size 50,608)
-  option [alt] case #6 NIFTYBEES hold: worst -57,344 likely -120 best 131,719 expected 56,262 (worst -4.98% of the book, size 0)
-  option [alt] case #6 NIFTYBEES freeze: worst -57,344 likely -120 best 131,719 expected 56,262 (worst -4.98% of the book, size 0)
-  option [alt] case #6 NIFTYBEES wait: worst -57,344 likely -120 best 131,719 expected 56,262 (worst -4.98% of the book, size 0)
-  option [model] case #6 NIFTYBEES buy_in_parts: worst -11,516 likely -61 best 26,332 expected 11,226 (worst -1.00% of the book, size 20,241) <- chosen
-  option [alt] case #6 NIFTYBEES nothing: worst -57,344 likely -120 best 131,719 expected 56,262 (worst -4.98% of the book, size 0)
-  option [rule] case #6 NIFTYBEES hold: worst -57,344 likely -120 best 131,719 expected 56,262 (worst -4.98% of the book, size 0) <- chosen
-  option [alt] case #5 JUNIORBEES sell: worst -123 likely -123 best -123 expected -123 (worst -0.01% of the book, size 104,213)
-  option [alt] case #5 JUNIORBEES trim: worst -3,725 likely -139 best 3,712 expected -86 (worst -0.32% of the book, size 52,107)
-  option [model] case #5 JUNIORBEES hold: worst -7,295 likely -123 best 7,579 expected -17 (worst -0.63% of the book, size 0) <- chosen
-  option [alt] case #5 JUNIORBEES freeze: worst -7,295 likely -123 best 7,579 expected -17 (worst -0.63% of the book, size 0)
-  option [alt] case #5 JUNIORBEES wait: worst -7,295 likely -123 best 7,579 expected -17 (worst -0.63% of the book, size 0)
-  option [alt] case #5 JUNIORBEES buy_in_parts: worst -11,516 likely -481 best 11,372 expected -317 (worst -1.00% of the book, size 160,194)
-  option [alt] case #5 JUNIORBEES nothing: worst -7,295 likely -123 best 7,579 expected -17 (worst -0.63% of the book, size 0)
-  option [rule] case #5 JUNIORBEES hold: worst -7,295 likely -123 best 7,579 expected -17 (worst -0.63% of the book, size 0) <- chosen
-  option [alt] case #2 SYNFMCG1 freeze: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
-  option [alt] case #2 SYNFMCG1 wait: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
-  option [alt] case #2 SYNFMCG1 buy_in_parts: worst -11,516 likely -387 best 11,792 expected -177 (worst -1.00% of the book, size 129,041)
-  option [alt] case #2 SYNFMCG1 nothing: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
-  option [model] case #2 SYNFMCG1 hold: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0) <- chosen
-  option [rule] case #2 SYNFMCG1 nothing: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0) <- chosen
-  option [alt] case #3 NIFTYBEES sell: worst -120 likely -120 best -120 expected -120 (worst -0.01% of the book, size 101,216)
-  option [alt] case #3 NIFTYBEES trim: worst -28,748 likely -136 best 65,784 expected 7,326 (worst -2.50% of the book, size 50,608)
-  option [model] case #3 NIFTYBEES hold: worst -57,344 likely -120 best 131,719 expected 14,803 (worst -4.98% of the book, size 0) <- chosen
-  option [alt] case #3 NIFTYBEES freeze: worst -57,344 likely -120 best 131,719 expected 14,803 (worst -4.98% of the book, size 0)
-  option [alt] case #3 NIFTYBEES wait: worst -57,344 likely -120 best 131,719 expected 14,803 (worst -4.98% of the book, size 0)
-  option [alt] case #3 NIFTYBEES buy_in_parts: worst -11,516 likely -61 best 26,332 expected 2,927 (worst -1.00% of the book, size 20,241)
-  option [alt] case #3 NIFTYBEES nothing: worst -57,344 likely -120 best 131,719 expected 14,803 (worst -4.98% of the book, size 0)
-  option [rule] case #3 NIFTYBEES hold: worst -57,344 likely -120 best 131,719 expected 14,803 (worst -4.98% of the book, size 0) <- chosen
+  option [alt] case #5 NIFTYBEES sell: worst -86 likely -86 best -86 expected -86 (worst -0.01% of the book, size 68,389)
+  option [alt] case #5 NIFTYBEES trim: worst -19,434 likely -102 best 44,439 expected 18,946 (worst -1.68% of the book, size 34,194)
+  option [alt] case #5 NIFTYBEES hold: worst -38,751 likely -86 best 88,994 expected 38,010 (worst -3.36% of the book, size 0)
+  option [alt] case #5 NIFTYBEES freeze: worst -38,751 likely -86 best 88,994 expected 38,010 (worst -3.36% of the book, size 0)
+  option [alt] case #5 NIFTYBEES wait: worst -38,751 likely -86 best 88,994 expected 38,010 (worst -3.36% of the book, size 0)
+  option [model] case #5 NIFTYBEES buy_in_parts: worst -11,536 likely -61 best 26,377 expected 11,245 (worst -1.00% of the book, size 20,275) <- chosen
+  option [alt] case #5 NIFTYBEES nothing: worst -38,751 likely -86 best 88,994 expected 38,010 (worst -3.36% of the book, size 0)
+  option [rule] case #5 NIFTYBEES hold: worst -38,751 likely -86 best 88,994 expected 38,010 (worst -3.36% of the book, size 0) <- chosen
+  option [alt] case #4 JUNIORBEES sell: worst -92 likely -92 best -92 expected -92 (worst -0.01% of the book, size 74,328)
+  option [alt] case #4 JUNIORBEES trim: worst -2,665 likely -108 best 2,639 expected -70 (worst -0.23% of the book, size 37,164)
+  option [model] case #4 JUNIORBEES hold: worst -5,208 likely -92 best 5,401 expected -17 (worst -0.45% of the book, size 0) <- chosen
+  option [alt] case #4 JUNIORBEES freeze: worst -5,208 likely -92 best 5,401 expected -17 (worst -0.45% of the book, size 0)
+  option [alt] case #4 JUNIORBEES wait: worst -5,208 likely -92 best 5,401 expected -17 (worst -0.45% of the book, size 0)
+  option [alt] case #4 JUNIORBEES buy_in_parts: worst -11,536 likely -481 best 11,391 expected -318 (worst -1.00% of the book, size 160,466)
+  option [alt] case #4 JUNIORBEES nothing: worst -5,208 likely -92 best 5,401 expected -17 (worst -0.45% of the book, size 0)
+  option [rule] case #4 JUNIORBEES hold: worst -5,208 likely -92 best 5,401 expected -17 (worst -0.45% of the book, size 0) <- chosen
+  option [alt] case #2 SYNFMCG1 sell: worst -81 likely -81 best -81 expected -81 (worst -0.01% of the book, size 63,398)
+  option [alt] case #2 SYNFMCG1 trim: worst -2,827 likely -96 best 2,892 expected -45 (worst -0.25% of the book, size 31,699)
+  option [model] case #2 SYNFMCG1 hold: worst -5,543 likely -81 best 5,896 expected 22 (worst -0.48% of the book, size 0) <- chosen
+  option [alt] case #2 SYNFMCG1 freeze: worst -5,543 likely -81 best 5,896 expected 22 (worst -0.48% of the book, size 0)
+  option [alt] case #2 SYNFMCG1 wait: worst -5,543 likely -81 best 5,896 expected 22 (worst -0.48% of the book, size 0)
+  option [alt] case #2 SYNFMCG1 buy_in_parts: worst -11,536 likely -388 best 11,812 expected -177 (worst -1.00% of the book, size 129,260)
+  option [alt] case #2 SYNFMCG1 nothing: worst -5,543 likely -81 best 5,896 expected 22 (worst -0.48% of the book, size 0)
+  option [rule] case #2 SYNFMCG1 hold: worst -5,543 likely -81 best 5,896 expected 22 (worst -0.48% of the book, size 0) <- chosen
+  option [alt] case #7 SYNFMCG2 sell: worst -77 likely -77 best -77 expected -77 (worst -0.01% of the book, size 59,006)
+  option [alt] case #7 SYNFMCG2 trim: worst -3,204 likely -92 best 3,388 expected -18 (worst -0.28% of the book, size 29,503)
+  option [model] case #7 SYNFMCG2 hold: worst -6,301 likely -77 best 6,883 expected 70 (worst -0.55% of the book, size 0) <- chosen
+  option [alt] case #7 SYNFMCG2 freeze: worst -6,301 likely -77 best 6,883 expected 70 (worst -0.55% of the book, size 0)
+  option [alt] case #7 SYNFMCG2 wait: worst -6,301 likely -77 best 6,883 expected 70 (worst -0.55% of the book, size 0)
+  option [alt] case #7 SYNFMCG2 buy_in_parts: worst -11,536 likely -319 best 12,223 expected -54 (worst -1.00% of the book, size 106,228)
+  option [alt] case #7 SYNFMCG2 nothing: worst -6,301 likely -77 best 6,883 expected 70 (worst -0.55% of the book, size 0)
+  option [rule] case #7 SYNFMCG2 hold: worst -6,301 likely -77 best 6,883 expected 70 (worst -0.55% of the book, size 0) <- chosen
+  option [alt] case #6 SYNIT1 sell: worst -77 likely -77 best -77 expected -77 (worst -0.01% of the book, size 59,311)
+  option [alt] case #6 SYNIT1 trim: worst -2,910 likely -92 best 3,021 expected -33 (worst -0.25% of the book, size 29,656)
+  option [model] case #6 SYNIT1 hold: worst -5,712 likely -77 best 6,150 expected 42 (worst -0.50% of the book, size 0) <- chosen
+  option [alt] case #6 SYNIT1 freeze: worst -5,712 likely -77 best 6,150 expected 42 (worst -0.50% of the book, size 0)
+  option [alt] case #6 SYNIT1 wait: worst -5,712 likely -77 best 6,150 expected 42 (worst -0.50% of the book, size 0)
+  option [alt] case #6 SYNIT1 buy_in_parts: worst -11,536 likely -353 best 12,006 expected -118 (worst -1.00% of the book, size 117,593)
+  option [alt] case #6 SYNIT1 nothing: worst -5,712 likely -77 best 6,150 expected 42 (worst -0.50% of the book, size 0)
+  option [rule] case #6 SYNIT1 hold: worst -5,712 likely -77 best 6,150 expected 42 (worst -0.50% of the book, size 0) <- chosen
+  option [alt] case #3 NIFTYBEES sell: worst -86 likely -86 best -86 expected -86 (worst -0.01% of the book, size 68,389)
+  option [alt] case #3 NIFTYBEES trim: worst -19,434 likely -102 best 44,439 expected 4,940 (worst -1.68% of the book, size 34,194)
+  option [model] case #3 NIFTYBEES hold: worst -38,751 likely -86 best 88,994 expected 9,997 (worst -3.36% of the book, size 0) <- chosen
+  option [alt] case #3 NIFTYBEES freeze: worst -38,751 likely -86 best 88,994 expected 9,997 (worst -3.36% of the book, size 0)
+  option [alt] case #3 NIFTYBEES wait: worst -38,751 likely -86 best 88,994 expected 9,997 (worst -3.36% of the book, size 0)
+  option [alt] case #3 NIFTYBEES buy_in_parts: worst -11,536 likely -61 best 26,377 expected 2,932 (worst -1.00% of the book, size 20,275)
+  option [alt] case #3 NIFTYBEES nothing: worst -38,751 likely -86 best 88,994 expected 9,997 (worst -3.36% of the book, size 0)
+  option [rule] case #3 NIFTYBEES hold: worst -38,751 likely -86 best 88,994 expected 9,997 (worst -3.36% of the book, size 0) <- chosen
   decision case #1 SGBSYN33: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 370).
-  decision case #6 NIFTYBEES: rule hold, model buy_in_parts, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, 
-  decision case #5 JUNIORBEES: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 1,042).
-  decision case #2 SYNFMCG1: rule nothing, model hold, acted nothing: the model chose hold, the rule chose nothing; the rule acts. No new money now: it still makes new lows (its close on 18 Mar was the lowest of the last 5); a buy
-  decision case #3 NIFTYBEES: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 1,012).
+  decision case #5 NIFTYBEES: rule hold, model buy_in_parts, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, 
+  decision case #4 JUNIORBEES: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 743).
+  decision case #2 SYNFMCG1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 634).
+  decision case #7 SYNFMCG2: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 590).
+  decision case #6 SYNIT1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 593).
+  decision case #3 NIFTYBEES: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 684).
 Mon 23 Mar 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
   noticed: Nifty 500 market_down_20d (value -0.372 against -0.1), joined
   noticed: JUNIORBEES move_1d (value -0.093 against 0.031), joined
-  noticed: JUNIORBEES rel_1d (value 0.035 against 0.016), joined
-  noticed: SYNFMCG2 move_1d (value -0.121 against 0.048), joined
-  noticed: JUNIORBEES move_5d (value -0.135 against 0.069), joined
-  noticed: SYNFMCG2 rel_5d (value 0.225 against 0.093), joined
   noticed: MON100 rel_1d (value 0.137 against 0.042), joined
-  noticed: SYNCAPG1 move_1d (value -0.163 against 0.047), joined
+  noticed: JUNIORBEES rel_1d (value 0.035 against 0.016), joined
   noticed: SGBSYN33 rel_1d (value 0.128 against 0.033), joined
-  noticed: JUNIORBEES fall_10d (value -0.255 against -0.2), joined
+  noticed: SYNCAPG1 move_1d (value -0.163 against 0.047), joined
+  noticed: JUNIORBEES move_5d (value -0.135 against 0.069), joined
+  noticed: SYNFMCG2 move_1d (value -0.121 against 0.048), joined
+  noticed: SYNFMCG1 move_1d (value -0.089 against 0.04), joined
+  noticed: SYNFMCG2 rel_5d (value 0.225 against 0.093), joined
   noticed: MON100 rel_5d (value 0.209 against 0.095), joined
-  noticed: NIFTYBEES fall_10d (value -0.252 against -0.2), joined
-  noticed: JUNIORBEES rel_5d (value 0.042 against 0.036), joined
-  noticed: SYNIT1 rel_5d (value 0.168 against 0.138), joined
-  noticed: SYNIT1 rel_1d (value 0.074 against 0.062), joined
+  noticed: SYNFMCG1 rel_5d (value 0.14 against 0.076), joined
+  noticed: SYNIT1 rel_5d (value 0.161 against 0.092), joined
   noticed: SYNCAPG1 move_5d (value -0.253 against 0.105), joined
-  noticed: SYNIT1 move_1d (value -0.054 against 0.051), joined
+  noticed: SYNIT1 move_1d (value -0.071 against 0.043), joined
   noticed: SGBSYN33 rel_5d (value 0.177 against 0.074), joined
+  noticed: JUNIORBEES fall_10d (value -0.255 against -0.2), joined
+  noticed: JUNIORBEES rel_5d (value 0.042 against 0.036), joined
+  noticed: NIFTYBEES fall_10d (value -0.252 against -0.2), joined
+  noticed: SYNIT1 rel_1d (value 0.056 against 0.041), joined
+  noticed: SYNFMCG1 rel_1d (value 0.039 against 0.034), joined
   noticed: SYNCAPG1 fall_10d (value -0.343 against -0.2), joined
   noticed: SYNCAPG1 rel_1d (value -0.035 against 0.03), joined
   noticed: SYNCAPG1 rel_5d (value -0.076 against 0.067), joined
 Tue 24 Mar 07:00
-  option [alt] case #11 SYNFMCG2 sell: worst -94 likely -94 best -94 expected -94 (worst -0.01% of the book, size 75,896)
-  option [alt] case #11 SYNFMCG2 trim: worst -4,419 likely -109 best 4,752 expected 1 (worst -0.40% of the book, size 37,948)
-  option [model] case #11 SYNFMCG2 hold: worst -8,712 likely -94 best 9,629 expected 127 (worst -0.79% of the book, size 0) <- chosen
-  option [alt] case #11 SYNFMCG2 freeze: worst -8,712 likely -94 best 9,629 expected 127 (worst -0.79% of the book, size 0)
-  option [alt] case #11 SYNFMCG2 wait: worst -8,712 likely -94 best 9,629 expected 127 (worst -0.79% of the book, size 0)
-  option [alt] case #11 SYNFMCG2 buy_in_parts: worst -11,051 likely -284 best 11,864 expected -8 (worst -1.00% of the book, size 94,724)
-  option [alt] case #11 SYNFMCG2 nothing: worst -8,712 likely -94 best 9,629 expected 127 (worst -0.79% of the book, size 0)
-  option [rule] case #11 SYNFMCG2 hold: worst -8,712 likely -94 best 9,629 expected 127 (worst -0.79% of the book, size 0) <- chosen
-  option [alt] case #12 MON100 sell: worst -71 likely -71 best -71 expected -71 (worst -0.01% of the book, size 53,742)
-  option [alt] case #12 MON100 trim: worst -1,668 likely -86 best 1,594 expected -67 (worst -0.15% of the book, size 26,871)
-  option [model] case #12 MON100 hold: worst -3,234 likely -71 best 3,290 expected -31 (worst -0.29% of the book, size 0) <- chosen
-  option [alt] case #12 MON100 freeze: worst -3,234 likely -71 best 3,290 expected -31 (worst -0.29% of the book, size 0)
-  option [alt] case #12 MON100 wait: worst -3,234 likely -71 best 3,290 expected -31 (worst -0.29% of the book, size 0)
-  option [alt] case #12 MON100 buy_in_parts: worst -11,051 likely -535 best 10,639 expected -404 (worst -1.00% of the book, size 178,494)
-  option [alt] case #12 MON100 nothing: worst -3,234 likely -71 best 3,290 expected -31 (worst -0.29% of the book, size 0)
-  option [rule] case #12 MON100 hold: worst -3,234 likely -71 best 3,290 expected -31 (worst -0.29% of the book, size 0) <- chosen
-  decision case #11 SYNFMCG2: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 759).
-  decision case #12 MON100: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 537).
+  option [alt] case #10 MON100 sell: worst -71 likely -71 best -71 expected -71 (worst -0.01% of the book, size 53,742)
+  option [alt] case #10 MON100 trim: worst -1,668 likely -86 best 1,594 expected -67 (worst -0.15% of the book, size 26,871)
+  option [model] case #10 MON100 hold: worst -3,234 likely -71 best 3,290 expected -31 (worst -0.29% of the book, size 0) <- chosen
+  option [alt] case #10 MON100 freeze: worst -3,234 likely -71 best 3,290 expected -31 (worst -0.29% of the book, size 0)
+  option [alt] case #10 MON100 wait: worst -3,234 likely -71 best 3,290 expected -31 (worst -0.29% of the book, size 0)
+  option [alt] case #10 MON100 buy_in_parts: worst -11,126 likely -539 best 10,711 expected -407 (worst -1.00% of the book, size 179,704)
+  option [alt] case #10 MON100 nothing: worst -3,234 likely -71 best 3,290 expected -31 (worst -0.29% of the book, size 0)
+  option [rule] case #10 MON100 hold: worst -3,234 likely -71 best 3,290 expected -31 (worst -0.29% of the book, size 0) <- chosen
+  decision case #10 MON100: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 537).
 Tue 24 Mar 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
   noticed: Nifty 500 market_down_20d (value -0.346 against -0.1), joined
   noticed: JUNIORBEES move_5d (value -0.145 against 0.076), joined
+  noticed: SYNFMCG1 move_1d (value 0.085 against 0.042), joined
+  noticed: SYNFMCG1 rel_5d (value 0.153 against 0.077), joined
+  noticed: SYNFMCG1 rel_1d (value 0.065 against 0.034), joined
   noticed: JUNIORBEES rel_1d (value -0.027 against 0.017), joined
+  noticed: SYNIT1 rel_5d (value 0.168 against 0.094), joined
   noticed: JUNIORBEES fall_10d (value -0.26 against -0.2), joined
+  noticed: SYNCAPG1 move_5d (value -0.26 against 0.12), joined
   noticed: SYNFMCG2 rel_5d (value 0.144 against 0.093), joined
   noticed: NIFTYBEES fall_10d (value -0.238 against -0.2), joined
-  noticed: SYNCAPG1 move_5d (value -0.26 against 0.12), joined
-  noticed: SYNFMCG2 rel_1d (value -0.05 against 0.041), joined
+  noticed: MON100 rel_5d (value 0.146 against 0.106), joined
   noticed: SYNCAPG1 fall_10d (value -0.358 against -0.2), joined
   noticed: SYNCAPG1 rel_5d (value -0.119 against 0.068), joined
-  noticed: MON100 rel_5d (value 0.146 against 0.106), joined
+  noticed: SYNFMCG2 rel_1d (value -0.05 against 0.041), joined
   noticed: SGBSYN33 rel_5d (value 0.141 against 0.087), joined
   noticed: SYNCAPG1 rel_1d (value -0.042 against 0.03), joined
 Wed 25 Mar 07:00
   noticed: the dollar-rupee overnight_shock (value -0.005 against 0.005), examined
-  case #14 on the dollar-rupee: open (market_fear): the dollar-rupee moved -0.5% overnight (2.8 times its usual daily move)
-  option [alt] case #14 THE DOLLAR-RUPEE freeze: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
-  option [alt] case #14 THE DOLLAR-RUPEE wait: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
-  option [alt] case #14 THE DOLLAR-RUPEE buy_in_parts: worst -11,048 likely -361 best 8,039 expected -818 (worst -1.00% of the book, size 104,467)
-  option [alt] case #14 THE DOLLAR-RUPEE nothing: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
-  option [model] case #14 THE DOLLAR-RUPEE hold: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0) <- chosen
-  option [rule] case #14 THE DOLLAR-RUPEE nothing: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0) <- chosen
-  decision case #14 THE DOLLAR-RUPEE: rule nothing, model hold, acted nothing: the model chose hold, the rule chose nothing; the rule acts. No new money now: not enough closes to see whether it still makes new lows
+  case #12 on the dollar-rupee: open (market_fear): the dollar-rupee moved -0.5% overnight (2.8 times its usual daily move)
+  option [alt] case #12 THE DOLLAR-RUPEE freeze: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [alt] case #12 THE DOLLAR-RUPEE wait: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [alt] case #12 THE DOLLAR-RUPEE buy_in_parts: worst -11,195 likely -366 best 8,146 expected -829 (worst -1.00% of the book, size 105,857)
+  option [alt] case #12 THE DOLLAR-RUPEE nothing: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [model] case #12 THE DOLLAR-RUPEE hold: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0) <- chosen
+  option [rule] case #12 THE DOLLAR-RUPEE nothing: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0) <- chosen
+  decision case #12 THE DOLLAR-RUPEE: rule nothing, model hold, acted nothing: the model chose hold, the rule chose nothing; the rule acts. No new money now: not enough closes to see whether it still makes new lows
 Wed 25 Mar 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
   noticed: Nifty 500 market_down_20d (value -0.307 against -0.1), joined
+  noticed: SYNFMCG1 rel_5d (value 0.125 against 0.08), joined
   noticed: JUNIORBEES rel_1d (value -0.025 against 0.017), joined
   noticed: SYNFMCG2 rel_1d (value -0.072 against 0.042), joined
   noticed: JUNIORBEES fall_10d (value -0.213 against -0.2), joined
@@ -511,27 +533,30 @@ Wed 25 Mar 21:00
   noticed: SYNCAPG1 rel_5d (value -0.114 against 0.07), joined
   noticed: SYNCAPG1 fall_10d (value -0.314 against -0.2), joined
   noticed: SYNCAPG1 move_1d (value 0.082 against 0.054), joined
-  noticed: SYNCAPG1 move_5d (value -0.153 against 0.12), joined
+  noticed: SYNIT1 rel_5d (value 0.098 against 0.094), joined
   noticed: SGBSYN33 rel_1d (value -0.056 against 0.039), joined
+  noticed: SYNCAPG1 move_5d (value -0.153 against 0.12), joined
 Thu 26 Mar 07:00
-  option [alt] case #13 SYNCAPG1 sell: worst -62 likely -62 best -62 expected -62 (worst -0.01% of the book, size 45,137)
-  option [alt] case #13 SYNCAPG1 trim: worst -2,813 likely -78 best 3,036 expected -2 (worst -0.25% of the book, size 22,569)
-  option [model] case #13 SYNCAPG1 hold: worst -5,534 likely -62 best 6,165 expected 89 (worst -0.49% of the book, size 0) <- chosen
-  option [alt] case #13 SYNCAPG1 freeze: worst -5,534 likely -62 best 6,165 expected 89 (worst -0.49% of the book, size 0)
-  option [alt] case #13 SYNCAPG1 wait: worst -5,534 likely -62 best 6,165 expected 89 (worst -0.49% of the book, size 0)
-  option [alt] case #13 SYNCAPG1 buy_in_parts: worst -11,199 likely -270 best 12,168 expected 32 (worst -1.00% of the book, size 90,055)
-  option [alt] case #13 SYNCAPG1 nothing: worst -5,534 likely -62 best 6,165 expected 89 (worst -0.49% of the book, size 0)
-  option [rule] case #13 SYNCAPG1 hold: worst -5,534 likely -62 best 6,165 expected 89 (worst -0.49% of the book, size 0) <- chosen
-  decision case #13 SYNCAPG1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 451).
+  option [alt] case #11 SYNCAPG1 sell: worst -57 likely -57 best -57 expected -57 (worst -0.01% of the book, size 40,623)
+  option [alt] case #11 SYNCAPG1 trim: worst -2,535 likely -73 best 2,730 expected -5 (worst -0.22% of the book, size 20,312)
+  option [model] case #11 SYNCAPG1 hold: worst -4,982 likely -57 best 5,547 expected 79 (worst -0.44% of the book, size 0) <- chosen
+  option [alt] case #11 SYNCAPG1 freeze: worst -4,982 likely -57 best 5,547 expected 79 (worst -0.44% of the book, size 0)
+  option [alt] case #11 SYNCAPG1 wait: worst -4,982 likely -57 best 5,547 expected 79 (worst -0.44% of the book, size 0)
+  option [alt] case #11 SYNCAPG1 buy_in_parts: worst -11,330 likely -273 best 12,310 expected 32 (worst -1.00% of the book, size 91,110)
+  option [alt] case #11 SYNCAPG1 nothing: worst -4,982 likely -57 best 5,547 expected 79 (worst -0.44% of the book, size 0)
+  option [rule] case #11 SYNCAPG1 hold: worst -4,982 likely -57 best 5,547 expected 79 (worst -0.44% of the book, size 0) <- chosen
+  decision case #11 SYNCAPG1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 406).
 Thu 26 Mar 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
   noticed: Nifty 500 market_down_20d (value -0.271 against -0.1), joined
+  noticed: SYNFMCG1 rel_5d (value 0.165 against 0.081), joined
+  noticed: SYNFMCG1 move_5d (value 0.194 against 0.1), joined
   noticed: JUNIORBEES move_1d (value 0.039 against 0.034), joined
-  noticed: SYNIT1 rel_1d (value -0.071 against 0.063), joined
-  noticed: SYNFMCG2 move_1d (value 0.061 against 0.052), joined
+  noticed: SYNFMCG1 move_1d (value 0.051 against 0.045), joined
   noticed: SYNCAPG1 rel_1d (value 0.054 against 0.031), joined
   noticed: SYNCAPG1 move_1d (value 0.094 against 0.055), joined
+  noticed: SYNFMCG2 move_1d (value 0.061 against 0.052), joined
   noticed: SGBSYN33 rel_1d (value -0.04 against 0.04), joined
 Fri 27 Mar 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
@@ -539,55 +564,87 @@ Fri 27 Mar 21:00
   noticed: Nifty 500 market_down_20d (value -0.267 against -0.1), joined
   noticed: SYNCAPG1 fall_10d (value -0.204 against -0.2), joined
 Mon 30 Mar 07:00
-  option [alt] case #6 NIFTYBEES sell: worst -118 likely -118 best -118 expected -118 (worst -0.01% of the book, size 99,354)
-  option [alt] case #6 NIFTYBEES trim: worst -28,246 likely -134 best 64,713 expected 27,604 (worst -2.48% of the book, size 49,677)
-  option [alt] case #6 NIFTYBEES hold: worst -56,342 likely -118 best 129,575 expected 55,357 (worst -4.95% of the book, size 0)
-  option [alt] case #6 NIFTYBEES freeze: worst -56,342 likely -118 best 129,575 expected 55,357 (worst -4.95% of the book, size 0)
-  option [alt] case #6 NIFTYBEES wait: worst -56,342 likely -118 best 129,575 expected 55,357 (worst -4.95% of the book, size 0)
-  option [model] case #6 NIFTYBEES buy_in_parts: worst -11,390 likely -60 best 26,075 expected 11,119 (worst -1.00% of the book, size 20,000) <- chosen
-  option [alt] case #6 NIFTYBEES nothing: worst -56,342 likely -118 best 129,575 expected 55,357 (worst -4.95% of the book, size 0)
-  option [rule] case #6 NIFTYBEES buy_in_parts: worst -3,797 likely -20 best 8,692 expected 3,706 (worst -0.33% of the book, size 6,667) <- chosen
-  option [alt] case #5 JUNIORBEES sell: worst -120 likely -120 best -120 expected -120 (worst -0.01% of the book, size 101,066)
-  option [alt] case #5 JUNIORBEES trim: worst -4,090 likely -136 best 4,155 expected -68 (worst -0.36% of the book, size 50,533)
-  option [model] case #5 JUNIORBEES hold: worst -8,029 likely -120 best 8,461 expected 14 (worst -0.70% of the book, size 0) <- chosen
-  option [alt] case #5 JUNIORBEES freeze: worst -8,029 likely -120 best 8,461 expected 14 (worst -0.70% of the book, size 0)
-  option [alt] case #5 JUNIORBEES wait: worst -8,029 likely -120 best 8,461 expected 14 (worst -0.70% of the book, size 0)
-  option [alt] case #5 JUNIORBEES buy_in_parts: worst -11,390 likely -420 best 11,482 expected -234 (worst -1.00% of the book, size 140,038)
-  option [alt] case #5 JUNIORBEES nothing: worst -8,029 likely -120 best 8,461 expected 14 (worst -0.70% of the book, size 0)
-  option [rule] case #5 JUNIORBEES hold: worst -8,029 likely -120 best 8,461 expected 14 (worst -0.70% of the book, size 0) <- chosen
-  option [alt] case #3 NIFTYBEES sell: worst -118 likely -118 best -118 expected -118 (worst -0.01% of the book, size 99,354)
-  option [alt] case #3 NIFTYBEES trim: worst -28,246 likely -134 best 64,713 expected 7,213 (worst -2.48% of the book, size 49,677)
-  option [model] case #3 NIFTYBEES hold: worst -56,342 likely -118 best 129,575 expected 14,575 (worst -4.95% of the book, size 0) <- chosen
-  option [alt] case #3 NIFTYBEES freeze: worst -56,342 likely -118 best 129,575 expected 14,575 (worst -4.95% of the book, size 0)
-  option [alt] case #3 NIFTYBEES wait: worst -56,342 likely -118 best 129,575 expected 14,575 (worst -4.95% of the book, size 0)
-  option [alt] case #3 NIFTYBEES buy_in_parts: worst -11,390 likely -60 best 26,075 expected 2,901 (worst -1.00% of the book, size 20,000)
-  option [alt] case #3 NIFTYBEES nothing: worst -56,342 likely -118 best 129,575 expected 14,575 (worst -4.95% of the book, size 0)
-  option [rule] case #3 NIFTYBEES hold: worst -56,342 likely -118 best 129,575 expected 14,575 (worst -4.95% of the book, size 0) <- chosen
-  decision case #6 NIFTYBEES: rule buy_in_parts, model buy_in_parts, acted buy_in_parts: Add in parts: the expected result is positive and the bad case fits the 1% limit; this part Rs 6,667.
-  decision case #5 JUNIORBEES: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 1,011).
-  decision case #3 NIFTYBEES: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 994).
-  rupee order (16, datetime.datetime(2020, 3, 30, 7, 0), 16, 'INF9S1B01011', 'NIFTYBEES', 'buy', None, 6666.7, 'open', None, 'case #6 decision #16')
+  option [alt] case #5 NIFTYBEES sell: worst -85 likely -85 best -85 expected -85 (worst -0.01% of the book, size 67,131)
+  option [alt] case #5 NIFTYBEES trim: worst -19,095 likely -100 best 43,715 expected 18,642 (worst -1.66% of the book, size 33,566)
+  option [alt] case #5 NIFTYBEES hold: worst -38,074 likely -85 best 87,546 expected 37,399 (worst -3.30% of the book, size 0)
+  option [alt] case #5 NIFTYBEES freeze: worst -38,074 likely -85 best 87,546 expected 37,399 (worst -3.30% of the book, size 0)
+  option [alt] case #5 NIFTYBEES wait: worst -38,074 likely -85 best 87,546 expected 37,399 (worst -3.30% of the book, size 0)
+  option [model] case #5 NIFTYBEES buy_in_parts: worst -11,533 likely -61 best 26,403 expected 11,259 (worst -1.00% of the book, size 20,252) <- chosen
+  option [alt] case #5 NIFTYBEES nothing: worst -38,074 likely -85 best 87,546 expected 37,399 (worst -3.30% of the book, size 0)
+  option [rule] case #5 NIFTYBEES buy_in_parts: worst -3,844 likely -20 best 8,801 expected 3,753 (worst -0.33% of the book, size 6,751) <- chosen
+  option [alt] case #4 JUNIORBEES sell: worst -90 likely -90 best -90 expected -90 (worst -0.01% of the book, size 72,084)
+  option [alt] case #4 JUNIORBEES trim: worst -2,926 likely -105 best 2,955 expected -58 (worst -0.25% of the book, size 36,042)
+  option [model] case #4 JUNIORBEES hold: worst -5,731 likely -90 best 6,030 expected 6 (worst -0.50% of the book, size 0) <- chosen
+  option [alt] case #4 JUNIORBEES freeze: worst -5,731 likely -90 best 6,030 expected 6 (worst -0.50% of the book, size 0)
+  option [alt] case #4 JUNIORBEES wait: worst -5,731 likely -90 best 6,030 expected 6 (worst -0.50% of the book, size 0)
+  option [alt] case #4 JUNIORBEES buy_in_parts: worst -11,533 likely -425 best 11,627 expected -237 (worst -1.00% of the book, size 141,804)
+  option [alt] case #4 JUNIORBEES nothing: worst -5,731 likely -90 best 6,030 expected 6 (worst -0.50% of the book, size 0)
+  option [rule] case #4 JUNIORBEES hold: worst -5,731 likely -90 best 6,030 expected 6 (worst -0.50% of the book, size 0) <- chosen
+  option [alt] case #2 SYNFMCG1 sell: worst -84 likely -84 best -84 expected -84 (worst -0.01% of the book, size 66,143)
+  option [alt] case #2 SYNFMCG1 trim: worst -3,335 likely -99 best 3,488 expected -29 (worst -0.29% of the book, size 33,072)
+  option [model] case #2 SYNFMCG1 hold: worst -6,556 likely -84 best 7,091 expected 57 (worst -0.57% of the book, size 0) <- chosen
+  option [alt] case #2 SYNFMCG1 freeze: worst -6,556 likely -84 best 7,091 expected 57 (worst -0.57% of the book, size 0)
+  option [alt] case #2 SYNFMCG1 wait: worst -6,556 likely -84 best 7,091 expected 57 (worst -0.57% of the book, size 0)
+  option [alt] case #2 SYNFMCG1 buy_in_parts: worst -11,533 likely -343 best 12,063 expected -100 (worst -1.00% of the book, size 114,250)
+  option [alt] case #2 SYNFMCG1 nothing: worst -6,556 likely -84 best 7,091 expected 57 (worst -0.57% of the book, size 0)
+  option [rule] case #2 SYNFMCG1 hold: worst -6,556 likely -84 best 7,091 expected 57 (worst -0.57% of the book, size 0) <- chosen
+  option [alt] case #7 SYNFMCG2 sell: worst -72 likely -72 best -72 expected -72 (worst -0.01% of the book, size 54,871)
+  option [alt] case #7 SYNFMCG2 trim: worst -3,274 likely -88 best 3,518 expected -4 (worst -0.28% of the book, size 27,435)
+  option [model] case #7 SYNFMCG2 hold: worst -6,445 likely -72 best 7,139 expected 95 (worst -0.56% of the book, size 0) <- chosen
+  option [alt] case #7 SYNFMCG2 freeze: worst -6,445 likely -72 best 7,139 expected 95 (worst -0.56% of the book, size 0)
+  option [alt] case #7 SYNFMCG2 wait: worst -6,445 likely -72 best 7,139 expected 95 (worst -0.56% of the book, size 0)
+  option [alt] case #7 SYNFMCG2 buy_in_parts: worst -11,533 likely -290 best 12,432 expected 6 (worst -1.00% of the book, size 96,706)
+  option [alt] case #7 SYNFMCG2 nothing: worst -6,445 likely -72 best 7,139 expected 95 (worst -0.56% of the book, size 0)
+  option [rule] case #7 SYNFMCG2 hold: worst -6,445 likely -72 best 7,139 expected 95 (worst -0.56% of the book, size 0) <- chosen
+  option [alt] case #6 SYNIT1 sell: worst -78 likely -78 best -78 expected -78 (worst -0.01% of the book, size 60,204)
+  option [alt] case #6 SYNIT1 trim: worst -3,067 likely -93 best 3,208 expected -28 (worst -0.27% of the book, size 30,102)
+  option [model] case #6 SYNIT1 hold: worst -6,026 likely -78 best 6,524 expected 53 (worst -0.52% of the book, size 0) <- chosen
+  option [alt] case #6 SYNIT1 freeze: worst -6,026 likely -78 best 6,524 expected 53 (worst -0.52% of the book, size 0)
+  option [alt] case #6 SYNIT1 wait: worst -6,026 likely -78 best 6,524 expected 53 (worst -0.52% of the book, size 0)
+  option [alt] case #6 SYNIT1 buy_in_parts: worst -11,533 likely -340 best 12,083 expected -94 (worst -1.00% of the book, size 113,170)
+  option [alt] case #6 SYNIT1 nothing: worst -6,026 likely -78 best 6,524 expected 53 (worst -0.52% of the book, size 0)
+  option [rule] case #6 SYNIT1 hold: worst -6,026 likely -78 best 6,524 expected 53 (worst -0.52% of the book, size 0) <- chosen
+  option [alt] case #3 NIFTYBEES sell: worst -85 likely -85 best -85 expected -85 (worst -0.01% of the book, size 67,131)
+  option [alt] case #3 NIFTYBEES trim: worst -19,095 likely -100 best 43,715 expected 4,864 (worst -1.66% of the book, size 33,566)
+  option [model] case #3 NIFTYBEES hold: worst -38,074 likely -85 best 87,546 expected 9,843 (worst -3.30% of the book, size 0) <- chosen
+  option [alt] case #3 NIFTYBEES freeze: worst -38,074 likely -85 best 87,546 expected 9,843 (worst -3.30% of the book, size 0)
+  option [alt] case #3 NIFTYBEES wait: worst -38,074 likely -85 best 87,546 expected 9,843 (worst -3.30% of the book, size 0)
+  option [alt] case #3 NIFTYBEES buy_in_parts: worst -11,533 likely -61 best 26,403 expected 2,938 (worst -1.00% of the book, size 20,252)
+  option [alt] case #3 NIFTYBEES nothing: worst -38,074 likely -85 best 87,546 expected 9,843 (worst -3.30% of the book, size 0)
+  option [rule] case #3 NIFTYBEES hold: worst -38,074 likely -85 best 87,546 expected 9,843 (worst -3.30% of the book, size 0) <- chosen
+  decision case #5 NIFTYBEES: rule buy_in_parts, model buy_in_parts, acted buy_in_parts: Add in parts: the expected result is positive and the bad case fits the 1% limit; this part Rs 6,751.
+  decision case #4 JUNIORBEES: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 721).
+  decision case #2 SYNFMCG1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 661).
+  decision case #7 SYNFMCG2: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 549).
+  decision case #6 SYNIT1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 602).
+  decision case #3 NIFTYBEES: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 671).
+  rupee order (18, datetime.datetime(2020, 3, 30, 7, 0), 18, 'INF9S1B01011', 'NIFTYBEES', 'buy', None, 6750.77, 'open', None, 'case #5 decision #18')
 Mon 30 Mar 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
   noticed: Nifty 500 market_down_20d (value -0.267 against -0.1), joined
+  noticed: SYNFMCG1 move_5d (value 0.168 against 0.102), joined
+  noticed: SYNFMCG1 rel_1d (value 0.057 against 0.036), joined
   noticed: JUNIORBEES rel_1d (value 0.025 against 0.018), joined
+  noticed: SYNFMCG1 rel_5d (value 0.087 against 0.081), joined
 Tue 31 Mar 07:00
-  option [alt] case #11 SYNFMCG2 sell: worst -97 likely -97 best -97 expected -97 (worst -0.01% of the book, size 78,307)
-  option [alt] case #11 SYNFMCG2 trim: worst -4,668 likely -112 best 5,045 expected 8 (worst -0.41% of the book, size 39,153)
-  option [model] case #11 SYNFMCG2 hold: worst -9,209 likely -97 best 10,218 expected 144 (worst -0.81% of the book, size 0) <- chosen
-  option [alt] case #11 SYNFMCG2 freeze: worst -9,209 likely -97 best 10,218 expected 144 (worst -0.81% of the book, size 0)
-  option [alt] case #11 SYNFMCG2 wait: worst -9,209 likely -97 best 10,218 expected 144 (worst -0.81% of the book, size 0)
-  option [alt] case #11 SYNFMCG2 buy_in_parts: worst -11,360 likely -285 best 12,250 expected 7 (worst -1.00% of the book, size 95,066)
-  option [alt] case #11 SYNFMCG2 nothing: worst -9,209 likely -97 best 10,218 expected 144 (worst -0.81% of the book, size 0)
-  option [rule] case #11 SYNFMCG2 hold: worst -9,209 likely -97 best 10,218 expected 144 (worst -0.81% of the book, size 0) <- chosen
-  decision case #11 SYNFMCG2: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 783).
+  option [alt] case #10 MON100 sell: worst -71 likely -71 best -71 expected -71 (worst -0.01% of the book, size 54,105)
+  option [alt] case #10 MON100 trim: worst -1,682 likely -87 best 1,608 expected -67 (worst -0.15% of the book, size 27,053)
+  option [model] case #10 MON100 hold: worst -3,261 likely -71 best 3,318 expected -31 (worst -0.28% of the book, size 0) <- chosen
+  option [alt] case #10 MON100 freeze: worst -3,261 likely -71 best 3,318 expected -31 (worst -0.28% of the book, size 0)
+  option [alt] case #10 MON100 wait: worst -3,261 likely -71 best 3,318 expected -31 (worst -0.28% of the book, size 0)
+  option [alt] case #10 MON100 buy_in_parts: worst -11,520 likely -557 best 11,093 expected -420 (worst -1.00% of the book, size 185,755)
+  option [alt] case #10 MON100 nothing: worst -3,261 likely -71 best 3,318 expected -31 (worst -0.28% of the book, size 0)
+  option [rule] case #10 MON100 hold: worst -3,261 likely -71 best 3,318 expected -31 (worst -0.28% of the book, size 0) <- chosen
+  decision case #10 MON100: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 541).
 Tue 31 Mar 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
   noticed: Nifty 500 market_down_20d (value -0.236 against -0.1), joined
-  noticed: SYNFMCG2 move_1d (value 0.079 against 0.053), joined
+  noticed: SYNFMCG1 move_5d (value 0.133 against 0.102), joined
   noticed: JUNIORBEES move_5d (value 0.095 against 0.078), joined
+  noticed: SYNFMCG2 move_1d (value 0.079 against 0.053), joined
+  noticed: SYNFMCG1 move_1d (value 0.052 against 0.046), joined
   noticed: SYNFMCG2 move_5d (value 0.147 against 0.118), joined
   noticed: SYNCAPG1 move_5d (value 0.142 against 0.129), joined
   noticed: SGBSYN33 rel_5d (value -0.099 against 0.092), joined
@@ -597,135 +654,147 @@ Wed 01 Apr 21:00
   noticed: Nifty 500 market_down_20d (value -0.273 against -0.1), joined
   noticed: JUNIORBEES rel_1d (value 0.037 against 0.018), joined
   noticed: JUNIORBEES rel_5d (value 0.059 against 0.041), joined
-  noticed: SYNIT1 rel_1d (value 0.08 against 0.064), joined
+  noticed: SYNIT1 move_1d (value -0.064 against 0.045), joined
+  noticed: SYNFMCG1 move_1d (value -0.052 against 0.046), joined
   noticed: SYNFMCG2 rel_5d (value 0.123 against 0.1), joined
   noticed: SYNFMCG2 move_5d (value 0.129 against 0.122), joined
-  rupee order (17, datetime.datetime(2020, 4, 1, 21, 0), 17, 'INF9S1B01011', 'NIFTYBEES', 'sell', 128.0, None, 'open', None, 'baseline_v2 decision #17')
-  rupee order (18, datetime.datetime(2020, 4, 1, 21, 0), 18, 'INF9S4B01011', 'JUNIORBEES', 'sell', 136.0, None, 'open', None, 'baseline_v2 decision #18')
-  rupee order (19, datetime.datetime(2020, 4, 1, 21, 0), 19, 'INE9S4A01011', 'SYNIT1', 'sell', 14.0, None, 'open', None, 'baseline_v2 decision #19')
-  rupee order (20, datetime.datetime(2020, 4, 1, 21, 0), 20, 'INE9S2A01011', 'SYNFMCG2', 'sell', 59.0, None, 'open', None, 'baseline_v2 decision #20')
+  rupee order (19, datetime.datetime(2020, 4, 1, 21, 0), 19, 'INF9S4B01011', 'JUNIORBEES', 'sell', 97.0, None, 'open', None, 'baseline_v2 decision #19')
+  rupee order (20, datetime.datetime(2020, 4, 1, 21, 0), 20, 'INF9S1B01011', 'NIFTYBEES', 'sell', 89.0, None, 'open', None, 'baseline_v2 decision #20')
+  rupee order (21, datetime.datetime(2020, 4, 1, 21, 0), 21, 'INE9S1A01011', 'SYNFMCG1', 'sell', 6.0, None, 'open', None, 'baseline_v2 decision #21')
 Thu 02 Apr 07:00
-  option [alt] case #13 SYNCAPG1 sell: worst -63 likely -63 best -63 expected -63 (worst -0.01% of the book, size 45,644)
-  option [alt] case #13 SYNCAPG1 trim: worst -2,963 likely -78 best 3,225 expected 6 (worst -0.26% of the book, size 22,822)
-  option [model] case #13 SYNCAPG1 hold: worst -5,832 likely -63 best 6,543 expected 104 (worst -0.51% of the book, size 0) <- chosen
-  option [alt] case #13 SYNCAPG1 freeze: worst -5,832 likely -63 best 6,543 expected 104 (worst -0.51% of the book, size 0)
-  option [alt] case #13 SYNCAPG1 wait: worst -5,832 likely -63 best 6,543 expected 104 (worst -0.51% of the book, size 0)
-  option [alt] case #13 SYNCAPG1 buy_in_parts: worst -11,436 likely -265 best 12,525 expected 59 (worst -1.00% of the book, size 88,287)
-  option [alt] case #13 SYNCAPG1 nothing: worst -5,832 likely -63 best 6,543 expected 104 (worst -0.51% of the book, size 0)
-  option [rule] case #13 SYNCAPG1 hold: worst -5,832 likely -63 best 6,543 expected 104 (worst -0.51% of the book, size 0) <- chosen
-  decision case #13 SYNCAPG1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 456).
+  option [alt] case #11 SYNCAPG1 sell: worst -58 likely -58 best -58 expected -58 (worst -0.01% of the book, size 41,080)
+  option [alt] case #11 SYNCAPG1 trim: worst -2,670 likely -73 best 2,899 expected 2 (worst -0.23% of the book, size 20,540)
+  option [model] case #11 SYNCAPG1 hold: worst -5,250 likely -58 best 5,887 expected 92 (worst -0.46% of the book, size 0) <- chosen
+  option [alt] case #11 SYNCAPG1 freeze: worst -5,250 likely -58 best 5,887 expected 92 (worst -0.46% of the book, size 0)
+  option [alt] case #11 SYNCAPG1 wait: worst -5,250 likely -58 best 5,887 expected 92 (worst -0.46% of the book, size 0)
+  option [alt] case #11 SYNCAPG1 buy_in_parts: worst -11,487 likely -266 best 12,580 expected 59 (worst -1.00% of the book, size 88,678)
+  option [alt] case #11 SYNCAPG1 nothing: worst -5,250 likely -58 best 5,887 expected 92 (worst -0.46% of the book, size 0)
+  option [rule] case #11 SYNCAPG1 hold: worst -5,250 likely -58 best 5,887 expected 92 (worst -0.46% of the book, size 0) <- chosen
+  decision case #11 SYNCAPG1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 411).
 Thu 02 Apr 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
   noticed: Nifty 500 market_down_20d (value -0.273 against -0.1), joined
   noticed: JUNIORBEES rel_5d (value 0.058 against 0.041), joined
-  rupee order (21, datetime.datetime(2020, 4, 2, 21, 0), 21, 'INF9S1B01011', 'NIFTYBEES', 'sell', 96.0, None, 'open', None, 'baseline_v2 decision #21')
-  rupee order (22, datetime.datetime(2020, 4, 2, 21, 0), 22, 'INF9S4B01011', 'JUNIORBEES', 'sell', 102.0, None, 'open', None, 'baseline_v2 decision #22')
-  rupee order (23, datetime.datetime(2020, 4, 2, 21, 0), 23, 'INE9S4A01011', 'SYNIT1', 'sell', 10.0, None, 'open', None, 'baseline_v2 decision #23')
-  rupee order (24, datetime.datetime(2020, 4, 2, 21, 0), 24, 'INE9S2A01011', 'SYNFMCG2', 'sell', 44.0, None, 'open', None, 'baseline_v2 decision #24')
 Fri 03 Apr 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
   noticed: Nifty 500 market_down_20d (value -0.281 against -0.1), joined
   noticed: SYNFMCG2 rel_1d (value 0.087 against 0.045), joined
-  noticed: JUNIORBEES rel_5d (value 0.055 against 0.043), joined
-  noticed: SYNIT1 rel_5d (value 0.174 against 0.146), joined
   noticed: SYNFMCG2 rel_5d (value 0.142 against 0.101), joined
   noticed: SYNFMCG2 move_1d (value 0.069 against 0.055), joined
-  noticed: SYNIT1 move_5d (value 0.122 against 0.118), joined
+  noticed: JUNIORBEES rel_5d (value 0.055 against 0.043), joined
 Mon 06 Apr 07:00
-  option [alt] case #6 NIFTYBEES sell: worst -74 likely -74 best -74 expected -74 (worst -0.01% of the book, size 56,836)
-  option [alt] case #6 NIFTYBEES trim: worst -16,173 likely -90 best 37,016 expected 15,783 (worst -1.40% of the book, size 28,418)
-  option [alt] case #6 NIFTYBEES hold: worst -32,241 likely -74 best 74,138 expected 31,670 (worst -2.80% of the book, size 0)
-  option [alt] case #6 NIFTYBEES freeze: worst -32,241 likely -74 best 74,138 expected 31,670 (worst -2.80% of the book, size 0)
-  option [alt] case #6 NIFTYBEES wait: worst -32,241 likely -74 best 74,138 expected 31,670 (worst -2.80% of the book, size 0)
-  option [model] case #6 NIFTYBEES buy_in_parts: worst -11,516 likely -61 best 26,368 expected 11,244 (worst -1.00% of the book, size 20,220) <- chosen
-  option [alt] case #6 NIFTYBEES nothing: worst -32,241 likely -74 best 74,138 expected 31,670 (worst -2.80% of the book, size 0)
-  option [rule] case #6 NIFTYBEES hold: worst -32,241 likely -74 best 74,138 expected 31,670 (worst -2.80% of the book, size 0) <- chosen
-  option [alt] case #5 JUNIORBEES sell: worst -74 likely -74 best -74 expected -74 (worst -0.01% of the book, size 56,990)
-  option [alt] case #5 JUNIORBEES trim: worst -2,345 likely -90 best 2,360 expected -51 (worst -0.20% of the book, size 28,495)
-  option [model] case #5 JUNIORBEES hold: worst -4,585 likely -74 best 4,824 expected 3 (worst -0.40% of the book, size 0) <- chosen
-  option [alt] case #5 JUNIORBEES freeze: worst -4,585 likely -74 best 4,824 expected 3 (worst -0.40% of the book, size 0)
-  option [alt] case #5 JUNIORBEES wait: worst -4,585 likely -74 best 4,824 expected 3 (worst -0.40% of the book, size 0)
-  option [alt] case #5 JUNIORBEES buy_in_parts: worst -11,516 likely -420 best 11,631 expected -229 (worst -1.00% of the book, size 140,045)
-  option [alt] case #5 JUNIORBEES nothing: worst -4,585 likely -74 best 4,824 expected 3 (worst -0.40% of the book, size 0)
-  option [rule] case #5 JUNIORBEES hold: worst -4,585 likely -74 best 4,824 expected 3 (worst -0.40% of the book, size 0) <- chosen
-  decision case #6 NIFTYBEES: rule hold, model buy_in_parts, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, 
-  decision case #5 JUNIORBEES: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 570).
+  option [alt] case #5 NIFTYBEES sell: worst -70 likely -70 best -70 expected -70 (worst -0.01% of the book, size 52,721)
+  option [alt] case #5 NIFTYBEES trim: worst -15,004 likely -85 best 34,334 expected 14,638 (worst -1.30% of the book, size 26,360)
+  option [alt] case #5 NIFTYBEES hold: worst -29,908 likely -70 best 68,768 expected 29,376 (worst -2.60% of the book, size 0)
+  option [alt] case #5 NIFTYBEES freeze: worst -29,908 likely -70 best 68,768 expected 29,376 (worst -2.60% of the book, size 0)
+  option [alt] case #5 NIFTYBEES wait: worst -29,908 likely -70 best 68,768 expected 29,376 (worst -2.60% of the book, size 0)
+  option [model] case #5 NIFTYBEES buy_in_parts: worst -11,518 likely -61 best 26,372 expected 11,246 (worst -1.00% of the book, size 20,223) <- chosen
+  option [alt] case #5 NIFTYBEES nothing: worst -29,908 likely -70 best 68,768 expected 29,376 (worst -2.60% of the book, size 0)
+  option [rule] case #5 NIFTYBEES hold: worst -29,908 likely -70 best 68,768 expected 29,376 (worst -2.60% of the book, size 0) <- chosen
+  option [alt] case #4 JUNIORBEES sell: worst -72 likely -72 best -72 expected -72 (worst -0.01% of the book, size 54,197)
+  option [alt] case #4 JUNIORBEES trim: worst -2,232 likely -87 best 2,242 expected -50 (worst -0.19% of the book, size 27,098)
+  option [model] case #4 JUNIORBEES hold: worst -4,361 likely -72 best 4,587 expected 2 (worst -0.38% of the book, size 0) <- chosen
+  option [alt] case #4 JUNIORBEES freeze: worst -4,361 likely -72 best 4,587 expected 2 (worst -0.38% of the book, size 0)
+  option [alt] case #4 JUNIORBEES wait: worst -4,361 likely -72 best 4,587 expected 2 (worst -0.38% of the book, size 0)
+  option [alt] case #4 JUNIORBEES buy_in_parts: worst -11,518 likely -420 best 11,633 expected -229 (worst -1.00% of the book, size 140,068)
+  option [alt] case #4 JUNIORBEES nothing: worst -4,361 likely -72 best 4,587 expected 2 (worst -0.38% of the book, size 0)
+  option [rule] case #4 JUNIORBEES hold: worst -4,361 likely -72 best 4,587 expected 2 (worst -0.38% of the book, size 0) <- chosen
+  option [alt] case #2 SYNFMCG1 sell: worst -70 likely -70 best -70 expected -70 (worst -0.01% of the book, size 52,299)
+  option [alt] case #2 SYNFMCG1 trim: worst -2,730 likely -85 best 2,859 expected -25 (worst -0.24% of the book, size 26,149)
+  option [model] case #2 SYNFMCG1 hold: worst -5,361 likely -70 best 5,818 expected 50 (worst -0.47% of the book, size 0) <- chosen
+  option [alt] case #2 SYNFMCG1 freeze: worst -5,361 likely -70 best 5,818 expected 50 (worst -0.47% of the book, size 0)
+  option [alt] case #2 SYNFMCG1 wait: worst -5,361 likely -70 best 5,818 expected 50 (worst -0.47% of the book, size 0)
+  option [alt] case #2 SYNFMCG1 buy_in_parts: worst -11,518 likely -331 best 12,116 expected -79 (worst -1.00% of the book, size 110,457)
+  option [alt] case #2 SYNFMCG1 nothing: worst -5,361 likely -70 best 5,818 expected 50 (worst -0.47% of the book, size 0)
+  option [rule] case #2 SYNFMCG1 hold: worst -5,361 likely -70 best 5,818 expected 50 (worst -0.47% of the book, size 0) <- chosen
+  option [alt] case #7 SYNFMCG2 sell: worst -77 likely -77 best -77 expected -77 (worst -0.01% of the book, size 59,813)
+  option [alt] case #7 SYNFMCG2 trim: worst -3,732 likely -93 best 4,051 expected 8 (worst -0.32% of the book, size 29,907)
+  option [model] case #7 SYNFMCG2 hold: worst -7,355 likely -77 best 8,210 expected 124 (worst -0.64% of the book, size 0) <- chosen
+  option [alt] case #7 SYNFMCG2 freeze: worst -7,355 likely -77 best 8,210 expected 124 (worst -0.64% of the book, size 0)
+  option [alt] case #7 SYNFMCG2 wait: worst -7,355 likely -77 best 8,210 expected 124 (worst -0.64% of the book, size 0)
+  option [alt] case #7 SYNFMCG2 buy_in_parts: worst -11,518 likely -277 best 12,523 expected 35 (worst -1.00% of the book, size 92,290)
+  option [alt] case #7 SYNFMCG2 nothing: worst -7,355 likely -77 best 8,210 expected 124 (worst -0.64% of the book, size 0)
+  option [rule] case #7 SYNFMCG2 hold: worst -7,355 likely -77 best 8,210 expected 124 (worst -0.64% of the book, size 0) <- chosen
+  option [alt] case #6 SYNIT1 sell: worst -72 likely -72 best -72 expected -72 (worst -0.01% of the book, size 54,585)
+  option [alt] case #6 SYNIT1 trim: worst -2,848 likely -87 best 2,984 expected -25 (worst -0.25% of the book, size 27,292)
+  option [model] case #6 SYNIT1 hold: worst -5,592 likely -72 best 6,070 expected 52 (worst -0.49% of the book, size 0) <- chosen
+  option [alt] case #6 SYNIT1 freeze: worst -5,592 likely -72 best 6,070 expected 52 (worst -0.49% of the book, size 0)
+  option [alt] case #6 SYNIT1 wait: worst -5,592 likely -72 best 6,070 expected 52 (worst -0.49% of the book, size 0)
+  option [alt] case #6 SYNIT1 buy_in_parts: worst -11,518 likely -331 best 12,115 expected -79 (worst -1.00% of the book, size 110,495)
+  option [alt] case #6 SYNIT1 nothing: worst -5,592 likely -72 best 6,070 expected 52 (worst -0.49% of the book, size 0)
+  option [rule] case #6 SYNIT1 hold: worst -5,592 likely -72 best 6,070 expected 52 (worst -0.49% of the book, size 0) <- chosen
+  decision case #5 NIFTYBEES: rule hold, model buy_in_parts, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, 
+  decision case #4 JUNIORBEES: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 542).
+  decision case #2 SYNFMCG1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 523).
+  decision case #7 SYNFMCG2: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 598).
+  decision case #6 SYNIT1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 546).
 Mon 06 Apr 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
   noticed: Nifty 500 market_down_20d (value -0.281 against -0.1), joined
   noticed: SYNFMCG2 rel_5d (value 0.134 against 0.101), joined
-  noticed: SYNIT1 move_5d (value 0.12 against 0.118), joined
-Tue 07 Apr 07:00
-  option [alt] case #11 SYNFMCG2 sell: worst -67 likely -67 best -67 expected -67 (worst -0.01% of the book, size 49,475)
-  option [alt] case #11 SYNFMCG2 trim: worst -3,092 likely -82 best 3,345 expected 1 (worst -0.27% of the book, size 24,738)
-  option [model] case #11 SYNFMCG2 hold: worst -6,086 likely -67 best 6,787 expected 100 (worst -0.53% of the book, size 0) <- chosen
-  option [alt] case #11 SYNFMCG2 freeze: worst -6,086 likely -67 best 6,787 expected 100 (worst -0.53% of the book, size 0)
-  option [alt] case #11 SYNFMCG2 wait: worst -6,086 likely -67 best 6,787 expected 100 (worst -0.53% of the book, size 0)
-  option [alt] case #11 SYNFMCG2 buy_in_parts: worst -11,512 likely -277 best 12,517 expected 35 (worst -1.00% of the book, size 92,256)
-  option [alt] case #11 SYNFMCG2 nothing: worst -6,086 likely -67 best 6,787 expected 100 (worst -0.53% of the book, size 0)
-  option [rule] case #11 SYNFMCG2 hold: worst -6,086 likely -67 best 6,787 expected 100 (worst -0.53% of the book, size 0) <- chosen
-  decision case #11 SYNFMCG2: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 495).
 Tue 07 Apr 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
   noticed: Nifty 500 market_down_20d (value -0.228 against -0.1), joined
+  noticed: SYNFMCG1 move_1d (value 0.135 against 0.047), joined
   noticed: JUNIORBEES move_1d (value 0.06 against 0.035), joined
+  noticed: SYNIT1 move_1d (value 0.073 against 0.046), joined
+  noticed: SYNFMCG1 rel_1d (value 0.058 against 0.038), joined
   noticed: MON100 rel_1d (value -0.085 against 0.051), joined
-  noticed: SYNIT1 rel_1d (value -0.083 against 0.066), joined
+  noticed: SYNFMCG2 rel_1d (value -0.056 against 0.047), joined
   noticed: SGBSYN33 rel_1d (value -0.077 against 0.042), joined
   noticed: SYNCAPG1 rel_1d (value -0.042 against 0.033), joined
-  noticed: SYNFMCG2 rel_1d (value -0.056 against 0.047), joined
 Wed 08 Apr 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
   noticed: Nifty 500 market_down_20d (value -0.208 against -0.1), joined
   noticed: JUNIORBEES rel_1d (value 0.023 against 0.019), joined
+  noticed: SYNFMCG1 move_5d (value 0.129 against 0.116), joined
 Thu 09 Apr 07:00
-  option [alt] case #13 SYNCAPG1 sell: worst -65 likely -65 best -65 expected -65 (worst -0.01% of the book, size 47,574)
-  option [alt] case #13 SYNCAPG1 trim: worst -3,098 likely -80 best 3,377 expected 8 (worst -0.26% of the book, size 23,787)
-  option [model] case #13 SYNCAPG1 hold: worst -6,100 likely -65 best 6,848 expected 111 (worst -0.52% of the book, size 0) <- chosen
-  option [alt] case #13 SYNCAPG1 freeze: worst -6,100 likely -65 best 6,848 expected 111 (worst -0.52% of the book, size 0)
-  option [alt] case #13 SYNCAPG1 wait: worst -6,100 likely -65 best 6,848 expected 111 (worst -0.52% of the book, size 0)
-  option [alt] case #13 SYNCAPG1 buy_in_parts: worst -11,695 likely -270 best 12,817 expected 62 (worst -1.00% of the book, size 89,964)
-  option [alt] case #13 SYNCAPG1 nothing: worst -6,100 likely -65 best 6,848 expected 111 (worst -0.52% of the book, size 0)
-  option [rule] case #13 SYNCAPG1 hold: worst -6,100 likely -65 best 6,848 expected 111 (worst -0.52% of the book, size 0) <- chosen
-  decision case #13 SYNCAPG1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 476).
+  option [alt] case #11 SYNCAPG1 sell: worst -60 likely -60 best -60 expected -60 (worst -0.01% of the book, size 42,817)
+  option [alt] case #11 SYNCAPG1 trim: worst -2,791 likely -75 best 3,036 expected 4 (worst -0.24% of the book, size 21,408)
+  option [model] case #11 SYNCAPG1 hold: worst -5,491 likely -60 best 6,162 expected 98 (worst -0.47% of the book, size 0) <- chosen
+  option [alt] case #11 SYNCAPG1 freeze: worst -5,491 likely -60 best 6,162 expected 98 (worst -0.47% of the book, size 0)
+  option [alt] case #11 SYNCAPG1 wait: worst -5,491 likely -60 best 6,162 expected 98 (worst -0.47% of the book, size 0)
+  option [alt] case #11 SYNCAPG1 buy_in_parts: worst -11,771 likely -272 best 12,900 expected 63 (worst -1.00% of the book, size 90,551)
+  option [alt] case #11 SYNCAPG1 nothing: worst -5,491 likely -60 best 6,162 expected 98 (worst -0.47% of the book, size 0)
+  option [rule] case #11 SYNCAPG1 hold: worst -5,491 likely -60 best 6,162 expected 98 (worst -0.47% of the book, size 0) <- chosen
+  decision case #11 SYNCAPG1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 428).
 Thu 09 Apr 21:00
   noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
   noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
   noticed: Nifty 500 market_down_20d (value -0.136 against -0.1), joined
+  noticed: SYNFMCG1 rel_1d (value -0.075 against 0.039), joined
   noticed: JUNIORBEES move_5d (value 0.093 against 0.083), joined
   noticed: SGBSYN33 rel_5d (value -0.1 against 0.098), joined
-  rupee order (25, datetime.datetime(2020, 4, 9, 21, 0), 25, 'INF9S4B01011', 'JUNIORBEES', 'sell', 76.0, None, 'open', None, 'baseline_v2 decision #25')
-  rupee order (26, datetime.datetime(2020, 4, 9, 21, 0), 26, 'INF9S1B01011', 'NIFTYBEES', 'sell', 72.0, None, 'open', None, 'baseline_v2 decision #26')
 
 THE CASE
-case #6 Nifty 500 is down 14% in 20 sessions state=open class=market_fear opened 2020-03-09
-2020-03-09: NIFTYBEES: model buy_in_parts, rule hold, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 1,215).
-2020-03-16: NIFTYBEES: model buy_in_parts, rule hold, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 1,158).
-2020-03-23: NIFTYBEES: model buy_in_parts, rule hold, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 1,012).
-2020-03-30: NIFTYBEES: model buy_in_parts, rule buy_in_parts, acted buy_in_parts: Add in parts: the expected result is positive and the bad case fits the 1% limit; this part Rs 6,667.
-2020-04-06: NIFTYBEES: model buy_in_parts, rule hold, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 568).
+case #5 Nifty 500 is down 14% in 20 sessions state=open class=market_fear opened 2020-03-09
+2020-03-09: NIFTYBEES: model buy_in_parts, rule hold, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 1,051).
+2020-03-16: NIFTYBEES: model buy_in_parts, rule hold, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 782).
+2020-03-23: NIFTYBEES: model buy_in_parts, rule hold, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 684).
+2020-03-30: NIFTYBEES: model buy_in_parts, rule buy_in_parts, acted buy_in_parts: Add in parts: the expected result is positive and the bad case fits the 1% limit; this part Rs 6,751.
+2020-04-06: NIFTYBEES: model buy_in_parts, rule hold, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 527).
 
 WHAT THE RULE'S BUY BRANCH SAID AT EACH CLOSE (read-only probe; base rates: basis and count of past cases)
-2020-03-09: wait refused=True [history, n=30] it still makes new lows (its close on 06 Mar was the lowest of the last 5); a buy needs 3 sessions above that low
-2020-03-10: wait refused=True [history, n=30] it still makes new lows (its close on 06 Mar was the lowest of the last 5); a buy needs 3 sessions above that low
-2020-03-11: wait refused=True [history, n=30] it still makes new lows (its close on 09 Mar was the lowest of the last 5); a buy needs 3 sessions above that low
-2020-03-12: wait refused=True [own range, n=8] it still makes new lows (its close on 10 Mar was the lowest of the last 5); a buy needs 3 sessions above that low
-2020-03-13: wait refused=True [own range, n=8] it still makes new lows (its close on 11 Mar was the lowest of the last 5); a buy needs 3 sessions above that low
-2020-03-16: wait refused=True [own range, n=4] it still makes new lows (its close on 12 Mar was the lowest of the last 5); a buy needs 3 sessions above that low
-2020-03-17: wait refused=True [own range, n=3] it still makes new lows (its close on 16 Mar was the lowest of the last 5); a buy needs 3 sessions above that low
-2020-03-18: wait refused=True [own range, n=2] it still makes new lows (its close on 16 Mar was the lowest of the last 5); a buy needs 3 sessions above that low
-2020-03-19: wait refused=True [own range, n=1] it still makes new lows (its close on 17 Mar was the lowest of the last 5); a buy needs 3 sessions above that low
-2020-03-20: wait refused=True [own range, n=1] it still makes new lows (its close on 18 Mar was the lowest of the last 5); a buy needs 3 sessions above that low
+2020-03-09: wait refused=True [history, n=20] it still makes new lows (its close on 06 Mar was the lowest of the last 5); a buy needs 3 sessions above that low
+2020-03-10: wait refused=True [history, n=20] it still makes new lows (its close on 06 Mar was the lowest of the last 5); a buy needs 3 sessions above that low
+2020-03-11: wait refused=True [history, n=20] it still makes new lows (its close on 09 Mar was the lowest of the last 5); a buy needs 3 sessions above that low
+2020-03-12: wait refused=True [own range, n=2] it still makes new lows (its close on 10 Mar was the lowest of the last 5); a buy needs 3 sessions above that low
+2020-03-13: wait refused=True [own range, n=2] it still makes new lows (its close on 11 Mar was the lowest of the last 5); a buy needs 3 sessions above that low
+2020-03-16: wait refused=True [own range, n=0] it still makes new lows (its close on 12 Mar was the lowest of the last 5); a buy needs 3 sessions above that low
+2020-03-17: wait refused=True [own range, n=0] it still makes new lows (its close on 16 Mar was the lowest of the last 5); a buy needs 3 sessions above that low
+2020-03-18: wait refused=True [own range, n=0] it still makes new lows (its close on 16 Mar was the lowest of the last 5); a buy needs 3 sessions above that low
+2020-03-19: wait refused=True [own range, n=0] it still makes new lows (its close on 17 Mar was the lowest of the last 5); a buy needs 3 sessions above that low
+2020-03-20: wait refused=True [own range, n=0] it still makes new lows (its close on 18 Mar was the lowest of the last 5); a buy needs 3 sessions above that low
 2020-03-23: wait refused=True [own range, n=2] it still makes new lows (its close on 19 Mar was the lowest of the last 5); a buy needs 3 sessions above that low
 2020-03-24: wait refused=True [own range, n=2] it still makes new lows (its close on 23 Mar was the lowest of the last 5); a buy needs 3 sessions above that low
 2020-03-25: wait refused=True [own range, n=2] it still makes new lows (its close on 23 Mar was the lowest of the last 5); a buy needs 3 sessions above that low
-2020-03-26: buy_in_parts refused=False [own range, n=2] the bet's size is set by the 1% limit: Rs 19,880 in all (the bad case would lose Rs 11,322, limit Rs 11,322 = 1% of the whole book)
-2020-03-27: buy_in_parts refused=False [own range, n=2] the bet's size is set by the 1% limit: Rs 19,992 in all (the bad case would lose Rs 11,385, limit Rs 11,385 = 1% of the whole book)
+2020-03-26: buy_in_parts refused=False [own range, n=2] the bet's size is set by the 1% limit: Rs 20,170 in all (the bad case would lose Rs 11,487, limit Rs 11,487 = 1% of the whole book)
+2020-03-27: buy_in_parts refused=False [own range, n=2] the bet's size is set by the 1% limit: Rs 20,244 in all (the bad case would lose Rs 11,529, limit Rs 11,529 = 1% of the whole book)
 2020-03-30: wait refused=True [own range, n=2] the next part waits: 0 of 5 sessions since the last part
 2020-03-31: wait refused=True [own range, n=2] the next part waits: 1 of 5 sessions since the last part
 2020-04-01: wait refused=True [own range, n=2] the next part waits: 2 of 5 sessions since the last part
@@ -734,16 +803,15 @@ WHAT THE RULE'S BUY BRANCH SAID AT EACH CLOSE (read-only probe; base rates: basi
 2020-04-06: wait refused=True [own range, n=2] it still makes new lows (its close on 03 Apr was the lowest of the last 5); a buy needs 3 sessions above that low
 2020-04-07: wait refused=True [own range, n=2] it still makes new lows (its close on 03 Apr was the lowest of the last 5); a buy needs 3 sessions above that low
 2020-04-08: wait refused=True [own range, n=2] it still makes new lows (its close on 06 Apr was the lowest of the last 5); a buy needs 3 sessions above that low
-2020-04-09: buy_in_parts refused=False [own range, n=3] the bet's size is set by the 1% limit: Rs 20,691 in all (the bad case would lose Rs 11,790, limit Rs 11,790 = 1% of the whole book)
+2020-04-09: buy_in_parts refused=False [own range, n=3] the bet's size is set by the 1% limit: Rs 20,831 in all (the bad case would lose Rs 11,870, limit Rs 11,870 = 1% of the whole book)
 
 PARTS BOUGHT (reserve into the index fund)
-part 1 of 3: Rs 6,667 on 2020-03-30
+part 1 of 3: Rs 6,751 on 2020-03-30
 order #2: buy qty=None amount=28146.58 filled placed 2020-03-02: baseline_v2 decision #2
-order #10: sell qty=24.0 amount=None filled placed 2020-03-06: baseline_v2 decision #10
-order #16: buy qty=None amount=6666.7 filled placed 2020-03-30: case #6 decision #16
-order #17: sell qty=128.0 amount=None filled placed 2020-04-01: baseline_v2 decision #17
-order #21: sell qty=96.0 amount=None filled placed 2020-04-02: baseline_v2 decision #21
-order #26: sell qty=72.0 amount=None open placed 2020-04-09: baseline_v2 decision #26
+order #8: sell qty=89.0 amount=None filled placed 2020-03-06: baseline_v2 decision #8
+order #14: sell qty=91.0 amount=None filled placed 2020-03-09: baseline_v2 decision #14
+order #18: buy qty=None amount=6750.77 filled placed 2020-03-30: case #5 decision #18
+order #20: sell qty=89.0 amount=None filled placed 2020-04-01: baseline_v2 decision #20
 
 SCORING on the stored closes at 2020-04-09: 0 rows written
-Decisions scored at 20 sessions: 11; the rule's choices against doing nothing: Rs 13,300 after tax (3 of 11 were the best of the menu) (under 20: a count, not a rate).
+Decisions scored at 20 sessions: 10; the rule's choices against doing nothing: Rs 0 after tax (3 of 10 were the best of the menu) (under 20: a count, not a rate).
