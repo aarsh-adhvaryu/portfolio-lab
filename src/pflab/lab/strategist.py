@@ -3,7 +3,7 @@ the lab in the sandbox, keeps or drops each, and writes a short note that is the
 (`promotion.py`) when it clears the registered rules.
 
 Money is tied to outcomes: a session that ends with no lab run is logged `wasted` and the next one gets half the budget until one succeeds; if after `weeks_to_win` weeks no AI-written
-variant has cleared the screen against the plain baseline, the budget halves and he is told. Every call goes through `hq/llm.call` (priced first, egress-checked, governed, logged
+variant has cleared the screen against the plain baseline, the budget halves and he is told. Every call goes through the one door `llm/gateway.py` (role `decide`; priced first, egress-checked, governed, logged
 in `api_calls` under the agent `strategist`). Local data never leaves: the model sees the book card, scorecards and policy code, no raw news, filings or price tables.
 """
 from __future__ import annotations
@@ -178,7 +178,8 @@ def _first_message(con, reason: str, budget: float, now: Optional[datetime] = No
 def run_session(con, pm_dir: Path, root, now: datetime, reason: str, *, client, gate=None, cfg: Optional[dict] = None, data=None, box=None, budget_inr: Optional[float] = None) -> dict:
     """One strategist session. Returns {session_id, status (done | wasted | budget | failed), cost_inr, lab_runs, ...}."""
     from pflab.agents import analyst as an
-    from pflab.hq import converse, egress, llm
+    from pflab.hq import egress
+    from pflab.llm import gateway
     from pflab.pm.store import next_id
     if not core.strategist_on():
         return {"skipped": "the strategist is switched off (configs/core.toml [strategist] or the kill switch)"}
@@ -209,28 +210,24 @@ def run_session(con, pm_dir: Path, root, now: datetime, reason: str, *, client, 
         if spent >= budget:
             status = "budget"
             break
-        p = {"model": st["model"], "max_tokens": 6000, "system": sys_blocks, "thinking": {"type": "adaptive"}, "output_config": {"effort": "medium"},
-             "tools": tools.definitions(), "messages": messages, "cache_control": {"type": "ephemeral"}}
-        if turn == int(st["max_turns"]) or ctx.finished:
-            p["tool_choice"] = {"type": "none"}
-        try:
-            s = llm.call(con, "strategist", p, client, now=now, mode="normal", private_text=first if turn == 1 else "", gate=gate, doc_kinds=("portfolio",), topic="strategist",
-                         question=f"strategist session {sid}, turn {turn}", cfg=cfg, turn=turn, egress_skip=("address_word",))
+        try:                                                             # S85 G3: through the one door (role `decide`, agent `strategist`): the engine in use answers (Opus on `claude`); the egress gate, the governor and his cap are the door's
+            s = gateway.call(con, "decide", sys_blocks, messages, tools=tools.definitions(), max_tokens=6000, thinking="medium", agent="strategist", purpose=f"strategist session {sid}",
+                             tool_choice="none" if (turn == int(st["max_turns"]) or ctx.finished) else None, now=now, mode="normal", private_text=first if turn == 1 else "", gate=gate,
+                             topic="strategist", question=f"strategist session {sid}, turn {turn}", cfg=cfg, client=client)
         except Exception as e:                                           # refused, blocked or failed: the session ends here, with what it has
             status, err = "failed", f"{type(e).__name__}: {str(e)[:300]}"
             break
-        spent += s.cost_inr
-        msg = s.message
-        uses = [b for b in msg.content if getattr(b, "type", "") == "tool_use"]
-        if getattr(msg, "stop_reason", "") != "tool_use" or not uses:
-            log.append({"turn": turn, "says": llm.text_of(msg)[:400]})
+        spent += float(s["cost_rupees"])
+        uses = list(s["tool_calls"])
+        if not uses:
+            log.append({"turn": turn, "says": (s["text"] or "")[:400]})
             break
-        messages.append({"role": "assistant", "content": [converse.as_param(b) for b in msg.content if getattr(b, "type", "") in converse.KEEP_BLOCKS]})
+        messages.append({"role": "assistant", "content": s["assistant_content"]})
         results = []
         for b in uses:
-            text, is_err = tools.run(ctx, b.name, b.input)
-            log.append({"turn": turn, "tool": b.name, "ok": not is_err, "result": text[:240]})
-            results.append({"type": "tool_result", "tool_use_id": b.id, "content": text, **({"is_error": True} if is_err else {})})
+            text, is_err = tools.run(ctx, b["name"], b["input"])
+            log.append({"turn": turn, "tool": b["name"], "ok": not is_err, "result": text[:240]})
+            results.append({"type": "tool_result", "tool_use_id": b["id"], "content": text, **({"is_error": True} if is_err else {})})
         if spent >= 0.8 * budget and not ctx.finished:
             results.append({"type": "text", "text": f"Budget note: about Rs {spent:,.0f} of Rs {budget:,.0f} is used. Write your note and finish now."})
         messages.append({"role": "user", "content": results})
