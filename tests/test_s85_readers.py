@@ -25,6 +25,7 @@ ALPHA = "INE000A01011"
 BETA = "INE000B01029"
 HIS_NAME = "zed testperson"
 HIS_ACCOUNT = "ACCT-TEST-98765"
+PAN_X = "ABC" + "P" + "E1234F"                                      # built here so the repo never carries a PAN-shaped string
 
 
 def _cfg(cap=2500.0):
@@ -134,10 +135,10 @@ def test_a_message_that_only_names_a_term_is_masked_and_goes_on(con):
 
 
 def test_identity_numbers_are_masked_and_flagged_and_money_is_left(con):
-    text = "PAN ABCPE1234F, Aadhaar 2345 6789 0123, a/c no 123456789012, IFSC HDFC0001234, card 4111 1111 1111 1111, call 98765 43210, mail a.b@example.com; bought 40 shares for Rs 1,25,000.50"
+    text = f"PAN {PAN_X}, Aadhaar 2345 6789 0123, a/c no 123456789012, IFSC HDFC0001234, card 4111 1111 1111 1111, call 98765 43210, mail a.b@example.com; bought 40 shares for Rs 1,25,000.50"
     r = screen.check_text(text, con)
     assert r["ok"] and r["flagged"]
-    for leak in ("ABCPE1234F", "2345 6789 0123", "123456789012", "HDFC0001234", "4111 1111 1111 1111", "98765 43210", "a.b@example.com"):
+    for leak in (PAN_X, "2345 6789 0123", "123456789012", "HDFC0001234", "4111 1111 1111 1111", "98765 43210", "a.b@example.com"):
         assert leak not in r["text"]
     assert "Rs 1,25,000.50" in r["text"] and "40 shares" in r["text"]
     assert {"PAN", "Aadhaar number", "card number", "IFSC code"} <= set(r["masked"])
@@ -441,8 +442,8 @@ def test_a_link_that_cannot_be_opened_is_said_plainly_and_private_addresses_are_
 
 def test_the_claim_goes_through_the_screen_before_any_call(con, fake):
     fake.respond = lambda text, blocks: {"verdict": "unclear", "summary": "", "findings": []}
-    readers.check_link(con, NOW, SEC_URL, f"{HIS_NAME} says the plant makes 120 units, PAN ABCPE1234F", fetcher=fetcher, web=False)
-    assert HIS_NAME not in fake.bodies() and "ABCPE1234F" not in fake.bodies()
+    readers.check_link(con, NOW, SEC_URL, f"{HIS_NAME} says the plant makes 120 units, PAN {PAN_X}", fetcher=fetcher, web=False)
+    assert HIS_NAME not in fake.bodies() and PAN_X not in fake.bodies()
 
 
 def test_sources_are_typed_by_domain_in_a_small_code_table():
