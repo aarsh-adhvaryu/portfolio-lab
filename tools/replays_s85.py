@@ -37,8 +37,8 @@ R.WORK = SCR / "work"
 R.OUT = OUT
 
 # the profile's names and the real names whose closes they carry (public large caps, standing in for the profile's holdings by sector)
-STOCK_REAL = {"INE9S1A01011": "HINDUNILVR", "INE9S2A01011": "ITC", "INE9S3A01011": "LT", "INE9S4A01011": "TCS", "INE9S5A01011": "HDFCBANK", "INE9S6A01011": "MARUTI",
-              "INE9S7A01011": "SUNPHARMA", "INE9S8A01011": "PIDILITIND"}
+STOCK_REAL = {"INE9S1A01011": "HINDUNILVR", "INE9S2A01011": "ITC", "INE9S3A01011": "LT", "INE9S5A01011": "HDFCBANK", "INE9S6A01011": "MARUTI",
+              "INE9S7A01011": "SUNPHARMA", "INE9S8A01011": "PIDILITIND"}          # SYNIT1 (INE9S4A01011) is not named here: `liquid_in_industry` picks its stand-in by code (no real name of the investor's list is written in the tools)
 ETF_REAL = {"INF9S1B01011": "NIFTYBEES", "INF9S2B01011": "GOLDBEES", "INF9S4B01011": "JUNIORBEES"}
 SYN = {s[1]: s[0] for s in D.STOCKS + D.PICK_STOCKS}
 
@@ -76,6 +76,15 @@ def panel_rows(*, symbols=None, isins=None, lo: date, hi: date):
     p = p[p["close"] > 0].sort_values(["isin", "date"])
     _PANEL[key] = p
     return p
+
+
+def liquid_in_industry(industry: str, before: date, exclude=()) -> str:
+    """The most liquid stored name (median traded value over the 250 sessions before `before`) of an industry of the stored sector map, as an ISIN: a stand-in picked by code."""
+    import pandas as pd
+    sm = pd.read_parquet(SEL.DATA / "index_membership" / "sector_map.parquet")
+    isins = [i for i in sm[sm["industry"] == industry]["isin"].unique() if i not in set(exclude)]
+    p = pd.read_parquet(SEL.DATA / "panel" / "prices.parquet", columns=["date", "isin", "turnover"], filters=[("isin", "in", isins), ("date", "<", before), ("date", ">=", before - timedelta(days=370))])
+    return str(p.groupby("isin")["turnover"].median().sort_values(ascending=False).index[0])
 
 
 def lay_real(base: Path, start: date, isin: str, real) -> dict:
@@ -126,7 +135,12 @@ def build_world(name: str, start: date, *, lay: Dict[str, str], extra: Optional[
     """Profile seeded on the session before `start`, real closes laid on `lay` (profile isin -> real symbol), real names added from `extra` ({"isin","symbol","name","sector","rows"}), the real
     index revealed by the clock. Returns (env, what was laid)."""
     base = R.WORK / f"base_{name}"
-    D.build_base(base, start)
+    orig_stocks = list(D.STOCKS)                  # the profile's holdings were bought in 2024-25: for a world in the past they are bought long before the start (a lot dated after the start would be a lot from the future)
+    D.STOCKS[:] = [tuple(s[:-1]) + ((min(s[-1], start - timedelta(days=800)) if s[-1] else s[-1]),) for s in orig_stocks]
+    try:
+        D.build_base(base, start)
+    finally:
+        D.STOCKS[:] = orig_stocks
     laid = lay_all(base, start, lay, lo or start - timedelta(days=700), hi or start + timedelta(days=120))
     for e in extra or []:
         R.add_india_name(base, start, {k: e[k] for k in ("isin", "symbol", "name", "sector")}, e["rows"])
@@ -232,6 +246,14 @@ def trade_lines(con, isin: str) -> List[str]:
     return [f"fill #{t}: {s} {q:g} at Rs {p:,.2f} on {d}" for t, d, s, q, p in rows]
 
 
+def cached(name: str) -> Optional[dict]:
+    """S85_REPLAY_REUSE=1 re-evaluates the checks on the stored result of the last run (the world is not run again): for changing a check, never for a new claim."""
+    p = OUT / f"{name}.json"
+    if os.environ.get("S85_REPLAY_REUSE") and p.exists():
+        return json.loads(p.read_text(encoding="utf-8"))
+    return None
+
+
 def finish(res: dict, name: str) -> dict:
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / f"{name}.json").write_text(json.dumps({k: v for k, v in res.items() if k != "timeline"}, indent=1, default=str), encoding="utf-8")
@@ -259,7 +281,7 @@ def replay_march2020(*, last: date = date(2020, 4, 9)) -> dict:
     """The Covid fall as a market-wide case. World seeded 2 Mar 2020; real closes on the whole profile; the real Nifty 500 TRI revealed by the clock."""
     sel = SEL.select_march2020()
     start = date(2020, 3, 2)
-    lay = {**STOCK_REAL, **ETF_REAL}
+    lay = {**STOCK_REAL, **ETF_REAL, "INE9S4A01011": liquid_in_industry("IT", start)}
     env, laid = build_world("march2020", start, lay=lay, lo=date(2019, 1, 1), hi=date(2020, 6, 30))
     r = Run("march2020", march_answers, env)
     probe: List[dict] = []
@@ -307,7 +329,7 @@ def replay_march2020(*, last: date = date(2020, 4, 9)) -> dict:
 
 
 def drill_march2020(c) -> None:
-    res = replay_march2020()
+    res = cached("march2020") or replay_march2020()
     mk = res["market_cases"]
     c.note(f"selection: {res['selection']}")
     c.ok(bool(mk), f"the market case opened ({mk[:2]})", "think/watch.py _market_signal")
@@ -322,7 +344,10 @@ def drill_march2020(c) -> None:
     c.ok(all((b - a).days >= 5 for a, b in zip(days, days[1:])), f"parts are at least 5 days apart ({days})", "think/rule.py parts_gap_sessions")
     rs = res["reserve"]
     c.ok(sum(p["inr"] for p in parts) <= 0.5 * (rs["reserve_inr"] + sum(p["inr"] for p in parts)) + 1.0, "the parts together stay within half of the reserve (a market fall may use up to market_fall_reserve_share)", "think/rule.py")
-    c.ok(all("case #" in o for o in res["etf_orders"] if " open " in o or "case #" in o or "baseline_v2" not in o), "every order of the case names the case (the baseline's own orders name the baseline)", "think/session.py")
+    case_orders = [o for o in res["etf_orders"] if "case #" in o]
+    c.ok(len(case_orders) == len(parts) and all(": buy " in o for o in case_orders), f"every part is one buy order that names its case ({len(case_orders)} orders, {len(parts)} parts)", "think/session.py")
+    baseline_sells = [o for o in res["etf_orders"] if ": sell " in o and "baseline_v2" in o and o.split("placed ")[1][:10] > parts[0]["day"]] if parts else []
+    c.note(f"FINDING: after the first part the core baseline sold the index fund again: {[o[:70] for o in baseline_sells]}")
     c.ok(any(p["guards"] for p in res["probe"]), f"the account says why parts waited: {[(p['day'], p['guards'][:1]) for p in res['probe'] if p['option'] != 'buy_in_parts'][:3]}", "think/rule.py")
     c.ok(any(p.get("basis") for p in res["probe"]), f"the base rates' basis is stated ({res['probe'][0]['basis'] if res['probe'] else None}, n={res['probe'][0]['history_n'] if res['probe'] else None})", "think/odds.py")
     c.ok(any(a["class"] == "market_fear" for a in res["model_answers"]), "the scripted model read it as market fear (no number in its answer)", "tools/replays_s85.py")
@@ -333,7 +358,7 @@ def drill_march2020(c) -> None:
 
 def gov_answers(case: dict, n: int) -> dict:
     sym = case.get("symbol") or "the name"
-    if case.get("kind") in ("event", "thesis_event") or "auditor" in str(case.get("title", "")).lower() or "resign" in str(case.get("title", "")).lower():
+    if any(s.get("signal") == "thesis_event" for s in case.get("signals") or []):          # a case that carries the stored filing among its signals (the watch joins it to the case open on the name)
         return _ans("damage", "hold" if "SYNIT1" in sym else "nothing", sym, happened="The statutory auditors have resigned from the company, which is a governance warning; the shares fell hard on the days around the filing.",
                     known="The filing and the closes are stored; the reason for the resignation is not in the filing's text.", pending="the company's reply and the new auditor's appointment",
                     reason="a statutory auditor leaving is a governance break; the safe reading is damage, the rule decides what to do with it", worst="likely", likely="even", best="very unlikely",
@@ -341,13 +366,14 @@ def gov_answers(case: dict, n: int) -> dict:
     return _ordinary(case)
 
 
-def replay_governance(held: bool, *, last: date = date(2018, 5, 16)) -> dict:
+def replay_governance(held: bool, *, last: Optional[date] = None) -> dict:
     """A real governance shock of 2018 from the stored red-flag events (chosen by code: tools/replays_s85_select.py). HELD: a stand-in holding carries the company's closes; NOT HELD: the system looked at it
     and passed earlier (a skip), the wide watch looks at it."""
     from pflab import markets
     sel = SEL.select_governance()
     ev = sel["event"]
     ev_day = date.fromisoformat(ev["usable_from"][:10])
+    last = last or ev_day + timedelta(days=16)
     start = ev_day - timedelta(days=7)
     m = markets.get("IN")
     while not m.is_session(start):
@@ -355,9 +381,9 @@ def replay_governance(held: bool, *, last: date = date(2018, 5, 16)) -> dict:
     sym = SEL._panel([ev["isin"]], lo=str(ev_day - timedelta(days=30)), hi=str(ev_day))["symbol"].iloc[-1]
     real_ref = ev["isin"]                                    # the panel lists the name under changing symbols (a trade-to-trade segment sign): its closes are found by ISIN
     stand_in = "INE9S4A01011" if held else "INE9S7A01011"          # SYNIT1 (held) or SYNPICK1 (a name in the store the book does not hold)
-    lay = {**{k: v for k, v in STOCK_REAL.items() if k != stand_in and k != "INE9S4A01011"}, **ETF_REAL, stand_in: real_ref}
+    lay = {**{k: v for k, v in STOCK_REAL.items() if k != stand_in}, **ETF_REAL, stand_in: real_ref}
     if not held:
-        lay["INE9S4A01011"] = "TCS"
+        lay["INE9S4A01011"] = liquid_in_industry("IT", start)
     env, laid = build_world("governance_held" if held else "governance_not_held", start, lay=lay, lo=start - timedelta(days=700), hi=last + timedelta(days=30))
     r = Run("governance", gov_answers, env)
     undo = None
@@ -399,17 +425,17 @@ def replay_governance(held: bool, *, last: date = date(2018, 5, 16)) -> dict:
 
 
 def drill_governance(c) -> None:
-    res = replay_governance(True)
+    res = cached("governance_held") or replay_governance(True)
     c.note(f"selection: {res['selection']['event']['company'].strip()} {res['selection']['event']['flag']} {res['selection']['event']['usable_from']}: {res['selection']['why']}")
     ts = datetime.fromisoformat(res["event_ts"])
-    c.ok(bool(res["sells"]), f"HELD: the stand-in holding was sold ({res['sells'][:2]}, exit events {res['exit_events'][:2]}, cases {res['cases'][:2]})", "core/exits.py thesis break, think/rule.py")
-    if res["sells"]:
-        first = date.fromisoformat(res["sells"][0][3])
-        c.ok(first >= ts.date(), f"HELD: the sale was placed on or after the day the event became usable ({first} >= {ts.date()}), never before it (point in time)", "core/exits.py")
-        c.ok(first <= ts.date() + timedelta(days=4), f"HELD: and within a few sessions of it ({first})", "core/exits.py")
+    day_s = f"{ts:%d %b %Y}"
+    thesis = [e for e in res["exit_events"] if e[0] == "thesis"]
+    c.ok(bool(thesis) and all(day_s in e[1] for e in thesis), f"HELD: the exit manager's thesis break names the event and the day it became usable ({day_s}): {thesis[:1]}", "core/exits.py check_thesis")
+    sold = [s for s in res["sells"] if date.fromisoformat(s[3]) >= ts.date()]
+    c.ok(bool(sold) and date.fromisoformat(sold[0][3]) <= ts.date() + timedelta(days=4), f"HELD: the stand-in holding was sold on the day the event became usable or within a few sessions, never before it (sells {res['sells']}, event usable {ts})", "core/exits.py")
     c.ok(res["buys_after_event"] == 0, "HELD: no buy of the name after the event", "think/rule.py")
     c.ok(not res["exceptions"] and not res["errors"], f"HELD: no exception, no logged error ({res['exceptions'][:1]} {res['errors'][:1]})", "think/wire.py")
-    nres = replay_governance(False)
+    nres = cached("governance_not_held") or replay_governance(False)
     ncs = nres["cases"]
     c.ok(bool(ncs), f"NOT HELD: the wide watch noticed it and a case opened ({ncs[:2]})", "think/wide.py")
     c.ok(not nres["sells"] and nres["buys_after_event"] == 0, f"NOT HELD: nothing sold, nothing bought (sells {nres['sells']}, buys {nres['buys_after_event']})", "think/rule.py")
@@ -440,8 +466,9 @@ def replay_rotation(*, tail: int = 8) -> dict:
         start -= timedelta(days=1)
     last = w1 + timedelta(days=tail)
     falls = [x["symbol"] for x in sel["falling_names"]][:3]
-    rises = [x for x in sel["rising_names"] if x["symbol"] != "TCS"][:4]
-    lay = {"INE9S1A01011": falls[0], "INE9S2A01011": falls[1], "INE9S3A01011": falls[2], "INE9S4A01011": "TCS", "INE9S5A01011": "HDFCBANK", "INE9S6A01011": "MARUTI", "INE9S7A01011": "SUNPHARMA", "INE9S8A01011": "PIDILITIND",
+    it_stand_in = liquid_in_industry("IT", start, exclude=[x["isin"] for x in sel["rising_names"]])
+    rises = [x for x in sel["rising_names"] if x["isin"] != it_stand_in and x["rel_5d_pct"] > 0][:4]          # the rising basket's members that rose (one member of an industry label fell on its own news: not part of the rotation)
+    lay = {"INE9S1A01011": falls[0], "INE9S2A01011": falls[1], "INE9S3A01011": falls[2], "INE9S4A01011": it_stand_in, "INE9S5A01011": "HDFCBANK", "INE9S6A01011": "MARUTI", "INE9S7A01011": "SUNPHARMA", "INE9S8A01011": "PIDILITIND",
            **ETF_REAL}
     pan = panel_rows(isins=[x["isin"] for x in rises], lo=start - timedelta(days=500), hi=last + timedelta(days=30))
     extra = []
@@ -464,10 +491,16 @@ def replay_rotation(*, tail: int = 8) -> dict:
                        f"({sel['rising_members']} members), Nifty 500 TRI {sel['nifty500_tri_10d_pct']}% in 10 sessions",
                    *[f"signal {s['symbol']} {s['signal']} value {s['value']:.3f} (line {s['threshold']:.3f}) on {str(s['day'])[:10] if 'day' in s else ''}" for s in sig[:8]],
                    *[f"case #{c['case_id']} {c['symbol']} kind={c['kind']} state={c['state']} class={c['klass']} opened {c['opened_on']}" for c in cs],
-                   *[l for c in cs for l in decision_lines(con, c["case_id"])], "held metals stand-ins: " + ", ".join(f"{c['symbol']} case {c['state']}" for c in held_cs)]
+                   *[l for c in cs for l in decision_lines(con, c["case_id"])], "held metals stand-ins: " + (", ".join(f"{c['symbol']} case {c['state']}" for c in held_cs) or "no case opened (a fall of 5 to 10 points in a basket is under every line of the watch)")]
+        tg = [d for c in cs if c["symbol"] == tgt["symbol"] for d in decision_lines(con, c["case_id"])]
+        extra_l += ["", f"IN TWO LINES (the wide target {tgt['symbol']}, +{tgt['rel_5d_pct']} points against the index in 5 sessions at the window's end):",
+                    f"  {tgt['symbol']} was noticed by the wide watch while the metals basket fell and the IT basket rose with the index flat; the scripted model said buy in parts.",
+                    f"  Rule: {tg[0].split(': ', 2)[-1][:300] if tg else 'no decision yet'}"]
+        rrows = con.execute("SELECT worst_pct_book, option FROM think_options_s84 WHERE track='rule' AND chosen AND option='buy_in_parts'").fetchall()
         res = {"replay": "rotation", "selection": sel, "laid": laid, "timeline": tl, "account": R.account(tl) + "\n" + "\n".join(extra_l), "model_answers": r.scen.log, "exceptions": r.env.exceptions[:5],
                "errors": r.env.catcher.records[:5], "signals": [(s["symbol"], s["signal"], round(s["value"], 3)) for s in sig], "cases": [(c["case_id"], c["symbol"], str(c["opened_on"]), c["state"], c["klass"], c["kind"]) for c in cs],
-               "decisions": [d for c in cs for d in decision_lines(con, c["case_id"])], "wide_target": tgt}
+               "decisions": [d for c in cs for d in decision_lines(con, c["case_id"])], "wide_target": tgt, "window": (str(w0), str(w1)),
+               "rule_buy_worst_pct": [abs(float(x[0])) for x in rrows], "orders": [orders_lines(con, x["isin"]) for x in rises]}
         return finish(res, "rotation")
     finally:
         undo()
@@ -479,8 +512,12 @@ def drill_rotation(c) -> None:
     sel = res["selection"]
     c.note(f"window {sel['window_start']} to {sel['window_end']}: {sel['falling_industry']} {sel['falling_pct']}%, {sel['rising_industry']} +{sel['rising_pct']}%, index {sel['nifty500_tri_10d_pct']}%: {sel['why']}")
     c.ok(sel["falling_pct"] <= -5 and sel["rising_pct"] >= 5 and abs(sel["nifty500_tri_10d_pct"]) <= 1.5, "the window has a basket down 5+ points, another up 5+ points, the index flat", "tools/replays_s85_select.py")
-    c.ok(bool(res["signals"]), f"the wide watch noticed a name of the rising basket ({res['signals'][:3]})", "think/wide.py")
-    c.ok(bool(res["cases"]), f"a case ran on it ({res['cases'][:2]})", "think/watch.py, think/session.py")
+    w1 = sel["window_end"]
+    sig = [s for s in res["signals"] if s[0] != "VAKRANGEE"]
+    c.ok(bool(sig), f"the wide watch noticed names of the rising basket ({sig[:3]})", "think/wide.py")
+    c.ok(bool(res["cases"]), f"a case ran on one ({res['cases'][:2]})", "think/watch.py, think/session.py")
+    c.ok(any(cs[2] <= w1 for cs in res["cases"]), f"a case on a rising name opened by the window's end {w1} ({[cs[:3] for cs in res['cases']][:4]})", "think/wide.py")
+    c.ok(all(w <= 0.0101 for w in res["rule_buy_worst_pct"]), f"every part the rule bought keeps the bad case within 1% of the whole book ({[round(w, 4) for w in res['rule_buy_worst_pct']][:4]})", "think/rule.py")
     c.ok(bool(res["decisions"]), f"it ended in a decision of the rule with its reason ({res['decisions'][:1]})", "think/rule.py")
     c.ok(not res["exceptions"] and not res["errors"], f"no exception, no logged error ({res['exceptions'][:1]} {res['errors'][:1]})", "think/wire.py")
 

@@ -7,7 +7,7 @@
     pick is the window with the largest min(fall, rise). Feb to Jun 2020 is left out (it is the third replay). The name the wide watch should notice is the basket's member with the largest 5-session
     gain against the index inside the rising basket.
 (2) GOVERNANCE: from the stored red-flag events (`red_flag_events`: FRAUD, FORENSIC_AUDIT, REGULATORY_ACTION, AUDITOR_RESIGNATION with a headline and a usable_from time): the event followed by the largest fall of
-    the name over the next 5 sessions among names with a large daily traded value (the median over the 60 sessions before it) and at least 250 sessions of history; the kind is the stored flag.
+    the name over the next 5 stored sessions (no gap of more than 9 calendar days in them) among names with a large daily traded value (the median over the 60 sessions before it) and at least 250 sessions of history; the kind is the stored flag.
 (3) MARCH 2020: the Nifty 500 total return index's 20-session fall first beyond 10% (the watch's market line) from the stored index; the window runs from 20 sessions before to the 25th session after.
 """
 from __future__ import annotations
@@ -108,6 +108,8 @@ def select_governance() -> dict:
             continue
         pos = s.index.searchsorted(pd.Timestamp(e.usable_from).normalize(), side="right")          # the first close AFTER the event time: the first session the event can act on
         if pos < 60 or pos + 5 >= len(s):
+            continue
+        if (s.index[pos + 4] - s.index[pos - 1]).days > 9 or (pd.Timestamp(e.usable_from).normalize() - s.index[pos - 1]).days > 4:      # the stored closes must run through the five sessions after the event (a name that left the feed would otherwise count weeks as five sessions)
             continue
         base = float(s.iloc[pos - 1])
         fall5 = float(s.iloc[pos + 4] / base - 1.0)
