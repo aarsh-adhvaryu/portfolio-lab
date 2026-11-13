@@ -48,6 +48,9 @@ MARKET_FALL_KINDS = ("market", "market_fall", "market_down")                   #
 MAX_STOCK, MAX_BROAD_ETF = 0.10, 0.60              # his limits (`paper/rails.py`): a stock 10% of the book, a broad-market index ETF 60% (A56); the sector rail is applied at the order
 
 
+BUY_WAITS = "The buy waits"       # the marker of a refused buy inside a hold's reason (session._retry_refused finds it)
+
+
 def cfg() -> dict:
     """RULE with the numbers `configs/core.toml [think]` may override (his to change)."""
     s = think.settings()
@@ -258,13 +261,18 @@ def _decide_one(con, case: dict, ans: dict, ch: dict, asof: date, free_override:
         if best != "hold":
             return out(best, f"{best.capitalize()}: its expected result after tax and charges beats holding by Rs {gain:,.0f}, more than the {c['sale_beats_holding_pts']:g}% of the position (Rs {thr:,.0f}) a sale must clear.",
                        tab[best]["size_inr"], extra={"outcome": tab[best], "hold": tab["hold"]})
+        waits, wait_guards = "", []
         if ch.get("option") == "buy_in_parts" and klass in ("market_fear", "temporary"):
             b = _buy(con, case, klass, ch, pos, asof, market, c, rates, free_override, root, ans)
             if b["option"] == "buy_in_parts":
                 return out("buy_in_parts", f"Add in parts: the expected result is positive and the bad case fits the 1% limit; this part Rs {b['size_inr']:,.0f}.", b["size_inr"], b["guards"], parts=b["parts"],
                            extra={"outcome": b.get("outcome")})
+            # S85 fix3: a refused buy of a name already held is still a buy that WAITS: the guard that held it back stays in the stored reason (the retry reads BUY_WAITS to find it again)
+            wait_guards = [g for g in b["guards"] if not g.startswith("the bet's size is set by")]
+            if wait_guards:
+                waits = f" {BUY_WAITS}: " + "; ".join(wait_guards[:2]) + "."
         return out("hold", f"Hold: no sale beats holding by {c['sale_beats_holding_pts']:g}% of the position after tax and charges (best sale gain Rs {max(0.0, tab['sell']['expected_inr'] - tab['hold']['expected_inr']):,.0f}, trim "
-                           f"Rs {max(0.0, tab['trim']['expected_inr'] - tab['hold']['expected_inr']):,.0f}; the bar is Rs {thr:,.0f}).{pn}", 0.0, extra={"hold": tab["hold"]})
+                           f"Rs {max(0.0, tab['trim']['expected_inr'] - tab['hold']['expected_inr']):,.0f}; the bar is Rs {thr:,.0f}).{waits}{pn}", 0.0, wait_guards, extra={"hold": tab["hold"]})
     # not held
     if klass == "damage":
         return out("wait" if pending else "nothing", f"Damage to the business or its governance: no buying until the outcome is public and {c['damage_wait_sessions']} sessions after it.{pn}", 0.0,
