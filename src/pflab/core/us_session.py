@@ -73,6 +73,7 @@ def fetch_quote(sym: str, now: datetime, get: Optional[Callable] = None, timeout
         for t, c in zip(reversed(ts), reversed(close)):
             if c is not None and c > 0:
                 end = datetime.fromtimestamp(int(t) + 60, timezone.utc).replace(tzinfo=None) + IST_OFFSET
+                end = min(end, now)                                  # a bar still forming has no later time than the moment we asked: its price cannot be newer than our fetch
                 return {"symbol": sym, "price": float(c), "quote_ts": end, "delay_min": max(0.0, (now - end).total_seconds() / 60.0)}
     except Exception:
         return None

@@ -356,3 +356,13 @@ def test_a_reserve_buy_is_protected_from_the_fall_gauge_for_ten_sessions(con):
     cases.add_step(con, 1, datetime(2026, 9, 1, 12, 0), "part", payload={"isin": BBB, "symbol": "BBB", "n": 1, "of": 3, "inr": 5000.0, "day": "2026-09-01"})        # long ago: not protected
     w = reserve.protected_weights(con, day, "IN", 1_000_000.0)
     assert w == {GLD: pytest.approx(0.005)}
+
+
+# ------------------------------------------------------------------ the protocol amendment for the ghost column
+
+def test_amendment_a3_is_counted_once_and_the_protocol_stays_ok(con):
+    from pflab.learner import s84
+    s84.register_thinking_live(con, NOW)
+    assert s84.register_thinking_amendment_a2(con, NOW) == ["s84:thinking_live_a2"]
+    assert s84.register_thinking_amendment_a3(con, NOW) == ["s84:thinking_live_a3"] and s84.register_thinking_amendment_a3(con, NOW) == []
+    assert s84.protocol_ok(con)["unchanged"] is True
