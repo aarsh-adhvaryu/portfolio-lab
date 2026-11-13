@@ -20,6 +20,7 @@ Honest limit (RUNNING.md): nothing on a closed laptop can watch. At the next ope
 from __future__ import annotations
 
 import json
+import re
 import statistics
 import threading
 from datetime import date, datetime, timedelta
@@ -34,6 +35,7 @@ DEFAULTS = {"alarm": True, "alarm_heard_per_day": 6, "alarm_outlets": 4, "alarm_
             "alarm_blind_minutes": 60, "alarm_gap_minutes": 30, "alarm_gap_days": 7, "alarm_graph_sync": True, "alarm_fresh_hours": 8}
 EYE_LABELS = {"google_news": "news (Google News)", "yahoo": "news (Yahoo Finance)", "gdelt_doc": "news (GDELT)", "filings": "Indian company filings (BSE)", "sec_8k": "US company filings (SEC)",
               "india_quotes": "Indian quotes", "us_quotes": "US quotes"}
+_TURN = re.compile(r"\b(?:resign\w*|steps? down|stepping down|ousted|ouster|removed|fired|dismiss\w*|terminated|arrest\w*|indict\w*|charged|restat\w+|defaults?|downgrad\w+|bankrupt\w*|interim (?:ceo|chief))\b", re.I)
 LOCK = threading.RLock()
 _RUNNING = threading.Event()
 
@@ -164,7 +166,9 @@ def raise_red(con, now: datetime, root, item: dict, e: dict, kind: str, sev: str
         con.execute("UPDATE alarm_s86 SET joined_items=coalesce(joined_items,0)+1 WHERE alarm_id=?", [prior["alarm_id"]])
         con.execute("UPDATE headlines_s86 SET alarm_id=?, lane='red', kind=?, severity=? WHERE item_id=?", [prior["alarm_id"], kind, sev, item["id"]])
         case = cases.get_case(con, prior["case_id"]) if prior["case_id"] else None
-        new_look = bool(case) and case["state"] != "closed" and kind not in _kinds_in_case(con, prior["case_id"]) | {prior["kind"]}
+        last = con.execute("SELECT decided_at FROM alarm_s86 WHERE alarm_id=?", [prior["alarm_id"]]).fetchone()[0]
+        turn = bool(_TURN.search(item["title"])) and (last is None or (now - last) >= timedelta(hours=12))          # a second report that says something DID happen (a resignation, an ouster), not the same story again
+        new_look = bool(case) and case["state"] != "closed" and (kind not in _kinds_in_case(con, prior["case_id"]) | {prior["kind"]} or turn)
         if case and case["state"] != "closed":
             _record_signal(con, now, item, e, kind, sev, prior["case_id"])
         out.update({"joined": prior["alarm_id"], "case_id": prior["case_id"], "new_look": new_look})
