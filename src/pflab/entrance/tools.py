@@ -140,3 +140,17 @@ register("usage_today", {"name": "usage_today", "description": "[read] What the 
                          "input_schema": {"type": "object", "properties": {}, "required": []}}, _usage_today)
 register("working_on", {"name": "working_on", "description": "[read] What the chat is working on right now for him (his messages and files in the queue).",
                         "input_schema": {"type": "object", "properties": {}, "required": []}}, _queue)
+
+
+# --- tools of the other S85 modules (registered here so the chat sees them; a missing module only leaves its tool out) ----------------------------------------------
+
+def _standing(ctx, a: dict) -> dict:
+    from pflab.entrance import rules_intake
+    return rules_intake.run_tool(ctx.con, ctx.now, a, chat_id=getattr(ctx, "chat_id", None))
+
+
+try:
+    from pflab.entrance import rules_intake as _ri
+    register("standing_instruction", _ri.TOOL, _standing)
+except Exception:                                                  # pragma: no cover
+    pass
