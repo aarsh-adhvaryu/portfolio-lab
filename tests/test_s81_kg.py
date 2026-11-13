@@ -209,7 +209,7 @@ def test_closed_list_rules_and_validator():
     assert classify.rule_kind("Reduction in guidance for FY27")[0] == "guidance_cut"
     assert classify.rule_kind("Zzz", "Board Meeting")[0] == "board_meeting" and classify.rule_kind("Zzz")[0] == "other"
     assert set(classify.THESIS_BREAK_KINDS) == {"results_miss", "guidance_cut", "auditor_resignation", "promoter_pledge_increase", "regulatory_action", "rating_downgrade",
-                                                "fraud_investigation", "large_order_loss", "leadership_crisis"}         # S84 (A68) added leadership_crisis
+                                                "fraud_investigation", "large_order_loss", "leadership_crisis", "accounting_concern"}         # S84 (A68) added leadership_crisis, S85 accounting_concern (US 8-K item 4.02)
     assert classify.validate({"kind": "made_up", "severity": "high"}) and classify.validate({"kind": "none", "severity": "huge"})
     assert classify.validate({"kind": "none", "severity": "low"}) is None
 

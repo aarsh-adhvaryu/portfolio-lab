@@ -27,7 +27,7 @@ from urllib.parse import urlparse
 
 import pandas as pd
 
-from pflab.kg2 import classify, filing_time as ft, news, scope as sc
+from pflab.kg2 import classify, filing_time as ft, news, scope as sc, sec_8k
 
 NODE_COLS = ["isin", "name", "symbol", "origin", "source", "as_of"]
 FACT_COLS = ["isin", "fkey", "fvalue", "value_num", "source", "as_of", "known_from"]
@@ -399,6 +399,11 @@ def build(root: Path, asof: date, scope: Optional[dict] = None, since: Optional[
     fl_ev, fl_un, fl_st = filing_events(root, asof, since, set(names), cache, names)
     nw_ev, nw_un, nw_st = news_events(root, asof, since, scope, cache) if with_news else ([], [], {"news_rows": 0})
     known = {n["isin"] for n in nodes}
+    sec_ev, sec_nodes, sec_st = sec_8k.events(root, asof)         # S85: US 8-K items 5.02 / 4.01 / 4.02 from the raw files `<root>/sec_8k/` (none: nothing added)
+    for n in sec_nodes:
+        if n["isin"] not in known:
+            nodes.append(n)
+            known.add(n["isin"])
     m = scrip_map(root)
     for e in fl_ev + nw_ev:                          # an event's ISIN that is not in scope (an older ISIN of a scope scrip) still needs its node
         if e["isin"] not in known:
@@ -410,8 +415,8 @@ def build(root: Path, asof: date, scope: Optional[dict] = None, since: Optional[
     facts = [f for f in facts if f["known_from"] <= asof]
     out = {"node": nodes_df, "fact": _frame(facts, FACT_COLS, KEYS["fact"]),
            "relation": _frame(relations(nodes, facts, groups if groups is not None else groups_config()), REL_COLS, KEYS["relation"]),
-           "event": _frame(fl_ev + nw_ev, EVENT_COLS, KEYS["event"]), "unlinked": _frame(fl_un + nw_un, UNLINKED_COLS, KEYS["unlinked"])}
-    out["stats"] = {**fl_st, **nw_st, **{k: int(len(v)) for k, v in out.items() if k in TABLES}}
+           "event": _frame(fl_ev + nw_ev + sec_ev, EVENT_COLS, KEYS["event"]), "unlinked": _frame(fl_un + nw_un, UNLINKED_COLS, KEYS["unlinked"])}
+    out["stats"] = {**fl_st, **nw_st, **sec_st, **{k: int(len(v)) for k, v in out.items() if k in TABLES}}
     return out
 
 
