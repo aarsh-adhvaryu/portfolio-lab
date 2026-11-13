@@ -131,6 +131,14 @@ def run_audit(con, root: Path, day: date, graph: Optional[dict] = None, store: b
         bad_rule += int((~ev["ts_rule"].isin(ft.RULES)).sum())
     checks.append(_chk("derived_time_rule", bad_rule == 0, value=bad_rule, threshold=0,
                        note="every event names its time rule; a filing with no release time is used from the first trading open after its own date (09:15 IST, market calendar)"))
+    yv = ev[ev["source"] == "you"] if len(ev) else ev      # S85: what he sent is counted, and its time is checked: usable from the received time, never before, never after `day`
+    bad_you = 0
+    if len(yv):
+        ts_you = pd.to_datetime(yv["ts"])
+        bad_you = int(((yv["ts_rule"] != ft.RULE_RECEIVED) | (ts_you.dt.date != pd.to_datetime(yv["event_date"]).dt.date) | (ts_you.dt.date > day)
+                       | (~yv["link_rule"].astype(str).str.startswith("you:"))).sum())
+    checks.append(_chk("you_events_point_in_time", bad_you == 0, value={"events_from_you": int(len(yv)), "bad": bad_you}, threshold=0,
+                       note="events from documents and checked facts he sent: time = the moment received (`received_time`), linked by a named `you:` rule"))
     fl = raw_filing_link_rate(root, day)
     rate = fl["rate"]
     checks.append(_chk("filing_link_rate", rate is not None and rate >= FILING_LINK_MIN, value=None if rate is None else round(rate, 4), threshold=FILING_LINK_MIN,
