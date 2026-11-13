@@ -76,9 +76,9 @@ def test_the_roles_map_to_the_models_and_levels_in_the_config():
     assert (r["decide"]["model"], r["decide"]["thinking"]) == ("claude-opus-5-5", "high")
     assert (r["read"]["model"], r["read"]["thinking"]) == ("claude-sonnet-5-5", "medium")
     assert (r["quick"]["model"], r["quick"]["thinking"]) == ("claude-sonnet-5-5", "low")
-    assert all(v["engine"] == "anthropic" and v["note"] == "" for v in r.values())
+    assert all(v["engine"] == "claude" and v["note"] == "" for v in r.values())
     st = gateway.settings()
-    assert st["default"] == "anthropic" and st["claude"]["effort"] == {"low": "low", "medium": "medium", "high": "high", "max": "max"}
+    assert st["default"] == "claude" and st["claude"]["effort"] == {"low": "low", "medium": "medium", "high": "high", "max": "max"}
 
 
 def test_the_core_toml_holds_the_same_table_the_code_defaults_to():
@@ -145,12 +145,12 @@ def test_cost_cached_tokens_engine_model_and_level_come_back_and_are_logged(con,
         out = ask(con, "decide", case_id=41, purpose="understand", schema={"type": "object", "properties": {"klass": {"type": "string"}}, "required": ["klass"], "additionalProperties": False})
     finally:
         gateway.set_client(None)
-    assert out["engine"] == "anthropic" and out["model"] == "claude-opus-5-5" and out["thinking"] == "high" and out["role"] == "decide" and out["role_used"] == "decide"
+    assert out["engine"] == "claude" and out["model"] == "claude-opus-5-5" and out["thinking"] == "high" and out["role"] == "decide" and out["role_used"] == "decide"
     assert out["cached_tokens"] == 1800 and out["cost_rupees"] > 0 and out["json"] == {"klass": "damage"} and out["stop_reason"] == "end_turn" and not out["truncated"]
     expect = gv.cost_inr("claude-opus-5-5", 2000, 400, 90.0, 1800, 0)
     assert out["cost_rupees"] == pytest.approx(expect)
     row = con.execute("SELECT agent, role, engine, thinking, cached_tokens, case_id, purpose, status, cost_inr, model FROM api_calls WHERE call_id=?", [out["call_id"]]).fetchone()
-    assert row[:8] == ("think", "decide", "anthropic", "high", 1800, 41, "understand", "done") and row[8] == pytest.approx(expect) and row[9] == "claude-opus-5-5"
+    assert row[:8] == ("think", "decide", "claude", "high", 1800, 41, "understand", "done") and row[8] == pytest.approx(expect) and row[9] == "claude-opus-5-5"
     assert f.sent[0]["output_config"]["format"]["type"] == "json_schema"
     assert gateway.spent(con, NOW.replace(hour=0), case_id=41) == pytest.approx(expect) and gateway.spent(con, NOW.replace(hour=0), agent="desk") == 0.0
 
@@ -354,7 +354,7 @@ def test_an_engine_can_be_added_behind_the_same_door(con, paid, fake):
         out = ask(con, "read", st=st)
     finally:
         del gateway.ENGINES["other"]
-    assert out["engine"] == "other"
+    assert out["provider"] == "other" and out["engine"] == "claude"
 
 
 def test_the_migration_adds_the_gateway_columns_to_the_calls_table(con):

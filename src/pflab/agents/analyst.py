@@ -642,14 +642,8 @@ def make_client(secrets=None):
     (ANTHROPIC_API_KEY or an `ant auth login` profile). Only this module talks to the API."""
     from pflab import guard
     guard.require("paid")                       # S65: the workshop makes no paid call unless run with --paid
-    import anthropic
-    headers = {}
-    if secrets is not None and secrets.has("anthropic", "workspace_id"):
-        # a key not scoped to a workspace must name one on every request (API error seen 2026-10-17)
-        headers["anthropic-workspace-id"] = secrets.get("anthropic", "workspace_id")
-    if secrets is not None and secrets.has("anthropic", "api_key"):
-        return anthropic.Anthropic(api_key=secrets.get("anthropic", "api_key"), default_headers=headers or None)
-    return anthropic.Anthropic(default_headers=headers or None)
+    from pflab.llm import vendors               # S85: the SDK is imported in llm/ only
+    return vendors.anthropic_client(secrets)
 
 
 def deep_request(con, question: str, asof: date, urgent: bool = True) -> Request:

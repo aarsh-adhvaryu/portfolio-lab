@@ -590,6 +590,37 @@ def create_app(rt) -> FastAPI:
         from pflab import features
         return {"channel": features.channel(), "features": features.listing(rt.settings)}
 
+    @app.get("/api/engines")
+    def engines_api():
+        """S85 (E2a): the model engines behind the one door, for Settings: in use / shadow, roles with models and prices, what each lacks, his consents, the exam grade, the key (set or missing, never the value)."""
+        from pflab.llm import gateway
+        return json.loads(json.dumps({"engines": gateway.engines_status(rt.cursor()), "problems": gateway.open_problems(rt.cursor())}, default=str))
+
+    @app.post("/api/engines/use")
+    def engines_use(name: str = Body(...), yes: bool = Body(False)):
+        """Switch the engine in use (the next call, no restart). Without `yes` the answer carries the one-line notice and needs_yes."""
+        from pflab.llm import gateway
+        return json.loads(json.dumps(gateway.use(rt.cursor(), name, yes=bool(yes), now=rt.clock()), default=str))
+
+    @app.post("/api/engines/shadow")
+    def engines_shadow(name: str = Body(...), yes: bool = Body(False), off: bool = Body(False)):
+        from pflab.llm import gateway
+        con = rt.cursor()
+        r = gateway.unshadow(con, name) if off else gateway.shadow(con, name, yes=bool(yes), now=rt.clock())
+        return json.loads(json.dumps(r, default=str))
+
+    @app.post("/api/engines/key")
+    def engines_key(vendor: str = Body(...), value: str = Body(...)):
+        """A vendor's key into the secrets file (never shown again): the answer is only "stored"."""
+        from pflab.pm import secrets_setup as ss
+        if vendor not in ss.FIELDS or "api_key" not in {k for k, _, _ in ss.FIELDS[vendor]} or vendor == "kite":
+            raise HTTPException(400, "not a vendor with an API key")
+        try:
+            done = ss.set_values({(vendor, "api_key"): value})
+        except ss.SetupError as e:
+            raise HTTPException(400, str(e).replace(value, "***") if value else str(e))
+        return {"ok": bool(done), "answer": "stored" if done else "nothing to store"}
+
     @app.get("/api/setup")
     def setup_api():
         """S65: the accounts he set up (names, bank, last four digits) and the documents still needed."""

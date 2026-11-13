@@ -233,13 +233,35 @@ quiet_close_sessions = 60
 big_trade_share = 0.02
 opus_exposure_share = 0.02
 advisory_after_scored = 20
-# S84 gate (llm/gateway.py): the one door for model calls. A ROLE names a model and a THINKING level on one scale (low / medium / high / max); the door maps the level to the vendor's own control
-# A role with enabled = false (or missing) falls back to the next role up (quick -> read -> decide) and says so. Tonight only the Anthropic engine exists; S85 adds others behind the same door.
+wide_watch = true             # S85 L1 (think/wide.py): the Nifty 500 and S&P 500 members get the cheap signals at each close and US morning; only the top wide_cases_per_day ever opens a case
+wide_cases_per_day = 1        # at most this many NEW cases a day come from the wide watch (max_cases_per_day stays the cap)
+wide_store_top = 60           # a wide pass stores its top-scored signals only
+wide_index_factor = 0.05      # a wide name's ranking exposure: its index weight (a proxy) x this share of the whole book, plus what the book holds through funds
+wide_run_pts = 20.0           # a name this many points ahead of its index over 20 sessions that nobody looked at (wide_run_20d)
+fund_exposure = true          # S85 L1 (think/exposure.py): exposure counts what held funds hold of a company, through their portfolio files or index weights (a labelled proxy)
+missed_job = true             # S85 L1 (think/missed.py, job think_missed): "what did I miss" after each close
+missed_top_n = 10             # the biggest rises and the biggest falls (5 and 20 sessions) it looks at
+tune_thresholds = false       # S85 L1 (think/tuning.py): OFF by default (coordinator's decision); true = one threshold a week, at most 10%, inside [0.5x, 2x], and nothing before 40 scored decisions or 60 stored misses exist (Amendment A2)
+sec_scope = "book"           # S85: whose 8-Ks (items 5.02, 4.01, 4.02) the SEC collector reads: "book" = US names held, picked, skipped or watched; "sp500" adds the index members
+
+
+# S84 gate / S85 engines (llm/gateway.py): the one door for model calls. An ENGINE is a named set: a provider (the wire format: `anthropic` or `openai_compat`), a base URL, the NAME of its key in the secrets
+# file, per ROLE a model and a THINKING level on one scale (low / medium / high / max, mapped by the engine's `effort` table to the vendor's own control), its prices (dollars per million tokens, with the
+# vendor's own source and the date they were read: a model without a price cannot be used) and a feature table (what an engine lacks, the door degrades: no web tool -> the call stays on the fallback engine; no
+# token count -> a labelled estimate; no document blocks -> code extracts the text first). The engine IN USE is stored (`pflab engine use`, or the Settings toggle), not set here: `default` is only what applies
+# before any switch. `fallback` is where a role's calls go after `fail_streak` failures in a row (a malformed answer, an error, a timeout), for `fallback_minutes`, then it tries again.
+# A role with enabled = false (or missing) falls back to the next role up (quick -> read -> decide) and says so.
 [engines]
-default = "anthropic"
+default = "claude"
+fallback = "claude"
+fail_streak = 3
+fallback_minutes = 30
+case_pin_minutes = 30         # a case's current step finishes on the engine that began it, for this long after its last step
 
 [engines.claude]
-engine = "anthropic"
+provider = "anthropic"
+vendor = "anthropic"
+key_name = "anthropic.api_key"
 cache = true                  # the fixed part (system text, tools, the book card) is marked cacheable; cached tokens are logged beside the cost
 
 [engines.claude.decide]       # a decision: a pick, a withdrawal, a case over the 2% line
@@ -251,7 +273,7 @@ model = "claude-sonnet-5-5"
 thinking = "medium"
 min_tokens = 4000
 
-[engines.claude.quick]        # short checks (Sonnet at low until Haiku 5.5 is priced in and measured)
+[engines.claude.quick]        # short checks (Sonnet at low until Haiku 5.5 is measured; the chat's Auto picks Haiku 5.5 for short replies through the model override)
 model = "claude-sonnet-5-5"
 thinking = "low"
 min_tokens = 1500
@@ -261,3 +283,126 @@ low = "low"
 medium = "medium"
 high = "high"
 max = "max"
+
+[engines.claude.features]
+tools = true
+structured = true
+thinking_effort = true
+caching = true
+documents = true
+images = true
+web_search = true
+token_count = true
+batch = true
+web_tool = "web_search_20250305"      # the basic variant cites every passage's page (the dynamic-filtering one returns text with no citations, S59)
+
+[engines.claude.prices.haiku]
+model = "claude-haiku-5-5"
+tier = "quick"
+input = 0.10
+output = 0.50
+cached_input = 0.01
+source = "Anthropic price list via the claude-api reference (prompts up to 100K tokens; above that 0.50 / 2.50)"
+date = "2026-11-03"
+
+[engines.claude.prices.sonnet]
+model = "claude-sonnet-5-5"
+tier = "read"
+input = 2.00
+output = 10.00
+cached_input = 0.20           # the governor prices a cache read at 0.2 (the reference now says 0.10: the safe side is kept)
+source = "Anthropic price list via the claude-api reference"
+date = "2026-11-03"
+
+[engines.claude.prices.opus]
+model = "claude-opus-5-5"
+tier = "decide"
+input = 4.00
+output = 20.00
+cached_input = 0.20
+source = "Anthropic price list via the claude-api reference"
+date = "2026-11-03"
+
+# OpenAI, through its Responses API (gpt-6 models need it for tools). Model ids, prices, effort values and endpoints read from OpenAI's own pages on 2026-11-13:
+# developers.openai.com/api/docs/models and /api/docs/pricing, /api/docs/models/gpt-6-luna, gpt-6.1-sol, gpt-6-astra, /api/docs/guides/reasoning, /api/reference/resources/responses.
+# decide = gpt-6.1-sol ("near-Astra performance at a lower cost": a fifth of Astra's price), read = gpt-6.1-terra, quick = gpt-6-luna ("most efficient for focused, high-volume tasks"). gpt-6-astra (the flagship) is in
+# the price table, so the picker and the exam can use it; luna may be tried for `read` by changing one line. Prompts over 272K input tokens cost double: far above what any call here sends.
+[engines.openai]
+provider = "openai_compat"
+vendor = "openai"
+base_url = "https://api.openai.com/v1"
+key_name = "openai.api_key"
+timeout_s = 120
+max_retries = 1
+
+[engines.openai.decide]
+model = "gpt-6.1-sol"
+thinking = "high"
+min_tokens = 8000
+
+[engines.openai.read]
+model = "gpt-6.1-terra"
+thinking = "medium"
+min_tokens = 4000
+
+[engines.openai.quick]
+model = "gpt-6-luna"
+thinking = "low"
+min_tokens = 1500
+
+[engines.openai.effort]       # OpenAI's `reasoning.effort`: low / medium / high / xhigh / max (none is rejected by Astra and Sol, so the scale never sends it)
+low = "low"
+medium = "medium"
+high = "high"
+max = "max"
+
+[engines.openai.features]
+wire = "responses"            # "chat" for a vendor that offers only the Chat Completions format
+tools = true
+structured = true
+thinking_effort = true
+caching = "automatic"
+documents = false             # the models take text and images; code extracts a PDF's text first (pages kept)
+images = true
+web_search = false            # OpenAI has a web tool; it is not wired: web calls stay on the fallback engine
+token_count = false           # no count call: a labelled estimate
+batch = true                  # half price; not used tonight
+
+[engines.openai.prices.luna]
+model = "gpt-6-luna"
+tier = "quick"
+input = 0.10
+output = 0.50
+cached_input = 0.01
+cache_write = 0.125
+source = "developers.openai.com/api/docs/pricing and /api/docs/models/gpt-6-luna"
+date = "2026-11-13"
+
+[engines.openai.prices.terra]
+model = "gpt-6.1-terra"
+tier = "read"
+input = 1.00
+output = 5.00
+cached_input = 0.05
+source = "developers.openai.com/api/docs/pricing"
+date = "2026-11-13"
+
+[engines.openai.prices.sol]
+model = "gpt-6.1-sol"
+tier = "decide"
+input = 2.00
+output = 10.00
+cached_input = 0.10
+cache_write = 2.50
+source = "developers.openai.com/api/docs/pricing and /api/docs/models/gpt-6.1-sol"
+date = "2026-11-13"
+
+[engines.openai.prices.astra]
+model = "gpt-6-astra"
+tier = "decide"
+input = 10.00
+output = 50.00
+cached_input = 1.00
+cache_write = 12.50
+source = "developers.openai.com/api/docs/pricing and /api/docs/models/gpt-6-astra"
+date = "2026-11-13"

@@ -48,6 +48,9 @@ dependencies = [
   # CLAUDE.md 5, added 2026-10-17 for S44 (PLAN A7 research tier, agreed by the investor): the official Anthropic SDK,
   # used only by agents/analyst.py behind the egress gate and the budget.
   "anthropic==1.15.0",
+  # CLAUDE.md 5 (A70, S85 E2a): the OpenAI SDK, the second wire format behind the one door (OpenAI and every vendor offering that format); imported only in llm/vendors.py, behind the egress gate and his cap.
+  # openai 3.40.0 (PyPI upload 2026-10-27, more than two weeks old).
+  "openai==3.40.0",
   # CLAUDE.md 5, added 2026-10-22 for S54: the dashboard (local web app on 127.0.0.1; brings starlette, anyio, h11).
   "fastapi==0.159.1",
   "uvicorn==0.54.0",
