@@ -37,6 +37,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
+
+def _gw_vendor_client(secrets=None):
+    """S86: the model client for the batch road comes from the gateway (`llm/gateway.py`), the one door; nothing here builds a client itself."""
+    from pflab.llm import gateway
+    return gateway.vendor_client(secrets)
+
 PASS, FAIL, NEEDS, SKIP, INFO = "pass", "fail", "needs you", "skipped", "info"
 OPTIONAL_CHECKS = {"live model call", "connector colours"}          # everything else is required: skipped or informational does not accept
 HEARTBEAT_MAX_AGE_S = 300                                          # a heartbeat older than this is not evidence the app is running now
@@ -687,7 +693,7 @@ def live_model(ctx: Ctx, rep: Report) -> None:
         pm = ctx.pm_copy()
         con = store.connect(pm / "ledger.duckdb")
         gate = egress.load(con)
-        client = an.make_client(secrets)
+        client = _gw_vendor_client(secrets)
         nonce = f"v{ctx.now:%H%M%S}"
         tool = {"name": "echo_code", "description": "Report the verification code you were given.",
                 "input_schema": {"type": "object", "additionalProperties": False, "properties": {"code": {"type": "string"}}, "required": ["code"]}}

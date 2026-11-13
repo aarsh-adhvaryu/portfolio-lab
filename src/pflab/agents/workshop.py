@@ -38,6 +38,12 @@ import pandas as pd
 
 from pflab.agents import sandbox as sb
 
+
+def _gw_vendor_client(secrets=None):
+    """S86: the model client for the batch road comes from the gateway (`llm/gateway.py`), the one door; nothing here builds a client itself."""
+    from pflab.llm import gateway
+    return gateway.vendor_client(secrets)
+
 RUNNER = Path(__file__).with_name("workshop_runner.py")
 TIME_LIMIT_S = 60
 MAX_CODE = 20000
@@ -675,7 +681,7 @@ def ask(con, question: str, pm_dir: Path, root: Path, asof: date, *, writer: str
     samples = json.dumps(shown, indent=0, default=str)
     writers: List[Tuple[str, Callable[[str], str], int]] = []
     if writer in ("auto", "opus") and an.config()["adopted"]:
-        client = opus_client or an.make_client(secrets)
+        client = opus_client or _gw_vendor_client(secrets)
         first_m = an.slider("workshop")                     # S61: Sonnet passed the acceptance test as the writer
         second_m = an.MODEL if first_m == an.SONNET else an.SONNET     # the check is always the other model
         name = {an.MODEL: "Opus 5.5", an.SONNET: "Sonnet 5.5"}

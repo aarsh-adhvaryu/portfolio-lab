@@ -24,6 +24,12 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
+
+def _gw_vendor_client(secrets=None):
+    """S86: the model client for the batch road comes from the gateway (`llm/gateway.py`), the one door; nothing here builds a client itself."""
+    from pflab.llm import gateway
+    return gateway.vendor_client(secrets)
+
 CALC = re.compile(r"\b(calculat\w*|compute|how (much|many|long|often)|what if|cagr|averag\w*|median|correlat\w*|largest|"
                   r"smallest|biggest|worst|best|since|between|compare|ratio|percent(age)?|drawdown|volatil\w*|beta|"
                   r"annuali[sz]ed|return(s)? (over|from|since)|times did|number of)\b", re.I)
@@ -189,10 +195,10 @@ def _defaults() -> Dict[str, Callable]:
     from pflab.agents import workshop as wk
 
     def deep(con, req, q, *, secrets, approved, now):
-        return an.ring(con, req, an.make_client(secrets), now=now, approved=approved)
+        return an.ring(con, req, _gw_vendor_client(secrets), now=now, approved=approved)
 
     def web(con, req, q, *, secrets, approved, now):
-        return an.web_search(con, q, an.make_client(secrets), now=now, approved=approved)
+        return an.web_search(con, q, _gw_vendor_client(secrets), now=now, approved=approved)
 
     def workshop(con, q, pm_dir, root, asof, *, secrets, approved, now):
         return wk.ask(con, q, pm_dir, root, asof, writer="auto", secrets=secrets, approved=approved, now=now)

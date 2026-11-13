@@ -17,6 +17,12 @@ from typing import Callable, Dict, List, Optional, Tuple
 from pflab import _toml
 from pflab.hq import governor as gv
 
+
+def _gw_vendor_client(secrets=None):
+    """S86: the model client for the batch road comes from the gateway (`llm/gateway.py`), the one door; nothing here builds a client itself."""
+    from pflab.llm import gateway
+    return gateway.vendor_client(secrets)
+
 DECIDED_PATH = Path(__file__).resolve().parents[3] / "configs" / "models.toml"
 LOCAL_DEFAULT = "qwen3:8b-q8_0"
 IDS = {"haiku": gv.HAIKU, "sonnet": gv.SONNET, "opus": gv.OPUS}
@@ -169,7 +175,7 @@ def road(con, settings: Optional[dict] = None) -> Optional[Road]:
     from pflab.hq import egress
     from pflab.pm import secrets as sec
     try:
-        client = an.make_client(sec.load())
+        client = _gw_vendor_client(sec.load())
     except Exception:
         return None
     return Road(con, client, egress.load(con), _settings(settings).get("brain", "economy"))

@@ -9,6 +9,20 @@ import pytest
 from pflab.paper import verify_book as vb
 
 
+@pytest.fixture(autouse=True)
+def _env_back_as_found():
+    """S86: `vb.build` sets PFLAB_PM_DIR for the whole process ("the caller restores it"); three tests here call it and restored only PFLAB_DATA_DIR, so the next test file ran against a system-account
+    folder (test_s65_fd then found the account "the system's own" and refused its certificate). Both variables go back as found after every test, in any order."""
+    import os
+    before = {k: os.environ.get(k) for k in ("PFLAB_PM_DIR", "PFLAB_DATA_DIR")}
+    yield
+    for k, v in before.items():
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
+
+
 def test_every_corporate_action_reaches_the_systems_lots_and_cash_once(tmp_path):
     res = vb.run_synthetic(tmp_path / "syn")
     failed = [k for k, v in res["checks"].items() if not v]

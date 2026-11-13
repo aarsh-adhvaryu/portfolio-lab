@@ -11,6 +11,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import List, Optional
 
+
+def _gw_vendor_client(secrets=None):
+    """S86: the model client for the batch road comes from the gateway (`llm/gateway.py`), the one door; nothing here builds a client itself."""
+    from pflab.llm import gateway
+    return gateway.vendor_client(secrets)
+
 MODES = ("auto", "ask", "web", "deep", "calc")       # kept so old callers still pass a mode; since S85 the model chooses its tools itself (the mode buttons are gone)
 TIDY_DAYS = 30
 
@@ -109,7 +115,7 @@ def _answer(rt, con, q: str, mode: str, approved: bool, history: str) -> dict:
     from pflab.agents import analyst as an
     if mode == "web":
         try:
-            o = an.web_search(con, q, an.make_client(rt.secrets), now=now, approved=approved)
+            o = an.web_search(con, q, _gw_vendor_client(rt.secrets), now=now, approved=approved)
         except an.NotAdopted as e:
             return {"text": f"Web search is off: {e}.", "route": ["egress check"], "status": "failed"}
         except an.NeedsApproval as e:

@@ -12,6 +12,12 @@ from pflab.service.jobs import Ctx, Job, register
 from pflab.service.schedule import Daily, Interval
 
 
+def _gw_vendor_client(secrets=None):
+    """S86: the model client for the batch road comes from the gateway (`llm/gateway.py`), the one door; nothing here builds a client itself."""
+    from pflab.llm import gateway
+    return gateway.vendor_client(secrets)
+
+
 MIN_FREE_GB = 3.0
 
 
@@ -256,7 +262,7 @@ def _research(ctx: Ctx) -> dict:
     # The investor 2026-10-22: Opus writes the research for what changed. Every run looks at the last 2 days' flags, not only its
     # own (S58 re-run: flags raised by a run before the fresh-note rule never reached Opus)
     if an.config()["adopted"]:
-        deep = rs.deep_queue(ctx.con, asof, lst, client=an.make_client(ctx.secrets), now=ctx.now)   # overnight batch
+        deep = rs.deep_queue(ctx.con, asof, lst, client=_gw_vendor_client(ctx.secrets), now=ctx.now)   # overnight batch
     return {"companies": rep.companies, "new_flags": len(rep.new_flags), "briefs": len(rep.briefs),
             "opus_queued": sum(1 for v in deep.values() if v == "queued")}
 
@@ -280,7 +286,7 @@ def _analyst_enabled(ctx: Ctx) -> Tuple[bool, str]:
 def _analyst_batch(ctx: Ctx) -> dict:
     """Overnight: collect finished batches, then submit what was queued during the day (half price)."""
     from pflab.agents import analyst as an
-    client = an.make_client(ctx.secrets)
+    client = _gw_vendor_client(ctx.secrets)
     got = an.collect_batches(ctx.con, client, now=ctx.now)
     return {**got, "submitted": an.submit_batch(ctx.con, client, ctx.now)}
 

@@ -7,6 +7,12 @@ import sys
 from datetime import date, timedelta
 
 
+def _gw_vendor_client(secrets=None):
+    """S86: the model client for the batch road comes from the gateway (`llm/gateway.py`), the one door; nothing here builds a client itself."""
+    from pflab.llm import gateway
+    return gateway.vendor_client(secrets)
+
+
 def _d(s: str) -> date:
     return date.fromisoformat(s)
 
@@ -739,7 +745,7 @@ def _agents_cli(a) -> int:
         return 0
     if a.cmd == "analyst" and a.action == "collect" and a.wait:
         from pflab.agents import analyst as an
-        print(an.collect_until_done(store.connect, an.make_client(sec.load()), a.wait))
+        print(an.collect_until_done(store.connect, _gw_vendor_client(sec.load()), a.wait))
         return 0
     con = store.connect()
     if a.cmd == "analyst":
@@ -780,7 +786,7 @@ def _agents_cli(a) -> int:
                 p = ac.prepare(lst, names)
                 print(f"{p}\nSHA-256 {ac.sha(p)}: record it in docs/STUDIES.md before 'run'")
             elif stage == "run":
-                print(ac.run(con, a.asof, br.chosen_llm(), an.make_client(sec.load())))
+                print(ac.run(con, a.asof, br.chosen_llm(), _gw_vendor_client(sec.load())))
             elif stage == "run-local":
                 from pflab.llm import registry as _reg
                 print(ac.run_local(con, a.asof, ac.local_llm(_reg.chosen("general"))))
@@ -794,7 +800,7 @@ def _agents_cli(a) -> int:
                 print("compare needs a stage: prepare | run | sheet | score")
                 return 2
             return 0
-        client = an.make_client(sec.load())
+        client = _gw_vendor_client(sec.load())
         print(an.submit_batch(con, client) if a.action == "submit" else an.collect_batches(con, client))
         return 0
     if a.cmd == "research":

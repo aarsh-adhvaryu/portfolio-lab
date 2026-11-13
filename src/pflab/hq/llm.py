@@ -21,6 +21,12 @@ from pflab.agents import analyst as an
 from pflab.hq import egress, governor as gv
 
 
+def _gw_vendor_client(secrets=None):
+    """S86: the model client for the batch road comes from the gateway (`llm/gateway.py`), the one door; nothing here builds a client itself."""
+    from pflab.llm import gateway
+    return gateway.vendor_client(secrets)
+
+
 @dataclass
 class Sent:
     message: Any
@@ -184,4 +190,4 @@ def scrub(text: str) -> str:
 
 def client(secrets):
     """The SDK client, made the analyst's way (the key from secrets.toml, the workspace header)."""
-    return an.make_client(secrets)
+    return _gw_vendor_client(secrets)
