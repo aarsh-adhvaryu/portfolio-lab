@@ -272,6 +272,11 @@ def tick(con, pm_dir: Path, root, now: datetime, client_fn, data=None, box=None)
         out["allocation"] = alloc_lab.tick(con, pm_dir, root, now, data=data, box=box)
     except Exception as e:
         out["allocation"] = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
+    try:                                                                    # S84 T10: the daily desk sits down when a slot is open (its own light session through the gateway, its own daily budget; the weekly one below is unchanged)
+        from pflab.think import desk
+        out["desk"] = desk.tick_hook(con, now, root)
+    except Exception as e:
+        out["desk"] = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
     reasons = due(con, now)
     try:                                                                    # S82 C9: the once-only first real session in the app (kept out of `due`, which is the weekly rule's own)
         from pflab.lab import first_session_s82

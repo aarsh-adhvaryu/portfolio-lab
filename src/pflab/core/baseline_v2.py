@@ -121,12 +121,19 @@ def decide(state: dict) -> dict:
                 inc_lt[k] = w - cur[k]
     if pk.get("weights"):
         notes.append(f"picks sleeve ({pk['share']['share']:.0%} share, {pk['share']['source']}): {len(pk['weights'])} name(s) sized by the picks rule")
+    for k in sorted(set(state.get("frozen") or ()) & set(weights)):         # S84 (A65): a name under a system-made freeze is not bought (the thinking loop's rule); what is held stays
+        if weights[k] > cur.get(k, 0.0) + 1e-12:
+            weights[k] = cur.get(k, 0.0)
+            inc_core.pop(k, None)
+            inc_lt.pop(k, None)
+            notes.append(f"{next((r['symbol'] for r in rows if r['isin'] == k), k)} is frozen (no new buying) by an open case")
     if gauge:
         notes.append(f"fall gauge fired ({state['gauge']['why']}): equity cut by {cut:.0%}, the difference kept in cash; no buying")
         return {"weights": weights, "notes": notes, "classes": _classes(sh), "sleeves": _sleeves(sh)}
     # --- the path: new cash and sale proceeds go to the core first, then to longterm; whatever is left waits as cash --------------------------------------------------------------------
     sales = sum(max(0.0, cur[k] - w) for k, w in weights.items())
-    free = max(0.0, (state["cash"] + state.get("bank", 0.0)) / total) + sales
+    reserve_hold = float(state.get("reserve_frac") or 0.0)                    # S84 (A64): the opportunity reserve stays cash; only the thinking loop spends it, and new money meets it first
+    free = max(0.0, (state["cash"] + state.get("bank", 0.0)) / total - reserve_hold) + sales
     free_buy = max(0.0, free)
     core_need = sum(inc_core.values())
     if core_need > free_buy and core_need > 0:

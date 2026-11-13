@@ -1773,6 +1773,84 @@ step_picks.ticks = True
 step_picks.sessions = PICKS_SESSIONS
 
 
+# --- S84: the thinking loop (T1-T8) over 10 sessions, a scripted model through the gateway, designed shocks ------------------------------------------------------------------------------
+
+def step_thinking(env: "Env", c: Check, phase: str) -> None:
+    """Two held names fall 25% on the fourth session and a guidance-cut filing hits a third on the fifth: the watch notices, cases open (at most 3 a day), the scripted model reads and answers from the
+    closed lists, the rule decides and both choices are stored, the loop is scored at 5 sessions when it can be. Every answer is scripted (a fake behind the gateway): no paid call."""
+    import pandas as pd
+    gate = importlib.import_module("pflab.llm.gateway")
+    importlib.import_module("pflab.think.wire")
+    from pflab import markets
+    S = []
+    d = env.start
+    for _ in range(10):
+        S.append(d)
+        d = markets.get("IN").next_session(d)
+    fall, victims = S[3], (STOCKS[1][1], STOCKS[2][1])
+    if phase == "setup":
+        import replays_s84_model as M
+        p = env.dir / "held_prices.parquet"
+        held = pd.read_parquet(p)
+        held["date"] = pd.to_datetime(held["date"]).dt.date
+        for isin in victims:
+            m = (held["isin"] == isin) & (held["date"] >= fall)
+            held.loc[m, "close"] = (held.loc[m, "close"] * 0.75).round(4)
+        held.to_parquet(p)
+        from pflab.agents import analyst as an
+        cfg = {"model": "claude-opus-5-5", "cap": 300.0, "ask_above": 1000.0, "usd_inr": 90.0, "adopted": True, "policy": {}, "acceptance": {}, "paper": {}, "tijori_to_analyst": True, "counted_since": None}
+        an.config = lambda path=None: dict(cfg)
+
+        def answers(case, n):
+            sym = case.get("symbol") or "X"
+            return {"happened": f"{sym} fell with no company news stored (drill).", "sources": ["the stored closes"], "class": "market_fear", "known": "The fall is in the stored closes.", "pending": "",
+                    "pending_date": "", "other_names": [], "choices": [{"symbol": sym, "option": "hold", "reason": "scripted: an ordinary fall"}],
+                    "likelihood": M.words("unlikely", "likely", "unlikely")}
+        env.think_scen = M.Scenario("accelerated", answers)
+        counter = getattr(env, "pk", {}).get("counter") if hasattr(env, "pk") else None
+        env.pk = {"counter": counter if counter is not None else {}}
+        env.think_client = M.ScriptedClient(env.think_scen.responder(env.cur()), env.pk["counter"])
+        gate.set_client(env.think_client)
+        c.note(f"setup: {len(victims)} names fall 25% on {fall}; the model behind the gateway is scripted")
+        return
+    if phase != "check":
+        return
+    from pflab.think import cases, score
+    cur = env.cur()
+    gate.set_client(None)
+    cs = cases._rows(cur, "think_cases_s84", cases._CASE)
+    examined = [x for x in cs if x["state"] != "noticed"]
+    c.ok(bool(examined), f"the watch opened cases on the shocked names ({[(x['symbol'], x['state'], x['klass']) for x in examined][:6]})", "think/watch.py, think/wire.py")
+    per_day = {}
+    for x in examined:
+        per_day[str(x["opened_on"])] = per_day.get(str(x["opened_on"]), 0) + 1
+    c.ok(all(v <= 3 for v in per_day.values()), f"never more than 3 new cases examined in a day ({per_day})", "think/watch.py")
+    steps = [s for x in examined for s in cases.steps(cur, x["case_id"]) if s["model"]]
+    c.ok(bool(steps) and all(s["engine"] == "anthropic" and s["model"] and s["thinking"] for s in steps), f"every model step stores its engine, model and thinking level ({len(steps)} steps)", "think/session.py, llm/gateway.py")
+    dec = cases.decisions(cur)
+    c.ok(bool(dec), f"decisions were stored ({len(dec)})", "think/session.py")
+    sec = [x for x in dec if not str(x["isin"]).startswith(("MARKET:", "MACRO:", "STORY:"))]
+    both = [x for x in sec if {"model", "rule"} <= {o["track"] for o in cases.options(cur, x["case_id"]) if o["isin"] == x["isin"]}]
+    c.ok(len(both) == len(sec) and bool(sec), f"both the model's and the rule's choices are stored for every decision on a security ({len(both)} of {len(sec)})", "think/session.py")
+    pseudo = [x for x in dec if x not in sec]
+    c.note(f"decisions on a non-security case (market, macro, storyline): {len(pseudo)}; their stored tracks: {sorted({o['track'] for x in pseudo for o in cases.options(cur, x['case_id'])})} (the model's track is not stored for them: T8 cannot score it)")
+    n_sales = cur.execute("SELECT count(*) FROM paper_orders WHERE isin IN (?,?) AND side IN ('sell','SELL') AND note LIKE 'case #%'", list(victims)).fetchone()[0]
+    c.note(f"sale orders from cases on the shocked names: {n_sales} (the scripted model says hold; the rule sells when its expected result after tax beats holding by 1 point of the position, or on class damage)")
+    n_ans = env.think_client.counter.get("answers", 0)
+    c.ok(n_ans > 0, f"the model's answers were all scripted ({n_ans}); nothing was sent", "tools/replays_s84_model.py")
+    if getattr(env, "think_scen", None):
+        c.note(f"model answers by case: {[(a['case_id'], a['n'], a['model'].split('-')[1]) for a in env.think_scen.log][:8]}")
+    n = score.score_due(cur, markets.get("IN").next_session(S[9]))
+    c.note(f"score_due at the end of the run wrote {n} row(s) (a decision 5 sessions old is scored at the 5-session horizon)")
+    try:
+        blk = env.client().get("/api/core").json()
+        c.ok("think" in json.dumps(blk), "Today's payload carries the thinking block", "core/card.py today_extras / think/wire.py")
+    except Exception as e:
+        c.note(f"Today's payload was not read: {type(e).__name__}")
+    job = env.job_status("think_loop")
+    c.ok(job is not None and job[0] != "failed", f"the think_loop job ran by itself ({job[0] if job else 'never ran'})", "service/tasks_s79_think84.py")
+
+
 ACCELERATED_STEPS: List[Tuple[str, Callable, Callable]] = [
     ("standing", step_main_assertions, lambda env=None: (True, "")),
     ("tactical_view_issued_executed_scored", step_tactical_view, needs("pflab.core.views", why="the tactical lane")),
@@ -1786,6 +1864,7 @@ ACCELERATED_STEPS: List[Tuple[str, Callable, Callable]] = [
     ("session_replay", step_session_replay, needs("pflab.core.session", why="B6b session loop")),
     ("view_entry_exit_closed", step_view_entry, needs("pflab.core.session", "pflab.core.exits", "pflab.core.sleeves", why="B5/B6b: entries by the session loop's tactical views, exits and scores by the exit manager")),   # after the replay it reads
     ("picks_learning_book", step_picks, needs("pflab.core.picks", "pflab.core.pick_share", "pflab.core.pick_score", "pflab.us.picks_wire", why="S83: the picks, the share rule, the scorecard, the US picks; 20 sessions: the accelerated_picks drill")),
+    ("thinking_loop", step_thinking, needs("pflab.think.wire", "pflab.think.watch", "pflab.think.session", "pflab.think.rule", "pflab.llm.gateway", why="S84: the thinking loop; run in the accelerated_thinking drill")),
 ]
 
 
@@ -1854,7 +1933,7 @@ def run_accelerated(env: "Env", c: Check, steps: Optional[List[Tuple[str, Callab
 
 @drill("accelerated", 20)
 def drill_accelerated(env: "Env", c: Check) -> None:
-    run_accelerated(env, c)
+    run_accelerated(env, c, steps=[s for s in ACCELERATED_STEPS if s[0] != "thinking_loop"])            # the S84 step shocks two names: it runs in accelerated_thinking
     bad = [s for s in c.steps if s["status"] in ("FAIL", "ERROR")]
     c.note(f"steps: {[(s['name'], s['status']) for s in c.steps]}")
     if not any(e.startswith("FAIL:") for e in c.evidence) and bad:
@@ -1865,6 +1944,16 @@ def drill_accelerated(env: "Env", c: Check) -> None:
 def drill_accelerated_picks(env: "Env", c: Check) -> None:
     """S83: the standing assertions and the picks step over 20 sessions (India and US, a weekend and a holiday inside) with two scripted strategist sessions."""
     run_accelerated(env, c, steps=[s for s in ACCELERATED_STEPS if s[0] in ("standing", "picks_learning_book")], n_sessions=PICKS_SESSIONS)
+    bad = [s for s in c.steps if s["status"] in ("FAIL", "ERROR")]
+    c.note(f"steps: {[(s['name'], s['status']) for s in c.steps]}")
+    if not any(e.startswith("FAIL:") for e in c.evidence) and bad:
+        c.ok(False, f"steps failed: {[s['name'] for s in bad]}", "tools/drills_s81.py ACCELERATED_STEPS")
+
+
+@drill("accelerated_thinking", 25)
+def drill_accelerated_thinking(env: "Env", c: Check) -> None:
+    """S84: the standing assertions and the thinking loop over ten sessions (India and US, a weekend and a holiday inside) with a scripted model behind the gateway."""
+    run_accelerated(env, c, steps=[s for s in ACCELERATED_STEPS if s[0] in ("standing", "thinking_loop")], n_sessions=10)
     bad = [s for s in c.steps if s["status"] in ("FAIL", "ERROR")]
     c.note(f"steps: {[(s['name'], s['status']) for s in c.steps]}")
     if not any(e.startswith("FAIL:") for e in c.evidence) and bad:

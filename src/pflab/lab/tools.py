@@ -267,7 +267,9 @@ def company_card(ctx, a):
 # --- S83 L3: the picks sleeve (core/picks.py): the strategist names stocks and writes reasons; code makes every number (A63) ---------------------------------------------------
 
 ITEM = {"type": "object", "properties": {"symbol": {"type": "string"}, "thesis": {"type": "string", "description": "why, 60+ characters"}, "break_condition": {"type": "string", "description": "what would break it"},
-                                         "storylines": {"type": "array", "items": {"type": "integer"}, "description": "storyline ids it rests on, may be empty"}}, "required": ["symbol", "thesis", "break_condition"]}
+                                         "storylines": {"type": "array", "items": {"type": "integer"}, "description": "storyline ids it rests on, may be empty"},
+                                         "takes_from": {"type": "string", "description": "20+ characters: what this pick takes from the earlier note or case on the name; required when the company card's 'what we already know' lists one"}},
+                                         "required": ["symbol", "thesis", "break_condition"]}
 
 
 def _session_ref(ctx) -> str:
