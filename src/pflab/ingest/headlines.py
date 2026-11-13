@@ -65,12 +65,12 @@ class Client:
         gap = self.intervals.get(source, 1.0) - (self._clock() - self._last.get(source, -1e9))
         if gap > 0:
             self._sleep(min(gap, 8.0))
-        self._last[source] = self._clock()
         self.requests[source] = self.requests.get(source, 0) + 1
         try:
             r = self._session.get(url, headers={"User-Agent": UA, "Accept-Encoding": "gzip, deflate"}, timeout=self.timeout)
-        except Exception as e:
+        except Exception as e:                                         # a request that never reached the host (no network) is not paced: the next ask follows at once (a drill's faked net must not stall the loop)
             raise RuntimeError(f"{type(e).__name__}: {str(e)[:100]}")
+        self._last[source] = self._clock()
         code = int(getattr(r, "status_code", 0) or 0)
         if code == 200:
             return r.text
