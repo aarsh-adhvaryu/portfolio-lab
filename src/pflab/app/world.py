@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 SENSES = [("markets", "Market data", ["collect", "prices", "nav", "global", "backfill", "instruments", "bars_1m", "data_s79b"], "prices, NAVs, world markets"),
-          ("filings", "Filings and news", ["filings", "kg"], "company filings, news, the graph's intake"),
+          ("filings", "Filings and news", ["filings", "kg", "sec_8k"], "company filings, news, the graph's intake"),
           ("broker", "Kite", ["live", "tradecheck", "idle_cash", "kite_token"], "live prices for what the system holds; his own trades are ignored"),
           ("record", "The account", ["ledger", "deposits"], "the system's own account (statements and deposits stand aside)"),
           ("us", "US sleeve", ["us_fx"], "USDINR rates")]

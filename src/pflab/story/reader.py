@@ -118,19 +118,20 @@ def process(con, now: datetime, items: List[dict], *, chat=None, cloud_fn=None, 
 
 def cloud_fn_for(con, client, now: datetime, item_provider: Callable[[], dict], gate=None, cfg=None) -> Callable:
     """The Sonnet escalation for a disagreement: one request, the same schema, the same validators (the answer is parsed as JSON and checked by `constrained.check`). It goes through
-    `hq/llm.call` as the agent `escalation` (priced first, egress-checked, logged); the item is a code-written sentence, never raw news."""
+    the one door (`llm/gateway.py`, role `quick`, agent `escalation`: priced first, egress-checked, logged); the item is a code-written sentence, never raw news."""
     def fn(valid: List[dict], rule: str):
         from pflab.agents import analyst as an
-        from pflab.hq import egress, governor as gv, llm
-        from pflab.llm import constrained
+        from pflab.hq import egress, llm
+        from pflab.llm import constrained, gateway
         item = item_provider()
         open_stories = store.listing(con, ("open",))
         txt = prompt(item, open_stories) + f"\n\nThe local reader's samples disagreed ({rule}): {json.dumps(valid)[:600]}\nReply with the JSON object only."
-        p = {"model": gv.SONNET, "max_tokens": 400, "system": [{"type": "text", "text": SYSTEM}], "messages": [{"role": "user", "content": [{"type": "text", "text": txt}]}]}
-        s = llm.call(con, "escalation", p, client, now=now, mode="normal", private_text=txt, gate=gate or egress.load(con), topic="storyline escalation", question=item["key"], cfg=cfg or an.config())
-        obj = llm.json_of(llm.text_of(s.message))
+        s = gateway.call(con, "quick", [{"type": "text", "text": SYSTEM}], [{"role": "user", "content": [{"type": "text", "text": txt}]}], max_tokens=400, thinking="low", agent="escalation",
+                         purpose="storyline escalation", now=now, mode="normal", private_text=txt, gate=gate or egress.load(con), topic="storyline escalation", question=item["key"],
+                         cfg=cfg or an.config(), client=client)
+        obj = llm.json_of(s["text"])
         bad = constrained.check(obj, schema()) or validate_for({x["storyline_id"] for x in open_stories})(obj)
         if bad:
             raise ValueError(f"the escalated answer was refused: {bad}")
-        return {"answer": obj, "cost_rupees": s.cost_inr}
+        return {"answer": obj, "cost_rupees": s["cost_rupees"]}
     return fn

@@ -460,15 +460,27 @@ def params(req: Request, model: str = MODEL) -> Dict[str, Any]:
             "output_config": {"effort": EFFORT}, "messages": [{"role": "user", "content": content}]}
 
 
-def answer_text(message) -> str:
-    """Text of the answer with [D#] after each cited passage (document numbers as sent)."""
-    parts = []
-    for b in message.content:
+def _text_blocks(x) -> list:
+    """The text blocks of an answer as [(text, [{"document_index", "url", "title"}])]: from an SDK message (its `content`), or from the door's `text_blocks` ([{"text", "citations"}])."""
+    out = []
+    if isinstance(x, (list, tuple)):
+        for b in x:
+            out.append((b.get("text") or "", [dict(c) for c in (b.get("citations") or [])]))
+        return out
+    for b in x.content:
         if getattr(b, "type", "") != "text":
             continue
-        cites = sorted({c.document_index + 1 for c in (getattr(b, "citations", None) or [])
-                        if getattr(c, "document_index", None) is not None})
-        parts.append(b.text + ("".join(f" [D{i}]" for i in cites) if cites else ""))
+        out.append((b.text or "", [{"document_index": getattr(c, "document_index", None), "url": getattr(c, "url", None), "title": getattr(c, "title", None) or getattr(c, "document_title", None)}
+                                   for c in (getattr(b, "citations", None) or [])]))
+    return out
+
+
+def answer_text(message) -> str:
+    """Text of the answer with [D#] after each cited passage (document numbers as sent). `message`: an SDK message or the door's `text_blocks`."""
+    parts = []
+    for text, cites in _text_blocks(message):
+        idx = sorted({c["document_index"] + 1 for c in cites if c.get("document_index") is not None})
+        parts.append(text + ("".join(f" [D{i}]" for i in idx) if idx else ""))
     return "".join(parts).strip()
 
 
@@ -520,7 +532,17 @@ def keep(con, cid: int, req: Request, text: str, usage, batch: bool, cfg: dict, 
     from pflab.kg import graph as g
     it, ot = int(getattr(usage, "input_tokens", 0) or 0), int(getattr(usage, "output_tokens", 0) or 0)
     usd, inr = cost(it, ot, batch, cfg["usd_inr"], cfg["model"])
-    doc = g.doc(con, "analyst_note", f"api-call-{cid}", now, req.question[:200], source=f"analyst ({cfg['model']})",
+    doc = _note(con, cid, req, text, cfg["model"], now)
+    con.execute("UPDATE api_calls SET status='done', input_tokens=?, output_tokens=?, cost_usd=?, cost_inr=?, note_doc=?, "
+                "finished_at=? WHERE call_id=?", [it, ot, usd, inr, doc, now, cid])
+    return inr
+
+
+def _note(con, cid: int, req: Request, text: str, model: str, now: datetime) -> str:
+    """The answer as a dated graph document linked to the companies, and a memory row; returns the document id."""
+    from pflab.agents import memory as mem
+    from pflab.kg import graph as g
+    doc = g.doc(con, "analyst_note", f"api-call-{cid}", now, req.question[:200], source=f"analyst ({model})",
                 attrs={"answer": text, "call_id": cid, "documents": [f"D{k} {d.published} {d.kind} {d.source}"
                                                                      for k, d in enumerate(req.docs, start=1)]}, now=now)
     for isin in req.isins:
@@ -529,18 +551,25 @@ def keep(con, cid: int, req: Request, text: str, usage, batch: bool, cfg: dict, 
                        "'analyst call #%'", [req.topic]).fetchone()[0]       # S57: the newest note replaces the last one
     mem.remember(con, "note", f"Analyst note on {req.topic} ({now:%Y-%m-%d}): {text[:1500]}", subject=req.topic,
                  source=f"analyst call #{cid}", now=now, supersedes=prev)
-    con.execute("UPDATE api_calls SET status='done', input_tokens=?, output_tokens=?, cost_usd=?, cost_inr=?, note_doc=?, "
-                "finished_at=? WHERE call_id=?", [it, ot, usd, inr, doc, now, cid])
-    return inr
+    return doc
 
 
-def _teach(con, cid: int, p: dict, msg, source: str, now: datetime, inr: float) -> None:
-    """S79b item 17: keep this call's redacted input and output in the teacher log (never blocks or fails the call)."""
-    try:
-        from pflab.llm import teacher
-        teacher.record_message(con, cid, p, msg, source, now, agent="analyst", cost_inr=inr)
-    except Exception:
-        pass
+def keep_door(con, cid: int, req: Request, text: str, model: str, now: datetime) -> None:
+    """Keep a note whose call went through the door: the door has already written the row's tokens, cost and status; this adds the note's link."""
+    doc = _note(con, cid, req, text, model, now)
+    con.execute("UPDATE api_calls SET note_doc=? WHERE call_id=?", [doc, cid])
+
+
+def _door(con, req: Request, *, model: str, now: datetime, cfg: dict, system: str, content, documents=None, max_tokens: int, effort: str, client, purpose: str,
+          approved: bool = False, web: bool = False, max_uses: int = 5, private_text: Optional[str] = None) -> dict:
+    """S85 (G3): one analyst call through the door (`llm/gateway.py`, agent `analyst`: egress gate, price, governor, his cap, the row in `api_calls`; the doorbell's own gate ran before this).
+    The slider's model is asked for by name when the engine in use prices it; otherwise the role of that tier answers (`web=True` stays on an engine with a web tool, by the door's rule)."""
+    from pflab.llm import gateway
+    override, role = gateway.prefer(con, model)
+    thinking = effort if effort in gateway.LEVELS else None
+    return gateway.call(con, role, system, [{"role": "user", "content": content}], documents=documents, max_tokens=max_tokens, thinking=thinking, model=override, agent="analyst",
+                        purpose=purpose, now=now, mode="normal", private_text=req.question if private_text is None else private_text, topic=req.topic, question=req.question, cfg=cfg, client=client, approved=approved,
+                        web=web, web_max_uses=max_uses)
 
 
 def ring(con, req: Request, client, *, now: Optional[datetime] = None, approved: bool = False, trial: bool = False,
@@ -561,22 +590,35 @@ def ring(con, req: Request, client, *, now: Optional[datetime] = None, approved:
     except EgressBlocked as e:
         return Outcome("blocked", str(e))
     p = params(req, cfg["model"])
-    n_in = client.messages.count_tokens(model=p["model"], system=p["system"], messages=p["messages"],
-                                        thinking=p["thinking"]).input_tokens
-    _, est = cost(n_in, MAX_TOKENS, not req.urgent, cfg["usd_inr"], p["model"])
-    warn = check_budget(con, est, cfg, now, approved)
-    if not req.urgent:
+    if not req.urgent:                                                  # the overnight batch (the Message Batches API is not behind the door: no engine but Anthropic has it)
+        n_in = client.messages.count_tokens(model=p["model"], system=p["system"], messages=p["messages"],
+                                            thinking=p["thinking"]).input_tokens
+        _, est = cost(n_in, MAX_TOKENS, True, cfg["usd_inr"], p["model"])
+        warn = check_budget(con, est, cfg, now, approved)
         cid = _log(con, req, "batch", p["model"], "queued", now, p, est)
         return Outcome("queued", "queued for tonight's batch (half price)", cid, est, warn)
-    cid = _log(con, req, "live", p["model"], "sending", now, p, est)
-    msg = client.beta.messages.create(**p, betas=[FALLBACK_BETA], fallbacks="default")
-    if getattr(msg, "stop_reason", "") == "refusal":
-        con.execute("UPDATE api_calls SET status='refused', finished_at=? WHERE call_id=?", [now, cid])
-        return Outcome("refused", "the analyst declined this request", cid, est, warn)
-    text, _ = only_sourced_numbers(answer_text(msg), req)
-    inr = keep(con, cid, req, text, msg.usage, False, cfg, now)
-    _teach(con, cid, p, msg, "analyst", now, inr)
-    return Outcome("done", text, cid, inr, warn)
+    try:                                                                # S85 (G3): live through the door: priced first, governed, his cap, logged
+        s = _door(con, req, model=cfg["model"], now=now, cfg=cfg, system=SYSTEM, content=req.question, documents=_documents(req), max_tokens=MAX_TOKENS, effort=EFFORT,
+                  client=client, purpose="analyst ring", approved=approved)
+    except RuntimeError as e:
+        cid = _declined(e)
+        if cid is None:
+            raise
+        return Outcome("refused", "the analyst declined this request", cid)
+    text, _ = only_sourced_numbers(answer_text(s["text_blocks"]), req)
+    keep_door(con, s["call_id"], req, text, s["model"] or cfg["model"], now)
+    return Outcome("done", text, s["call_id"], s["cost_rupees"], list(s["warnings"]))
+
+
+def _documents(req: Request) -> list:
+    """The request's public documents as the door's document blocks (the citations come back as [D#])."""
+    return [{"title": f"D{k} {d.published} {d.kind} ({d.source})"[:500], "text": d.text or d.title} for k, d in enumerate(req.docs, start=1)]
+
+
+def _declined(e: BaseException) -> Optional[int]:
+    """The call number of a model's own refusal (the door raises RuntimeError 'the model declined this request (call #N)'), else None."""
+    m = re.search(r"declined this request \(call #(\d+)\)", str(e))
+    return int(m.group(1)) if m else None
 
 
 # --- the Sonnet comparison (docs/STUDIES.md) --------------------------------------------------------
@@ -589,22 +631,11 @@ def trial_note(con, req: Request, client, model: str, *, now: Optional[datetime]
     now = now or datetime.now()
     cfg = {**(cfg or config()), "model": model}
     gate(req, pv if pv is not None else private_values(con))
-    p = params(req, model)
-    n_in = client.messages.count_tokens(model=p["model"], system=p["system"], messages=p["messages"],
-                                        thinking=p["thinking"]).input_tokens
-    _, est = cost(n_in, MAX_TOKENS, False, cfg["usd_inr"], model)
-    check_budget(con, est, cfg, now, approved=True)
-    cid = _log(con, req, "trial", model, "sending", now, p, est)
-    msg = client.beta.messages.create(**p, betas=[FALLBACK_BETA], fallbacks="default")
-    raw = answer_text(msg)
+    s = _door(con, req, model=model, now=now, cfg=cfg, system=SYSTEM, content=req.question, documents=_documents(req), max_tokens=MAX_TOKENS, effort=EFFORT, client=client,
+              purpose="analyst trial", approved=True)                  # S85 (G3): through the door (the comparison's own calls are approved, as before)
+    raw = answer_text(s["text_blocks"])
     kept, _ = only_sourced_numbers(raw, req)
-    it, ot = int(getattr(msg.usage, "input_tokens", 0) or 0), int(getattr(msg.usage, "output_tokens", 0) or 0)
-    usd, inr = cost(it, ot, False, cfg["usd_inr"], model)
-    con.execute("UPDATE api_calls SET status='done', input_tokens=?, output_tokens=?, cost_usd=?, cost_inr=?, finished_at=? "
-                "WHERE call_id=?", [it, ot, usd, inr, now, cid])
-    _teach(con, cid, p, msg, "analyst_trial", now, inr)
-    return {"model": model, "served_by": getattr(msg, "model", model), "stop": getattr(msg, "stop_reason", ""),
-            "raw": raw, "kept": kept, "cost_inr": inr, "call_id": cid}
+    return {"model": model, "served_by": s["model"] or model, "stop": s["stop_reason"], "raw": raw, "kept": kept, "cost_inr": s["cost_rupees"], "call_id": s["call_id"]}
 
 
 def write_calculation(con, prompt: str, system: str, client, *, now: Optional[datetime] = None,
@@ -621,20 +652,9 @@ def write_calculation(con, prompt: str, system: str, client, *, now: Optional[da
     # `gate_text`: the parts that can carry the investor's data (his question, feedback from runs on real rows); the schema
     # and the made-up sample rows are written by code and are not his
     gate(Request(gate_text if gate_text is not None else prompt, "workshop", []), pv if pv is not None else private_values(con))
-    p = {"model": cfg["model"], "max_tokens": MAX_TOKENS, "system": system, "thinking": {"type": "adaptive"},
-         "output_config": {"effort": EFFORT}, "messages": [{"role": "user", "content": prompt}]}
-    n_in = client.messages.count_tokens(model=p["model"], system=p["system"], messages=p["messages"],
-                                        thinking=p["thinking"]).input_tokens
-    _, est = cost(n_in, MAX_TOKENS, False, cfg["usd_inr"], p["model"])
-    check_budget(con, est, cfg, now, approved)
-    cid = _log(con, req, "live", p["model"], "sending", now, p, est)
-    msg = client.beta.messages.create(**p, betas=[FALLBACK_BETA], fallbacks="default")
-    text = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
-    it, ot = int(getattr(msg.usage, "input_tokens", 0) or 0), int(getattr(msg.usage, "output_tokens", 0) or 0)
-    usd, inr = cost(it, ot, False, cfg["usd_inr"], p["model"])
-    con.execute("UPDATE api_calls SET status='done', input_tokens=?, output_tokens=?, cost_usd=?, cost_inr=?, "
-                "finished_at=? WHERE call_id=?", [it, ot, usd, inr, now, cid])
-    return text
+    s = _door(con, req, model=cfg["model"], now=now, cfg=cfg, system=system, content=prompt, max_tokens=MAX_TOKENS, effort=EFFORT, client=client, purpose="workshop calculation",
+              approved=approved, private_text=gate_text if gate_text is not None else prompt)                                      # S85 (G3): through the door
+    return s["text"]
 
 
 def make_client(secrets=None):
@@ -642,14 +662,8 @@ def make_client(secrets=None):
     (ANTHROPIC_API_KEY or an `ant auth login` profile). Only this module talks to the API."""
     from pflab import guard
     guard.require("paid")                       # S65: the workshop makes no paid call unless run with --paid
-    import anthropic
-    headers = {}
-    if secrets is not None and secrets.has("anthropic", "workspace_id"):
-        # a key not scoped to a workspace must name one on every request (API error seen 2026-10-17)
-        headers["anthropic-workspace-id"] = secrets.get("anthropic", "workspace_id")
-    if secrets is not None and secrets.has("anthropic", "api_key"):
-        return anthropic.Anthropic(api_key=secrets.get("anthropic", "api_key"), default_headers=headers or None)
-    return anthropic.Anthropic(default_headers=headers or None)
+    from pflab.llm import vendors               # S85: the SDK is imported in llm/ only
+    return vendors.anthropic_client(secrets)
 
 
 def deep_request(con, question: str, asof: date, urgent: bool = True) -> Request:
@@ -696,21 +710,18 @@ def web_cited(message) -> tuple:
     srcs: Dict[str, int] = {}
     titles: Dict[str, str] = {}
     parts, dropped = [], 0
-    for b in message.content:
-        if getattr(b, "type", "") != "text":
-            continue
-        cites = getattr(b, "citations", None) or []
+    for btext, cites in _text_blocks(message):
         nums = []
         for c in cites:
-            url = getattr(c, "url", None)
+            url = c.get("url")
             if url:
                 srcs.setdefault(url, len(srcs) + 1)
-                titles.setdefault(url, getattr(c, "title", "") or url)
+                titles.setdefault(url, c.get("title") or url)
                 nums.append(srcs[url])
-        if not nums and _DIG.search(_no_dates(b.text or "")):
+        if not nums and _DIG.search(_no_dates(btext)):
             dropped += 1
             continue
-        parts.append((b.text or "") + "".join(f" [W{n}]" for n in sorted(set(nums))))
+        parts.append(btext + "".join(f" [W{n}]" for n in sorted(set(nums))))
     text = "".join(parts).strip()
     if dropped:
         text += f"\n\n({dropped} passage(s) removed: they carried numbers without a cited page.)"
@@ -735,35 +746,19 @@ def web_search(con, question: str, client, *, now: Optional[datetime] = None, cf
     old = _fresh_on_subject(con, now, question=question)                  # S84 never pay twice: the same question on a name nothing has moved since costs nothing
     if old:
         return Outcome("reused", f"(note of {old[1]:%Y-%m-%d}, reused) {old[2]}", old[0])
-    tools = [{"type": WEB_TOOL, "name": "web_search", "max_uses": int(max_uses)}]
-    p = {"model": cfg["model"], "max_tokens": int(max_tokens), "system": WEB_SYSTEM, "thinking": {"type": "adaptive"},
-         "output_config": {"effort": effort}, "tools": tools, "messages": [{"role": "user", "content": question}]}
-    n_in = client.messages.count_tokens(model=p["model"], system=p["system"], messages=p["messages"], tools=tools,
-                                        thinking=p["thinking"]).input_tokens
-    _, est = cost(n_in, int(max_tokens), False, cfg["usd_inr"], p["model"])
-    est += int(max_uses) * WEB_USD_PER_SEARCH * cfg["usd_inr"]
-    warn = check_budget(con, est, cfg, now, approved)
-    cid = _log(con, req, "web", p["model"], "sending", now, p, est)
-    msgs = list(p["messages"])
-    msg = None
-    for _ in range(3):                                  # a long server-side search loop pauses; resume it
-        msg = client.beta.messages.create(**{**p, "messages": msgs}, betas=[FALLBACK_BETA], fallbacks="default")
-        if getattr(msg, "stop_reason", "") != "pause_turn":
-            break
-        msgs = msgs + [{"role": "assistant", "content": msg.content}]
-    if getattr(msg, "stop_reason", "") == "refusal":
-        con.execute("UPDATE api_calls SET status='refused', finished_at=? WHERE call_id=?", [now, cid])
-        return Outcome("refused", "the analyst declined this request", cid, est, warn)
-    text, sources, _ = web_cited(msg)
+    try:                                                                # S85 (G3): through the door with the web tool (an engine with none stays on one that has: `claude`); the searches are billed by the door
+        s = _door(con, req, model=cfg["model"], now=now, cfg=cfg, system=WEB_SYSTEM, content=question, max_tokens=int(max_tokens), effort=effort, client=client,
+                  purpose="analyst web search", approved=approved, web=True, max_uses=int(max_uses))
+    except RuntimeError as e:
+        cid = _declined(e)
+        if cid is None:
+            raise
+        return Outcome("refused", "the analyst declined this request", cid)
+    text, sources, _ = web_cited(s["text_blocks"])
     if sources:
         text += "\n\nSources:\n" + "\n".join(f"[W{n}] {t} - {u}" for n, t, u in sources)
-    searches = int(getattr(getattr(msg.usage, "server_tool_use", None), "web_search_requests", 0) or 0)
-    inr = keep(con, cid, req, text, msg.usage, False, cfg, now)
-    _teach(con, cid, p, msg, "analyst_web", now, inr)
-    extra = searches * WEB_USD_PER_SEARCH
-    con.execute("UPDATE api_calls SET cost_usd = coalesce(cost_usd, 0) + ?, cost_inr = coalesce(cost_inr, 0) + ? "
-                "WHERE call_id=?", [extra, extra * cfg["usd_inr"], cid])
-    return Outcome("done", text, cid, inr + extra * cfg["usd_inr"], warn)
+    keep_door(con, s["call_id"], req, text, s["model"] or cfg["model"], now)
+    return Outcome("done", text, s["call_id"], s["cost_rupees"], list(s["warnings"]))
 
 
 def local_answer(con, req: Request, llm=None) -> Optional[str]:

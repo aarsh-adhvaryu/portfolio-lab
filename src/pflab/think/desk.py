@@ -764,7 +764,15 @@ def plan_text(con, day: Optional[date] = None) -> str:
     """The desk's latest note for Today and the 15:45 report: the plan of the last session on or before `day`."""
     day = day or date.today()
     r = con.execute("SELECT plan_text, mode, status FROM desk_sessions_s84 WHERE day <= ? AND status IN ('done','quiet','budget') ORDER BY started_at DESC, session_id DESC LIMIT 1", [day]).fetchone()
-    return r[0] if r and r[0] else "The desk has not sat down yet."
+    text = r[0] if r and r[0] else "The desk has not sat down yet."
+    try:                                                                      # S85 E7: notes he sent about the whole market or a sector go into the pre-open plan
+        from pflab.think import chat_hooks
+        extra = chat_hooks.preopen_text(con, day)
+        if extra:
+            text = f"{text}\n{extra}"
+    except Exception:
+        pass
+    return text
 
 
 def cost_line(con, now: Optional[datetime] = None) -> str:
@@ -801,6 +809,11 @@ def tick_hook(con, now: datetime, root=None) -> dict:
     try:
         if not on():
             return {"off": True}
+        try:                                                                  # S85 E7: names he suggested beyond the day's 5 are taken up by the next desk
+            from pflab.think import chat_hooks
+            chat_hooks.run_queued_suggestions(con, now, root=root)
+        except Exception:
+            pass
         m = mode_for(con, now)
         if not m:
             return {"nothing_open": True}

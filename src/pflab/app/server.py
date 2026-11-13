@@ -4,7 +4,9 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
+from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -185,8 +187,8 @@ def create_app(rt) -> FastAPI:
 
     @app.post("/api/chats")
     def new_chat():
-        from pflab.app import chat as ch
-        cid = ch.create(rt.cursor(), rt.clock())
+        from pflab.app import assistant
+        cid = assistant.new_chat(rt.cursor(), rt.clock())["chat_id"]          # S85: a new chat is a new thread for the laptop and Telegram alike
         rt.bump("chat")
         return {"id": cid}
 
@@ -400,13 +402,67 @@ def create_app(rt) -> FastAPI:
         return json.loads(json.dumps(h, default=str))
 
     @app.post("/api/assistant")
-    def assistant_post(text: str = Body(..., embed=True), context: str = Body("", embed=True)):
-        """A message to the assistant; the answer is worked out in the background and appears in the thread (its steps visible while it works)."""
+    def assistant_post(text: str = Body("", embed=True), context: str = Body("", embed=True), model: Optional[str] = Body(None, embed=True), thinking: Optional[str] = Body(None, embed=True),
+                       files: Optional[list] = Body(None, embed=True)):
+        """A message to the assistant (S85: the intake takes it and answers at once; a worker works the answer out and it appears in the thread with its model and price). `model` / `thinking` are the
+        picker's choice for this message (omitted: the chat's saved choice, else Auto); `files` are upload ids from /api/assistant/files."""
         from pflab.app import assistant
         try:
-            return assistant.post(rt, text, context)
+            return assistant.post(rt, text, context, model, thinking, files)
         except ValueError as e:
             raise HTTPException(400, str(e))
+
+    @app.post("/api/assistant/files")
+    async def assistant_files(request: Request):
+        """A file he chose on the laptop, kept until the message that carries it is sent (raw body, `x-filename` header): -> {"upload_id", "name", "size"}. The local check and the readers run in the intake."""
+        from urllib.parse import unquote
+        from pflab.app import assistant
+        data = await request.body()
+        if not data:
+            raise HTTPException(400, "empty file")
+        if len(data) > MAX_UPLOAD:
+            raise HTTPException(413, f"files up to {MAX_UPLOAD // 2**20} MB")
+        return assistant.stage_file(rt, unquote(request.headers.get("x-filename", "file")), data)
+
+    @app.post("/api/assistant/prefs")
+    def assistant_prefs(model: Optional[str] = Body(None, embed=True), thinking: Optional[str] = Body(None, embed=True)):
+        """The picker: the model (auto, haiku, sonnet, opus, or a key of the engine in use) and the thinking level (low / medium / high / max) kept for this chat's next messages."""
+        from pflab.app import assistant
+        from pflab.entrance import store as estore
+        con = rt.cursor()
+        try:
+            out = estore.set_prefs(con, estore.latest_chat(con, rt.clock()), model, thinking, rt.clock())
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        rt.bump("chat")
+        return out
+
+    @app.post("/api/assistant/messages/{msg_id}/action")
+    def assistant_card_action(msg_id: int, action: str = Body(..., embed=True)):
+        """A button on a card in the chat (Yes / No on a question, an Undo): handed to `entrance/cards.py` (built beside this one); the same card answered from Telegram shows here too."""
+        try:
+            from pflab.entrance import cards
+        except ImportError:
+            raise HTTPException(501, "cards are not built in this version")
+        try:
+            out = cards.answer_card(rt.cursor(), msg_id, action, "laptop")
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        rt.bump("chat", "notifications")
+        return json.loads(json.dumps(out, default=str)) if isinstance(out, (dict, list)) else {"ok": True}
+
+    @app.get("/api/assistant/queue")
+    def assistant_queue():
+        """"Working on what you sent": the intake's queue (what is waiting, what is being read, what just finished)."""
+        from pflab.entrance import intake
+        return json.loads(json.dumps(intake.queue_status(rt.cursor()), default=str))
+
+    @app.get("/api/usage")
+    def usage_view(day: str = ""):
+        """What the AI calls cost on a day (default today): by purpose and model, with the month so far (S85 E8)."""
+        from pflab.entrance import usage
+        d = datetime.strptime(day, "%Y-%m-%d").date() if day else rt.clock().date()
+        return json.loads(json.dumps(usage.view(rt.cursor(), d), default=str))
 
     @app.post("/api/assistant/new")
     def assistant_new():
@@ -589,6 +645,37 @@ def create_app(rt) -> FastAPI:
         """S65: the beta features, with his switch and the channel's default."""
         from pflab import features
         return {"channel": features.channel(), "features": features.listing(rt.settings)}
+
+    @app.get("/api/engines")
+    def engines_api():
+        """S85 (E2a): the model engines behind the one door, for Settings: in use / shadow, roles with models and prices, what each lacks, his consents, the exam grade, the key (set or missing, never the value)."""
+        from pflab.llm import gateway
+        return json.loads(json.dumps({"engines": gateway.engines_status(rt.cursor()), "problems": gateway.open_problems(rt.cursor())}, default=str))
+
+    @app.post("/api/engines/use")
+    def engines_use(name: str = Body(...), yes: bool = Body(False)):
+        """Switch the engine in use (the next call, no restart). Without `yes` the answer carries the one-line notice and needs_yes."""
+        from pflab.llm import gateway
+        return json.loads(json.dumps(gateway.use(rt.cursor(), name, yes=bool(yes), now=rt.clock()), default=str))
+
+    @app.post("/api/engines/shadow")
+    def engines_shadow(name: str = Body(...), yes: bool = Body(False), off: bool = Body(False)):
+        from pflab.llm import gateway
+        con = rt.cursor()
+        r = gateway.unshadow(con, name) if off else gateway.shadow(con, name, yes=bool(yes), now=rt.clock())
+        return json.loads(json.dumps(r, default=str))
+
+    @app.post("/api/engines/key")
+    def engines_key(vendor: str = Body(...), value: str = Body(...)):
+        """A vendor's key into the secrets file (never shown again): the answer is only "stored"."""
+        from pflab.pm import secrets_setup as ss
+        if vendor not in ss.FIELDS or "api_key" not in {k for k, _, _ in ss.FIELDS[vendor]} or vendor == "kite":
+            raise HTTPException(400, "not a vendor with an API key")
+        try:
+            done = ss.set_values({(vendor, "api_key"): value})
+        except ss.SetupError as e:
+            raise HTTPException(400, str(e).replace(value, "***") if value else str(e))
+        return {"ok": bool(done), "answer": "stored" if done else "nothing to store"}
 
     @app.get("/api/setup")
     def setup_api():

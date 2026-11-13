@@ -221,6 +221,15 @@ const RD = (() => {
       <div class="setting"><div style="flex:1;display:flex;flex-direction:column;gap:2px"><span>Place real orders <span class="rd-chip down" style="margin-left:6px">BLOCKED</span></span><span class="small muted">There is no such ability. It is refused in code, not by a setting.</span></div></div>`;
     $('bkSave').onclick = async () => { S.settings = await post('/api/settings', { backup_dir: $('bkDir').value.trim() }); redraw(); };
     el.querySelectorAll('[data-ab]').forEach((b) => { b.onclick = async () => { const k = b.dataset.ab; S.settings = await post('/api/settings', { abilities: { [k]: !on(k) } }); redraw(); S.last = 0; load(true); }; });       // (the reload settles a draw that was already under way)
+    engineList(el);
+  }
+
+  /* S85: the model engines (E2a): each engine, its roles and prices, what it lacks, the exam grade, and a Use button (the notice and his Yes first). */
+  async function engineList(host) {
+    const box = document.createElement('div'); box.id = 'enginesP'; host.appendChild(box);
+    let d; try { d = await (await fetch('/api/engines')).json(); } catch (e) { return; }
+    box.innerHTML = `<span class="lbl">Model engines</span><span class="small muted">Which model answers behind every call. The loops, rules and prompts stay the same; a switch takes effect at the next call.</span>` + d.engines.map((e) => `<div class="setting"><div style="flex:1;display:flex;flex-direction:column;gap:2px"><span>${esc(e.name)} <span class="rd-chip ${e.in_use ? 'info' : 'mute'}" style="margin-left:6px">${e.in_use ? 'IN USE' : (e.shadow ? 'SHADOW' : (e.usable ? 'READY' : 'NOT READY'))}</span></span><span class="small muted">${Object.entries(e.roles).map(([r, v]) => esc(r + ': ' + v.model + ' ($' + v.price_in + '/' + v.price_out + ')')).join(' · ')}</span><span class="small muted">${esc(e.exam ? (e.exam.form_pass ? 'exam passed: ' : 'exam FAILED: ') + (e.exam.grade || '') : 'no exam yet')}${e.problems.length ? ' · ' + esc(e.problems.join('; ')) : ''}</span></div>${e.in_use ? '' : `<button class="btn" data-use="${esc(e.name)}" ${e.usable ? '' : 'disabled'}>Use</button>`}</div>`).join('');
+    box.querySelectorAll('[data-use]').forEach((b) => { b.onclick = async () => { const n = b.dataset.use; let r = await post('/api/engines/use', { name: n, yes: false }); if (r.needs_yes && confirm(r.notice)) r = await post('/api/engines/use', { name: n, yes: true }); alert(r.reason); engineList(host); box.remove(); }; });
   }
 
   /* ---- the entry points app.js calls ---- */

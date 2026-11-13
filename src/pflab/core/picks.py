@@ -353,6 +353,14 @@ def propose(con, now: datetime, market: str, items: List[dict], *, session_ref: 
         if why:
             out["refused"].append({"symbol": sym, "reason": why})
             continue
+        try:                                                                       # S85 E4: his `no_new_names` / `pause_buys` stop a new name entering the picks (a held name's thesis still goes in below)
+            from pflab.hq import rules as _rules
+            blk = (None if pos.get(key, 0.0) > 1e-9 else _rules.blocks(con, day, isin=key, symbol=sym, sleeve="longterm", cls="stocks", action="buy", new_name=True, market=market))
+        except Exception:
+            blk = None
+        if blk and not any(p["isin"] == key and p["state"] in ACTIVE for p in all_picks(con, market)):
+            out["refused"].append({"symbol": sym, "reason": f"{_rules.label(blk)} ({_rules.describe(blk)}) stops a new name from entering the picks"})
+            continue
         earlier = _earlier_knowledge(con, now, key, sym)
         takes = _norm((it or {}).get("takes_from"))
         if earlier and len(takes) < MIN_TAKES:                                      # S84 T2x: a name with an earlier note or case says what the pick takes from it

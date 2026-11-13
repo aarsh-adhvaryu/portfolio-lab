@@ -257,6 +257,15 @@ def _carry_out(con, now: datetime, o: dict, ctx: dict, results: dict) -> Optiona
     if px is None:
         log(con, now, "skip", f"{kind} order not carried out: no live quote for it this round ({o.get('reason', '')})", isin)
         return None
+    try:                                                                       # S85 E4: his standing instructions are read before every order (a held-back order names its rule)
+        from pflab.core import rules_gate
+        held_by = rules_gate.session_block(con, now, o, str(o.get("market") or MARKET), px)
+    except Exception:
+        held_by = None
+    if held_by:
+        log(con, now, "skip", f"{kind} order not carried out: {held_by} ({o.get('reason', '')})", isin)
+        results["blocked"].append({"isin": isin, "why": held_by})
+        return None
     if side == "buy" and ctx["breaker"].get("on"):
         log(con, now, "skip", f"{kind} buy not carried out: the circuit breaker is on (drawdown {ctx['breaker'].get('drawdown'):.1%}); selling stays open", isin)
         results["blocked"].append({"isin": isin, "why": "circuit breaker"})
@@ -651,6 +660,13 @@ def report_day(con, day: date, market: str = MARKET) -> str:
         share_line = pick_share.report_line(con, day)
         if share_line:
             L.append(share_line)
+    except Exception:
+        pass
+    try:                                                                                # S85 E4: what his standing instructions held back today
+        from pflab.core import rules_gate
+        rule_line = rules_gate.report_line(con, day)
+        if rule_line:
+            L.append(rule_line)
     except Exception:
         pass
     core = con.execute("SELECT status, orders_json FROM core_runs_s80 WHERE day=?", [day]).fetchone()

@@ -118,6 +118,14 @@ def _session(con, now: datetime, day: date, s: dict, cfg: Optional[dict], root) 
         dec = policy.decide(state)
     dec["notes"] = list(dec["notes"]) + pick_note
     chk = policy.check(con, state, dec)
+    try:                                                                   # S85 E4: his standing instructions (a rule may name the US market); a held-back order names its rule in the run's note
+        from pflab.core import rules_gate
+        kept, held_lines = rules_gate.apply_us(con, now, rupee_day, chk["orders"], cash_usd=marked.get("cash_usd"), total_usd=marked.get("value_usd"))
+        chk = {**chk, "orders": kept}
+        dec["notes"] = list(dec["notes"]) + held_lines
+    except Exception as e:
+        chk = {**chk, "orders": [o for o in chk["orders"] if o["side"] != "buy"]}
+        dec["notes"] = list(dec["notes"]) + [f"standing instructions unreadable ({type(e).__name__}): no US buying at this step"]
     placed = []
     for o in chk["orders"]:
         oid = book.place(con, now, day, o["isin"], o["symbol"], o["side"], qty=o["qty"], amount_usd=o["amount"], reason=o["reason"])

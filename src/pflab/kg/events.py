@@ -15,10 +15,35 @@ from typing import Iterable, List
 from pflab.kg2.classify import THESIS_BREAK_KINDS
 
 
+def _event_keys(con, isins: List[str]) -> dict:
+    """event key -> the key the caller asked for. A US company's events are stored under its pseudo-ISIN (ZZ + 10-digit CIK, S85); the book may hold it under a real ISIN or a `US:SYMBOL` key:
+    every key joined to the asked one by `instrument_alias` (either direction, any depth) is read too, and its events come back under the asked key. Indian ISINs have no alias: unchanged."""
+    keys = {i: i for i in isins}
+    try:
+        rows = con.execute("SELECT alias, isin FROM instrument_alias").fetchall()
+    except Exception:
+        return keys
+    adj: dict = {}
+    for a, t in rows:
+        adj.setdefault(a, set()).add(t)
+        adj.setdefault(t, set()).add(a)
+    for i in isins:
+        stack, seen = [i], {i}
+        while stack:
+            for nx in adj.get(stack.pop(), ()):
+                if nx not in seen:
+                    seen.add(nx)
+                    stack.append(nx)
+                    keys.setdefault(nx, i)
+    return keys
+
+
 def material_events(con, isins: Iterable[str], since, until=None) -> List[dict]:
     isins = sorted({i for i in isins if i})
     if not isins:
         return []
+    asked = _event_keys(con, isins)
+    isins = sorted(asked)
     if not con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name = 'kg2_event'").fetchone()[0]:
         return []
     since_ts = since if isinstance(since, datetime) else datetime(since.year, since.month, since.day)
@@ -32,4 +57,4 @@ def material_events(con, isins: Iterable[str], since, until=None) -> List[dict]:
                            WHERE isin IN ({ph}) AND ts >= ? AND ts IS NOT NULL{until_sql} AND ((source = 'bse_announcement' AND (kind IN ({kinds}) OR severity = 'high'))
                                 OR (source <> 'bse_announcement' AND kind IN ({kinds}) AND severity IN ('medium', 'high')))
                            ORDER BY ts DESC, event_id""", [*isins, since_ts, *([until_ts] if until_ts else []), *THESIS_BREAK_KINDS, *THESIS_BREAK_KINDS]).fetchall()
-    return [{"isin": r[0], "kind": r[1], "severity": r[2], "ts": r[3], "source": r[4], "ref": r[5], "text": r[6] or "", "ts_rule": r[7]} for r in rows]
+    return [{"isin": asked.get(r[0], r[0]), "kind": r[1], "severity": r[2], "ts": r[3], "source": r[4], "ref": r[5], "text": r[6] or "", "ts_rule": r[7]} for r in rows]

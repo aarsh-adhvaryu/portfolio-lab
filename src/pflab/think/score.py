@@ -89,6 +89,8 @@ def _moves(con, case: dict, isin, symbol, decided_on: date, root=None) -> Option
 def _path(con, market: str, isin, symbol, d0: date, day: date, root=None):
     """The closes from the decision day (or the last close before it) up to `day`: a Series indexed by Timestamp."""
     s = odds.closes(con, market, isin, symbol, day, 500, root)
+    if (s is None or not len(s)) and str(isin or "").startswith(("MARKET:", "MACRO:")):      # S85: a market or macro case is scored on its index's path
+        s = proxy_closes(con, isin, symbol, day, root)
     if s is None or not len(s):
         return s
     before = s[s.index <= np.datetime64(d0)]
@@ -141,6 +143,37 @@ def score_due(con, day, root=None) -> int:
             n += _score_decision(con, d, day, done, root, next_id)
         except Exception:
             continue
+    try:
+        n += score_shadow(con, day, root)
+    except Exception:
+        pass
+    try:                                                                      # S85 E7: his overrules, scored on the `user` track beside the loop's own choice
+        from pflab.think import chat_hooks
+        n += chat_hooks.score_user(con, day, root)
+    except Exception:
+        pass
+    return n
+
+
+SHADOW_BASE = 1_000_000_000                       # a shadow row scores under decision_id = SHADOW_BASE + shadow_id (tracks `shadow:<engine>` and `shadow_rule:<engine>`)
+
+
+def score_shadow(con, day, root=None) -> int:
+    """S85: the shadow engines' choices scored at 5, 20 and 60 sessions exactly like the model's and the rule's (their own tracks, one pair per engine). Idempotent."""
+    from pflab.pm.store import next_id
+    day = _day(day)
+    try:
+        rows = con.execute("SELECT shadow_id, case_id, engine, decided_on, isin, symbol, option, rule_option FROM think_shadow_s85 WHERE option IS NOT NULL").fetchall()
+    except Exception:
+        return 0
+    done, n = _done(con), 0
+    for sid, cid, eng, d0, isin, sym, opt, ropt in rows:
+        d = {"decision_id": SHADOW_BASE + int(sid), "case_id": cid, "isin": isin, "symbol": sym, "decided_on": d0, "rule_option": ropt, "model_option": opt,
+             "picks": [(f"shadow_rule:{eng}", ropt), (f"shadow:{eng}", opt)]}
+        try:
+            n += _score_decision(con, d, day, done, root, next_id)
+        except Exception:
+            continue
     return n
 
 
@@ -169,9 +202,9 @@ def _score_decision(con, d: dict, day: date, done: set, root, next_id) -> int:
         m = float(s.iloc[h]) / p0 - 1.0
         val = {o: curve_value(m, [(mv[0], c["worst"]), (mv[1], c["likely"]), (mv[2], c["best"])]) for o, c in curves.items()}
         base = val[nothing_key] if nothing_key else 0.0
-        picks = [("rule", d["rule_option"]), ("model", d["model_option"])]
+        picks = d.get("picks") or [("rule", d["rule_option"]), ("model", d["model_option"])]
         for o, v in val.items():
-            tracks = [t for t, opt in picks if opt == o and opt is not None] or ["alt"]
+            tracks = [t for t, opt in picks if opt == o and opt is not None] or ([] if d.get("picks") else ["alt"])
             for t in tracks:
                 if (int(d["decision_id"]), h, t, o) in done:
                     continue
@@ -188,16 +221,29 @@ def _score_decision(con, d: dict, day: date, done: set, root, next_id) -> int:
 
 # --- the scorecard ----------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def _track(con, track: str) -> dict:
+def _track(con, track: str, decisions: Optional[List[int]] = None) -> dict:
+    """A track's record at each horizon. `decisions`: only these decision ids (the ones one engine made: `engine_of_decisions`); None: all."""
     out = {"by_horizon": {}}
+    keep = "" if decisions is None else " AND decision_id IN (" + ",".join(str(int(x)) for x in decisions or [-1]) + ")"
     for h in HORIZONS:
-        r = con.execute("SELECT count(DISTINCT decision_id), coalesce(sum(vs_nothing_inr), 0) FROM think_scores_s84 WHERE track=? AND horizon_sessions=?", [track, h]).fetchone()
+        r = con.execute("SELECT count(DISTINCT decision_id), coalesce(sum(vs_nothing_inr), 0) FROM think_scores_s84 WHERE track=? AND horizon_sessions=?" + keep, [track, h]).fetchone()
         out["by_horizon"][h] = {"n": int(r[0]), "vs_nothing_inr": float(r[1])}
     out["n"], out["vs_nothing_inr"] = out["by_horizon"][20]["n"], out["by_horizon"][20]["vs_nothing_inr"]
     right = con.execute("""SELECT count(*) FROM think_scores_s84 t WHERE t.track=? AND t.horizon_sessions=20 AND t.result_inr >= (SELECT max(result_inr) FROM think_scores_s84 u
-                           WHERE u.decision_id=t.decision_id AND u.horizon_sessions=20) - 1e-9""", [track]).fetchone()[0]
+                           WHERE u.decision_id=t.decision_id AND u.horizon_sessions=20) - 1e-9""" + keep.replace("decision_id", "t.decision_id"), [track]).fetchone()[0]
     out["right"] = int(right)
     return out
+
+
+def engine_of_decisions(con) -> Dict[int, str]:
+    """{decision_id: the engine that read the case}: the engine of the case's newest model step on or before the day of the decision (every step stores its engine). A decision with no model step
+    is left out (a registered rule's decision on a case nobody read: no engine to credit)."""
+    try:
+        rows = con.execute("""SELECT d.decision_id, (SELECT s.engine FROM think_steps_s84 s WHERE s.case_id = d.case_id AND s.model <> '' AND s.engine <> '' AND CAST(s.step_at AS DATE) <= d.decided_on
+                                                    ORDER BY s.step_at DESC, s.step_id DESC LIMIT 1) FROM think_decisions_s84 d""").fetchall()
+    except Exception:
+        return {}
+    return {int(a): str(b) for a, b in rows if b}
 
 
 def _skips(con, ran_pts: float) -> dict:
@@ -250,7 +296,7 @@ def scorecard(con) -> dict:
     skips = (f" Skipped ideas that went on to beat their index by {think.settings()['missed_run_pts']:g} points or more: {sk['skips_ran']}; that fell: {sk['skips_fell']} (of {sk['skips_scored']} scored)."
              if sk["skips_total"] else "")
     model = (f" The model's own choices beat the rule's (paired t {pair['t']:.1f} over {pair['n']}): who decides is his choice." if pair["beats"] else "")
-    return {"scored": n, "vs_nothing_inr": rule_t["vs_nothing_inr"], "rule_track": rule_t, "model_track": model_t, "by_word": by_word, **sk, "model_vs_rule": pair,
+    return {"scored": n, "vs_nothing_inr": rule_t["vs_nothing_inr"], "rule_track": rule_t, "model_track": model_t, "by_word": by_word, **sk, "model_vs_rule": pair, "by_engine": by_engine(con, rule_t, model_t),
             "advisory": advisory(con, date.today()), "text": base + skips + model, "label": WARNING}
 
 
@@ -273,6 +319,97 @@ def _scenario_hit(scn: str, m: float, mv: List[float]) -> bool:
     if scn == "best":
         return m >= mb
     return (mw + ml) / 2.0 <= m <= (ml + mb) / 2.0
+
+
+def by_engine(con, rule_t: Optional[dict] = None, model_t: Optional[dict] = None) -> dict:
+    """S85: two engines side by side: {engine: {"in_use": bool, "rule_track", "model_track", "by_word"}}. The in-use engine's tracks are `rule` and `model`; a shadow engine's are `shadow_rule:<e>` and
+    `shadow:<e>` (the model's choice and what the rule does on its answer). The calibration words are per engine (`think_calibration_engine_s85`; claude's rows stay in `think_calibration_s84`)."""
+    try:
+        from pflab.llm import gateway
+        cur = gateway.current_engine(con)
+    except Exception:
+        cur = "claude"
+    out = {cur: {"in_use": True, "rule_track": rule_t or _track(con, "rule"), "model_track": model_t or _track(con, "model")}}
+    made = engine_of_decisions(con)
+    if set(made.values()) - {cur}:                       # an engine other than the one in use made decisions (the engine was switched): each engine's own record, never mixed
+        out = {}
+        for e in sorted(set(made.values()) | {cur}):
+            ids = [d for d, x in made.items() if x == e]
+            out[e] = {"in_use": e == cur, "rule_track": _track(con, "rule", ids), "model_track": _track(con, "model", ids)}
+    try:
+        engs = [r[0] for r in con.execute("SELECT DISTINCT engine FROM think_shadow_s85 ORDER BY engine").fetchall()]
+    except Exception:
+        engs = []
+    for e in engs:
+        if e != cur and e not in out:                    # (an engine that made real decisions before a switch keeps its own record, which the shadow's rows do not replace)
+            out[e] = {"in_use": False, "rule_track": _track(con, f"shadow_rule:{e}"), "model_track": _track(con, f"shadow:{e}")}
+    for e, row in out.items():
+        words = {}
+        try:
+            rows = con.execute("SELECT word, probability, n, hits FROM think_calibration_engine_s85 WHERE engine=?", [e]).fetchall() if e != "claude" else                 con.execute("SELECT word, probability, n, hits FROM think_calibration_s84").fetchall()
+            for w, p, n, hits in rows:
+                words[w] = {"probability": float(p), "n": int(n or 0), "hits": int(hits or 0)}
+        except Exception:
+            pass
+        row["by_word"] = words
+    return out
+
+
+def tally_engine(con, day, engine: str, root=None) -> Dict[str, dict]:
+    """`tally` for a shadow engine: its own stated words against what happened at 20 sessions."""
+    out = {w: {"n": 0, "hits": 0} for w in think.WORDS}
+    day = _day(day)
+    for sid, cid, d0, isin, sym, wj in con.execute("SELECT shadow_id, case_id, decided_on, isin, symbol, words_json FROM think_shadow_s85 WHERE engine=? AND option IS NOT NULL", [engine]).fetchall():
+        if not con.execute("SELECT 1 FROM think_scores_s84 WHERE decision_id=? AND horizon_sessions=20 LIMIT 1", [SHADOW_BASE + int(sid)]).fetchone():
+            continue
+        try:
+            words = json.loads(wj or "{}")
+        except Exception:
+            continue
+        case = cases.get_case(con, cid) or {}
+        d0 = _day(d0)
+        s = _path(con, (case.get("market") or "IN").upper(), isin, sym, d0, day, root)
+        mv = _moves(con, case, isin, sym, d0, root)
+        if s is None or len(s) <= 20 or mv is None:
+            continue
+        m = float(s.iloc[20]) / float(s.iloc[0]) - 1.0
+        for scn in ("worst", "likely", "best"):
+            w = words.get(scn)
+            if w in out:
+                out[w]["n"] += 1
+                out[w]["hits"] += int(_scenario_hit(scn, m, mv))
+    return out
+
+
+def calibrate_engines(con, day, root=None) -> dict:
+    """The shadow engines' own likelihood tables: each starts from the default table and is moved like claude's (`calibrate`): at most once a month, a step of at most `calibration_step` toward its
+    observed rate, inside [floor, ceiling], only after `calibration_min_scored` cases. -> {engine: {word: {n, hits, p_before, p_after, moved}}}"""
+    day, c = _day(day), _cfg()
+    out = {}
+    try:
+        engs = [r[0] for r in con.execute("SELECT DISTINCT engine FROM think_shadow_s85").fetchall()]
+    except Exception:
+        return out
+    for e in engs:
+        if e == "claude":
+            continue
+        t = tally_engine(con, day, e, root)
+        out[e] = {}
+        for w in think.WORDS:
+            row = con.execute("SELECT probability, updated_on FROM think_calibration_engine_s85 WHERE engine=? AND word=?", [e, w]).fetchone()
+            if row is None:
+                con.execute("INSERT INTO think_calibration_engine_s85 VALUES (?,?,?,?,?,?)", [e, w, think.WORD_P[w], 0, 0, day - timedelta(days=60)])
+                row = (think.WORD_P[w], day - timedelta(days=60))
+            p0, last = float(row[0]), row[1]
+            n, hits = t[w]["n"], t[w]["hits"]
+            p1, did = p0, False
+            if n >= int(c["calibration_min_scored"]) and (last is None or (day - last).days >= 30):
+                step = max(-c["calibration_step"], min(c["calibration_step"], hits / n - p0))
+                p1 = min(c["calibration_ceiling"], max(c["calibration_floor"], p0 + step))
+                did = abs(p1 - p0) > 1e-12
+            con.execute("UPDATE think_calibration_engine_s85 SET probability=?, n=?, hits=?, updated_on=? WHERE engine=? AND word=?", [p1, n, hits, day if did else last, e, w])
+            out[e][w] = {"n": n, "hits": hits, "p_before": p0, "p_after": p1, "moved": did}
+    return out
 
 
 def tally(con, day, root=None) -> Dict[str, dict]:
@@ -325,7 +462,11 @@ def calibrate(con, day, root=None) -> dict:
         out[w] = {"n": n, "hits": hits, "p_before": p0, "p_after": p1, "moved": did}
         if did:
             moved.append(w)
-    return {"words": out, "moved": moved}
+    try:
+        engines = calibrate_engines(con, day, root)
+    except Exception:
+        engines = {}
+    return {"words": out, "moved": moved, "engines": engines}
 
 
 # --- registration ----------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -338,3 +479,31 @@ def protocol_ok(con) -> dict:
 def register(con, now: datetime) -> list:
     from pflab.learner import s84
     return s84.register_thinking_live(con, now)
+
+
+# --- S85 replay3: a price path for a market or macro case ------------------------------------------------------------------------------------------------------------------------
+
+PROXY_NOTE = "a market or macro case is scored on the close of the index (or series) it names: MARKET:IN the Nifty 500 total return index, MARKET:US SPY, MACRO:<series> the stored series"
+
+
+def proxy_closes(con, isin, symbol, asof, root=None):
+    """The closes (a Series indexed by Timestamp, dated on or before `asof`) of the index or series a MARKET:/MACRO: pseudo-name stands for; an empty Series when it has none stored.
+    MARKET:<IN|US> is the watch's own index (`watch._index`: the Nifty 500 total return index, SPY); MACRO:<KEY> is the stored series of `story.series`. Point in time: nothing after `asof`."""
+    import pandas as pd
+    key = str(isin or "")
+    s = None
+    try:
+        if key.startswith("MARKET:"):
+            from pflab.think import watch
+            s = watch._index(key.split(":", 1)[1].upper(), root)
+        elif key.startswith("MACRO:"):
+            from pflab.story import series
+            s = series.load(key.split(":", 1)[1], root)
+    except Exception:
+        s = None
+    if s is None or not len(s):
+        return pd.Series(dtype=float)
+    s = s.copy()
+    s.index = pd.to_datetime(s.index).normalize()
+    s = s[~s.index.duplicated(keep="last")].sort_index()
+    return s[s.index <= pd.Timestamp(_day(asof))].dropna()

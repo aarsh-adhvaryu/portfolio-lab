@@ -195,11 +195,26 @@ def is_frozen(con, isin: str, day: Optional[date] = None) -> Optional[dict]:
 
 # --- calibration (the likelihood word -> probability table; T8 corrects it) -----------------------------------------------------------------------------------------------
 
-def probabilities(con) -> Dict[str, float]:
-    """The word -> probability table: the stored rows over the starting values."""
+ENGINE_CTX: Dict[str, str] = {}               # {"engine": name} while a shadow engine's answer is being turned into rupees (S85: the calibration table is kept PER ENGINE)
+
+
+def probabilities(con, engine: Optional[str] = None) -> Dict[str, float]:
+    """The word -> probability table: the stored rows over the starting values. `engine` (or the shadow context): an engine other than the default reads its own rows of
+    `think_calibration_engine_s85` over the starting values; the default engine (claude) and every stored S84 row stay in `think_calibration_s84`."""
     out = dict(think.WORD_P)
+    engine = engine or ENGINE_CTX.get("engine")
+    if not engine:
+        try:
+            from pflab.llm import gateway
+            engine = gateway.current_engine(con)
+        except Exception:
+            engine = None
     try:
-        for w, p in con.execute("SELECT word, probability FROM think_calibration_s84").fetchall():
+        if engine and engine != "claude":
+            rows = con.execute("SELECT word, probability FROM think_calibration_engine_s85 WHERE engine=?", [engine]).fetchall()
+        else:
+            rows = con.execute("SELECT word, probability FROM think_calibration_s84").fetchall()
+        for w, p in rows:
             if w in out and p is not None:
                 out[w] = float(p)
     except Exception:

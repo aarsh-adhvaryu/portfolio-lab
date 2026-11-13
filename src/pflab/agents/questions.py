@@ -46,6 +46,11 @@ def answer(con, q_id: int, text: str, now: Optional[datetime] = None) -> int:
         voice.mark_answered(con, q_id, now)
     except Exception:                                    # the voice's own table must never block his answer
         pass
+    try:                                                 # S85 (E5): the question's card in the chat shows the answer
+        from pflab.entrance import cards
+        cards.sync(con, q_id, now)
+    except Exception:
+        pass
     return memory.remember(con, "answer", f"Q: {row[3]} A: {text}", subject=row[2], source=f"question #{q_id} ({row[1]})",
                            now=now)
 

@@ -21,6 +21,7 @@ FIELDS: Dict[str, List[Tuple[str, str, bool]]] = {          # section -> (key, w
              ("redirect_url", "Kite redirect URL (optional)", False)],
     "telegram": [("token", "Telegram bot token", True), ("chat_id", "Telegram chat id", True)],
     "anthropic": [("api_key", "Anthropic API key (the analyst, the brain)", True), ("workspace_id", "Anthropic workspace id (optional)", False)],
+    "openai": [("api_key", "OpenAI API key (an alternative engine behind the one door; optional)", False)],      # S85: engines (llm/gateway.py)
     "sec": [("user_agent", "SEC contact: 'Name email' sent with each request (optional)", False)],
 }
 NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{0,63}$")

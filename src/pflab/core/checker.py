@@ -2,7 +2,7 @@
 corporate event, a thesis that has just broken); so before orders of `[checker] big_trade_share` of the book or more are placed, ONE Sonnet call reads the book card and the big
 orders and answers pass or veto with a reason for each. It never sizes or invents a trade; a veto only removes an order from today (the policy tries again tomorrow).
 
-It runs through `hq/llm.call` as the agent `checker` (priced first, egress-checked, inside its 20% share of the cap, logged). If there is no client, no room in the budget, or the
+It runs through the one door (`llm/gateway.py`, S85) as the agent `checker` (priced first, egress-checked, inside its 20% share of the cap, logged). If there is no client, no room in the budget, or the
 call fails for any reason, the trades PASS and the record says `unchecked` and why: a missing check never stops the book (the rails are the hard limits).
 """
 from __future__ import annotations
@@ -52,16 +52,20 @@ def review(con, now: datetime, day: date, state: dict, orders: List[dict], clien
         try:
             from pflab.agents import analyst as an
             from pflab.core import card
-            from pflab.hq import egress, llm
+            from pflab.hq import egress
+            from pflab.llm import gateway
             lines = [f"- {o['side'].upper()} {o['symbol']}: Rs {o['value']:,.0f} ({o['value'] / state['value']:.1%} of the book), weight {o['from_w']:.1%} to {o['to_w']:.1%}"
                      + (f"; note: {o['note']}" if o.get("note") else "") for o in bigs]
             text = f"POLICY: {policy_id}\nTHE BIG ORDERS:\n" + "\n".join(lines) + "\n\nTHE BOOK CARD (the last close):\n" + (card.latest(con) or "(none yet)")[:9000]
-            p = {"model": model, "max_tokens": 700, "system": [{"type": "text", "text": SYSTEM}], "messages": [{"role": "user", "content": [{"type": "text", "text": text}]}]}
-            s = llm.call(con, "checker", p, client_fn(), now=now, mode="normal", private_text=text, gate=gate or egress.load(con), doc_kinds=("portfolio",), topic="big-trade check",
-                         question=f"{day}: {len(bigs)} big order(s)", cfg=cfg or an.config(), egress_skip=("address_word",))
-            cost = float(s.cost_inr)
+            # S85: through the one door (role `quick`, agent `checker`): the engine in use decides which model answers; the egress gate, the governor and his cap are the door's, unchanged
+            s = gateway.call(con, "quick", [{"type": "text", "text": SYSTEM}], [{"role": "user", "content": [{"type": "text", "text": text}]}], agent="checker", purpose="big-trade check",
+                             max_tokens=700, schema=schema(), now=now, cfg=cfg or an.config(), gate=gate or egress.load(con), private_text=text, client=client_fn(), topic="big-trade check",
+                             question=f"{day}: {len(bigs)} big order(s)")
+            cost = float(s["cost_rupees"])
             from pflab.llm import constrained
-            obj = llm.json_of(llm.text_of(s.message))
+            obj = s["json"] if s["json"] else {}
+            if s.get("json_error"):
+                raise ValueError(s["json_error"])
             bad = constrained.check(obj, schema())
             if bad:
                 raise ValueError(f"the checker's answer did not fit: {bad}")

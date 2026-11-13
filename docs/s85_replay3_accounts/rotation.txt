@@ -1,0 +1,464 @@
+Fri 02 Nov 07:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), examined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), examined
+  noticed: VAKRANGEE fall_10d (value -0.312 against -0.2), examined
+  noticed: VAKRANGEE rel_fall_5d (value -23.354 against -15.0), examined
+  case #1 on SGBSYN33: open (temporary): SGBSYN33 moved +0.1% in 5 sessions (230.1 times its usual 5-day move); SGBSYN33 moved +0.0
+  case #2 on VAKRANGEE: open (market_fear): VAKRANGEE fell 31% in 10 sessions; VAKRANGEE is 23 points behind its market over 5 session
+  option [alt] case #1 SGBSYN33 sell: worst -54 likely -54 best -54 expected -54 (worst -0.00% of the book, size 36,900)
+  option [alt] case #1 SGBSYN33 trim: worst -69 likely -69 best -69 expected -69 (worst -0.01% of the book, size 18,450)
+  option [alt] case #1 SGBSYN33 hold: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
+  option [alt] case #1 SGBSYN33 freeze: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
+  option [alt] case #1 SGBSYN33 wait: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
+  option [model] case #1 SGBSYN33 buy_in_parts: worst -12,329 likely -12,299 best -12,270 expected -12,289 (worst -1.00% of the book, size 4,099,762) <- chosen
+  option [alt] case #1 SGBSYN33 nothing: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
+  option [rule] case #1 SGBSYN33 hold: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0) <- chosen
+  option [alt] case #2 VAKRANGEE freeze: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [alt] case #2 VAKRANGEE wait: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [alt] case #2 VAKRANGEE buy_in_parts: worst -12,329 likely -144 best 16,171 expected 682 (worst -1.00% of the book, size 48,124)
+  option [alt] case #2 VAKRANGEE nothing: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [model] case #2 VAKRANGEE hold: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0) <- chosen
+  option [rule] case #2 VAKRANGEE nothing: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0) <- chosen
+  decision case #1 SGBSYN33: rule hold, model buy_in_parts, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, 
+  decision case #2 VAKRANGEE: rule nothing, model hold, acted nothing: the model chose hold, the rule chose nothing; the rule acts. No new money now: it still makes new lows (its close on 30 Oct was the lowest of the last 5); a buy
+  US order #1 buy SPY placed 2018-11-01: open (us_core_v2: weight 0.0% now, target 95.0% [outside the monthly cap: a funding purchase])
+  rupee order (1, datetime.datetime(2018, 11, 2, 7, 0), 1, 'INE9S2A01011', 'SYNFMCG2', 'sell', 75.0, None, 'open', None, 'baseline_v2 decision #1')
+  rupee order (2, datetime.datetime(2018, 11, 2, 7, 0), 2, 'INE9S4A01011', 'SYNIT1', 'sell', 20.0, None, 'open', None, 'baseline_v2 decision #2')
+  rupee order (3, datetime.datetime(2018, 11, 2, 7, 0), 3, 'INE9S1A01011', 'SYNFMCG1', 'sell', 12.0, None, 'open', None, 'baseline_v2 decision #3')
+  rupee order (4, datetime.datetime(2018, 11, 2, 7, 0), 4, 'INF9S1B01011', 'NIFTYBEES', 'sell', 99.0, None, 'open', None, 'baseline_v2 decision #4')
+Fri 02 Nov 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+  noticed: GOLDBEES rel_5d (value -0.068 against 0.058), examined
+  noticed: NIFTYBEES move_5d (value 0.049 against 0.041), examined
+  noticed: SGBSYN33 rel_5d (value -0.057 against 0.045), joined
+  noticed: VAKRANGEE rel_fall_5d (value -27.153 against -15.0), joined
+  noticed: VAKRANGEE fall_10d (value -0.312 against -0.2), joined
+  case #3 on GOLDBEES: open (temporary): GOLDBEES moved -6.8% in 5 sessions against its market (2.9 times its usual 5-day move)
+  case #4 on NIFTYBEES: acted (temporary): NIFTYBEES moved +4.9% in 5 sessions (3.0 times its usual 5-day move)
+  option [alt] case #3 GOLDBEES sell: worst -123 likely -123 best -123 expected -123 (worst -0.01% of the book, size 104,163)
+  option [alt] case #3 GOLDBEES trim: worst -1,680 likely -139 best 1,450 expected 399 (worst -0.14% of the book, size 52,082)
+  option [alt] case #3 GOLDBEES hold: worst -3,207 likely -123 best 3,054 expected 951 (worst -0.26% of the book, size 0)
+  option [alt] case #3 GOLDBEES freeze: worst -3,207 likely -123 best 3,054 expected 951 (worst -0.26% of the book, size 0)
+  option [alt] case #3 GOLDBEES wait: worst -3,207 likely -123 best 3,054 expected 951 (worst -0.26% of the book, size 0)
+  option [model] case #3 GOLDBEES buy_in_parts: worst -12,376 likely -1,138 best 10,443 expected 2,780 (worst -1.00% of the book, size 379,243) <- chosen
+  option [alt] case #3 GOLDBEES nothing: worst -3,207 likely -123 best 3,054 expected 951 (worst -0.26% of the book, size 0)
+  option [rule] case #3 GOLDBEES hold: worst -3,207 likely -123 best 3,054 expected 951 (worst -0.26% of the book, size 0) <- chosen
+  option [alt] case #4 NIFTYBEES sell: worst -101 likely -101 best -101 expected -101 (worst -0.01% of the book, size 82,425)
+  option [alt] case #4 NIFTYBEES trim: worst -1,802 likely -116 best 1,642 expected 482 (worst -0.15% of the book, size 41,213)
+  option [alt] case #4 NIFTYBEES hold: worst -3,473 likely -101 best 3,415 expected 1,095 (worst -0.28% of the book, size 0)
+  option [alt] case #4 NIFTYBEES freeze: worst -3,473 likely -101 best 3,415 expected 1,095 (worst -0.28% of the book, size 0)
+  option [alt] case #4 NIFTYBEES wait: worst -3,473 likely -101 best 3,415 expected 1,095 (worst -0.28% of the book, size 0)
+  option [model] case #4 NIFTYBEES buy_in_parts: worst -12,376 likely -845 best 11,179 expected 3,245 (worst -1.00% of the book, size 281,544) <- chosen
+  option [alt] case #4 NIFTYBEES nothing: worst -3,473 likely -101 best 3,415 expected 1,095 (worst -0.28% of the book, size 0)
+  option [rule] case #4 NIFTYBEES buy_in_parts: worst -1,583 likely -248 best 1,356 expected 331 (worst -0.13% of the book, size 13,055) <- chosen
+  decision case #3 GOLDBEES: rule hold, model buy_in_parts, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, 
+  decision case #4 NIFTYBEES: rule buy_in_parts, model buy_in_parts, acted buy_in_parts: Add in parts: the expected result is positive and the bad case fits the 1% limit; this part Rs 13,055.
+  rupee order (5, datetime.datetime(2018, 11, 2, 21, 0), 5, 'INF9S1B01011', 'NIFTYBEES', 'buy', None, 13055.32, 'open', None, 'case #4 decision #5')
+  rupee order (6, datetime.datetime(2018, 11, 2, 21, 0), 6, 'INE9S2A01011', 'SYNFMCG2', 'sell', 56.0, None, 'open', None, 'baseline_v2 decision #6')
+  rupee order (7, datetime.datetime(2018, 11, 2, 21, 0), 7, 'INE9S4A01011', 'SYNIT1', 'sell', 15.0, None, 'open', None, 'baseline_v2 decision #7')
+  rupee order (8, datetime.datetime(2018, 11, 2, 21, 0), 8, 'INE9S1A01011', 'SYNFMCG1', 'sell', 9.0, None, 'open', None, 'baseline_v2 decision #8')
+  rupee order (9, datetime.datetime(2018, 11, 2, 21, 0), 9, 'INF9S1B01011', 'NIFTYBEES', 'sell', 75.0, None, 'open', None, 'baseline_v2 decision #9')
+  rupee order (10, datetime.datetime(2018, 11, 2, 21, 0), 10, 'INE9S3A01011', 'SYNCAPG1', 'sell', 4.0, None, 'open', None, 'baseline_v2 decision #10')
+Sat 03 Nov 09:00
+  US order #2 buy SPY placed 2018-11-02: open (us_core_v2: weight 49.0% now, target 95.0% [outside the monthly cap: a funding purchase])
+  US fill #1 SPY buy 11.1674 at USD 59.69 on 2018-11-02 (tax estimate Rs 0)
+Mon 05 Nov 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+  noticed: VAKRANGEE rel_fall_5d (value -24.051 against -15.0), joined
+  noticed: VAKRANGEE fall_10d (value -0.307 against -0.2), joined
+  noticed: 63MOONS wide_run_20d (value 22.99 against 20.0), examined
+  case #5 on 63MOONS: open (temporary): 63MOONS is 23 points ahead of its index over 20 sessions (not held, not looked at) [wide w
+  option [alt] case #5 63MOONS freeze: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [alt] case #5 63MOONS wait: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [model] case #5 63MOONS buy_in_parts: worst -12,381 likely -169 best 15,411 expected 5,585 (worst -1.00% of the book, size 56,486) <- chosen
+  option [alt] case #5 63MOONS nothing: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [rule] case #5 63MOONS nothing: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0) <- chosen
+  decision case #5 63MOONS: rule nothing, model buy_in_parts, acted nothing: the model chose buy_in_parts, the rule chose nothing; the rule acts. No new money now: it is 2.6 of its usual daily moves above its 20-session average (limit 2.
+  rupee order (11, datetime.datetime(2018, 11, 5, 21, 0), 11, 'INF9S1B01011', 'NIFTYBEES', 'sell', 68.0, None, 'open', None, 'baseline_v2 decision #11')
+  rupee order (12, datetime.datetime(2018, 11, 5, 21, 0), 12, 'INE9S2A01011', 'SYNFMCG2', 'sell', 42.0, None, 'open', None, 'baseline_v2 decision #12')
+  rupee order (13, datetime.datetime(2018, 11, 5, 21, 0), 13, 'INE9S4A01011', 'SYNIT1', 'sell', 11.0, None, 'open', None, 'baseline_v2 decision #13')
+  rupee order (14, datetime.datetime(2018, 11, 5, 21, 0), 14, 'INE9S1A01011', 'SYNFMCG1', 'sell', 7.0, None, 'open', None, 'baseline_v2 decision #14')
+Tue 06 Nov 07:00
+  US fill #2 SPY buy 10.5549 at USD 59.21 on 2018-11-05 (tax estimate Rs 0)
+Tue 06 Nov 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+  noticed: 63MOONS wide_run_20d (value 26.164 against 20.0), joined
+  noticed: VAKRANGEE fall_10d (value -0.235 against -0.2), joined
+  noticed: HCL-INSYS rel_1d (value 0.081 against 0.07), examined
+  noticed: VAKRANGEE rel_fall_5d (value -16.874 against -15.0), joined
+  noticed: HCL-INSYS wide_run_20d (value 22.341 against 20.0), examined
+  noticed: HCL-INSYS move_1d (value 0.08 against 0.078), examined
+  case #6 on HCL-INSYS: acted (temporary): HCL-INSYS moved +8.1% in a day against its market (2.9 times its usual daily move); HCL-IN
+  option [alt] case #6 HCL-INSYS freeze: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [alt] case #6 HCL-INSYS wait: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [model] case #6 HCL-INSYS buy_in_parts: worst -12,350 likely -221 best 14,300 expected 5,018 (worst -1.00% of the book, size 73,623) <- chosen
+  option [alt] case #6 HCL-INSYS nothing: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [rule] case #6 HCL-INSYS buy_in_parts: worst -4,117 likely -407 best 2,307 expected 332 (worst -0.33% of the book, size 12,310) <- chosen
+  decision case #6 HCL-INSYS: rule buy_in_parts, model buy_in_parts, acted buy_in_parts: Buy in 3 parts from the reserve: expected result positive, the bad case fits 1% of the whole book; this part Rs 12,310 of Rs 36,931.
+  rupee order (15, datetime.datetime(2018, 11, 6, 21, 0), 15, 'INE236A01020', 'HCL-INSYS', 'buy', None, 12310.23, 'open', None, 'case #6 decision #15')
+Wed 07 Nov 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+  noticed: HCL-INSYS wide_run_20d (value 25.273 against 20.0), joined
+  noticed: VAKRANGEE fall_10d (value -0.235 against -0.2), joined
+  noticed: 63MOONS wide_run_20d (value 22.411 against 20.0), joined
+Thu 08 Nov 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+Fri 09 Nov 07:00
+  option [alt] case #1 SGBSYN33 sell: worst -54 likely -54 best -54 expected -54 (worst -0.00% of the book, size 36,924)
+  option [alt] case #1 SGBSYN33 trim: worst -69 likely -69 best -69 expected -69 (worst -0.01% of the book, size 18,462)
+  option [alt] case #1 SGBSYN33 hold: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
+  option [alt] case #1 SGBSYN33 freeze: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
+  option [alt] case #1 SGBSYN33 wait: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
+  option [model] case #1 SGBSYN33 buy_in_parts: worst -12,374 likely -12,344 best -12,314 expected -12,334 (worst -1.00% of the book, size 4,114,604) <- chosen
+  option [alt] case #1 SGBSYN33 nothing: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
+  option [rule] case #1 SGBSYN33 buy_in_parts: worst -857 likely -3 best 1,080 expected 396 (worst -0.07% of the book, size 12,425) <- chosen
+  option [alt] case #2 VAKRANGEE freeze: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [alt] case #2 VAKRANGEE wait: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [alt] case #2 VAKRANGEE buy_in_parts: worst -12,374 likely -144 best 16,257 expected 690 (worst -1.00% of the book, size 48,076)
+  option [alt] case #2 VAKRANGEE nothing: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [model] case #2 VAKRANGEE hold: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0) <- chosen
+  option [rule] case #2 VAKRANGEE nothing: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0) <- chosen
+  decision case #1 SGBSYN33: rule buy_in_parts, model buy_in_parts, acted nothing (no order: a rail leaves no room (reserve free Rs 111,828, rail room Rs 0)): Add in parts: the expected result is positive and the bad case fits the 1% limit; this part Rs 12,425.
+  decision case #2 VAKRANGEE: rule nothing, model hold, acted nothing: the model chose hold, the rule chose nothing; the rule acts. No new money now: it still makes new lows (its close on 05 Nov was the lowest of the last 5); a buy
+Fri 09 Nov 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+  noticed: 63MOONS wide_run_20d (value 22.519 against 20.0), joined
+  noticed: VAKRANGEE fall_10d (value -0.211 against -0.2), joined
+Mon 12 Nov 07:00
+  option [alt] case #5 63MOONS freeze: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [alt] case #5 63MOONS wait: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [model] case #5 63MOONS buy_in_parts: worst -12,393 likely -170 best 15,415 expected 5,585 (worst -1.00% of the book, size 56,662) <- chosen
+  option [alt] case #5 63MOONS nothing: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [rule] case #5 63MOONS buy_in_parts: worst -2,228 likely -337 best 2,238 expected 635 (worst -0.18% of the book, size 12,412) <- chosen
+  decision case #5 63MOONS: rule buy_in_parts, model buy_in_parts, acted buy_in_parts: Buy in 3 parts from the reserve: expected result positive, the bad case fits 1% of the whole book; this part Rs 12,412 of Rs 37,235.
+  rupee order (16, datetime.datetime(2018, 11, 12, 7, 0), 16, 'INE111B01023', '63MOONS', 'buy', None, 12411.82, 'open', None, 'case #5 decision #16')
+Mon 12 Nov 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+  noticed: NIITLTD rel_1d (value 0.076 against 0.061), examined
+  noticed: 63MOONS wide_run_20d (value 20.9 against 20.0), joined
+  case #7 on NIITLTD: acted (temporary): NIITLTD moved +7.6% in a day against its market (3.1 times its usual daily move) [wide wat
+  option [alt] case #7 NIITLTD freeze: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [alt] case #7 NIITLTD wait: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [model] case #7 NIITLTD buy_in_parts: worst -12,339 likely -250 best 13,895 expected 4,808 (worst -1.00% of the book, size 83,221) <- chosen
+  option [alt] case #7 NIITLTD nothing: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [rule] case #7 NIITLTD buy_in_parts: worst -1,831 likely -37 best 2,062 expected 714 (worst -0.15% of the book, size 12,352) <- chosen
+  decision case #7 NIITLTD: rule buy_in_parts, model buy_in_parts, acted buy_in_parts: Buy in 3 parts from the reserve: expected result positive, the bad case fits 1% of the whole book; this part Rs 12,352 of Rs 37,057.
+  rupee order (17, datetime.datetime(2018, 11, 12, 21, 0), 17, 'INE161A01038', 'NIITLTD', 'buy', None, 12352.25, 'open', None, 'case #7 decision #17')
+Tue 13 Nov 07:00
+  option [alt] case #6 HCL-INSYS sell: worst -28 likely -28 best -28 expected -28 (worst -0.00% of the book, size 12,133)
+  option [alt] case #6 HCL-INSYS trim: worst -1,042 likely -43 best 1,153 expected 388 (worst -0.08% of the book, size 6,066)
+  option [alt] case #6 HCL-INSYS hold: worst -2,025 likely -28 best 2,364 expected 835 (worst -0.16% of the book, size 0)
+  option [alt] case #6 HCL-INSYS freeze: worst -2,025 likely -28 best 2,364 expected 835 (worst -0.16% of the book, size 0)
+  option [alt] case #6 HCL-INSYS wait: worst -2,025 likely -28 best 2,364 expected 835 (worst -0.16% of the book, size 0)
+  option [model] case #6 HCL-INSYS buy_in_parts: worst -12,339 likely -221 best 14,289 expected 5,015 (worst -1.00% of the book, size 73,532) <- chosen
+  option [alt] case #6 HCL-INSYS nothing: worst -2,025 likely -28 best 2,364 expected 835 (worst -0.16% of the book, size 0)
+  option [rule] case #6 HCL-INSYS hold: worst -2,025 likely -28 best 2,364 expected 835 (worst -0.16% of the book, size 0) <- chosen
+  decision case #6 HCL-INSYS: rule hold, model buy_in_parts, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, 
+Tue 13 Nov 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+  noticed: 63MOONS move_1d (value 0.112 against 0.109), joined
+  noticed: NIITLTD rel_1d (value 0.072 against 0.063), joined
+  noticed: NIITLTD move_1d (value 0.079 against 0.069), joined
+  noticed: 63MOONS wide_run_20d (value 32.038 against 20.0), joined
+  noticed: NIITLTD wide_run_20d (value 20.624 against 20.0), joined
+Wed 14 Nov 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+  noticed: 63MOONS wide_run_20d (value 32.201 against 20.0), joined
+Thu 15 Nov 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+  noticed: SYNFMCG1 rel_fall_5d (value -18.08 against -15.0), examined
+  noticed: SYNFMCG1 move_5d (value -0.178 against 0.148), examined
+  noticed: SYNFMCG1 rel_5d (value -0.181 against 0.153), examined
+  noticed: SYNFMCG1 fall_10d (value -0.203 against -0.2), examined
+  case #8 on SYNFMCG1: open (market_fear): SYNFMCG1 is 18 points behind its market over 5 sessions; SYNFMCG1 moved -17.8% in 5 sessio
+  option [alt] case #8 SYNFMCG1 sell: worst -59 likely -59 best -59 expected -59 (worst -0.00% of the book, size 42,067)
+  option [alt] case #8 SYNFMCG1 trim: worst -3,056 likely -74 best 3,401 expected 24 (worst -0.25% of the book, size 21,033)
+  option [model] case #8 SYNFMCG1 hold: worst -6,023 likely -59 best 6,892 expected 138 (worst -0.49% of the book, size 0) <- chosen
+  option [alt] case #8 SYNFMCG1 freeze: worst -6,023 likely -59 best 6,892 expected 138 (worst -0.49% of the book, size 0)
+  option [alt] case #8 SYNFMCG1 wait: worst -6,023 likely -59 best 6,892 expected 138 (worst -0.49% of the book, size 0)
+  option [alt] case #8 SYNFMCG1 buy_in_parts: worst -12,288 likely -254 best 13,769 expected 144 (worst -1.00% of the book, size 84,787)
+  option [alt] case #8 SYNFMCG1 nothing: worst -6,023 likely -59 best 6,892 expected 138 (worst -0.49% of the book, size 0)
+  option [rule] case #8 SYNFMCG1 hold: worst -6,023 likely -59 best 6,892 expected 138 (worst -0.49% of the book, size 0) <- chosen
+  decision case #8 SYNFMCG1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 421).
+Fri 16 Nov 07:00
+  option [alt] case #1 SGBSYN33 sell: worst -54 likely -54 best -54 expected -54 (worst -0.00% of the book, size 36,948)
+  option [alt] case #1 SGBSYN33 trim: worst -69 likely -69 best -69 expected -69 (worst -0.01% of the book, size 18,474)
+  option [alt] case #1 SGBSYN33 hold: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
+  option [alt] case #1 SGBSYN33 freeze: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
+  option [alt] case #1 SGBSYN33 wait: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
+  option [model] case #1 SGBSYN33 buy_in_parts: worst -12,288 likely -12,258 best -12,229 expected -12,248 (worst -1.00% of the book, size 4,086,047) <- chosen
+  option [alt] case #1 SGBSYN33 nothing: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
+  option [rule] case #1 SGBSYN33 buy_in_parts: worst -846 likely 97 best 1,034 expected 408 (worst -0.07% of the book, size 12,275) <- chosen
+  option [alt] case #2 VAKRANGEE freeze: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [alt] case #2 VAKRANGEE wait: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [alt] case #2 VAKRANGEE buy_in_parts: worst -12,288 likely -143 best 16,167 expected 690 (worst -1.00% of the book, size 47,563)
+  option [alt] case #2 VAKRANGEE nothing: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0)
+  option [model] case #2 VAKRANGEE hold: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0) <- chosen
+  option [rule] case #2 VAKRANGEE nothing: worst 0 likely 0 best 0 expected 0 (worst 0.00% of the book, size 0) <- chosen
+  decision case #1 SGBSYN33: rule buy_in_parts, model buy_in_parts, acted nothing (no order: a rail leaves no room (reserve free Rs 110,478, rail room Rs 0)): Add in parts: the expected result is positive and the bad case fits the 1% limit; this part Rs 12,275.
+  decision case #4 NIFTYBEES: rule buy_in_parts, model buy_in_parts, acted buy_in_parts: part 2: Add in parts: the expected result is positive and the bad case fits the 1% limit; this part Rs 12,275.
+  decision case #2 VAKRANGEE: rule nothing, model hold, acted nothing: the model chose hold, the rule chose nothing; the rule acts. No new money now: it still makes new lows (its close on 15 Nov was the lowest of the last 5); a buy
+  rupee order (18, datetime.datetime(2018, 11, 16, 7, 0), 18, 'INF9S1B01011', 'NIFTYBEES', 'buy', None, 12275.39, 'open', None, 'case #4 decision #18')
+Fri 16 Nov 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+  noticed: SYNFMCG1 rel_fall_5d (value -22.044 against -15.0), joined
+  noticed: SYNFMCG1 move_5d (value -0.215 against 0.147), joined
+  noticed: SYNFMCG1 rel_5d (value -0.22 against 0.154), joined
+  noticed: SYNFMCG1 fall_10d (value -0.23 against -0.2), joined
+  rupee order (19, datetime.datetime(2018, 11, 16, 21, 0), 19, 'INF9S4B01011', 'JUNIORBEES', 'buy', None, 52238.02, 'open', None, 'baseline_v2 decision #19')
+  rupee order (20, datetime.datetime(2018, 11, 16, 21, 0), 20, 'INF9S1B01011', 'NIFTYBEES', 'buy', None, 35808.38, 'open', None, 'baseline_v2 decision #20')
+Mon 19 Nov 07:00
+  option [alt] case #5 63MOONS sell: worst -30 likely -30 best -30 expected -30 (worst -0.00% of the book, size 14,092)
+  option [alt] case #5 63MOONS trim: worst -1,574 likely -45 best 1,907 expected 676 (worst -0.13% of the book, size 7,046)
+  option [alt] case #5 63MOONS hold: worst -3,087 likely -30 best 3,875 expected 1,413 (worst -0.25% of the book, size 0)
+  option [alt] case #5 63MOONS freeze: worst -3,087 likely -30 best 3,875 expected 1,413 (worst -0.25% of the book, size 0)
+  option [alt] case #5 63MOONS wait: worst -3,087 likely -30 best 3,875 expected 1,413 (worst -0.25% of the book, size 0)
+  option [model] case #5 63MOONS buy_in_parts: worst -12,200 likely -166 best 15,206 expected 5,514 (worst -1.00% of the book, size 55,415) <- chosen
+  option [alt] case #5 63MOONS nothing: worst -3,087 likely -30 best 3,875 expected 1,413 (worst -0.25% of the book, size 0)
+  option [rule] case #5 63MOONS hold: worst -3,087 likely -30 best 3,875 expected 1,413 (worst -0.25% of the book, size 0) <- chosen
+  option [alt] case #7 NIITLTD sell: worst -28 likely -28 best -28 expected -28 (worst -0.00% of the book, size 11,804)
+  option [alt] case #7 NIITLTD trim: worst -910 likely -43 best 974 expected 321 (worst -0.07% of the book, size 5,902)
+  option [alt] case #7 NIITLTD hold: worst -1,763 likely -28 best 2,007 expected 700 (worst -0.14% of the book, size 0)
+  option [alt] case #7 NIITLTD freeze: worst -1,763 likely -28 best 2,007 expected 700 (worst -0.14% of the book, size 0)
+  option [alt] case #7 NIITLTD wait: worst -1,763 likely -28 best 2,007 expected 700 (worst -0.14% of the book, size 0)
+  option [model] case #7 NIITLTD buy_in_parts: worst -12,200 likely -244 best 13,776 expected 4,773 (worst -1.00% of the book, size 81,255) <- chosen
+  option [alt] case #7 NIITLTD nothing: worst -1,763 likely -28 best 2,007 expected 700 (worst -0.14% of the book, size 0)
+  option [rule] case #7 NIITLTD hold: worst -1,763 likely -28 best 2,007 expected 700 (worst -0.14% of the book, size 0) <- chosen
+  decision case #5 63MOONS: rule hold, model buy_in_parts, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, 
+  decision case #7 NIITLTD: rule hold, model buy_in_parts, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, 
+Mon 19 Nov 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+  noticed: SYNFMCG1 rel_fall_5d (value -18.259 against -15.0), joined
+  noticed: SYNFMCG1 rel_5d (value -0.183 against 0.155), joined
+  noticed: SYNFMCG1 fall_10d (value -0.22 against -0.2), joined
+  noticed: SYNFMCG1 move_5d (value -0.161 against 0.147), joined
+Tue 20 Nov 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+  noticed: SYNFMCG1 fall_10d (value -0.217 against -0.2), joined
+Wed 21 Nov 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+  noticed: SYNFMCG1 fall_10d (value -0.229 against -0.2), joined
+  noticed: 63MOONS rel_1d (value 0.179 against 0.107), joined
+  noticed: 63MOONS move_1d (value 0.177 against 0.11), joined
+  noticed: 63MOONS wide_run_20d (value 31.914 against 20.0), joined
+Thu 22 Nov 07:00
+  option [alt] case #8 SYNFMCG1 sell: worst -56 likely -56 best -56 expected -56 (worst -0.00% of the book, size 39,486)
+  option [alt] case #8 SYNFMCG1 trim: worst -2,643 likely -72 best 2,885 expected 5 (worst -0.22% of the book, size 19,743)
+  option [model] case #8 SYNFMCG1 hold: worst -5,199 likely -56 best 5,857 expected 98 (worst -0.43% of the book, size 0) <- chosen
+  option [alt] case #8 SYNFMCG1 freeze: worst -5,199 likely -56 best 5,857 expected 98 (worst -0.43% of the book, size 0)
+  option [alt] case #8 SYNFMCG1 wait: worst -5,199 likely -56 best 5,857 expected 98 (worst -0.43% of the book, size 0)
+  option [alt] case #8 SYNFMCG1 buy_in_parts: worst -12,132 likely -273 best 13,364 expected 83 (worst -1.00% of the book, size 90,958)
+  option [alt] case #8 SYNFMCG1 nothing: worst -5,199 likely -56 best 5,857 expected 98 (worst -0.43% of the book, size 0)
+  option [rule] case #8 SYNFMCG1 hold: worst -5,199 likely -56 best 5,857 expected 98 (worst -0.43% of the book, size 0) <- chosen
+  decision case #8 SYNFMCG1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 395).
+Thu 22 Nov 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+  noticed: SYNFMCG1 fall_10d (value -0.243 against -0.2), joined
+  noticed: 63MOONS wide_run_20d (value 28.094 against 20.0), joined
+Fri 23 Nov 07:00
+  option [alt] case #1 SGBSYN33 sell: worst -54 likely -54 best -54 expected -54 (worst -0.00% of the book, size 36,972)
+  option [alt] case #1 SGBSYN33 trim: worst -69 likely -69 best -69 expected -69 (worst -0.01% of the book, size 18,486)
+  option [alt] case #1 SGBSYN33 hold: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
+  option [alt] case #1 SGBSYN33 freeze: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
+  option [alt] case #1 SGBSYN33 wait: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
+  option [model] case #1 SGBSYN33 buy_in_parts: worst -12,119 likely -12,090 best -12,061 expected -12,080 (worst -1.00% of the book, size 4,030,034) <- chosen
+  option [alt] case #1 SGBSYN33 nothing: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
+  option [rule] case #1 SGBSYN33 buy_in_parts: worst -835 likely 96 best 1,020 expected 403 (worst -0.07% of the book, size 12,114) <- chosen
+  decision case #1 SGBSYN33: rule buy_in_parts, model buy_in_parts, acted nothing (no order: a rail leaves no room (reserve free Rs 109,025, rail room Rs 0)): Add in parts: the expected result is positive and the bad case fits the 1% limit; this part Rs 12,114.
+Fri 23 Nov 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+  noticed: SYNFMCG1 fall_10d (value -0.24 against -0.2), joined
+Mon 26 Nov 07:00
+  option [alt] case #5 63MOONS sell: worst -32 likely -32 best -32 expected -32 (worst -0.00% of the book, size 16,265)
+  option [alt] case #5 63MOONS trim: worst -1,866 likely -48 best 2,296 expected 821 (worst -0.15% of the book, size 8,132)
+  option [alt] case #5 63MOONS hold: worst -3,669 likely -32 best 4,654 expected 1,705 (worst -0.30% of the book, size 0)
+  option [alt] case #5 63MOONS freeze: worst -3,669 likely -32 best 4,654 expected 1,705 (worst -0.30% of the book, size 0)
+  option [alt] case #5 63MOONS wait: worst -3,669 likely -32 best 4,654 expected 1,705 (worst -0.30% of the book, size 0)
+  option [model] case #5 63MOONS buy_in_parts: worst -12,124 likely -160 best 15,254 expected 5,553 (worst -1.00% of the book, size 53,443) <- chosen
+  option [alt] case #5 63MOONS nothing: worst -3,669 likely -32 best 4,654 expected 1,705 (worst -0.30% of the book, size 0)
+  option [rule] case #5 63MOONS hold: worst -3,669 likely -32 best 4,654 expected 1,705 (worst -0.30% of the book, size 0) <- chosen
+  decision case #5 63MOONS: rule hold, model buy_in_parts, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, 
+  decision case #7 NIITLTD: rule buy_in_parts, model buy_in_parts, acted buy_in_parts: part 2: Add in parts: the expected result is positive and the bad case fits the 1% limit; this part Rs 12,120.
+  rupee order (21, datetime.datetime(2018, 11, 26, 7, 0), 21, 'INE161A01038', 'NIITLTD', 'buy', None, 12119.8, 'open', None, 'case #7 decision #21')
+Mon 26 Nov 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+  noticed: SYNFMCG1 fall_10d (value -0.225 against -0.2), joined
+  noticed: 63MOONS wide_run_20d (value 32.843 against 20.0), joined
+Tue 27 Nov 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+  noticed: SYNFMCG2 fall_10d (value -0.214 against -0.2), examined
+  noticed: SYNFMCG1 fall_10d (value -0.238 against -0.2), joined
+  noticed: 63MOONS wide_run_20d (value 35.923 against 20.0), joined
+  case #9 on SYNFMCG2: open (market_fear): SYNFMCG2 fell 21% in 10 sessions
+  option [alt] case #9 SYNFMCG2 sell: worst -60 likely -60 best -60 expected -60 (worst -0.00% of the book, size 43,204)
+  option [alt] case #9 SYNFMCG2 trim: worst -3,756 likely -76 best 4,361 expected 76 (worst -0.31% of the book, size 21,602)
+  option [model] case #9 SYNFMCG2 hold: worst -7,420 likely -60 best 8,813 expected 242 (worst -0.62% of the book, size 0) <- chosen
+  option [alt] case #9 SYNFMCG2 freeze: worst -7,420 likely -60 best 8,813 expected 242 (worst -0.62% of the book, size 0)
+  option [alt] case #9 SYNFMCG2 wait: worst -7,420 likely -60 best 8,813 expected 242 (worst -0.62% of the book, size 0)
+  option [alt] case #9 SYNFMCG2 buy_in_parts: worst -12,044 likely -208 best 14,061 expected 278 (worst -1.00% of the book, size 69,406)
+  option [alt] case #9 SYNFMCG2 nothing: worst -7,420 likely -60 best 8,813 expected 242 (worst -0.62% of the book, size 0)
+  option [rule] case #9 SYNFMCG2 hold: worst -7,420 likely -60 best 8,813 expected 242 (worst -0.62% of the book, size 0) <- chosen
+  decision case #9 SYNFMCG2: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 432).
+Wed 28 Nov 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+  noticed: SYNIT1 move_1d (value 0.043 against 0.036), examined
+  noticed: SYNIT1 rel_1d (value 0.042 against 0.038), examined
+  noticed: SYNFMCG1 move_1d (value -0.095 against 0.061), joined
+  noticed: SYNFMCG1 rel_1d (value -0.096 against 0.065), joined
+  noticed: SYNFMCG1 move_5d (value -0.203 against 0.136), joined
+  noticed: SYNFMCG1 rel_5d (value -0.209 against 0.145), joined
+  noticed: SYNFMCG2 fall_10d (value -0.209 against -0.2), joined
+  noticed: SYNFMCG1 fall_10d (value -0.282 against -0.2), joined
+  noticed: SYNFMCG1 rel_fall_5d (value -20.901 against -15.0), joined
+  noticed: 63MOONS wide_run_20d (value 32.542 against 20.0), joined
+  case #10 on SYNIT1: open (market_fear): SYNIT1 moved +4.3% in a day (3.0 times its usual daily move); SYNIT1 moved +4.2% in a day 
+  option [alt] case #10 SYNIT1 sell: worst -68 likely -68 best -68 expected -68 (worst -0.01% of the book, size 50,977)
+  option [alt] case #10 SYNIT1 trim: worst -2,120 likely -84 best 2,130 expected -48 (worst -0.18% of the book, size 25,489)
+  option [model] case #10 SYNIT1 hold: worst -4,141 likely -68 best 4,359 expected 3 (worst -0.34% of the book, size 0) <- chosen
+  option [alt] case #10 SYNIT1 freeze: worst -4,141 likely -68 best 4,359 expected 3 (worst -0.34% of the book, size 0)
+  option [alt] case #10 SYNIT1 wait: worst -4,141 likely -68 best 4,359 expected 3 (worst -0.34% of the book, size 0)
+  option [alt] case #10 SYNIT1 buy_in_parts: worst -12,024 likely -435 best 12,163 expected -233 (worst -1.00% of the book, size 144,900)
+  option [alt] case #10 SYNIT1 nothing: worst -4,141 likely -68 best 4,359 expected 3 (worst -0.34% of the book, size 0)
+  option [rule] case #10 SYNIT1 hold: worst -4,141 likely -68 best 4,359 expected 3 (worst -0.34% of the book, size 0) <- chosen
+  decision case #10 SYNIT1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 388, trim Rs 178; the bar is Rs 510).
+Thu 29 Nov 07:00
+  option [alt] case #8 SYNFMCG1 sell: worst -48 likely -48 best -48 expected -48 (worst -0.00% of the book, size 31,468)
+  option [alt] case #8 SYNFMCG1 trim: worst -2,185 likely -63 best 2,389 expected 3 (worst -0.18% of the book, size 15,734)
+  option [model] case #8 SYNFMCG1 hold: worst -4,291 likely -48 best 4,857 expected 84 (worst -0.36% of the book, size 0) <- chosen
+  option [alt] case #8 SYNFMCG1 freeze: worst -4,291 likely -48 best 4,857 expected 84 (worst -0.36% of the book, size 0)
+  option [alt] case #8 SYNFMCG1 wait: worst -4,291 likely -48 best 4,857 expected 84 (worst -0.36% of the book, size 0)
+  option [alt] case #8 SYNFMCG1 buy_in_parts: worst -12,024 likely -261 best 13,337 expected 106 (worst -1.00% of the book, size 87,151)
+  option [alt] case #8 SYNFMCG1 nothing: worst -4,291 likely -48 best 4,857 expected 84 (worst -0.36% of the book, size 0)
+  option [rule] case #8 SYNFMCG1 hold: worst -4,291 likely -48 best 4,857 expected 84 (worst -0.36% of the book, size 0) <- chosen
+  decision case #8 SYNFMCG1: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 315).
+Thu 29 Nov 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+  noticed: SYNFMCG1 rel_5d (value -0.161 against 0.146), joined
+  noticed: SYNFMCG1 rel_fall_5d (value -16.068 against -15.0), joined
+  noticed: SYNFMCG1 fall_10d (value -0.206 against -0.2), joined
+  noticed: 63MOONS wide_run_20d (value 24.628 against 20.0), joined
+Fri 30 Nov 07:00
+  option [alt] case #1 SGBSYN33 sell: worst -54 likely -54 best -54 expected -54 (worst -0.00% of the book, size 36,996)
+  option [alt] case #1 SGBSYN33 trim: worst -69 likely -69 best -69 expected -69 (worst -0.01% of the book, size 18,498)
+  option [alt] case #1 SGBSYN33 hold: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
+  option [alt] case #1 SGBSYN33 freeze: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
+  option [alt] case #1 SGBSYN33 wait: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
+  option [model] case #1 SGBSYN33 buy_in_parts: worst -12,063 likely -12,034 best -12,005 expected -12,024 (worst -1.00% of the book, size 4,011,259) <- chosen
+  option [alt] case #1 SGBSYN33 nothing: worst -54 likely -54 best -53 expected -54 (worst -0.00% of the book, size 0)
+  option [rule] case #1 SGBSYN33 buy_in_parts: worst -830 likely 95 best 1,014 expected 401 (worst -0.07% of the book, size 12,042) <- chosen
+  decision case #1 SGBSYN33: rule buy_in_parts, model buy_in_parts, acted nothing (no order: a rail leaves no room (reserve free Rs 108,380, rail room Rs 0)): Add in parts: the expected result is positive and the bad case fits the 1% limit; this part Rs 12,042.
+Fri 30 Nov 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+  noticed: SYNFMCG1 rel_5d (value -0.183 against 0.146), joined
+  noticed: SYNFMCG1 rel_fall_5d (value -18.265 against -15.0), joined
+  noticed: SYNFMCG1 move_5d (value -0.157 against 0.141), joined
+  noticed: 63MOONS wide_run_20d (value 28.844 against 20.0), joined
+Mon 03 Dec 07:00
+  option [alt] case #5 63MOONS sell: worst -31 likely -31 best -31 expected -31 (worst -0.00% of the book, size 15,468)
+  option [alt] case #5 63MOONS trim: worst -1,779 likely -47 best 2,186 expected 781 (worst -0.15% of the book, size 7,734)
+  option [alt] case #5 63MOONS hold: worst -3,496 likely -31 best 4,435 expected 1,624 (worst -0.29% of the book, size 0)
+  option [alt] case #5 63MOONS freeze: worst -3,496 likely -31 best 4,435 expected 1,624 (worst -0.29% of the book, size 0)
+  option [alt] case #5 63MOONS wait: worst -3,496 likely -31 best 4,435 expected 1,624 (worst -0.29% of the book, size 0)
+  option [model] case #5 63MOONS buy_in_parts: worst -12,018 likely -159 best 15,129 expected 5,508 (worst -1.00% of the book, size 52,892) <- chosen
+  option [alt] case #5 63MOONS nothing: worst -3,496 likely -31 best 4,435 expected 1,624 (worst -0.29% of the book, size 0)
+  option [rule] case #5 63MOONS hold: worst -3,496 likely -31 best 4,435 expected 1,624 (worst -0.29% of the book, size 0) <- chosen
+  decision case #5 63MOONS: rule hold, model buy_in_parts, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, 
+Mon 03 Dec 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+  noticed: SYNFMCG1 move_1d (value -0.1 against 0.063), joined
+  noticed: SYNFMCG1 rel_1d (value -0.102 against 0.065), joined
+  noticed: SYNFMCG1 rel_5d (value -0.226 against 0.145), joined
+  noticed: SYNFMCG1 rel_fall_5d (value -22.575 against -15.0), joined
+  noticed: SYNFMCG1 move_5d (value -0.205 against 0.141), joined
+  noticed: SYNFMCG1 fall_10d (value -0.266 against -0.2), joined
+  noticed: NIITLTD rel_1d (value 0.082 against 0.063), joined
+  noticed: NIITLTD move_1d (value 0.084 against 0.069), joined
+  noticed: VAKRANGEE wide_run_20d (value 32.765 against 20.0), joined
+  noticed: 63MOONS wide_run_20d (value 28.308 against 20.0), joined
+  rupee order (22, datetime.datetime(2018, 12, 3, 21, 0), 22, 'INF9S4B01011', 'JUNIORBEES', 'buy', None, 66116.74, 'open', None, 'baseline_v2 decision #22')
+  rupee order (23, datetime.datetime(2018, 12, 3, 21, 0), 23, 'INF9S1B01011', 'NIFTYBEES', 'buy', None, 42453.92, 'open', None, 'baseline_v2 decision #23')
+Tue 04 Dec 07:00
+  option [alt] case #9 SYNFMCG2 sell: worst -63 likely -63 best -63 expected -63 (worst -0.01% of the book, size 46,062)
+  option [alt] case #9 SYNFMCG2 trim: worst -3,987 likely -78 best 4,631 expected 82 (worst -0.33% of the book, size 23,031)
+  option [model] case #9 SYNFMCG2 hold: worst -7,881 likely -63 best 9,355 expected 257 (worst -0.65% of the book, size 0) <- chosen
+  option [alt] case #9 SYNFMCG2 freeze: worst -7,881 likely -63 best 9,355 expected 257 (worst -0.65% of the book, size 0)
+  option [alt] case #9 SYNFMCG2 wait: worst -7,881 likely -63 best 9,355 expected 257 (worst -0.65% of the book, size 0)
+  option [alt] case #9 SYNFMCG2 buy_in_parts: worst -12,051 likely -209 best 14,057 expected 276 (worst -1.00% of the book, size 69,700)
+  option [alt] case #9 SYNFMCG2 nothing: worst -7,881 likely -63 best 9,355 expected 257 (worst -0.65% of the book, size 0)
+  option [rule] case #9 SYNFMCG2 hold: worst -7,881 likely -63 best 9,355 expected 257 (worst -0.65% of the book, size 0) <- chosen
+  decision case #9 SYNFMCG2: rule hold, model hold, acted hold: Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 461).
+Tue 04 Dec 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+  noticed: SYNFMCG1 rel_5d (value -0.254 against 0.149), joined
+  noticed: SYNFMCG1 rel_fall_5d (value -25.4 against -15.0), joined
+  noticed: SYNFMCG1 fall_10d (value -0.332 against -0.2), joined
+  noticed: SYNFMCG1 move_5d (value -0.239 against 0.145), joined
+  noticed: SYNFMCG1 move_1d (value -0.1 against 0.065), joined
+  noticed: SYNFMCG1 rel_1d (value -0.099 against 0.067), joined
+  noticed: NIITLTD rel_1d (value 0.079 against 0.064), joined
+  noticed: NIITLTD move_1d (value 0.078 against 0.07), joined
+  noticed: VAKRANGEE wide_run_20d (value 48.375 against 20.0), joined
+  noticed: 63MOONS wide_run_20d (value 26.501 against 20.0), joined
+  noticed: NIITLTD wide_run_20d (value 23.184 against 20.0), joined
+Wed 05 Dec 21:00
+  noticed: SGBSYN33 move_5d (value 0.001 against 0.0), joined
+  noticed: SGBSYN33 move_1d (value 0.0 against 0.0), joined
+  noticed: SYNFMCG2 move_1d (value -0.083 against 0.081), joined
+  noticed: SYNFMCG1 fall_10d (value -0.308 against -0.2), joined
+  noticed: VAKRANGEE wide_run_20d (value 63.6 against 20.0), joined
+  noticed: NIITLTD wide_run_20d (value 22.197 against 20.0), joined
+
+THE WINDOW: 2018-11-12 to 2018-11-27: METALS basket -9.2% (16 members), IT basket +9.8% (10 members), Nifty 500 TRI 1.43% in 10 sessions
+signal VAKRANGEE fall_10d value -0.312 (line -0.200) on 2018-11-01
+signal VAKRANGEE rel_fall_5d value -23.354 (line -15.000) on 2018-11-01
+signal VAKRANGEE rel_fall_5d value -27.153 (line -15.000) on 2018-11-02
+signal VAKRANGEE fall_10d value -0.312 (line -0.200) on 2018-11-02
+signal VAKRANGEE rel_fall_5d value -24.051 (line -15.000) on 2018-11-05
+signal VAKRANGEE fall_10d value -0.307 (line -0.200) on 2018-11-05
+signal 63MOONS wide_run_20d value 22.990 (line 20.000) on 2018-11-05
+signal 63MOONS wide_run_20d value 26.164 (line 20.000) on 2018-11-06
+case #2 VAKRANGEE kind=fall state=open class=market_fear opened 2018-11-01
+case #5 63MOONS kind=missed_run state=open class=temporary opened 2018-11-05
+case #6 HCL-INSYS kind=move state=open class=temporary opened 2018-11-06
+case #7 NIITLTD kind=move state=open class=temporary opened 2018-11-12
+2018-11-02: VAKRANGEE: model hold, rule nothing, acted nothing: the model chose hold, the rule chose nothing; the rule acts. No new money now: it still makes new lows (its close on 30 Oct was the lowest of the last 5); a buy needs 3 sessions above that low
+2018-11-09: VAKRANGEE: model hold, rule nothing, acted nothing: the model chose hold, the rule chose nothing; the rule acts. No new money now: it still makes new lows (its close on 05 Nov was the lowest of the last 5); a buy needs 3 sessions above that low
+2018-11-16: VAKRANGEE: model hold, rule nothing, acted nothing: the model chose hold, the rule chose nothing; the rule acts. No new money now: it still makes new lows (its close on 15 Nov was the lowest of the last 5); a buy needs 3 sessions above that low
+2018-11-05: 63MOONS: model buy_in_parts, rule nothing, acted nothing: the model chose buy_in_parts, the rule chose nothing; the rule acts. No new money now: it is 2.6 of its usual daily moves above its 20-session average (limit 2.5): wait for a pullback towards Rs 23.54
+2018-11-12: 63MOONS: model buy_in_parts, rule buy_in_parts, acted buy_in_parts: Buy in 3 parts from the reserve: expected result positive, the bad case fits 1% of the whole book; this part Rs 12,412 of Rs 37,235.
+2018-11-19: 63MOONS: model buy_in_parts, rule hold, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 141).
+2018-11-26: 63MOONS: model buy_in_parts, rule hold, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 163).
+2018-12-03: 63MOONS: model buy_in_parts, rule hold, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 155).
+2018-11-06: HCL-INSYS: model buy_in_parts, rule buy_in_parts, acted buy_in_parts: Buy in 3 parts from the reserve: expected result positive, the bad case fits 1% of the whole book; this part Rs 12,310 of Rs 36,931.
+2018-11-13: HCL-INSYS: model buy_in_parts, rule hold, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 121).
+2018-11-12: NIITLTD: model buy_in_parts, rule buy_in_parts, acted buy_in_parts: Buy in 3 parts from the reserve: expected result positive, the bad case fits 1% of the whole book; this part Rs 12,352 of Rs 37,057.
+2018-11-19: NIITLTD: model buy_in_parts, rule hold, acted hold: the model chose buy_in_parts, the rule chose hold; the rule acts. Hold: no sale beats holding by 1% of the position after tax and charges (best sale gain Rs 0, trim Rs 0; the bar is Rs 118).
+2018-11-26: NIITLTD: model buy_in_parts, rule buy_in_parts, acted buy_in_parts: part 2: Add in parts: the expected result is positive and the bad case fits the 1% limit; this part Rs 12,120.
+held metals stand-ins: SYNFMCG1 case open, SYNFMCG2 case open
+
+IN TWO LINES (the wide target 63MOONS, +22.1 points against the index in 5 sessions at the window's end):
+  63MOONS was noticed by the wide watch while the metals basket fell and the IT basket rose with the index flat; the scripted model said buy in parts.
+  Rule: model buy_in_parts, rule nothing, acted nothing: the model chose buy_in_parts, the rule chose nothing; the rule acts. No new money now: it is 2.6 of its usual daily moves above its 20-session average (limit 2.5): wait for a pullback towards Rs 23.54

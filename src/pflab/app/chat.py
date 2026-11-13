@@ -1,89 +1,65 @@
-"""The AI centre's chats (S54b): one conversation, four modes, the route of every answer shown beside it.
+"""The AI centre's chats (S54b; the entrance since S85): what is left here is the old surface the rest of the app calls. The conversation itself, one for the laptop and Telegram, lives in
+`entrance/store.py`, and a question is taken by the intake (`entrance/intake.py`), never by a thread started here.
 
-    ask        the ask centre (`agents.centre`): local routing to the system's read-only tools, a guarded answer;
-               nothing leaves the PC
-    web        Opus with web search (`analyst.web_search`): public questions only, priced first, cited pages
-    deep       the doorbell (`analyst.ask_deep`): a cited note from public documents, kept in the graph; the local
-               model answers when Opus is not rung
-    calc       the calculation workshop (`agents.workshop`): Opus writes the code from the data layout, it runs here
-
-Answers are computed on a worker thread (one at a time: the local model and the GPU are shared) and written back to
-the message; the screen sees the change through the runtime's "chat" topic. Each question stands on its own (the local
-model's window is small); the chat keeps the history for the investor. Chats untouched for TIDY_DAYS are summarised into the
-system's memory and removed.
+    create / listing / messages / delete / _add / _finish   the old helpers, now on the shared store (messages carry their channel, model and price)
+    post          a question into a chat -> `intake.submit` (a mode is only validated: the old ask / web / deep / calc roads are the tools the model picks)
+    answer        the board agent's synchronous road (hq/roster: ask, web, deep, calc), unchanged; it does not run on the chat's intake
+    tidy          chats untouched for TIDY_DAYS are summarised into the system's memory and removed
 """
 from __future__ import annotations
 
-import json
-import threading
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-MODES = ("auto", "ask", "web", "deep", "calc")
+MODES = ("auto", "ask", "web", "deep", "calc")       # kept so old callers still pass a mode; since S85 the model chooses its tools itself (the mode buttons are gone)
 TIDY_DAYS = 30
-_WORK = threading.Lock()
 
 
 def create(con, now: datetime, title: str = "New chat") -> int:
-    from pflab.pm.store import next_id
-    cid = next_id(con, "chats", "chat_id")
-    con.execute("INSERT INTO chats VALUES (?,?,?,?)", [cid, title[:80], now, now])
-    return cid
+    from pflab.entrance import store
+    return store._make(con, now, title, "laptop")
 
 
 def listing(con) -> List[dict]:
-    return [{"id": i, "title": t, "updated": str(u)[:16]} for i, t, u in con.execute(
-        "SELECT chat_id, title, updated_at FROM chats ORDER BY updated_at DESC").fetchall()]
+    from pflab.entrance import store
+    return store.chats(con)
 
 
 def messages(con, chat_id: int) -> List[dict]:
-    rows = con.execute("SELECT msg_id, role, mode, text, status, route_json, meta, report_doc, cost_inr, created_at "
-                       "FROM chat_messages WHERE chat_id=? ORDER BY msg_id", [chat_id]).fetchall()
-    return [{"id": r[0], "role": r[1], "mode": r[2], "text": r[3], "status": r[4], "route": json.loads(r[5] or "[]"),
-             "meta": r[6] or "", "report": r[7], "cost_inr": r[8], "at": str(r[9])[:16]} for r in rows]
+    from pflab.entrance import store
+    return store.messages(con, chat_id)
 
 
 def delete(con, chat_id: int) -> None:
     from pflab.pm.store import transaction
     with transaction(con):
         con.execute("DELETE FROM chat_messages WHERE chat_id=?", [chat_id])
+        con.execute("DELETE FROM chat_attachments_s85 WHERE chat_id=?", [chat_id])
         con.execute("DELETE FROM chats WHERE chat_id=?", [chat_id])
 
 
 def _add(con, chat_id: int, role: str, mode: str, text: str, status: str, now: datetime) -> int:
-    from pflab.pm.store import next_id
-    mid = next_id(con, "chat_messages", "msg_id")
-    con.execute("INSERT INTO chat_messages (msg_id, chat_id, role, mode, text, status, created_at) VALUES (?,?,?,?,?,?,?)",
-                [mid, chat_id, role, mode, text, status, now])
-    con.execute("UPDATE chats SET updated_at=? WHERE chat_id=?", [now, chat_id])
-    return mid
+    from pflab.entrance import store
+    return store.add_message(con, chat_id, role, text, status=status, now=now, mode=mode)
 
 
 def _finish(con, mid: int, text: str, route: List[str], meta: str, now: datetime, status: str = "done",
             report: Optional[str] = None, cost: Optional[float] = None) -> None:
-    con.execute("UPDATE chat_messages SET text=?, status=?, route_json=?, meta=?, report_doc=?, cost_inr=?, finished_at=? "
-                "WHERE msg_id=?", [text, status, json.dumps(route), meta, report, cost, now, mid])
+    from pflab.entrance import store
+    store.update_message(con, mid, now, text=text, status=status, route=route, meta=meta, report_doc=report, cost_inr=cost, finish=True)
 
 
 def post(rt, chat_id: int, text: str, mode: str, approved: bool = False) -> dict:
-    """Record the question and a pending answer; the answer is worked out on a background thread."""
+    """The old entry (S54b): a question into a chat. Since S85 it is the intake's: the message and a pending answer are in the chat at once and a worker answers on the model the router picks
+    (`mode` is only checked; the old ask / web / deep / calc roads are the tools Auto picks). -> {"chat_id", "msg_id" (the pending answer)}."""
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}")
     q = text.strip()
     if not q:
         raise ValueError("empty message")
-    con = rt.cursor()
-    now = rt.clock()
-    row = con.execute("SELECT title FROM chats WHERE chat_id=?", [chat_id]).fetchone()
-    if row is None:                                      # no chat open (or it was deleted): start one
-        chat_id = create(con, now, q[:60])
-    elif row[0] == "New chat":                           # a new chat takes its first question as its title
-        con.execute("UPDATE chats SET title=? WHERE chat_id=?", [q[:60], chat_id])
-    _add(con, chat_id, "me", mode, q, "done", now)
-    aid = _add(con, chat_id, "ai", mode, "Working on it…", "working", now)
-    rt.bump("chat")
-    threading.Thread(target=_work, args=(rt, chat_id, aid, q, mode, approved), name=f"chat-{aid}", daemon=True).start()
-    return {"chat_id": chat_id, "msg_id": aid}
+    from pflab.entrance import intake
+    out = intake.submit(rt, "laptop", q, chat_id=chat_id or None)
+    return {"chat_id": out["chat_id"], "msg_id": out["msg_id"]}
 
 
 HISTORY_TURNS, HISTORY_CHARS = 6, 220
@@ -95,20 +71,6 @@ def history_text(con, chat_id: int, before_msg: int, turns: int = HISTORY_TURNS)
     rows = con.execute("SELECT role, text FROM chat_messages WHERE chat_id=? AND msg_id < ? AND status='done' ORDER BY msg_id DESC LIMIT ?",
                        [chat_id, before_msg, turns]).fetchall()
     return "\n".join(f"{'he asked' if r == 'me' else 'you answered'}: {' '.join((t or '').split())[:HISTORY_CHARS]}" for r, t in reversed(rows))
-
-
-def _work(rt, chat_id: int, aid: int, q: str, mode: str, approved: bool) -> None:
-    con = rt.cursor()
-    with _WORK:
-        try:
-            out = answer(rt, con, q, mode, approved, history=history_text(con, chat_id, aid - 1))
-        except Exception as e:                               # shown in the chat, never hidden
-            out = {"text": f"This could not be answered: {type(e).__name__}: {str(e)[:300]}", "route": ["error"],
-                   "meta": "", "status": "failed"}
-    _finish(con, aid, out["text"], out.get("route", []), out.get("meta", ""), rt.clock(), out.get("status", "done"),
-            out.get("report"), out.get("cost"))
-    con.execute("UPDATE chats SET updated_at=? WHERE chat_id=?", [rt.clock(), chat_id])
-    rt.bump("chat", "notifications")
 
 
 def answer(rt, con, q: str, mode: str, approved: bool = False, history: str = "") -> dict:

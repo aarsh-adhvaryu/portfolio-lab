@@ -45,14 +45,68 @@ DEFAULTS = {
 }
 
 
-def settings() -> dict:
-    """`configs/core.toml [think]` over the defaults (an unreadable file leaves the defaults)."""
+OVERRIDES_FILE = "think_overrides.json"
+_OV_CACHE: dict = {"key": None, "data": {}}
+
+
+def _overrides_path() -> Path:
+    from pflab.pm import store
+    return store.pm_dir() / OVERRIDES_FILE
+
+
+def overrides() -> dict:
+    """The tuned thresholds (S85 L1, `think/tuning.py`): a small JSON beside the store, a copy of the active rows of `think_overrides_s84`. Read on top of the config by `settings()`; an
+    unreadable or missing file gives none. A value outside [0.5x, 2x] of the config's is ignored (the rule's own bound, held here too)."""
+    try:
+        p = _overrides_path()
+        st = p.stat()
+        key = (str(p), st.st_mtime_ns, st.st_size)
+        if _OV_CACHE["key"] != key:
+            import json
+            raw = json.loads(p.read_text(encoding="utf-8"))
+            base = settings(raw=True)
+            ok = {}
+            for k, v in raw.items():
+                c = base.get(k)
+                if c is None and k == "wide_run_pts":
+                    c = 20.0
+                try:
+                    if c is not None and 0.5 * float(c) - 1e-9 <= float(v) <= 2.0 * float(c) + 1e-9:
+                        ok[k] = float(v)
+                except (TypeError, ValueError):
+                    pass
+            _OV_CACHE.update({"key": key, "data": ok})
+        return dict(_OV_CACHE["data"])
+    except Exception:
+        return {}
+
+
+def write_overrides(data: dict) -> None:
+    """Write the overrides file (called by `think/tuning.py` only). An empty set removes the file."""
+    import json
+    p = _overrides_path()
+    if not data:
+        try:
+            p.unlink()
+        except FileNotFoundError:
+            pass
+        _OV_CACHE["key"] = None
+        return
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(data, sort_keys=True), encoding="utf-8")
+    _OV_CACHE["key"] = None
+
+
+def settings(raw: bool = False) -> dict:
+    """`configs/core.toml [think]` over the defaults (an unreadable file leaves the defaults), then the tuned thresholds (`overrides()`) unless `raw`."""
     out = dict(DEFAULTS)
     try:
         from pflab import _toml
         out.update({k: v for k, v in (_toml.load(CONFIG).get("think") or {}).items()})
     except Exception:
         pass
+    if not raw:
+        out.update(overrides())
     return out
 
 

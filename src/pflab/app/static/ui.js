@@ -31,19 +31,22 @@ function subnavHtml(screen, sub) {
 
 /* ---------- the assistant ---------- */
 function bubble(m, prevQ) {
-  const me = m.role === 'me', note = (m.mode || '').startsWith('note:');
+  const me = m.role === 'me', note = (m.mode || '').startsWith('note:') || m.channel === 'system';
+  const pending = m.status === 'working' || m.status === 'queued';
   const steps = (m.route || []).filter((r) => r && r !== 'the system, unprompted').map((r) => `<span class="step">${esc(r)}</span>`).join('');
-  const body = m.status === 'working' ? `<span class="warn">${esc(m.meta && m.meta.startsWith('working') ? m.meta : 'Working on it…')}</span>` : fmt(m.text);
+  const body = pending ? `<span class="warn">${esc(m.meta && m.meta.startsWith('working') ? m.meta : (m.text && m.text.endsWith('…') ? m.text : 'Working on it…'))}</span>` : fmt(m.text);
+  const acts = (m.actions || []).length ? `<div class="row" style="gap:8px;margin-top:6px">${m.actions.map((a) => `<button class="btn ${a.id === 'yes' ? 'primary' : ''}" data-card="${m.id}" data-act="${esc(a.id)}">${esc(a.label || a.id)}</button>`).join('')}</div>` : '';
+  const files = (m.attachments || []).length ? `<div class="tiny muted">${m.attachments.map((a) => '⎘ ' + esc(a.name)).join(' · ')}</div>` : '';
   return `<div class="bub ${me ? 'me' : note ? 'ai sys' : 'ai'}">
-    ${!me && steps && m.status !== 'working' ? `<div class="steps">${steps}</div>` : ''}
-    <div class="body">${note ? '<div class="tiny muted" style="margin-bottom:4px">from the system</div>' : ''}${body}</div>
+    ${!me && steps && !pending ? `<div class="steps">${steps}</div>` : ''}
+    <div class="body">${note ? '<div class="tiny muted" style="margin-bottom:4px">from the system</div>' : ''}${body}${files}${acts}</div>
     ${m.report ? `<button class="btn" style="align-self:flex-start" data-report="${esc(m.report)}">Open the saved note</button>` : ''}
     ${m.status === 'failed' ? '<span class="tiny down">not answered</span>' : ''}
-    <span class="tiny muted">${esc(!me && !note && m.status !== 'working' ? m.meta || '' : '')}${!me && !note && m.meta && m.status !== 'working' ? ' · ' : ''}${esc(m.at || '')}</span></div>`;
+    <span class="tiny muted">${m.channel === 'telegram' ? '<span class="chip" title="sent from Telegram">Telegram</span> ' : ''}${esc(!me && !note && !pending ? m.meta || '' : '')}${!me && !note && m.meta && !pending ? ' · ' : ''}${esc(m.at || '')}</span></div>`;
 }
 function threadHtml(msgs) {
   if (!msgs.length) {
-    const asks = ['Is everything working, and what are you doing right now?', 'What needs me today?', 'Investigate my concern that a China-related AI sell-off could spread to my investments.',
+    const asks = ['Is everything working, and what are you doing right now?', 'What needs me today?', 'How are the picks doing against the index so far?',
       'Compare putting 10 lakh in now, in 10 monthly parts, or keeping cash until a fall.', 'What does history say about selling an IPO allotment on listing day?'];
     return `<div style="margin:auto;display:flex;flex-direction:column;gap:12px;align-items:center;max-width:560px;text-align:center">
       <b style="font-size:17px">Talk to it like a colleague who never sleeps.</b>
@@ -110,6 +113,9 @@ async function renderAssistant(h, inv, cmd, sys) {
   if (!$('thread')) {
     screen.innerHTML = `<div class="asst"><section class="card" style="padding:12px 14px"><div class="row" id="chatBar" style="gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px"></div><div class="thread" id="thread"></div>
       <div class="row wrapr" id="stageTray" style="gap:6px;margin:6px 0 0"></div>
+      <div class="row wrapr" style="gap:8px;margin:6px 0 0;align-items:center"><span class="tiny muted" id="queueLine"></span><span style="flex:1"></span>
+        <label class="tiny muted" for="modelPick">Model</label><select id="modelPick" class="inp" style="width:auto"></select>
+        <label class="tiny muted" for="thinkPick">Thinking</label><select id="thinkPick" class="inp" style="width:auto"></select></div>
       <div class="composer"><input type="file" id="chatFile" multiple style="display:none"><button class="btn" id="attachBtn" aria-label="Attach files" title="Attach one or more files (PDF, Excel, CSV, a screenshot), then write and press Send">⎘</button>
         <label for="chatIn" style="position:absolute;left:-9999px">Your message</label>
         <textarea id="chatIn" rows="1" placeholder="Ask, discuss, or give it work… (Enter sends, Shift+Enter for a new line)"></textarea><button class="btn primary" id="sendBtn">Send</button></div>
@@ -138,6 +144,7 @@ async function renderAssistant(h, inv, cmd, sys) {
     $('newChat').onclick = async () => { try { await post('/api/assistant/new', {}); } catch (e) { alert(e.message); } S.threadHtml = ''; S.threadSeen = false; load(true); };
     bar.querySelectorAll('[data-earlier]').forEach((b) => { b.onclick = async () => { try { await post('/api/assistant/open/' + b.dataset.earlier, {}); } catch (e) { alert(e.message); } S.threadHtml = ''; S.threadSeen = false; load(true); }; });
   }
+  paintPicker(h);
   const th = $('thread'), near = th.scrollHeight - th.scrollTop - th.clientHeight < 80;
   const html = threadHtml(h.messages);
   if (S.threadHtml !== html) { th.innerHTML = html; S.threadHtml = html; if (near || !S.threadSeen) th.scrollTop = th.scrollHeight; S.threadSeen = true; }
@@ -154,8 +161,22 @@ async function renderAssistant(h, inv, cmd, sys) {
     document.querySelectorAll('[data-answer]').forEach((b) => { b.onclick = async () => { const v = $('qa' + b.dataset.answer).value.trim(); if (!v) return; await post(`/api/questions/${b.dataset.answer}/answer`, { text: v }); load(true); }; });
   }
   th.querySelectorAll('[data-sugg]').forEach((b) => { b.onclick = () => sendAssistant(b.dataset.sugg); });
+  th.querySelectorAll('[data-card]').forEach((b) => { b.onclick = async () => { try { await post(`/api/assistant/messages/${b.dataset.card}/action`, { action: b.dataset.act }); } catch (e) { alert(e.message); } S.threadHtml = ''; load(true); }; });
   th.querySelectorAll('[data-report]').forEach((b) => { b.onclick = () => openReport(b.dataset.report); });
   S.asst = h;
+}
+/* S85: the model and thinking picker (Auto by default) and the queue line ("Working on what you sent") */
+function paintPicker(h) {
+  const m = $('modelPick'), t = $('thinkPick');
+  if (!m || !t) return;
+  const prefs = h.prefs || {}, models = h.models || [{ key: 'auto', label: 'Auto' }];
+  const mh = models.map((x) => `<option value="${esc(x.key)}">${esc(x.label)}</option>`).join('');
+  if (m.dataset.h !== mh) { m.innerHTML = mh; m.dataset.h = mh; m.onchange = () => { post('/api/assistant/prefs', { model: m.value }).catch((e) => alert(e.message)); }; }
+  const th = ['auto'].concat(h.thinking || ['low', 'medium', 'high', 'max']).map((x) => `<option value="${esc(x)}">${esc(x === 'auto' ? 'Auto' : x)}</option>`).join('');
+  if (t.dataset.h !== th) { t.innerHTML = th; t.dataset.h = th; t.onchange = () => { post('/api/assistant/prefs', { thinking: t.value === 'auto' ? null : t.value }).catch((e) => alert(e.message)); }; }
+  if (document.activeElement !== m) m.value = prefs.model_key || 'auto';
+  if (document.activeElement !== t) t.value = prefs.thinking || 'auto';
+  const q = $('queueLine'); if (q) { const open = (h.queue || []); q.textContent = open.length ? 'Working on what you sent: ' + open.map((i) => i.progress || i.state).join('; ') : ''; }
 }
 async function sendAssistant(text, context) {
   const inp = $('chatIn') || $('dockIn');
@@ -163,20 +184,23 @@ async function sendAssistant(text, context) {
   const staged = text === undefined && $('chatIn') ? (S.staged || []) : [];
   if (!q && !staged.length) return;
   const btn = $('sendBtn');
+  let ids = [];
   if (staged.length) {
-    if (btn) { btn.disabled = true; btn.textContent = `Reading ${staged.length} file${staged.length > 1 ? 's' : ''}…`; }
-    const h = S.asst || await api('/api/assistant'), ids = [], names = [];
+    if (btn) { btn.disabled = true; btn.textContent = `Sending ${staged.length} file${staged.length > 1 ? 's' : ''}…`; }
     for (const f of staged) {
-      try { const r = await upload(f, { chat: h.chat_id }); if (r.id) ids.push(r.id); names.push(f.name); } catch (e) { alert(`${f.name}: ${e.message}`); }
+      try { const r = await stageFile(f); if (r.upload_id) ids.push(r.upload_id); } catch (e) { alert(`${f.name}: ${e.message}`); }
     }
-    await settled(ids);
     if (btn) { btn.disabled = false; btn.textContent = 'Send'; }
     S.staged = []; paintStage();
-    if (names.length) q = (q ? q + '\n\n' : 'Please read what I attached and tell me what it says.\n\n') + 'Attached: ' + names.join(', ');
   }
   if (text === undefined && inp) { inp.value = ''; S.draft = ''; inp.style.height = 'auto'; }
-  try { await post('/api/assistant', { text: q, context: context || '' }); } catch (e) { alert(e.message); }
+  try { await post('/api/assistant', { text: q, context: context || '', files: ids }); } catch (e) { alert(e.message); }
   load(true); dockRefresh();
+}
+async function stageFile(f) {                                          // S85: the file goes with the message; the intake checks it locally, then reads it
+  const r = await fetch('/api/assistant/files', { method: 'POST', headers: { 'x-filename': encodeURIComponent(f.name) }, body: f });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+  return r.json();
 }
 /* S78: files are staged in a tray and go WITH the message (any number of them): choose, write, press Send. */
 function attachToAssistant(files) {

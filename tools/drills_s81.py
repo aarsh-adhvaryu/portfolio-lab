@@ -555,6 +555,9 @@ class Env:
 
             def join(self, t=None):
                 pass
+
+            def is_alive(self):                       # S85: the chat intake (entrance/intake.py) asks its worker thread
+                return False
         real = rtm.threading.Thread
         rtm.threading.Thread = NoThread
         try:
@@ -1826,7 +1829,7 @@ def step_thinking(env: "Env", c: Check, phase: str) -> None:
         per_day[str(x["opened_on"])] = per_day.get(str(x["opened_on"]), 0) + 1
     c.ok(all(v <= 3 for v in per_day.values()), f"never more than 3 new cases examined in a day ({per_day})", "think/watch.py")
     steps = [s for x in examined for s in cases.steps(cur, x["case_id"]) if s["model"]]
-    c.ok(bool(steps) and all(s["engine"] == "anthropic" and s["model"] and s["thinking"] for s in steps), f"every model step stores its engine, model and thinking level ({len(steps)} steps)", "think/session.py, llm/gateway.py")
+    c.ok(bool(steps) and all(s["engine"] in ("claude", "anthropic") and s["model"] and s["thinking"] for s in steps), f"every model step stores its engine, model and thinking level ({len(steps)} steps)", "think/session.py, llm/gateway.py")
     dec = cases.decisions(cur)
     c.ok(bool(dec), f"decisions were stored ({len(dec)})", "think/session.py")
     sec = [x for x in dec if not str(x["isin"]).startswith(("MARKET:", "MACRO:", "STORY:"))]
@@ -1958,6 +1961,14 @@ def drill_accelerated_thinking(env: "Env", c: Check) -> None:
     c.note(f"steps: {[(s['name'], s['status']) for s in c.steps]}")
     if not any(e.startswith("FAIL:") for e in c.evidence) and bad:
         c.ok(False, f"steps failed: {[s['name'] for s in bad]}", "tools/drills_s81.py ACCELERATED_STEPS")
+
+
+@drill("accelerated_week", 30)
+def drill_accelerated_week(env: "Env", c: Check) -> None:
+    """S85: a working week of the whole system (chat from both windows, the thinking loop and the desk, the app closed every night and for a whole day, an engine switch in the middle), every model and the
+    Bot API scripted. The week itself is in tools/drills_s85_week.py."""
+    import drills_s85_week
+    drills_s85_week.run(env, c, sys.modules[__name__])
 
 
 @drill("accelerated_long", 20)

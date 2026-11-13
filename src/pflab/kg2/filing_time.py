@@ -18,6 +18,8 @@ RULE_NEWS = "article_day_next_day"
 RULE_PUBLISHED = "published_time"
 RULES = (RULE_RELEASE, RULE_DERIVED, RULE_NEWS, RULE_PUBLISHED)
 IST_OFFSET = timedelta(hours=5, minutes=30)      # GDELT's clock is UTC; the system's is IST wall time
+RULE_RECEIVED = "received_time"                  # S85: a document or checked fact he sent (source "you"): usable from the moment the intake received it
+RULES = RULES + (RULE_RECEIVED,)
 
 
 @lru_cache(maxsize=4096)

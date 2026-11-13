@@ -132,6 +132,7 @@ class Runtime:
             s83.register_picks_live(self.cursor(), self.clock())        # S83 L5: the picks sleeve's live test, one per market
             from pflab.learner import s84
             s84.register_thinking_live(self.cursor(), self.clock())     # S84 T8: the thinking loop's live test, once
+            s84.register_thinking_amendment_a2(self.cursor(), self.clock())     # S85 L1: its Amendment A2 (bounded threshold tuning), once
             s79.register_c4(self.cursor(), self.clock())               # S82 C4
             s79.apply_verdicts(self.cursor())
         except Exception:
@@ -151,12 +152,22 @@ class Runtime:
             t = threading.Thread(target=self._guard(fn), name=name, daemon=True)
             t.start()
             self.threads.append(t)
+        try:                                                 # S85 (A69): the intake, the chat's own workers: its own threads and queue, never the scheduler's; a queue a stopped process left is resumed
+            from pflab.entrance import intake
+            intake.start(self)
+        except Exception:
+            log.exception("the chat intake did not start")
 
     def shutdown(self, wait_s: float = 30.0, others_s: float = 3.0) -> None:
         """A running job gets `wait_s` to finish (it writes the store); the screen's own computations (watch list,
         Monte Carlo, simulations: caches written whole) get `others_s` and are dropped with the process."""
         self.stop.set()
         self._wake.set()
+        try:                                                 # S85: the intake's workers end with the app (an item in progress stays `working` and is resumed at the next start)
+            from pflab.entrance import intake
+            intake.stop()
+        except Exception:
+            pass
         try:                                                 # S70: the local-call record belongs to this runtime's store
             from pflab.llm import client
             client.set_sink(None)

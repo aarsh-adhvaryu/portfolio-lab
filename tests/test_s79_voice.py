@@ -24,7 +24,8 @@ def test_question_goes_out_at_once_with_buttons(con):
     row = con.execute("SELECT kind, status, text FROM outbox").fetchone()
     assert row[0] == "question" and row[1] == "pending" and "I go with: keep" in row[2]
     mk = json.loads(con.execute("SELECT markup_json FROM outbox_markup_s79").fetchone()[0])
-    assert [b[0]["callback_data"] for b in mk["inline_keyboard"]] == [f"q:{q}:0", f"q:{q}:1"]
+    card = con.execute("SELECT msg_id FROM cards_s85 WHERE q_id=?", [q]).fetchone()[0]          # S85: the buttons are the question's card (`card:<msg>:yes|no`)
+    assert [b[0]["callback_data"] for b in mk["inline_keyboard"]] == [f"card:{card}:yes", f"card:{card}:no"]
     assert voice.effective(con, "k1") == ("keep", "pending-default")
 
 
