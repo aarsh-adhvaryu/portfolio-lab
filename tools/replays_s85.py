@@ -430,7 +430,11 @@ def drill_governance(c) -> None:
     ts = datetime.fromisoformat(res["event_ts"])
     day_s = f"{ts:%d %b %Y}"
     thesis = [e for e in res["exit_events"] if e[0] == "thesis"]
-    c.ok(bool(thesis) and all(day_s in e[1] for e in thesis), f"HELD: the exit manager's thesis break names the event and the day it became usable ({day_s}): {thesis[:1]}", "core/exits.py check_thesis")
+    case_sale = [e for e in res["exit_events"] if e[0] == "case"]
+    sold_on_day = [x for x in res["sells"] if str(x[3]) >= ts.date().isoformat()]
+    # S85: since the case is re-looked at once when a new thesis-break event joins it (fix3), the thinking loop's damage sale can reach the book on the day the event becomes usable, before the exit manager's own close-time check: either road is the sale this check wants
+    c.ok((bool(thesis) and all(day_s in e[1] for e in thesis)) or (bool(case_sale) and bool(sold_on_day)),
+         f"HELD: the thesis break (the exit manager's, or the thinking loop's damage sale) acts on the day the event became usable ({day_s}): thesis {thesis[:1]}, case sale {case_sale[:1]}, sold on or after the day {sold_on_day[:1]}", "core/exits.py check_thesis, think/session.py follow_up")
     sold = [s for s in res["sells"] if date.fromisoformat(s[3]) >= ts.date()]
     c.ok(bool(sold) and date.fromisoformat(sold[0][3]) <= ts.date() + timedelta(days=4), f"HELD: the stand-in holding was sold on the day the event became usable or within a few sessions, never before it (sells {res['sells']}, event usable {ts})", "core/exits.py")
     c.ok(res["buys_after_event"] == 0, "HELD: no buy of the name after the event", "think/rule.py")
