@@ -19,3 +19,4 @@
 12:56 C4.2 OpenAI exam rerun DONE (medium 4/6, 0 facts missed, form FAIL 4 broken lists base_rate_set; high 4/6, form FAIL 5; Rs 15.86 + 25.19); C4.3 Claude exam does not fit cap (est Rs ~50/level), estimate only; C2(e) 2h lane run started (D:/s86b_scratch/live2h)
 12:58 C2(b) live hour read so far: 8 REDs in 2 passes, mostly commentary/stock-pick pieces on Nvidia + one HDFC customer-fraud arrest (rule 'fraud'); added generic commentary/advice markers to both paths
 12:59 docs: CLAUDE.md rule 9, W1 freeze, S86b line done
+12:59 CHECKPOINT 13:15 (early): committed, privacy grep run, branch pushed

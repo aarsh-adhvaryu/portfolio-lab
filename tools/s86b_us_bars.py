@@ -1,4 +1,4 @@
-"""S86b C6: the US session loop on REAL 1-minute bars (with pre-market and after-hours) of Thursday 12 and Friday 13 Nov 2026 (`tests/fixtures/s86/nvda_1m_s86.json`, `spy_1m_s86.json`, public Yahoo chart
+"""S86b C6: the US session loop on REAL 1-minute bars (with pre-market and after-hours) of Thursday 12 and Friday 13 Nov 2026 (`tests/fixtures/s86/nvda_1m_s86.parquet`, `spy_1m_s86.parquet`, public Yahoo chart
 data fetched 14 Nov) on a scratch sub-book that holds Nvidia, with the saved headlines (`gnews_nvda_week.xml`) at their real times through the alarm lane. The case's decision is SCRIPTED (a sale of the
 whole position on the first serious headline, then a buy of the same name later the same US day, which must not happen); everything else is the real code: the lane, `core/us_session.tick`, the fills.
 The watch on live quotes is stubbed (no signal, no model call). One 25-minute feed stall is injected on Friday 20:30 IST to show that a stale quote never fills.
@@ -22,8 +22,9 @@ STALL = (datetime(2026, 11, 13, 20, 30), datetime(2026, 11, 13, 20, 55))
 
 
 def load_bars(sym):
-    d = json.loads((FIX / f"{sym.lower()}_1m_s86.json").read_text(encoding="utf-8"))
-    return [(datetime.fromtimestamp(t, timezone.utc).replace(tzinfo=None) + IST, float(c)) for t, c in d["bars"]]      # (bar START in IST, close)
+    import pandas as pd
+    d = pd.read_parquet(FIX / f"{sym.lower()}_1m_s86.parquet")
+    return [(datetime.fromtimestamp(int(t), timezone.utc).replace(tzinfo=None) + IST, float(c)) for t, c in zip(d["ts"], d["close"])]      # (bar START in IST, close)
 
 
 def main() -> int:
