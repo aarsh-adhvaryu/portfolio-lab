@@ -30,3 +30,4 @@
 15:07 3 failing drills now PASS (off_fri_mon, off_10_days, accelerated_long). replays: rotation, governance PASS; march2020 FAIL on my new check (part units not kept); debugging why (protection computed OK but position fully sold on 2020-04-01)
 15:15 march2020 debug: gauge cuts the BASE position 7.0%->5.4% and spares the part (0.66%); my first etf_kept query was wrong; drill now checks held value >= 90% of part; rerun started
 15:15 Step C: final normal-order suite started (code frozen except docs)
+15:15 docs: ledger + alarm notes updated; 2h lane run: 8 passes, clean
