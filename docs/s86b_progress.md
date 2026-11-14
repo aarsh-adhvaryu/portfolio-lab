@@ -24,3 +24,4 @@
 13:19 Step A normal suite: 4023 passed, 3 failed (3 ghost tests, run mid-edit of fastforward/migrations); rerun alone: pass. reversed suite running
 13:20 docs: findings 12-17 appended
 13:20 migration of a copy of the app store (schema 352, 302 tables, 757,425 rows) to 356: 0 rows lost, 2 new tables; copy deleted
+13:39 docs: PLAN A81-A86 + parked list + BUILT done; remaining docs: What remains block, closeout ledger final, alarm notes, RUNNING after Step A
