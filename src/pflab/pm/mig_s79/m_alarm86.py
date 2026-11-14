@@ -81,4 +81,11 @@ MIGRATIONS += [
     ALTER TABLE ghost_s86 ADD COLUMN IF NOT EXISTS gain_after_tax DOUBLE;
     """),
 ]
+MIGRATIONS += [
+    (356, "ghost_after_tax_s86", """
+    ALTER TABLE ghost_s86 ADD COLUMN IF NOT EXISTS at_5 DOUBLE;
+    ALTER TABLE ghost_s86 ADD COLUMN IF NOT EXISTS at_20 DOUBLE;
+    ALTER TABLE ghost_s86 ADD COLUMN IF NOT EXISTS at_60 DOUBLE;
+    """),
+]
 MIGRATIONS.sort(key=lambda m: m[0])

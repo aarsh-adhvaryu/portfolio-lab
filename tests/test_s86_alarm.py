@@ -371,6 +371,7 @@ def test_amendment_a3_is_counted_once_and_the_protocol_stays_ok(con):
     s84.register_thinking_live(con, NOW)
     assert s84.register_thinking_amendment_a2(con, NOW) == ["s84:thinking_live_a2"]
     assert s84.register_thinking_amendment_a3(con, NOW) == ["s84:thinking_live_a3"] and s84.register_thinking_amendment_a3(con, NOW) == []
+    assert s84.register_thinking_amendment_a4(con, NOW) == ["s84:thinking_live_a4"] and s84.register_thinking_amendment_a4(con, NOW) == []
     assert s84.protocol_ok(con)["unchanged"] is True
 
 
@@ -546,3 +547,13 @@ def test_commentary_headlines_are_not_red_by_the_models_word_and_a_crisis_gets_a
         alarm.run(con, T0 + timedelta(hours=k + 1), tmp_path, client=client({"google_news": rss([(t, "WSJ", T0 + timedelta(hours=k + 1))])}), entries=es, sources=("google_news",), think_fn=think,
                   tell_fn=lambda c, n, cid: None)
     assert len(think.calls) == first
+
+
+def test_a_ghost_sale_is_scored_after_tax_beside_the_pre_tax_column(con, tmp_path):
+    from pflab.think import fastforward as ff
+    _gap_run(con, tmp_path, datetime(2026, 10, 20, 10, 0), prev=datetime(2026, 10, 19, 18, 0), now=datetime(2026, 10, 26, 16, 0))
+    assert ff.score_ghosts(con, date(2026, 10, 30)) >= 1
+    row = con.execute("SELECT scored_5, at_5, qty, fill_price FROM ghost_s86").fetchone()
+    assert row[0] is not None and row[1] is not None                                     # the after-tax cell is filled by the repo's tax rows (India lots of the fixture book)
+    sc = ff.scorecard(con)
+    assert sc["after_tax_inr"]["5"]["scored"] == 1 and "after tax" in sc["basis"]

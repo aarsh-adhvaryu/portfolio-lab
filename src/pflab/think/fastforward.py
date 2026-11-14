@@ -317,33 +317,73 @@ def model_look(con, now: datetime, root, e: dict, it: dict, at: datetime, prev: 
 
 # --- the forward test ---------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+def _tax_inr(con, market: str, isin: str, symbol: str, qty: float, price: float, day: date, root) -> Optional[float]:
+    """The Indian tax a sale of `qty` at `price` on `day` would add, from the repo's own tax rows (FIFO lots of the book: the US sub-book's `plan_sale`, India's exit estimate); None when no row covers it
+    or the lots are gone. Never writes."""
+    try:
+        if market == "US":
+            from pflab.us import book as usb, instruments as uins
+            held = float(usb.positions(con).get(isin, 0.0))
+            q = min(qty, held)
+            if q <= 1e-9:
+                return None
+            fx = _fx(con, day, root)
+            t = usb.plan_sale(con, uins.canonical(con, isin, day), q, price, 0.0, day, root, commit=False)
+            return None if t.get("no_rate") else float(t.get("tax_inr") or 0.0) * (qty / q)
+        from pflab.core import exits
+        est = exits._estimate(con, isin, qty, price, day)
+        return None if est.get("tax") is None else float(est["tax"])
+    except Exception:
+        return None
+
+
+def _after_tax_edge(con, g: tuple, later_px: float, later_day: date, root) -> Optional[float]:
+    """Rupees: (what selling at the ghost's fill leaves after tax) minus (what holding to `later_day` and selling then leaves after tax), on the ghost's quantity. Positive = selling was right."""
+    gid, isin, sym, mk, fts, fpx, qty = g
+    if not qty or qty <= 1e-9:
+        return None
+    fx = _fx(con, later_day, root) if mk == "US" else 1.0
+    t_fill = _tax_inr(con, mk, isin, sym, qty, float(fpx), fts.date(), root)
+    t_later = _tax_inr(con, mk, isin, sym, qty, float(later_px), later_day, root)
+    if t_fill is None or t_later is None:
+        return None
+    return round((float(fpx) * qty * fx - t_fill) - (float(later_px) * qty * fx - t_later), 2)
+
+
 def score_ghosts(con, day: date, root=None) -> int:
     """Score each ghost SALE at 5, 20 and 60 sessions after its fill: the share of the fill price the name has since fallen (positive = selling was right), pre-tax. Idempotent; point in time (closes up to
     `day`). Returns the number of cells written."""
     from pflab import markets
     from pflab.think import watch
     n = 0
-    rows = con.execute("SELECT ghost_id, isin, symbol, market, fill_ts, fill_price, scored_5, scored_20, scored_60 FROM ghost_s86 WHERE label=? AND fill_price IS NOT NULL", [LABEL]).fetchall()
-    for gid, isin, sym, mk, fts, fpx, s5, s20, s60 in rows:
+    rows = con.execute("SELECT ghost_id, isin, symbol, market, fill_ts, fill_price, scored_5, scored_20, scored_60, qty, at_5, at_20, at_60 FROM ghost_s86 WHERE label=? AND fill_price IS NOT NULL", [LABEL]).fetchall()
+    for gid, isin, sym, mk, fts, fpx, s5, s20, s60, gq, a5, a20, a60 in rows:
         s = _closes(con, {"market": mk, "isin": isin, "symbol": sym}, day, root)
         if s is None:
             continue
         after = s[s.index > pd.Timestamp(fts.date())]
-        for k, col, cur in ((5, "scored_5", s5), (20, "scored_20", s20), (60, "scored_60", s60)):
+        for k, col, cur, acol, acur in ((5, "scored_5", s5, "at_5", a5), (20, "scored_20", s20, "at_20", a20), (60, "scored_60", s60, "at_60", a60)):
             if cur is None and len(after) >= k:
                 con.execute(f"UPDATE ghost_s86 SET {col}=? WHERE ghost_id=?", [round(float(fpx - after.iloc[k - 1]) / float(fpx), 6), gid])
                 n += 1
+            if acur is None and len(after) >= k:                                                          # S86b C3.3: the same horizon after tax, beside the pre-tax column (the repo's tax rows)
+                e = _after_tax_edge(con, (gid, isin, sym, mk, fts, fpx, gq), float(after.iloc[k - 1]), pd.Timestamp(after.index[k - 1]).date(), root)
+                if e is not None:
+                    con.execute(f"UPDATE ghost_s86 SET {acol}=? WHERE ghost_id=?", [e, gid])
+                    n += 1
     return n
 
 
 def scorecard(con) -> dict:
     """The column `replayed_while_off` of the decision scorecard (never mixed with the live one): how many ghost decisions, how many scored at each horizon, how many were right."""
     rows = con.execute("SELECT option, scored_5, scored_20, scored_60, cost_of_being_off_inr FROM ghost_s86 WHERE label=?", [LABEL]).fetchall()
-    out = {"label": LABEL, "decisions": len(rows), "basis": "pre-tax price move after the decision; code decisions only", "right": {}}
+    out = {"label": LABEL, "decisions": len(rows), "basis": "price move after the decision (pre-tax column) and the rupee edge after tax (the repo's tax rows); each decision says whether code or the model made it", "right": {}}
     for k, i in ((5, 1), (20, 2), (60, 3)):
         xs = [r[i] for r in rows if r[i] is not None]
         out["right"][str(k)] = {"scored": len(xs), "right": sum(1 for x in xs if x > 0)}
     out["cost_of_being_off_inr"] = round(sum(r[4] for r in rows if r[4] is not None), 2)
+    at = con.execute("SELECT count(at_5), coalesce(sum(at_5),0), count(at_20), coalesce(sum(at_20),0), count(at_60), coalesce(sum(at_60),0) FROM ghost_s86 WHERE label=?", [LABEL]).fetchone()
+    out["after_tax_inr"] = {"5": {"scored": at[0], "edge_inr": round(at[1], 2)}, "20": {"scored": at[2], "edge_inr": round(at[3], 2)}, "60": {"scored": at[4], "edge_inr": round(at[5], 2)}}
     return out
 
 
