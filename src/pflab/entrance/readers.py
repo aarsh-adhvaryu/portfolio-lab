@@ -134,12 +134,18 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[‘’“”]", "'", str(s or ""))).strip().lower()
 
 
+def _loose(s: str) -> str:
+    """Letters and digits only, lower case: two quotes that differ only in punctuation, spacing or a line break compare equal. Never looser than that: a word or a figure that differs still fails."""
+    return re.sub(r"[^a-z0-9]", "", str(s or "").lower())
+
+
 def check_facts(raw: Sequence[dict], pages: Sequence[Tuple[int, str]], source_text: str, *, numbers_checkable: bool = True) -> Tuple[List[dict], List[str]]:
     """Facts that survive code's checks: the quote is IN the source (where the source has text), and every number of the claim is in the source. `pages` is [(page number, text)]; the page of a
     fact is the page where its quote was found (code decides, not the model). Returns (facts, notes for the dropped ones)."""
     out, notes = [], []
     have_text = bool(re.sub(r"\s+", "", source_text))
     norm_pages = [(p, _norm(t)) for p, t in pages]
+    loose_pages = [(p, _loose(t)) for p, t in pages]
     for f in raw or []:
         claim, quote = " ".join(str(f.get("claim") or "").split()), " ".join(str(f.get("quote") or "").split())
         if not claim:
@@ -148,6 +154,9 @@ def check_facts(raw: Sequence[dict], pages: Sequence[Tuple[int, str]], source_te
         if have_text:
             q = _norm(quote)
             found = [p for p, t in norm_pages if q and q in t]
+            if not found and len(_loose(quote)) >= 12:                    # S86b: the same words and figures in the same order, whatever the commas, spaces and line breaks (a printed "4,610" quoted as "4610")
+                lq = _loose(quote)
+                found = [p for p, t in loose_pages if lq in t]
             if not found:
                 notes.append(f"dropped a claim: its quote is not in the document (\"{quote[:60]}\")")
                 continue

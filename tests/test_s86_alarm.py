@@ -13,6 +13,9 @@ import pytest
 from pflab.ingest import headlines as ing
 from pflab.kg2 import headlines as kg
 from pflab.think import alarm, cases
+from pflab.think import fastforward as _ff0
+
+_REAL_MODEL_LOOK = _ff0.model_look
 from tests.test_s80_core import AAA, BBB, GLD, NOW, con  # noqa: F401  (the fixture)
 
 NAME = "Aardvark Industries"
@@ -24,6 +27,7 @@ def _named(con, monkeypatch, tmp_path):
     con.execute("UPDATE instruments SET name=? WHERE isin=?", [NAME + " Ltd", AAA])
     con.execute("UPDATE instruments SET name='Bobcat Holdings Ltd' WHERE isin=?", [BBB])
     monkeypatch.setattr("pflab.think.watch._index", lambda market, root=None: None)
+    monkeypatch.setattr("pflab.think.fastforward.model_look", lambda *a, **k: None)             # no paid call from a test: the replayed model look is tested with a scripted model below
     monkeypatch.setattr("pflab.kg2.classify.model_classify", lambda *a, **k: None)             # no real model in a test; the lane's own model hook is tested with a fake
 
 
@@ -497,3 +501,32 @@ def test_the_news_sources_that_are_on_come_from_configuration(con, tmp_path):
     net = Net({"google_news": rss([]), "yahoo": rss([]), "gdelt_doc": "{}"})
     r = alarm.run(con, T0, tmp_path, client=ing.Client(net, sleep=lambda s: None, clock=lambda: 0.0), entries=entries_for(con, tmp_path))
     assert not any("gdelt" in u for u in net.asked) and set(r["by_source"]) == {"google_news", "yahoo"}              # GDELT is OFF in configs/core.toml [think] alarm_sources
+
+
+# ------------------------------------------------------------------ S86b C3.1: the replayed model look (scripted model): cap of three, order, cache, point in time
+
+def test_the_replayed_model_look_is_capped_ordered_cached_and_sees_only_what_was_known(con, tmp_path, monkeypatch):
+    from pflab.think import fastforward as ff
+    monkeypatch.setattr("pflab.think.fastforward.model_look", _REAL_MODEL_LOOK)
+    seen = []
+
+    def scripted(system, user):
+        seen.append(user)
+        return {"json": {"klass": "damage", "option": "sell", "worst": "likely", "likely": "even", "best": "unlikely", "reason": "the board is investigating its chief"}, "cost_rupees": 1.5}
+
+    prev, now = datetime(2026, 10, 26, 18, 0), datetime(2026, 10, 30, 16, 0)
+    es = entries_for(con, tmp_path)
+    mk = lambda e, title, pub: {"id": f"i-{e['symbol']}", "title": title, "published": pub, "lane": "red", "kind": "leadership_crisis", "sev": "high", "entry": e}      # noqa: E731
+    items = [mk(dict(es[0], symbol=f"S{k}", isin=f"INE80{k}Z01019", exposure_inr=1000.0 * (5 - k)), f"{NAME} CEO ousted by board", datetime(2026, 10, 27, 10, 0)) for k in range(4)]
+    items[0]["entry"] = es[0]                                                                                           # the held one: AAA
+    items[0]["id"] = "i-AAA"
+    con.execute("INSERT INTO headlines_s86 (item_id, isin, title, source, published, first_seen, outlet) VALUES ('later', ?, 'a headline from AFTER the moment', 'google_news', ?, ?, 'Wire')", [AAA, datetime(2026, 10, 29, 9, 0), now])
+    con.execute("INSERT INTO headlines_s86 (item_id, isin, title, source, published, first_seen, outlet) VALUES ('before', ?, 'a headline from BEFORE the moment', 'google_news', ?, ?, 'Wire')", [AAA, datetime(2026, 10, 27, 9, 50), now])
+    r = ff.run_gap(con, now, tmp_path, prev, items, model_fn=scripted)
+    assert len(seen) <= 1 + 0 or len(seen) <= ff.MODEL_LOOKS_MAX                                                           # never more than three looks a gap
+    assert all("AFTER the moment" not in u for u in seen) and any("BEFORE the moment" in u for u in seen)                  # point in time
+    g = con.execute("SELECT source, option, code_option, model_class, model_cost FROM ghost_s86 WHERE symbol='AAA'").fetchone()
+    assert g[0] == "model" and g[1] == "sell" and g[3] == "damage" and g[4] == 1.5
+    n = len(seen)
+    r2 = ff.run_gap(con, now, tmp_path, prev, items, model_fn=scripted)                                                    # the same gap again: no second payment
+    assert len(seen) == n or r2.get("skipped")

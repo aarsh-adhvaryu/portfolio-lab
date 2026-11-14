@@ -251,6 +251,7 @@ alarm_sources = ["google_news", "yahoo"]   # S86b (A81, 2026-11-14): GDELT's DOC
 alarm_blind_minutes = 60      # a news source silent this long while the app is open: one line on Telegram, one when it returns
 alarm_gap_minutes = 30        # the app open after a gap this long: the backlog first, one "Off from X to Y" message
 fast_forward = true           # S86 (A77, think/fastforward.py): after a gap the same loop is replayed over it as a ghost book and scored as a forward test (replayed_while_off)
+fast_forward_model = true     # S86b (C3.1): at most 3 cases a gap are also looked at by the model (RED first, no web, priced, cached per gap and release); false = ghost decisions by code only
 sec_scope = "book"           # S85: whose 8-Ks (items 5.02, 4.01, 4.02) the SEC collector reads: "book" = US names held, picked, skipped or watched; "sp500" adds the index members
 
 

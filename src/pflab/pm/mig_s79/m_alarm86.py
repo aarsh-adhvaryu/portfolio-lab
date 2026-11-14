@@ -69,4 +69,16 @@ MIGRATIONS += [
     );
     """),
 ]
+MIGRATIONS += [
+    (355, "ghost_model_s86", """
+    ALTER TABLE ghost_s86 ADD COLUMN IF NOT EXISTS code_option VARCHAR;
+    ALTER TABLE ghost_s86 ADD COLUMN IF NOT EXISTS model_class VARCHAR;
+    ALTER TABLE ghost_s86 ADD COLUMN IF NOT EXISTS model_words VARCHAR;
+    ALTER TABLE ghost_s86 ADD COLUMN IF NOT EXISTS model_reason VARCHAR;
+    ALTER TABLE ghost_s86 ADD COLUMN IF NOT EXISTS model_cost DOUBLE;
+    ALTER TABLE ghost_s86 ADD COLUMN IF NOT EXISTS replay_key VARCHAR;
+    ALTER TABLE ghost_s86 ADD COLUMN IF NOT EXISTS steps VARCHAR;
+    ALTER TABLE ghost_s86 ADD COLUMN IF NOT EXISTS gain_after_tax DOUBLE;
+    """),
+]
 MIGRATIONS.sort(key=lambda m: m[0])

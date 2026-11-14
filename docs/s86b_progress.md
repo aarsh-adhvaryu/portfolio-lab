@@ -7,3 +7,5 @@
 12:34 C2(d) GDELT OFF in config (alarm_sources), merge_held wired earlier (merge_scope); amendment A81 to write
 12:34 C4.1 exam fixes (keyword test, invalid reasons, stops); C4.2 OpenAI exam rerun STARTED (est Rs 41; month spend read before)
 12:36 cli fix (timedelta shadow broke every command; test added); OpenAI exam rerun RESTARTED 12:40
+12:38 C5.3 diagnosed: his xlsx/pdf ARE readable by the S85 reader (6 and 14 facts, Rs 1.70/7.23); old inbox rows said 0 -> chat context cites old rows; fixed with why_unreadable; Tijori link = redirect to the same PDF; links in files resolved. C5.1 real PDFs next
+12:40 C5.1 real PDFs (11p refused by privacy screen: account-like number; 37p read in 2 parts, 2 facts, Rs 25.98; quote matching made punctuation-tolerant); C5.2 links true->supported Rs1.49, false->contradicted Rs1.25

@@ -131,3 +131,13 @@ def test_the_chats_file_list_never_says_nothing_readable(tmp_path):
     c.execute("INSERT INTO inbox_items (item_id, name, kind, account, path, sha, status, steps_json, text, result_json, chat_id, created_at, updated_at) VALUES (1,'old.pdf','other',NULL,?,'s','in the graph','[]','', '{}', 1, now(), now())", [str(scan)])
     t = context._files(c, 1)
     assert "nothing readable was extracted" not in t and "a scan with no text layer" in t
+
+
+def test_a_quote_that_differs_only_in_commas_and_line_breaks_is_kept_a_different_figure_is_not():
+    pages = [(1, "The company holds a sizeable networth of Rs 4,610 crore as on\nJune 30, 2021 and revenue grew by 49% year-on-\nyear."), (2, "other text")]
+    src = " ".join(t for _, t in pages)
+    ok, notes = readers.check_facts([{"claim": "Networth was Rs 4,610 crore on June 30, 2021.", "quote": "sizeable networth of Rs 4610 crore as on June 30, 2021", "page": 1},
+                                     {"claim": "Revenue grew 49% year on year.", "quote": "revenue grew by 49% year-on-year", "page": 1}], pages, src)
+    assert len(ok) == 2 and notes == []
+    bad, notes = readers.check_facts([{"claim": "Networth was Rs 4,160 crore.", "quote": "sizeable networth of Rs 4160 crore as on June 30, 2021", "page": 1}], pages, src)
+    assert bad == [] and notes
