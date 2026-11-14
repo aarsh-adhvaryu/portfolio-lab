@@ -267,6 +267,8 @@ def main(argv=None):
     sup.add_argument("action", choices=["secrets", "status"])
     sup.add_argument("--only", nargs="*", choices=["kite", "telegram", "anthropic", "openai", "sec"], help="just these sections")
     sup.add_argument("--change", action="store_true", help="ask again for values already set")
+    prp = sub.add_parser("problems", help="S86b: the Problems list: every failed job, exception, blind spot, late alarm and engine fallback with first and last time (--days N; plain text you can paste to Claude Code)")
+    prp.add_argument("--days", type=int, default=7)
     alp = sub.add_parser("alarm", help="S86: the alarm lane: status (the day's alarms and their latency, the eyes) | run (one pass now, workshop: sources are public, no paid call unless a case is thought)")
     alp.add_argument("action", choices=["status", "run"])
     enp = sub.add_parser("engine", help="S85: the model engines behind the one door: list | test NAME [--thinking medium,high] | use NAME | shadow NAME | unshadow NAME")
@@ -299,6 +301,15 @@ def main(argv=None):
         return verify.exit_code(rep)
     if a.cmd == "alarm":
         return _alarm(a)
+    if a.cmd == "problems":
+        from datetime import datetime, timedelta
+        from pflab.pm import store
+        from pflab.service import problems
+        con = store.connect()
+        now = datetime.now()
+        problems.collect(con, now, a.days)
+        print(problems.copy_text(con, now - timedelta(days=a.days)))
+        return 0
     if a.cmd == "engine":
         return _engine(a)
     if a.cmd == "update":

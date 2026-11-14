@@ -59,4 +59,14 @@ MIGRATIONS = [
     """),
 ]
 
+MIGRATIONS += [
+    (353, "page_loads_s86", """
+    CREATE TABLE IF NOT EXISTS page_loads_s86 (loaded_at TIMESTAMP, path VARCHAR, status INTEGER, ms DOUBLE);
+    """),
+    (354, "problems_s86", """
+    CREATE TABLE IF NOT EXISTS problems_s86 (
+        problem_id BIGINT PRIMARY KEY, kind VARCHAR, key VARCHAR, text VARCHAR, context VARCHAR, first_seen TIMESTAMP, last_seen TIMESTAMP, times INTEGER, reported_at TIMESTAMP
+    );
+    """),
+]
 MIGRATIONS.sort(key=lambda m: m[0])

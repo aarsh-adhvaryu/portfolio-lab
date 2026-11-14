@@ -311,6 +311,7 @@ Local models are free. API spend is priced before every call and refused above h
 | sec_8k | every 2 hours inside SEC filing hours, or at app start after a gap of 6 hours or more (S85) | US 8-K items 5.02, 4.01 and 4.02 for the names the book holds, picked, skipped or watches, into the graph (polite rate, bounded) |
 | alarm | every 15 minutes, day and night, while the app is open; also first after a gap (S86) | the alarm lane: fast headlines and the company's own filings on what the book is exposed to, RED heard on Telegram and thought through at once (`think/alarm.py`; code, free until a case is thought) |
 | us_session | every 5 minutes (15 in pre-market and after-hours; nothing when the US market is closed) (S86) | the US session loop: live quotes with their delay, the watch, stops and fills at the first quote after the decision (`core/us_session.py`; code, free) |
+| problems_week | weekly while the app is open (S86b) | the Problems list (`service/problems.py`) refreshed; one line a week on Telegram when the week had problems (code, free) |
 | pick_score | after the close (when its input is newer) | scores every pick, sale and skipped idea against the index at 1, 3, 6 and 12 months after estimated tax, and stores the picks sleeve's daily record (S83, free) |
 | stress_daily | daily | the five stress scenarios on what the India book, the US sub-book and the whole book actually hold (S83, free) |
 
