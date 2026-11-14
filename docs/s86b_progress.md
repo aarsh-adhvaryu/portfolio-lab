@@ -14,3 +14,4 @@
 12:49 C2(a) first run: model flagged 43/63 plain-news items HIGH (19 genuine, 23 commentary, 1 wrong); added commentary filter + 12h new-look spacing; rerun nv2 started
 12:49 C4(5): score_shadow already wired in score_due (S85) and tested (test file listed)
 12:49 C3(6): rerunning march2020 replay with current code (A79 gauge protection) in background; log D:/s86b_scratch/march.log
+12:50 C3(3) after-tax ghost scoring + protocol A4 done

@@ -114,3 +114,11 @@ def test_off_hours_are_looked_at_every_fifteen_minutes_only(con):
     uss.tick(con, t, get=feed({"SPY": 450.0, SYM: 100.0}, t))
     assert uss.tick(con, t + timedelta(minutes=5), get=feed({"SPY": 450.0, SYM: 100.0}, t + timedelta(minutes=5)))["skipped"]
     assert uss.tick(con, t + timedelta(minutes=16), get=feed({"SPY": 450.0, SYM: 100.0}, t + timedelta(minutes=16)))["quotes"] == 2
+
+
+def test_a_name_with_an_open_order_is_quoted_even_when_it_is_no_longer_held(con, monkeypatch):
+    """S86b C6 (found on real bars): after the sale the position is gone, the name left the watch list, and a pending order on it was never quoted, so never filled."""
+    monkeypatch.undo()
+    monkeypatch.setattr(uss, "on", lambda: True)
+    book.place(con, datetime(2026, 11, 10, 20, 0), date(2026, 11, 10), "ZZ0000888888", "OLDX", "buy", amount_usd=100.0, reason="pending on a name not held")
+    assert "OLDX" in uss.symbols_for(con, datetime(2026, 11, 10, 21, 0), None)

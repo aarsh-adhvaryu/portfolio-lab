@@ -91,6 +91,12 @@ def symbols_for(con, now: datetime, root) -> List[str]:
                     syms.append(e["symbol"])
     except Exception:
         pass
+    try:                                                                  # a name with an order still open needs a quote to fill it, held or not (found on real bars: a sold name's pending order was never quoted)
+        for (sym,) in con.execute("SELECT DISTINCT symbol FROM us_orders_s81 WHERE status='open' AND symbol IS NOT NULL").fetchall():
+            if sym not in syms:
+                syms.append(sym)
+    except Exception:
+        pass
     return syms[:MAX_SYMBOLS]
 
 
@@ -140,7 +146,7 @@ def _traded_today(con, d: date, sym: str, side: str) -> bool:
     return bool(con.execute("SELECT 1 FROM us_trades_s81 WHERE day=? AND symbol=? AND side=? LIMIT 1", [d, sym, side]).fetchone())
 
 
-def fill_pending(con, now: datetime, quotes: Dict[str, dict], d: date, root=None) -> List[dict]:
+def fill_pending(con, now: datetime, quotes: Dict[str, dict], d: date, root=None, open_at: Optional[datetime] = None) -> List[dict]:
     """Regular hours only. Every open order fills at the first quote strictly after its own time (`placed_at`), not older than `max_quote_delay_minutes`, moved by the slippage estimate. A buy and a
     sell of one name on one US day never both happen: the second is left open and the close loop cancels it as it does any order it cannot fill."""
     from pflab.us import book as usb
@@ -154,6 +160,8 @@ def fill_pending(con, now: datetime, quotes: Dict[str, dict], d: date, root=None
         placed_at = con.execute("SELECT placed_at FROM us_orders_s81 WHERE order_id=?", [o["order_id"]]).fetchone()[0]
         if q["quote_ts"] <= placed_at:
             continue                                                         # never the quote the decision was made on
+        if open_at is not None and q["quote_ts"] <= open_at:
+            continue                                                         # the minute that ENDS at the open is a pre-market price: the first fill price is a regular-hours one
         other = "sell" if o["side"] == "buy" else "buy"
         if _traded_today(con, d, o["symbol"], other):
             con.execute("UPDATE us_orders_s81 SET reason = reason || ' [held: one name is not bought and sold on the same US day]' WHERE order_id=? AND reason NOT LIKE '%same US day%'", [o["order_id"]])
@@ -219,7 +227,7 @@ def tick(con, now: datetime, root=None, *, get: Optional[Callable] = None, think
         out["problems"].append(f"the watch on live US quotes failed: {type(e).__name__}: {str(e)[:120]}")
     if ph == "regular" and act:
         try:
-            out["fills"] = fill_pending(con, now, quotes, d, root)          # first: an order from an earlier tick fills on THIS tick's quote; the stop below places a new one for the next
+            out["fills"] = fill_pending(con, now, quotes, d, root, open_at=(_w[0] if _w else None))          # first: an order from an earlier tick fills on THIS tick's quote; the stop below places a new one for the next
             out["stops"] = stops(con, now, quotes, d)
         except Exception as e:
             out["problems"].append(f"the US session's orders failed: {type(e).__name__}: {str(e)[:120]}")
