@@ -196,3 +196,67 @@ def test_two_builds_a_day_and_waiting_on_the_plan_limit(con, repo, monkeypatch):
     assert build.run_pending(con, NOW, repo=work, venv_python=Path(sys.executable))["status"] == "card"
     build.request(con, NOW, "second problem in another module", "t")
     assert build.run_pending(con, NOW, repo=work, venv_python=Path(sys.executable)) is None          # the day's quota is used
+
+
+# --- O3 weekly introspection, jobs, the endpoint for the screens, the terminal opener -----------------------------------------------------------
+
+def test_week_key_is_the_last_friday_close():
+    from pflab.oper import introspect as it
+    assert str(it.week_key(datetime(2026, 11, 14, 9, 0))) == "2026-11-13"            # Saturday
+    assert str(it.week_key(datetime(2026, 11, 13, 14, 0))) == "2026-11-06"           # Friday before the close: last week's
+    assert str(it.week_key(datetime(2026, 11, 13, 16, 0))) == "2026-11-13"
+
+
+def test_weekly_introspection_writes_the_note_once_and_candidates_are_not_live(con):
+    from pflab.oper import introspect as it
+    when = datetime(2026, 11, 14, 9, 0)
+    FakeClient.script = [result("", structured={"worked": ["thin evidence so far"], "not_worked": [], "calibration": "too few scored decisions to judge the words",
+                                                "learned": "nothing yet; the sample is too small to change a rule", "test_next": [{"idea": "trim rule after tax", "why": "untested"}]})]
+    assert it.due(con, when)
+    r = it.run(con, when)
+    assert r["candidates"] == 1 and r["note_id"]
+    assert not it.due(con, when) and it.run(con, when).get("skipped")
+    assert "Weekly introspection" in con.execute("SELECT text FROM core_notes_s80").fetchone()[0]
+    assert FakeClient.seen[-1].tools == []                                           # it reads facts; it has no tool and changes nothing
+
+
+def test_jobs_are_registered_and_only_when_the_plan_engine_is_in_use(con, monkeypatch):
+    from pflab.service import jobs, tasks
+    tasks._load_s79_jobs()
+    import pflab.service.tasks_s79_operator87  # noqa: F401
+    assert "operator_build" in jobs.REGISTRY and "operator_weekly" in jobs.REGISTRY
+    ctx = SimpleNamespace(con=con, now=NOW)
+    assert jobs.REGISTRY["operator_build"].enabled_fn(ctx)[0] is True
+    monkeypatch.setattr(cp, "settings", lambda: {**cp.DEFAULTS, "enabled": False})
+    assert jobs.REGISTRY["operator_build"].enabled_fn(ctx)[0] is False
+
+
+def test_problems_become_build_requests_but_plan_limits_do_not(con):
+    from pflab.service import problems
+    build.ensure(con)
+    t0 = datetime(2026, 11, 16, 9, 0)
+    problems._upsert(con, "job_failed", "k1", "job x failed: KeyError 'a'", "job x", t0, t0, 1)
+    problems._upsert(con, "model_engine", "k2", "claude_plan: limit", "gateway", t0, t0, 1)
+    assert build.scan_problems(con, datetime(2026, 11, 16, 10, 0)) == 1
+    assert con.execute("SELECT count(*) FROM operator_builds_s87").fetchone()[0] == 1
+
+
+def test_operator_endpoint_and_terminal(tmp_path, monkeypatch):
+    import pandas as pd
+    from fastapi.testclient import TestClient
+    from pflab.app import runtime, server
+    from pflab.pm import store
+    from pflab.oper import terminal
+    pm, data = tmp_path / "pm", tmp_path / "data"
+    (data / "indices").mkdir(parents=True)
+    monkeypatch.setattr(cp, "signin_fn", lambda: {"ok": True, "method": "claude.ai", "detail": ""})
+    rt = runtime.Runtime(pm, data, tmp_path, con=store.connect(tmp_path / "l.duckdb"), clock=lambda: NOW)
+    c = TestClient(server.create_app(rt))
+    j = c.get("/api/operator").json()
+    assert j["signed_in"] is True and j["thinking"] == "running" and set(j["tokens_today"]) == {"desk", "cases", "chat", "build"} and "open_cards" in j and "builds" in j
+    seen = {}
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-planted")
+    r = terminal.open_terminal(str(data), popen=lambda argv, **kw: seen.update(kw, argv=argv))
+    assert r["ok"] and seen["cwd"].endswith("operator") and "ANTHROPIC_API_KEY" not in seen["env"]
+    monkeypatch.setattr(cp, "signin_fn", lambda: {"ok": False, "method": "api_key", "detail": "x"})
+    assert terminal.open_terminal(str(data), popen=lambda *a, **k: 1 / 0)["ok"] is False

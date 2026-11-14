@@ -483,6 +483,29 @@ def create_app(rt) -> FastAPI:
         from pflab.entrance import intake
         return json.loads(json.dumps(intake.queue_status(rt.cursor()), default=str))
 
+    @app.get("/api/operator")
+    def operator_state():
+        """S87: the operator's state for the screens: signed in on his plan, thinking running or paused (until), today's tokens by purpose against their budgets, open Yes/No cards, builds."""
+        from pflab.llm import claude_plan as cp
+        from pflab.oper import build
+        con = rt.cursor()
+        out = cp.state(con, rt.clock())
+        build.ensure(con)
+        try:
+            out["open_cards"] = [dict(zip(("msg_id", "state", "text"), r)) for r in con.execute(
+                "SELECT m.msg_id, c.state, substr(m.text, 1, 300) FROM cards_s85 c JOIN chat_messages m ON m.msg_id = c.msg_id WHERE c.state = 'open' ORDER BY m.msg_id DESC LIMIT 10").fetchall()]
+        except Exception:
+            out["open_cards"] = []
+        out["builds"] = [dict(zip(("build_id", "status", "problem", "branch", "tokens"), r)) for r in con.execute(
+            "SELECT build_id, status, substr(problem,1,160), branch, tokens FROM operator_builds_s87 ORDER BY build_id DESC LIMIT 8").fetchall()]
+        return json.loads(json.dumps(out, default=str))
+
+    @app.post("/api/operator/terminal")
+    def operator_terminal():
+        """S87: the menu item "Open the operator in Claude Code": a terminal session in the operator folder (on this PC)."""
+        from pflab.oper import terminal
+        return terminal.open_terminal(str(getattr(rt, "data_root", "") or "") or None)
+
     @app.get("/api/usage")
     def usage_view(day: str = ""):
         """What the AI calls cost on a day (default today): by purpose and model, with the month so far (S85 E8)."""

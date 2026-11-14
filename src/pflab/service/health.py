@@ -112,6 +112,15 @@ def check(ctx: jobs.Ctx, backup_target: Optional[Path] = None) -> List[Item]:
     free_gb = shutil.disk_usage(ctx.pm_dir).free / 1e9 if Path(ctx.pm_dir).exists() else None
     if free_gb is not None:
         items.append(Item("disk", "OK" if free_gb > 5 else "WARN" if free_gb > 1 else "FAIL", f"{free_gb:,.1f} GB free"))
+    try:                                                       # S87: the operator's sign-in (his plan) and whether thinking is paused
+        from pflab.llm import claude_plan as cp, gateway as gw
+        if gw.current_engine(con) == "claude_plan":
+            st = cp.state(con, now)
+            items.append(Item("operator", "OK" if st["signed_in"] and st["thinking"] == "running" else "WARN",
+                              "signed in on his Claude plan; thinking running" if st["signed_in"] and st["thinking"] == "running" else
+                              (f"thinking paused until {st['paused_until']}" if st["paused_until"] else f"not signed in on his plan: {st['detail']}")))
+    except Exception as e:
+        items.append(Item("operator", "WARN", f"could not read the sign-in ({type(e).__name__})"))
     return items
 
 

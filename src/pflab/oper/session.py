@@ -97,8 +97,6 @@ def answer(rt, con, now: datetime, *, ctx, pid: int, first: str, r: dict, model_
     steps = [s.replace("mcp__oper__", "") for s in res.steps]
     text = res.text or ""
     clean, dropped = an.only_sourced_numbers(text[:3500], an.Request(ctx.source, "assistant")) if text else ("", 0)
-    if dropped:
-        clean += "\n\n(Some sentences were removed because they carried numbers no tool had returned.)"
     if notes:
         clean = (clean + "\n\n" if clean else "") + "\n".join(notes)
     passes.close(con, pid, "done", clean, ctx.decisions, 0.0, None, "; ".join(ctx.problems) or None)

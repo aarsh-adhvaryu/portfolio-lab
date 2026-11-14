@@ -271,6 +271,8 @@ def main(argv=None):
     prp.add_argument("--days", type=int, default=7)
     alp = sub.add_parser("alarm", help="S86: the alarm lane: status (the day's alarms and their latency, the eyes) | run (one pass now, workshop: sources are public, no paid call unless a case is thought)")
     alp.add_argument("action", choices=["status", "run"])
+    opp = sub.add_parser("operator", help="S87: the operator (Claude Code on his plan): status (sign-in, paused or running, today's tokens) | open (a terminal Claude Code session in the operator folder)")
+    opp.add_argument("action", choices=["status", "open"])
     enp = sub.add_parser("engine", help="S85: the model engines behind the one door: list | test NAME [--thinking medium,high] | use NAME | shadow NAME | unshadow NAME")
     enp.add_argument("action", choices=["list", "test", "use", "shadow", "unshadow"])
     enp.add_argument("name", nargs="?")
@@ -301,6 +303,8 @@ def main(argv=None):
         return verify.exit_code(rep)
     if a.cmd == "alarm":
         return _alarm(a)
+    if a.cmd == "operator":
+        return _operator(a)
     if a.cmd == "problems":
         return _problems(a)
     if a.cmd == "engine":
@@ -564,6 +568,21 @@ def _problems(a) -> int:
     now = datetime.now()
     problems.collect(con, now, a.days)
     print(problems.copy_text(con, now - timedelta(days=a.days)))
+    return 0
+
+
+def _operator(a) -> int:
+    """`pflab operator status|open` (S87)."""
+    import json
+    from datetime import datetime
+    if a.action == "open":
+        from pflab.oper import terminal
+        r = terminal.open_terminal()
+        print(json.dumps(r))
+        return 0 if r.get("ok") else 1
+    from pflab.llm import claude_plan as cp
+    from pflab.pm import store
+    print(json.dumps(cp.state(store.connect(), datetime.now()), indent=2, default=str))
     return 0
 
 
