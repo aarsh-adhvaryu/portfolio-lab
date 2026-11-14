@@ -87,6 +87,9 @@ def burst(con, now: datetime, entry: dict, cfg: dict) -> Optional[dict]:
     outlets = {o for o, t in rows if o and ing.linked_by(t, entry) == "title"}
     if len(outlets) < int(cfg["alarm_outlets"]):
         return None
+    serious = [t for o, t in rows if o and ing.linked_by(t, entry) == "title" and kg.kind_of(t)[0] in classify.THESIS_BREAK_KINDS]
+    if not serious and len(outlets) < 2 * int(cfg["alarm_outlets"]):
+        return None                                                                              # S86 live hour: earnings previews and streak stories were two false alarms; volume alone needs a crowd of twice the line
     hist = con.execute(f"SELECT date_trunc('hour', {when}) h, count(DISTINCT outlet) FROM headlines_s86 WHERE isin=? AND {when} > ? AND {when} <= ? GROUP BY 1",
                        [entry["isin"], now - timedelta(days=14), lo]).fetchall()
     if len(hist) < 24:
@@ -245,7 +248,9 @@ def _decided(con, now: datetime, alarm_id: int, case_id: int, tell_fn: Optional[
     if fid and not own_freeze:
         cases.release_freeze(con, fid)
     decision = "; ".join(f"{d['symbol']}: {d['acted_option']}" for d in decs)[:200] or "read, nothing to do"
-    con.execute("UPDATE alarm_s86 SET decided_at=?, decision=? WHERE alarm_id=?", [now, decision, alarm_id])
+    real = datetime.now()                                                                      # the decision's own time includes the model's minutes; a simulated clock (tests, replays) is kept as given
+    stamp = real if abs(real - now) < timedelta(minutes=30) else now
+    con.execute("UPDATE alarm_s86 SET decided_at=?, decision=? WHERE alarm_id=?", [stamp, decision, alarm_id])
     try:
         from pflab.think import session as ts
         tell = tell_fn or (lambda c, n, cid: ts.tell(c, n, cid, force=True))
@@ -368,9 +373,26 @@ def report_line(con, day: date) -> Optional[str]:
 
 # --- one pass ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def _classify_new(con, now: datetime, items: List[dict], by_isin: Dict[str, dict], gap_mode: bool = False) -> List[dict]:
-    """Lane, kind and severity of each new item (by code), stored on its row. Returns the items with `lane`, `kind`, `sev`, `entry`."""
+def _model_lead(con, root, it: dict, e: dict, model_fn: Optional[Callable]) -> Optional[tuple]:
+    """H2: a fresh, named headline on a name the book holds that the RULES call plain news: the LOCAL model (free, closed list, never a number) is asked once; only a thesis-break kind at HIGH
+    severity makes it RED (a medium guess of an 8B model is not worth a paid case). The answer is cached like the graph's (`classify.append_cache`) so the rebuild gives the same kinds. None when
+    the model is off, cannot answer or says nothing serious."""
+    try:
+        from pathlib import Path
+        fn = model_fn or classify.model_classify
+        r = fn(it["title"])
+        if not r or r.get("kind") not in classify.THESIS_BREAK_KINDS or r.get("severity") != "high":
+            return None
+        classify.append_cache(Path(root), [{"event_id": kg.event_id(it["id"]), "kind": r["kind"], "severity": "high", "method": "model", "headline": it["title"][:200]}])
+        return r["kind"], "high"
+    except Exception:
+        return None
+
+
+def _classify_new(con, now: datetime, items: List[dict], by_isin: Dict[str, dict], gap_mode: bool = False, root=None, model_fn: Optional[Callable] = None, model_max: int = 8) -> List[dict]:
+    """Lane, kind and severity of each new item (by code, then the local model for the leads the rule cannot place), stored on its row. Returns the items with `lane`, `kind`, `sev`, `entry`."""
     out = []
+    asked = 0
     for it in items:
         e = by_isin.get(it["isin"])
         if e is None:
@@ -379,6 +401,11 @@ def _classify_new(con, now: datetime, items: List[dict], by_isin: Dict[str, dict
         pub = datetime.fromisoformat(str(pub)) if pub and not isinstance(pub, datetime) else pub
         fresh = pub is None or (now - pub) <= timedelta(hours=float(settings()["alarm_fresh_hours"]) if gap_mode is False else 24.0 * float(settings()["alarm_gap_days"]))
         lane, kind, sev = lane_of(it["title"], e, fresh)
+        if lane == "amber" and kind == "news" and fresh and e.get("red_ok") and root is not None and asked < model_max and ing.linked_by(it["title"], e) == "title":
+            asked += 1
+            m = _model_lead(con, root, it, e, model_fn)
+            if m:
+                lane, kind, sev = "red", m[0], m[1]
         con.execute("UPDATE headlines_s86 SET lane=?, kind=?, severity=? WHERE item_id=?", [lane, kind, sev, it["id"]])
         out.append({**it, "lane": lane, "kind": kind, "sev": sev, "entry": e})
     return out
@@ -454,7 +481,7 @@ def last_try(con) -> Optional[datetime]:
 
 
 def run(con, now: datetime, root, *, client: Optional[ing.Client] = None, entries: Optional[List[dict]] = None, sources=ing.SOURCES, think_fn: Optional[Callable] = None,
-        tell_fn: Optional[Callable] = None, force: bool = False, gap: Optional[Callable] = None) -> dict:
+        tell_fn: Optional[Callable] = None, force: bool = False, gap: Optional[Callable] = None, model_fn: Optional[Callable] = None) -> dict:
     """One pass of the lane. Never raises for a source's sake; a failure is a line in `problems`. `gap` is the fast-forward hook (`think/fastforward.py`): called with the gap's findings BEFORE the live
     book acts."""
     cfg = settings()
@@ -477,7 +504,7 @@ def run(con, now: datetime, root, *, client: Optional[ing.Client] = None, entrie
             out["problems"] += r["problems"]
             for src, b in r["by_source"].items():
                 record_eye(con, src, now, ok=(None if not b["asked"] else b["ok"] > 0), items=b["items"], error="; ".join(p for p in r["problems"] if p.startswith(src))[:200], requests=b["asked"])
-            items = _classify_new(con, now, r["items"], by_isin, gap_mode=is_gap)
+            items = _classify_new(con, now, r["items"], by_isin, gap_mode=is_gap, root=root, model_fn=model_fn)
             out["new"] = len(items)
             for it in items:
                 out["lanes"][it["lane"]] += 1

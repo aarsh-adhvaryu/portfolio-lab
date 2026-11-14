@@ -24,6 +24,7 @@ def _named(con, monkeypatch, tmp_path):
     con.execute("UPDATE instruments SET name=? WHERE isin=?", [NAME + " Ltd", AAA])
     con.execute("UPDATE instruments SET name='Bobcat Holdings Ltd' WHERE isin=?", [BBB])
     monkeypatch.setattr("pflab.think.watch._index", lambda market, root=None: None)
+    monkeypatch.setattr("pflab.kg2.classify.model_classify", lambda *a, **k: None)             # no real model in a test; the lane's own model hook is tested with a fake
 
 
 def rss(items):
@@ -414,3 +415,34 @@ def test_the_lane_runs_on_its_own_cursor_beside_a_busy_writer_without_losing_a_w
     assert errs == [] and con.execute("SELECT count(*) FROM busy_s86").fetchone()[0] == n and n > 0
     assert con.execute("SELECT count(*) FROM headlines_s86").fetchone()[0] == 6
     assert max(late) < 5.0                                                                       # no tick of the writer was held for seconds by the lane
+
+
+# ------------------------------------------------------------------ H2: the local model reads the leads the rules cannot place; the volume rule needs something serious
+
+def test_a_lead_the_rules_miss_is_read_by_the_local_model_and_only_a_high_break_is_red(con, tmp_path):
+    lead = f"{NAME} opens investigation into its chief's relationship with a suspected foreign agent"
+    es = entries_for(con, tmp_path)
+    think = fake_think()
+    r = alarm.run(con, T0, tmp_path, client=client({"google_news": rss([(lead, "CNBC", T0 - timedelta(minutes=5))])}), entries=es, sources=("google_news",), think_fn=think,
+                  tell_fn=lambda c, n, cid: None, model_fn=lambda t: {"kind": "leadership_crisis", "severity": "high"})
+    assert r["lanes"]["red"] == 1 and len(think.calls) == 1 and tg(con)[0].startswith("Heard")
+    from pflab.kg2 import classify
+    assert any(v["kind"] == "leadership_crisis" for v in classify.load_cache(tmp_path).values())            # cached, so the graph's rebuild gives the same kind
+    con.execute("DELETE FROM headlines_s86")
+    r2 = alarm.run(con, T0 + timedelta(hours=9), tmp_path, client=client({"google_news": rss([(f"{NAME} faces questions over a supplier", "CNBC", T0 + timedelta(hours=9))])}), entries=es,
+                   sources=("google_news",), think_fn=think, tell_fn=lambda c, n, cid: None, model_fn=lambda t: {"kind": "regulatory_action", "severity": "medium"})
+    assert r2["lanes"]["red"] == 0                                                                          # a medium guess of the small model is not a paid case
+
+
+def test_many_outlets_on_mundane_stories_is_not_an_alarm_but_many_with_a_serious_one_is(con, tmp_path):
+    e = entries_for(con, tmp_path)[0]
+    cfg = alarm.settings()
+    for k in range(30):                                                                                     # a norm: 30 busy hours of one outlet
+        con.execute("INSERT INTO headlines_s86 (item_id, isin, title, source, published, first_seen, outlet) VALUES (?,?,?,?,?,?,?)",
+                    [f"h{k}", AAA, f"{NAME} routine {k}", "google_news", T0 - timedelta(hours=40 + k), T0 - timedelta(hours=40 + k), "Wire"])
+    for k, o in enumerate(("Reuters", "WSJ", "CNBC", "Mint")):
+        con.execute("INSERT INTO headlines_s86 (item_id, isin, title, source, published, first_seen, outlet) VALUES (?,?,?,?,?,?,?)",
+                    [f"m{k}", AAA, f"{NAME} stock on a losing streak, what comes next {k}", "google_news", T0 - timedelta(minutes=10), T0, o])
+    assert alarm.burst(con, T0, e, cfg) is None                                                             # four outlets, nothing serious in them: no alarm
+    con.execute("UPDATE headlines_s86 SET title=? WHERE item_id='m0'", [f"{NAME} CEO ousted by board with immediate effect"])
+    assert alarm.burst(con, T0, e, cfg) is not None
