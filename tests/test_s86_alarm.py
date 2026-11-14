@@ -530,3 +530,19 @@ def test_the_replayed_model_look_is_capped_ordered_cached_and_sees_only_what_was
     n = len(seen)
     r2 = ff.run_gap(con, now, tmp_path, prev, items, model_fn=scripted)                                                    # the same gap again: no second payment
     assert len(seen) == n or r2.get("skipped")
+
+
+def test_commentary_headlines_are_not_red_by_the_models_word_and_a_crisis_gets_at_most_one_new_look_per_twelve_hours(con, tmp_path):
+    es = entries_for(con, tmp_path)
+    high = lambda t: {"kind": "leadership_crisis", "severity": "high"}                                   # noqa: E731
+    for title in (f"5 takeaways from the {NAME} scandal", f"What to know about the {NAME} investigation", f"Who is the interim chief at {NAME}?", f"Analysis: {NAME} leadership crisis tests the firm"):
+        r = alarm.run(con, T0, tmp_path, client=client({"google_news": rss([(title, "CNBC", T0 - timedelta(minutes=5))])}), entries=es, sources=("google_news",), model_fn=high, force=True)
+        assert r["lanes"]["red"] == 0 and r["lanes"]["amber"] == 1, title
+        con.execute("DELETE FROM headlines_s86")
+    think = fake_think()
+    alarm.run(con, T0, tmp_path, client=client({"google_news": rss([(RED_TITLE, "Reuters", T0)])}), entries=es, sources=("google_news",), think_fn=think, tell_fn=lambda c, n, cid: None)
+    first = len(think.calls)
+    for k, t in enumerate((f"{NAME} faces a fraud investigation by regulators", f"{NAME} CEO resigns after the ouster")):                  # another kind, then a resignation, an hour apart: one look at most per 12 hours
+        alarm.run(con, T0 + timedelta(hours=k + 1), tmp_path, client=client({"google_news": rss([(t, "WSJ", T0 + timedelta(hours=k + 1))])}), entries=es, sources=("google_news",), think_fn=think,
+                  tell_fn=lambda c, n, cid: None)
+    assert len(think.calls) == first

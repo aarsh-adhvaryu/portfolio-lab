@@ -10,3 +10,4 @@
 12:38 C5.3 diagnosed: his xlsx/pdf ARE readable by the S85 reader (6 and 14 facts, Rs 1.70/7.23); old inbox rows said 0 -> chat context cites old rows; fixed with why_unreadable; Tijori link = redirect to the same PDF; links in files resolved. C5.1 real PDFs next
 12:40 C5.1 real PDFs (11p refused by privacy screen: account-like number; 37p read in 2 parts, 2 facts, Rs 25.98; quote matching made punctuation-tolerant); C5.2 links true->supported Rs1.49, false->contradicted Rs1.25
 12:42 C3.1 built+tested (scripted model)
+12:46 C3.5 real gap RUN (Rs 3.77): ghost model look freeze (class unclear), live rule sells at next open; code-only ghost would sell Mon close 178.58 (cost Rs 830). harness in tools/s86b_real_gap.py, data D:/s86b_scratch/gap1

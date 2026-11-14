@@ -37,6 +37,7 @@ EYE_LABELS = {"google_news": "news (Google News)", "yahoo": "news (Yahoo Finance
               "india_quotes": "Indian quotes", "us_quotes": "US quotes"}
 _TURN = re.compile(r"\b(?:resign\w*|steps? down|stepping down|ousted|ouster|removed|fired|dismiss\w*|terminated|arrest\w*|indict\w*|charged|restat\w+|defaults?|downgrad\w+|bankrupt\w*|interim (?:ceo|chief))\b", re.I)
 _DENIAL = re.compile(r"\b(?:denies|denied|denial|refutes?|rejects?|dismisses|baseless|unfounded|false report|clarif\w+|no truth)\b", re.I)
+_COMMENTARY = re.compile(r"\b(?:what to know|what we know|takeaways?|who is|who are|who could|why did|explainer|analysis|opinion|here.s why|what comes next|what it means|buying dips?|live updates|key questions|raises? (?:critical )?questions|what market pros)\b", re.I)
 LOCK = threading.RLock()
 _RUNNING = threading.Event()
 
@@ -171,8 +172,10 @@ def raise_red(con, now: datetime, root, item: dict, e: dict, kind: str, sev: str
         con.execute("UPDATE headlines_s86 SET alarm_id=?, lane='red', kind=?, severity=? WHERE item_id=?", [prior["alarm_id"], kind, sev, item["id"]])
         case = cases.get_case(con, prior["case_id"]) if prior["case_id"] else None
         last = con.execute("SELECT decided_at FROM alarm_s86 WHERE alarm_id=?", [prior["alarm_id"]]).fetchone()[0]
-        turn = bool(_TURN.search(item["title"])) and (last is None or (now - last) >= timedelta(hours=12))          # a second report that says something DID happen (a resignation, an ouster), not the same story again
-        new_look = bool(case) and case["state"] != "closed" and (kind not in _kinds_in_case(con, prior["case_id"]) | {prior["kind"]} or turn)
+        turn = bool(_TURN.search(item["title"]))                                                                  # a second report that says something DID happen (a resignation, an ouster), not the same story again
+        kind_new = kind not in _kinds_in_case(con, prior["case_id"]) | {prior["kind"]}
+        spaced = last is None or (now - last) >= timedelta(hours=12)                                       # S86b: at most one new look per alarm per 12 hours: the model's HIGH kinds alternate (leadership / fraud) in one crisis and each change would be a paid look
+        new_look = bool(case) and case["state"] != "closed" and spaced and (kind_new or turn)
         if case and case["state"] != "closed":
             _record_signal(con, now, item, e, kind, sev, prior["case_id"])
         out.update({"joined": prior["alarm_id"], "case_id": prior["case_id"], "new_look": new_look})
@@ -391,6 +394,8 @@ def _model_lead(con, root, it: dict, e: dict, model_fn: Optional[Callable]) -> O
     """H2: a fresh, named headline on a name the book holds that the RULES call plain news: the LOCAL model (free, closed list, never a number) is asked once; only a thesis-break kind at HIGH
     severity makes it RED (a medium guess of an 8B model is not worth a paid case). The answer is cached like the graph's (`classify.append_cache`) so the rebuild gives the same kinds. None when
     the model is off, cannot answer or says nothing serious."""
+    if _COMMENTARY.search(it["title"]):                              # S86b: explainers, takeaways and analysis pieces are commentary on news, not news (43 model HIGHs in the Nvidia week, 23 of them were these): AMBER
+        return None
     try:
         from pathlib import Path
         fn = model_fn or classify.model_classify
