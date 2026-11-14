@@ -25,3 +25,4 @@
 13:20 docs: findings 12-17 appended
 13:20 migration of a copy of the app store (schema 352, 302 tables, 757,425 rows) to 356: 0 rows lost, 2 new tables; copy deleted
 13:39 docs: PLAN A81-A86 + parked list + BUILT done; remaining docs: What remains block, closeout ledger final, alarm notes, RUNNING after Step A
+14:13 Step A reversed suite: 4058 passed, 1 failed (test_s67_world: problems_week job had no group) -> fixed; test_s67_local passes in reversed order (C1.2 closed). drills running

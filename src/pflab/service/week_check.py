@@ -154,7 +154,7 @@ def _s86_criteria(con, armed_at: datetime, now: datetime) -> List[dict]:
     def c8():
         if not odays:
             return _crit("daily_desk_and_picks_scored", "NOT TESTED", "the app was not open")
-        have = {r[0] for r in con.execute("SELECT DISTINCT day FROM desk_sessions_s84 WHERE status IN ('done','ok','finished','complete') AND day >= ?", [armed_at.date()]).fetchall()}
+        have = {r[0] for r in con.execute("SELECT DISTINCT day FROM desk_sessions_s84 WHERE status IN ('done','quiet','budget') AND day >= ?", [armed_at.date()]).fetchall()}
         miss = [d for d in odays if d not in have and d < now.date()]
         scored = con.execute("SELECT count(*) FROM pick_scores_s83").fetchone()[0] if _tbl(con, "pick_scores_s83") else 0
         if miss:
