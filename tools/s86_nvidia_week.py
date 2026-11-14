@@ -44,6 +44,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
     ap.add_argument("--end", default="2026-11-13 12:00")
+    ap.add_argument("--model", action="store_true", help="the local model reads the leads the rules cannot place (S86b C2a); every answer is logged to model_answers.jsonl")
     a = ap.parse_args()
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -61,6 +62,16 @@ def main() -> int:
         t = datetime(2026, 11, 8, 18, 0)
         end = datetime.strptime(a.end, "%Y-%m-%d %H:%M")
         thought = []
+        mlog = out / f"model_answers_{book}.jsonl"
+        mlog.write_text("", encoding="utf-8")
+
+        def model_fn(title):
+            from pflab.kg2 import classify
+            r = classify.model_classify(title)
+            with open(mlog, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"title": title, "answer": r}) + "
+")
+            return r
 
         def think(c, now, cid):
             cases.add_step(c, cid, now, "answer_ok", payload={})
@@ -72,7 +83,7 @@ def main() -> int:
             class Net:
                 def get(self, url, headers=None, timeout=None, _t=t):
                     return Resp(xml_until(all_items, _t, 24 * 7 if "when%3A7d" in url else 6))
-            alarm.run(con, t, out, client=ing.Client(Net(), sleep=lambda s: None, clock=lambda: 0.0), entries=[e], sources=("google_news",), think_fn=think, tell_fn=lambda c, n, cid: None)
+            alarm.run(con, t, out, client=ing.Client(Net(), sleep=lambda s: None, clock=lambda: 0.0), entries=[e], sources=("google_news",), think_fn=think, tell_fn=lambda c, n, cid: None, model_fn=(model_fn if a.model else (lambda title: None)))
             t += timedelta(minutes=15)
         rows = con.execute("SELECT alarm_id, published_at, first_seen_at, case_opened_at, telegram_queued_at, decided_at, headline, outlet, joined_items, decision FROM alarm_s86 ORDER BY alarm_id").fetchall()
         msgs = [(str(r[0]), r[1][:160]) for r in con.execute("SELECT ts, text FROM outbox WHERE kind='alarm' ORDER BY msg_id").fetchall()] if _has(con, "outbox", "ts") else []

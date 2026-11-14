@@ -577,6 +577,7 @@ def _alarm(a) -> int:
     print(alarm.report_line(con, now.date()))
     print(json.dumps(alarm.status(con, now.date()), default=str))
     print(alarm.eyes_text(con, now))
+    print(alarm.funds_text(con, now.date()))
     return 0
 
 

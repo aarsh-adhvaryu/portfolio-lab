@@ -446,3 +446,48 @@ def test_many_outlets_on_mundane_stories_is_not_an_alarm_but_many_with_a_serious
     assert alarm.burst(con, T0, e, cfg) is None                                                             # four outlets, nothing serious in them: no alarm
     con.execute("UPDATE headlines_s86 SET title=? WHERE item_id='m0'", [f"{NAME} CEO ousted by board with immediate effect"])
     assert alarm.burst(con, T0, e, cfg) is not None
+
+
+# ------------------------------------------------------------------ S86b C2(b): the four REDs of the live hour as fixtures
+
+def test_the_live_hours_four_reds_through_the_current_rules():
+    al, tk = ing._aliases("Nvidia Corp", "NVDA", "US")
+    e = {"isin": "ZZ0001045810", "symbol": "NVDA", "market": "US", "name": "Nvidia Corp", "held": True, "red_ok": True, "aliases": al, "tickers": tk}
+    preview = "Here's How Much Traders Expect Nvidia Stock to Move After Earnings Next Week - Investopedia"
+    streak = "Nvidia's stock is on a losing streak not seen in 14 years. What comes next? - MarketWatch"
+    downgrade = "HSBC downgrades Nvidia, says stock to struggle until new CEO named - CNBC"
+    opinion = "Alex Kantrowitz explains why Jensen Huang's ouster as Nvidia CEO is 'good for America' - CNBC"
+    assert alarm.lane_of(preview, e)[0] == "amber" and alarm.lane_of(streak, e)[0] == "amber"          # the two earnings / streak stories are not RED by kind, and not by volume alone any more
+    assert alarm.lane_of(downgrade, e)[:2] == ("red", "rating_downgrade")                                # the genuine downgrade is
+    assert alarm.lane_of(opinion, e)[0] == "red"                                                         # an opinion piece on a real ouster is still RED by kind: the rules cannot tell commentary from news (listed, not tuned to one headline)
+
+
+# ------------------------------------------------------------------ S86b C2(c): the top ten members of a held fund join the scope, with their look-through rupees
+
+def test_the_ten_largest_members_of_a_held_fund_join_the_scope_hourly_and_can_be_red(con, tmp_path, monkeypatch):
+    from pflab.think import exposure
+    members = {}
+    for k in range(12):
+        isin = f"INE7{k:02d}Z01019"
+        con.execute("INSERT INTO instruments (isin, key_kind, asset_class, tax_class, listed, symbol, name, source, built_at) VALUES (?, 'isin', 'equity', 'EQUITY', TRUE, ?, ?, 'synthetic', now())",
+                    [isin, f"M{k}", f"Member{k} Works Ltd"])
+        members[isin] = 0.20 - 0.01 * k
+    fw = {"funds": {"INF000X01019": {"symbol": "NIFTYBEES", "market": "IN", "value_inr": 100000.0, "weights": members, "basis": "NIFTY50 weights (stored)"}}, "uncovered": [], "whole_inr": 1_000_000.0}
+    monkeypatch.setattr(exposure, "fund_weights", lambda con_, day, root=None: fw)
+    es = entries_for(con, tmp_path)
+    via = [e for e in es if e.get("through_fund")]
+    assert len(via) == 10 and all(e["red_ok"] and not e["held"] and e["exposure_inr"] > 0 for e in via)
+    assert max(e["exposure_inr"] for e in via) == pytest.approx(20000.0) and "through a fund" in via[0]["why"]
+    e = via[0]
+    assert alarm.lane_of(f"{e['name'].replace(' Ltd', '')} CEO ousted by board with immediate effect", e)[0] == "red"                  # A73's exposure rule applies unchanged
+    assert "through funds: NIFTYBEES" in alarm.funds_text(con, NOW.date())
+    monkeypatch.setattr(exposure, "fund_weights", lambda con_, day, root=None: {"funds": {}, "uncovered": [{"symbol": "NIFTYBEES", "why": "no member data for NIFTY50"}], "whole_inr": 1.0})
+    assert alarm.funds_text(con, NOW.date()).startswith("through funds: not known")
+    # asked hourly, not every pass
+    net = Net({"google_news": rss([])})
+    c = ing.Client(net, sleep=lambda s: None, clock=lambda: 0.0)
+    monkeypatch.setattr(exposure, "fund_weights", lambda con_, day, root=None: fw)
+    ing.collect(con, tmp_path, entries_for(con, tmp_path), T0, client=c, sources=("google_news",))
+    first = len(net.asked)
+    ing.collect(con, tmp_path, entries_for(con, tmp_path), T0 + timedelta(minutes=15), client=c, sources=("google_news",))
+    assert len(net.asked) - first <= 3                                                                                                # only the held names again; the ten members wait for the hour

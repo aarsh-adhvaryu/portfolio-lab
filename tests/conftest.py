@@ -175,3 +175,15 @@ def base_config():
 @pytest.fixture
 def period_2016_2021():
     return Period("test", date(2016, 1, 1), date(2021, 12, 31))
+
+
+@pytest.fixture(autouse=True)
+def _no_live_task_ids_leak():
+    """S86b (C1): `hq.board._LIVE` is the task ids THIS process is running; a test that left one behind (a worker thread still ending) made a later test's fresh store, whose first task has the same id,
+    look as if a live worker owned it, so `board.reap` returned 0 (the two `test_s67_local` failures that appeared only in reversed file order). Every test starts with none."""
+    from pflab.hq import board
+    with board._LIVE_LOCK:
+        board._LIVE.clear()
+    yield
+    with board._LIVE_LOCK:
+        board._LIVE.clear()

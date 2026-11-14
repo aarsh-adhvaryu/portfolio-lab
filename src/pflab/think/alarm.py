@@ -340,6 +340,20 @@ def eyes(con, now: datetime) -> List[dict]:
     return out
 
 
+def funds_text(con, day, root=None) -> str:
+    """For `pflab alarm status`: which funds the lane looks through, or "through funds: not known" when no holdings file or index weights exist."""
+    try:
+        from pflab.think import exposure
+        fw = exposure.fund_weights(con, day, root)
+        got = [f"{f['symbol']} ({f['basis']})" for f in fw["funds"].values()]
+        unc = [f"{u['symbol']}: {u['why']}" for u in fw.get("uncovered", [])]
+        if not got:
+            return "through funds: not known" + (f" ({'; '.join(unc)})" if unc else " (the book holds no fund with member data)")
+        return "through funds: " + "; ".join(got) + (f"; not covered: {'; '.join(unc)}" if unc else "")
+    except Exception:
+        return "through funds: not known"
+
+
 def eyes_text(con, now: datetime) -> str:
     lines = []
     for e in eyes(con, now):

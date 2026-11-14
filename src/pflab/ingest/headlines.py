@@ -156,10 +156,13 @@ def scope_entries(con, day, root, cap: int = 60) -> List[dict]:
     markets. Each: {isin, symbol, market, name, held, red_ok, exposure_pct, why, aliases, tickers}. Names the book does not hold or pick are asked about hourly and can only raise an AMBER."""
     from pflab.think import watch
     names: Dict[str, str] = {}
+    symbols: Dict[str, str] = {}
     try:
         for n in sc.load(root).get("names", []):
             if n.get("name"):
                 names[n["isin"]] = n["name"]
+            if n.get("symbol"):
+                symbols[n["isin"]] = n["symbol"]
     except Exception:
         pass
     out: List[dict] = []
@@ -175,8 +178,36 @@ def scope_entries(con, day, root, cap: int = 60) -> List[dict]:
         red_ok = bool(e["held"]) or "pick" in why or "you" in why or "reserve" in why
         out.append({"isin": e["isin"], "symbol": e["symbol"], "market": e["market"], "name": name or e["symbol"], "held": bool(e["held"]), "red_ok": red_ok,
                     "exposure_pct": float(e.get("exposure_pct") or 0.0), "exposure_inr": float(e.get("exposure_inr") or 0.0), "why": why, "aliases": al, "tickers": tick})
+    out += through_funds(con, day, root, {e["isin"] for e in out}, names, symbols)
     out.sort(key=lambda x: (not x["held"], not x["red_ok"], -x["exposure_inr"], x["symbol"] or ""))
     return out[:cap]
+
+
+def through_funds(con, day, root, have: set, names: Dict[str, str], symbols: Dict[str, str], top: int = 10) -> List[dict]:
+    """S86b C2(c) (H1): the `top` largest members by weight of every fund the book holds (India and the US sub-book; `think/exposure.fund_weights`: the fund's own portfolio file, else the index's stored
+    weights, dated and point in time) join the scope with origin "through a fund" and the LOOK-THROUGH exposure in rupees (a labelled estimate). They are asked about hourly (not every run), and
+    A73's exposure rule applies unchanged: a name the book is exposed to through a fund can be RED. A member with no name known cannot be searched and is skipped. Never raises."""
+    out: List[dict] = []
+    try:
+        from pflab.think import exposure
+        fw = exposure.fund_weights(con, day, root)
+        whole = float(fw.get("whole_inr") or 0.0)
+        for f in fw["funds"].values():
+            for isin, w in sorted(f["weights"].items(), key=lambda kv: -kv[1])[:top]:
+                if isin in have:
+                    continue
+                name = names.get(isin) or _db_name(con, isin)
+                sym = symbols.get(isin) or (con.execute("SELECT symbol FROM instruments WHERE isin=?", [isin]).fetchone() or [None])[0]
+                if not name or not sym:
+                    continue
+                have.add(isin)
+                al, tk = _aliases(name, sym, f["market"])
+                inr = float(w) * float(f["value_inr"])
+                out.append({"isin": isin, "symbol": sym, "market": f["market"], "name": name, "held": False, "red_ok": True, "through_fund": True, "exposure_pct": inr / whole if whole > 0 else 0.0,
+                            "exposure_inr": inr, "why": f"through a fund ({f['symbol']}, top {top}; estimate)", "aliases": al, "tickers": tk})
+    except Exception:
+        return out
+    return out
 
 
 def _db_name(con, isin: str) -> Optional[str]:
@@ -235,6 +266,8 @@ def _due(row: Optional[dict], e: dict, now: datetime, force: bool) -> bool:
     age = now - row["last_checked"]
     if row["failures"]:
         return age >= timedelta(minutes=FAIL_BACKOFF_MIN[min(row["failures"], len(FAIL_BACKOFF_MIN)) - 1])
+    if e.get("through_fund"):
+        return age >= timedelta(minutes=OTHER_GAP_MINUTES)
     return True if e["held"] or e["red_ok"] and e["exposure_inr"] > 0 else age >= timedelta(minutes=OTHER_GAP_MINUTES)
 
 
