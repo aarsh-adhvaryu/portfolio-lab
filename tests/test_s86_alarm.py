@@ -464,7 +464,8 @@ def test_the_live_hours_four_reds_through_the_current_rules():
     opinion = "Alex Kantrowitz explains why Jensen Huang's ouster as Nvidia CEO is 'good for America' - CNBC"
     assert alarm.lane_of(preview, e)[0] == "amber" and alarm.lane_of(streak, e)[0] == "amber"          # the two earnings / streak stories are not RED by kind, and not by volume alone any more
     assert alarm.lane_of(downgrade, e)[:2] == ("red", "rating_downgrade")                                # the genuine downgrade is
-    assert alarm.lane_of(opinion, e)[0] == "red"                                                         # an opinion piece on a real ouster is still RED by kind: the rules cannot tell commentary from news (listed, not tuned to one headline)
+    assert alarm.lane_of(opinion, e)[0] == "amber"                                                       # an opinion piece on a real ouster: "explains why" is a generic commentary marker (with "analysis", "what to know", "takeaways", "stocks to buy"): stored, never RED
+    assert alarm.lane_of("Nvidia CEO ousted by board with immediate effect - Reuters", e)[0] == "red"      # the news itself stays RED
 
 
 # ------------------------------------------------------------------ S86b C2(c): the top ten members of a held fund join the scope, with their look-through rupees
@@ -557,3 +558,10 @@ def test_a_ghost_sale_is_scored_after_tax_beside_the_pre_tax_column(con, tmp_pat
     assert row[0] is not None and row[1] is not None                                     # the after-tax cell is filled by the repo's tax rows (India lots of the fixture book)
     sc = ff.scorecard(con)
     assert sc["after_tax_inr"]["5"]["scored"] == 1 and "after tax" in sc["basis"]
+
+
+def test_stock_picking_and_valuation_pieces_on_a_crisis_are_not_red():
+    al, tk = ing._aliases("Nvidia Corp", "NVDA", "US")
+    e = {"isin": "ZZ0001045810", "symbol": "NVDA", "market": "US", "name": "Nvidia Corp", "held": True, "red_ok": True, "aliases": al, "tickers": tk}
+    for t in ("Nvidia CEO out - 10 stocks to buy before the S&P 500 hits a new high - Yahoo Finance", "Is Nvidia worth this much less without its CEO? - Yahoo Finance", "Should you buy Nvidia after the CEO resigns? - Motley"):
+        assert alarm.lane_of(t, e)[0] == "amber", t

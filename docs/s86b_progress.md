@@ -15,3 +15,5 @@
 12:49 C4(5): score_shadow already wired in score_due (S85) and tested (test file listed)
 12:49 C3(6): rerunning march2020 replay with current code (A79 gauge protection) in background; log D:/s86b_scratch/march.log
 12:50 C3(3) after-tax ghost scoring + protocol A4 done
+12:55 C6 real-bars replay done (tools/s86b_us_bars.py): Thu pre-market decision 19:30 -> fill 20:05 first regular quote 156.18 (open 151.01); buy same day held, fills Fri 20:05; found+fixed: open-order names not quoted; first fill must be after the open minute
+12:56 C4.2 OpenAI exam rerun DONE (medium 4/6, 0 facts missed, form FAIL 4 broken lists base_rate_set; high 4/6, form FAIL 5; Rs 15.86 + 25.19); C4.3 Claude exam does not fit cap (est Rs ~50/level), estimate only; C2(e) 2h lane run started (D:/s86b_scratch/live2h)

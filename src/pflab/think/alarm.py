@@ -37,7 +37,7 @@ EYE_LABELS = {"google_news": "news (Google News)", "yahoo": "news (Yahoo Finance
               "india_quotes": "Indian quotes", "us_quotes": "US quotes"}
 _TURN = re.compile(r"\b(?:resign\w*|steps? down|stepping down|ousted|ouster|removed|fired|dismiss\w*|terminated|arrest\w*|indict\w*|charged|restat\w+|defaults?|downgrad\w+|bankrupt\w*|interim (?:ceo|chief))\b", re.I)
 _DENIAL = re.compile(r"\b(?:denies|denied|denial|refutes?|rejects?|dismisses|baseless|unfounded|false report|clarif\w+|no truth)\b", re.I)
-_COMMENTARY = re.compile(r"\b(?:what to know|what we know|takeaways?|who is|who are|who could|why did|explainer|analysis|opinion|here.s why|what comes next|what it means|buying dips?|live updates|key questions|raises? (?:critical )?questions|what market pros)\b", re.I)
+_COMMENTARY = re.compile(r"\b(?:what to know|what we know|takeaways?|who is|who are|who could|why did|explainer|analysis|opinion|explains why|here.s why|what comes next|what it means|buying dips?|live updates|key questions|raises? (?:critical )?questions|what market pros|stocks? to buy|worth (?:buying|this much)|should you (?:buy|sell)|buy before|top \d+ stocks|stock picks?|the case (?:for|against))\b", re.I)
 LOCK = threading.RLock()
 _RUNNING = threading.Event()
 
@@ -73,7 +73,7 @@ def lane_of(title: str, entry: dict, fresh: bool = True) -> tuple:
     named = ing.linked_by(title, entry) == "title"
     if not named:
         return "grey", kind, sev
-    if kind in classify.THESIS_BREAK_KINDS and sev in ("medium", "high") and entry.get("red_ok") and fresh:
+    if kind in classify.THESIS_BREAK_KINDS and sev in ("medium", "high") and entry.get("red_ok") and fresh and not _COMMENTARY.search(title):      # commentary, explainers and stock-picking pieces are stored, never RED
         return "red", kind, sev
     return "amber", kind, sev
 
