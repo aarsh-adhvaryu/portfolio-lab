@@ -101,10 +101,17 @@ def _closes(con, e: dict, upto: date, root) -> Optional[pd.Series]:
         return None
 
 
-def _after(s: pd.Series, t: datetime) -> Optional[tuple]:
-    """(date, close) of the first close at or after `t`'s own session close: a decision made before a session's close fills at that close; one made after it, at the next session's close."""
+def _close_time(market: str, d: date) -> datetime:
+    """The moment the session of `d` closed, from the market calendar (IST wall time; a US session closes after midnight IST)."""
+    from pflab import markets
+    w = markets.get(market).window_ist(d)
+    return w[1] if w else datetime.combine(d, time(15, 30))
+
+
+def _after(s: pd.Series, t: datetime, market: str = "IN") -> Optional[tuple]:
+    """(date, close) of the first session close after `t`: a decision made before a session's close fills at that close; one made after it, at the next session's close."""
     for d, px in s.items():
-        if pd.Timestamp(d) + pd.Timedelta(hours=15, minutes=30) > pd.Timestamp(t):
+        if _close_time(market, pd.Timestamp(d).date()) > pd.Timestamp(t):
             return pd.Timestamp(d).date(), float(px)
     return None
 
@@ -208,7 +215,7 @@ def run_gap(con, now: datetime, root, prev: datetime, red_items: List[dict], *, 
                 looks.append(look)
                 if look and look.get("option"):
                     code_opt, opt = opt, look["option"]
-            fill = _after(s, at) if opt in ("sell", "trim") else None
+            fill = _after(s, at, e["market"]) if opt in ("sell", "trim") else None
             qty = _qty(con, e)
             live_px = float(s.iloc[-1])
             cost = None
@@ -221,11 +228,20 @@ def run_gap(con, now: datetime, root, prev: datetime, red_items: List[dict], *, 
             con.execute("INSERT INTO ghost_s86 (ghost_id, gap_id, release, isin, symbol, market, decided_at, option, source, headline, fill_ts, fill_price, qty, live_price, cost_of_being_off_inr, label, "
                         "code_option, model_class, model_words, model_reason, model_cost, replay_key, steps) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         [gh, gid, rel, e["isin"], e["symbol"], e["market"], at, opt, "model" if lk.get("option") else "code", str(it.get("title"))[:300],
-                         datetime.combine(fill[0], time(15, 30)) if fill else None, (fill[1] * (1.0 - SLIP)) if fill else None, qty, live_px, cost, LABEL,
+                         _close_time(e["market"], fill[0]) if fill else None, (fill[1] * (1.0 - SLIP)) if fill else None, qty, live_px, cost, LABEL,
                          code_opt or _decision(it["kind"], it["sev"]), lk.get("klass"), lk.get("words"), lk.get("reason"), lk.get("cost"), lk.get("key"), "closes (no minute bars stored for a gap)"])
             code_opt = None
+            try:                                                                                           # the live book starts from this: stored where `recall` finds it, so it is never paid again
+                from pflab.think import recall
+                recall.write_back(con, now, isin=e["isin"], symbol=e["symbol"], title=f"While the app was off: the replayed decision on {e['symbol']} ({opt})"[:200],
+                                  text=(f"Replayed at {at:%a %d %b %H:%M}: {opt} ({'the model' if lk.get('option') else 'code'}"
+                                        + (f", class {lk.get('klass')}, words {lk.get('words')}: {lk.get('reason')}" if lk.get("option") else "") + f"). Headline: {str(it.get('title'))[:160]}"), source="fastforward")
+            except Exception:
+                pass
             out["ghosts"].append({"ghost_id": gh, "symbol": e["symbol"], "option": opt, "decided_at": str(at), "fill_day": str(fill[0]) if fill else None, "fill_price": round(fill[1] * (1 - SLIP), 2) if fill else None,
                                   "live_price": round(live_px, 2), "cost_inr": None if cost is None else round(cost, 2)})
+            if not fill and opt not in ("sell", "trim"):
+                sold.append(f"Had I been on: {opt.replace('_', ' ')} {e['symbol']}, no sale" + (f" (the model's reading: {lk.get('klass')}, {lk.get('reason', '')[:90]})" if lk.get("option") else "") + ": nothing was lost by being off.")
             if fill and cost is not None:
                 sold.append(f"Had I been on: {opt}s {e['symbol']} {fill[0]:%a} at {fill[1] * (1 - SLIP):,.2f}; the last close is {live_px:,.2f}: being off "
                             + (f"cost Rs {cost:,.0f}" if cost >= 0 else f"saved Rs {-cost:,.0f}") + ".")
