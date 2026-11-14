@@ -106,6 +106,21 @@ def _test_run(wt: Path, py: Path, files: List[str]) -> str:
         return f"could not run: {type(e).__name__}"
 
 
+def tests_for(wt: Path, src_files: List[str], limit: int = 6) -> List[str]:
+    """The test files that mention a changed module by name (up to `limit`, the engine tests first)."""
+    stems = {Path(f).stem for f in src_files if f.endswith(".py") and Path(f).stem != "__init__"}
+    hits: List[str] = []
+    for t in sorted((wt / "tests").glob("test_*.py")):
+        try:
+            txt = t.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if any(re.search(r'\b' + re.escape(st) + r'\b', txt) for st in stems):
+            hits.append("tests/" + t.name)
+    hits.sort(key=lambda f: (not f.startswith("tests/test_engine"), f))
+    return hits[:limit]
+
+
 def run_pending(con, now: datetime, *, repo: Optional[Path] = None, venv_python: Optional[Path] = None) -> Optional[dict]:
     """The oldest queued build, if today's quota and token budget allow: one session, one card. Returns the build row or None."""
     ensure(con)
@@ -150,7 +165,10 @@ def run_pending(con, now: datetime, *, repo: Optional[Path] = None, venv_python:
         git(["commit", "-q", "-m", f"fix: {problem[:70]}\n\nBuild #{bid} (S87 operator). Cause: {str(out.get('cause', ''))[:200]}\n\nCo-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"], wt)
     changed = [f for f in git(["diff", "--name-only", "main...HEAD"], wt).stdout.split() if f]
     tests_changed = [f for f in changed if f.startswith("tests/")]
-    verdict = _test_run(wt, py, tests_changed)
+    covering = tests_changed or tests_for(wt, [f for f in changed if f.startswith("src/")])     # no test written: the existing tests that name the changed modules must pass
+    verdict = _test_run(wt, py, covering)
+    if not tests_changed and covering:
+        verdict += " (no new test: an existing test already covers it)"
     ok = bool(changed) and bool(out.get("fixed")) and verdict.startswith("passed")
     change = "\n".join(f"- {c}" for c in (out.get("change") or [])[:3]) or "- (no summary)"
     tokens = res.input_tokens + res.output_tokens

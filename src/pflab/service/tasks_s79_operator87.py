@@ -24,10 +24,11 @@ def _build(ctx) -> dict:
 
 
 def _weekly(ctx) -> dict:
-    from pflab.oper import introspect
+    from pflab.oper import introspect, learn
+    scored = learn.score_due(ctx.con, ctx.now, ctx.data_root)                  # his logged decisions: scored when their horizon has passed (code only)
     if not introspect.due(ctx.con, ctx.now):
-        return {"skipped": "written for this week"}
-    return introspect.run(ctx.con, ctx.now)
+        return {"skipped": "written for this week", "his_decisions_scored": scored}
+    return {**introspect.run(ctx.con, ctx.now), "his_decisions_scored": scored}
 
 
 register(Job("operator_build", Interval(30, weekdays_only=False), _build, "S87 O4: new Problems become build requests; one queued build runs on a fix/ branch to a Yes/No card (max 2 a day)",

@@ -260,3 +260,23 @@ def test_operator_endpoint_and_terminal(tmp_path, monkeypatch):
     assert r["ok"] and seen["cwd"].endswith("operator") and "ANTHROPIC_API_KEY" not in seen["env"]
     monkeypatch.setattr(cp, "signin_fn", lambda: {"ok": False, "method": "api_key", "detail": "x"})
     assert terminal.open_terminal(str(data), popen=lambda *a, **k: 1 / 0)["ok"] is False
+
+
+def test_his_logged_decisions_are_scored_against_the_index_point_in_time(con, monkeypatch):
+    import pandas as pd
+    from pflab.core import pick_score
+    from pflab.oper import learn
+    monkeypatch.setattr("pflab.agents.tradecheck.isin_of", lambda c, s: "INE000A01010" if s == "AAA" else None)
+    days = pd.bdate_range("2026-01-01", periods=80)
+    idx = pd.Series([100.0 + i * 0.1 for i in range(80)], index=days)
+    stock = pd.Series([50.0 + i * 0.5 for i in range(80)], index=days)
+    monkeypatch.setattr(pick_score, "index_series", lambda m, root=None: idx)
+    monkeypatch.setattr(learn, "_series", lambda c, isin, root, asof: stock)
+    assert "not a name" in learn.log_decision(con, datetime(2026, 1, 5, 18, 0), "ZZZ", "buy")
+    assert "Logged" in learn.log_decision(con, datetime(2026, 1, 5, 18, 0), "AAA", "buy", "test")
+    assert learn.score_due(con, datetime(2026, 1, 9, 10, 0)) == 0                  # not even 5 sessions yet
+    assert learn.score_due(con, datetime(2026, 2, 20, 10, 0)) == 2                 # 5 and 20 sessions have passed, 60 has not
+    s = learn.summary(con)
+    assert s["n_logged"] == 1 and set(s["decisions"][0]["scores"]) == {"5_sessions", "20_sessions"}
+    assert s["decisions"][0]["scores"]["5_sessions"]["excess_vs_nifty500_pct"] > 0
+    assert learn.score_due(con, datetime(2026, 2, 20, 10, 0)) == 0                 # once each

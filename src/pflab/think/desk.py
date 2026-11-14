@@ -399,6 +399,12 @@ def _decisions_scored(con) -> Optional[dict]:
 def cap_left(con, now: datetime) -> Optional[float]:
     """Rupees left under his cap (the window's in an acceptance window, else the month's); None when it cannot be read (the governor in the gateway still checks every call)."""
     try:
+        from pflab.llm import gateway
+        if gateway.current_engine(con) == "claude_plan":                       # S87: the plan engine costs no rupees; its day budgets are tokens per class (`llm/claude_plan.py`)
+            return None
+    except Exception:
+        pass
+    try:
         from pflab.agents import analyst as an
         cfg = an.config()
         acc = an.acceptance(cfg, now)

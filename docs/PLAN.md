@@ -325,6 +325,12 @@ Acceptance: within 15 minutes of opening, the catch-up is running and the World 
 - 2026-11-14: merging the old and new knowledge graphs; voice notes; models trained on the system's own scored decisions.
 
 ## What remains (dated; update at each stop)
+**S87 (2026-11-14 night, branch `pm/s87-operator`): the engine is Claude Code on his plan, no API key anywhere** (his decision; amendment A87: rule 9 now reads "no paid API"). Built: O1 the engine, O2 the operator
+(its own folder, skills, subagents, permissions in code), O3 the desk and cases on the same engine plus the weekly introspection, O4 self-fixing with his Yes (worktree, branch, card), O5 his logged decisions scored beside the
+paper book's. Still to do (his): (1) open the app once and watch the `operator` line of `pflab service status` / `GET /api/operator`; (2) the screens (his, Sunday) use the endpoints in `docs/s87_operator_notes.md`;
+(3) decide whether the chat's token appetite is acceptable (a tool answer costs ~100k tokens of the plan, mostly cache reads; see the notes) or whether Auto should keep short questions on the old tool loop; (4) the NSE MCP:
+set `[operator] nse_mcp_url` when he has the address (the operator runs without it); (5) the first real "build:" request from the app (the flow is proved on a scratch repo and on a planted bug); (6) the old engines
+`claude` and `openai` stay configured but unused: delete them after the first week on the plan if nothing needs them. The first-week check (W1) still counts from Monday 16 Nov.
 **S87 starts at the redesign; W1 is armed (tag v2026.11.14.3, which carries all of S86b: the first-week check counts from the first app open on or after Monday 16 Nov 2026; the freeze it starts excepts the redesign's screens).** S86 is closed (`docs/s86b_closeout_notes.md` is the ledger; the workshop sends nothing outward, so no report of S86 or S86b was sent to Telegram: the earlier line saying the S86 report was also sent there was wrong).
 **What S86 still cannot do, short list (each needs a real market day or his decision):**
 1. Monday 16 Nov, Indian hours: the first LIVE same-day Indian filing on a held name through the lane (only synthetic so far); the first real "Off from X to Y" message after a gap with the app really closed; the first week-check evaluation clock starts at the first open.

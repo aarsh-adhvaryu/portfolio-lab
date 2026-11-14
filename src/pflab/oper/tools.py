@@ -78,6 +78,16 @@ def decision_log(ctx, a: dict) -> str:
     return _short([{k: (str(v)[:160] if v is not None else None) for k, v in zip(cols, r) if k not in ("detail_json", "answer_json")} for r in cur.fetchall()])
 
 
+def log_my_decision(ctx, a: dict) -> str:
+    from pflab.oper import learn
+    return learn.log_decision(ctx.con, ctx.now, str(a.get("symbol") or ""), str(a.get("action") or ""), str(a.get("note") or ""))
+
+
+def my_decision_scores(ctx, a: dict) -> str:
+    from pflab.oper import learn
+    return _short(learn.summary(ctx.con))
+
+
 def request_build(ctx, a: dict) -> str:
     from pflab.oper import build
     return build.request(ctx.con, ctx.now, str(a.get("problem") or "").strip(), source="operator")
@@ -90,6 +100,9 @@ EXTRA = [
     ("problems_list", "The Problems list: what failed lately, when, how often.", {"type": "object", "properties": {}}, problems_list),
     ("usage_so_far", "The operator's plan usage today by purpose (tokens against the day's budgets) and whether thinking is paused.", {"type": "object", "properties": {}}, usage_so_far),
     ("decision_log", "The thinking loop's recent decisions (what, when, on which case).", {"type": "object", "properties": {"n": {"type": "integer"}}}, decision_log),
+    ("log_my_decision", "Log a decision HE made on his real holdings (buy / sell / hold / trim / add / skip, with the symbol and a short note) so it is scored against the index at 5, 20 and 60 sessions. "
+     "Only when he says he did or decided it.", {"type": "object", "properties": {"symbol": S, "action": S, "note": S}, "required": ["symbol", "action"]}, log_my_decision),
+    ("my_decision_scores", "How his logged decisions scored against the Nifty 500 (5/20/60 sessions), with the tax caveat on sales.", {"type": "object", "properties": {}}, my_decision_scores),
     ("request_build", "A bug or a 'build:' request: opens a build session on a branch in the workshop and sends him a Yes/No card. Never edit code yourself.",
      {"type": "object", "properties": {"problem": S}, "required": ["problem"]}, request_build),
 ]

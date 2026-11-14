@@ -369,7 +369,7 @@ def run(con, *, prompt: str, system: Optional[str] = None, model: str, effort: O
     perm = can_use_tool
     if caller_tools:
         mcp[CALLER_SERVER] = _stub_server(caller_tools)
-        allow += [f"mcp__{CALLER_SERVER}__{d['name']}" for d in caller_tools]
+        # NOT in allowed_tools: an allowed tool is approved before the permission callback is consulted, and the callback is where the call is captured
         sdk = _sdk()
         inner = can_use_tool
 
@@ -494,7 +494,7 @@ class ClaudePlanEngine:
         egress.check(private_text, gate, ("portfolio",), skip=("address_word",))
         inbox = _scratch() / "inbox" / uuid.uuid4().hex[:10]
         prompt = flatten(params["messages"], inbox)
-        egress.check(prompt, gate, (), skip=("address_word",))
+        llm.body_check({"system": params["system"], "messages": params["messages"], "tools": params["tools"]}, gate)       # the whole request, as the API road checks it
         purpose = (topic.split(":", 1)[1] if ":" in topic else topic) or "call"
         k = klass_of(agent, purpose)
         schema = params.get("schema")

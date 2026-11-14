@@ -141,7 +141,7 @@ def test_caller_tool_is_captured_and_session_interrupted(con):
     r = _run(con, caller_tools=[{"name": "lookup", "description": "d", "input_schema": {"type": "object", "properties": {"name": {"type": "string"}}}}])
     assert r.tool_calls and r.tool_calls[0]["name"] == "lookup" and r.tool_calls[0]["input"] == {"name": "X"}
     o = FakeClient.seen[-1]
-    assert o.tools == [] and "mcp__caller__lookup" in o.allowed_tools      # no built-in tool at all
+    assert o.tools == [] and "mcp__caller__lookup" not in (o.allowed_tools or [])      # no built-in tool; the caller's tool reaches the permission callback (where it is captured)
 
 
 def test_gateway_roundtrip_through_provider(con, monkeypatch):
