@@ -660,6 +660,9 @@ def write_calculation(con, prompt: str, system: str, client, *, now: Optional[da
 def make_client(secrets=None):
     """The SDK client: the key from secrets.toml [anthropic] api_key if present, else the SDK's own resolution
     (ANTHROPIC_API_KEY or an `ant auth login` profile). Only this module talks to the API."""
+    from pflab.llm import gateway as _gw
+    if _gw.settings().get("force_in_use") == "claude_plan" or _gw.settings().get("no_api_key"):
+        raise _gw.EngineUnusable("S87: no paid API call is made while [engines] force_in_use = claude_plan (every call runs on his Claude plan)")
     from pflab import guard
     guard.require("paid")                       # S65: the workshop makes no paid call unless run with --paid
     from pflab.llm import vendors               # S85: the SDK is imported in llm/ only

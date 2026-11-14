@@ -562,6 +562,14 @@ def answer_item(rt, it: dict, progress: Callable[[str], None]) -> dict:
     return converse(rt, con, now, first=first, r=r, model_id=model_id, cid=cid, aid=aid, q=q, progress=progress, gate=gate, snap=snap, notes=notes, cfg=cfg)
 
 
+def _operator_on(con) -> bool:
+    try:
+        from pflab.oper import session
+        return session.enabled(con)
+    except Exception:
+        return False
+
+
 def converse(rt, con, now: datetime, *, first: str, r: dict, model_id: Optional[str], cid: Optional[int], aid: Optional[int], q: str, progress: Callable[[str], None], gate=None, client=None,
              snap: str = "", notes: Optional[List[str]] = None, cfg: Optional[dict] = None, ctx_source: Optional[str] = None) -> dict:
     """The governed tool loop of the chat (a queued message, or `assistant.answer` / `ask_once` called straight): `first` is the whole first user message (house rules, the account, the
@@ -580,6 +588,9 @@ def converse(rt, con, now: datetime, *, first: str, r: dict, model_id: Optional[
                  case_ids=[], task_id=None, role="assistant", allowed=frozenset(n for n in names if n in tl.TOOLS), his_text=q)
     ctx.chat_id, ctx.msg_id = cid, aid
     defs = chat_tools.definitions(r["tools"])
+    if client is None and _operator_on(con):                      # S87 O2: the operator (his Claude Code session for this chat) answers; the loop below is the fallback road
+        from pflab.oper import session as _opsess
+        return _opsess.answer(rt, con, now, ctx=ctx, pid=pid, first=first, r=r, model_id=model_id, cid=cid, aid=aid, q=q, progress=progress, snap=snap, notes=notes)
     messages: list = [{"role": "user", "content": [{"type": "text", "text": first}]}]
     cost, steps, text, last = 0.0, [], "", None
     stop_exc: Optional[BaseException] = None
