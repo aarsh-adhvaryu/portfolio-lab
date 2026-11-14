@@ -46,7 +46,7 @@ def make_fake(mode="good", bad_every=0):
         if schema is not None and "facts" in json.dumps(schema)[:200]:                       # the reading part: echo facts found by keyword
             doc = first
             facts = [w for w in ("approved", "plant", "auditor", "borrowings", "director") if w in doc]
-            facts = [("approved" if w == "approved" else "plant" if w == "plant" else "auditor" if w == "auditor" else "debt" if w == "borrowings" else "director") for w in facts]
+            facts = list(facts)
             return {"json": {"facts": facts[:4], "numbers": []}, "cost_rupees": 0.02}        # misses one fact on purpose
         a = good_answer()
         if bad_every and n % bad_every == 0 or mode == "malformed":

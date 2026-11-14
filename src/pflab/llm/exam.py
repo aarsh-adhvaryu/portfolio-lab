@@ -52,7 +52,7 @@ def _doc(i: int) -> dict:
     n = _NAMES[i]
     a, b, c, d, e = 120 + i * 7, 15 + i, 3 + (i % 4), 40 + i * 2, 900 + i * 11
     facts = [("approved", f"The board of {n} approved a dividend of Rs {c}.50 a share"), ("plant", f"{n} opened a new plant in the western region with capacity of {d} thousand tonnes"),
-             ("auditor", f"The auditor of {n} gave an unqualified opinion"), ("debt", f"{n} repaid borrowings of Rs {e} crore during the year"),
+             ("auditor", f"The auditor of {n} gave an unqualified opinion"), ("borrowings", f"{n} repaid borrowings of Rs {e} crore during the year"),
              ("director", f"A new independent director joined the board of {n}")]
     nums = [f"{c}.50", f"{d}", f"{e}", f"{a}", f"{b}"]
     text = (f"{n} annual note. Revenue was Rs {a} crore and profit after tax Rs {b} crore. " + " ".join(f"{t}." for _, t in facts)
@@ -154,12 +154,13 @@ def form_part(run: _Run) -> dict:
             break
         out["answers"] += 1
         ans = _json_of(r)
-        k = "malformed" if ans is None else _classify(session.validate_answer(ans, prompt))
+        probs = [] if ans is None else session.validate_answer(ans, prompt)
+        k = "malformed" if ans is None else _classify(probs)
         if k == "ok":
             out["ok"] += 1
         else:
             out[k] += 1
-            out["problems"].append(f"call {i + 1}: {k}")
+            out["problems"].append(f"call {i + 1}: {k}" + (f" ({'; '.join(str(x) for x in probs[:2])[:220]})" if probs else ""))        # S86: the validator's own words are kept, not only the class
     out["pass"] = bool(out["tool_call"] and out["answers"] >= FORM_CALLS and out["number"] == 0 and out["list"] == 0 and out["malformed"] < MALFORMED_FAILS)
     if not out["tool_call"]:
         out["problems"].append("the tool call did not work")
