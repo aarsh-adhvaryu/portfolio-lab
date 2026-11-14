@@ -323,6 +323,12 @@ def replay_march2020(*, last: date = date(2020, 4, 9)) -> dict:
         res = {"replay": "march2020", "selection": sel, "laid": laid, "timeline": tl, "account": R.account(tl) + "\n" + "\n".join(extra), "model_answers": r.scen.log, "exceptions": r.env.exceptions[:5],
                "errors": r.env.catcher.records[:5], "market_cases": [(c["case_id"], str(c["opened_on"]), c["state"], c["klass"]) for c in mk], "parts": parts,
                "etf_orders": orders_lines(con, etf), "probe": probe, "reserve": reserve.reserve_status(con, "IN", last)}
+        try:                                                                  # S86b C3.6: is what the reserve PART bought still held at the end? (the fall gauge cuts the base position, it spares the part: A79)
+            from pflab.paper import book as _pb
+            row = next((r for r in _pb.holdings(con, last)["rows"] if r["isin"] == etf), None)
+            res["etf_kept"] = {"value_after": round(float(row["value"]), 2) if row else 0.0, "part_inr": round(float(parts[0]["inr"]), 2) if parts else None}
+        except Exception as ex:
+            res["etf_kept"] = {"error": repr(ex)[:120]}
         return finish(res, "march2020")
     finally:
         r.close()
@@ -347,7 +353,10 @@ def drill_march2020(c) -> None:
     case_orders = [o for o in res["etf_orders"] if "case #" in o]
     c.ok(len(case_orders) == len(parts) and all(": buy " in o for o in case_orders), f"every part is one buy order that names its case ({len(case_orders)} orders, {len(parts)} parts)", "think/session.py")
     baseline_sells = [o for o in res["etf_orders"] if ": sell " in o and "baseline_v2" in o and o.split("placed ")[1][:10] > parts[0]["day"]] if parts else []
-    c.note(f"FINDING: after the first part the core baseline sold the index fund again: {[o[:70] for o in baseline_sells]}")
+    kept = res.get("etf_kept") or {}
+    c.note(f"FINDING (S86b: A79 spares the units a reserve part bought from the fall gauge's cut; the gauge still cuts the BASE position, here 7.0% of the book to 5.4%): the core baseline sold the index fund again after the first part: {[o[:70] for o in baseline_sells]}; held at the end {kept}")
+    if parts and kept.get("value_after") is not None and kept.get("part_inr"):
+        c.ok(float(kept["value_after"]) >= 0.9 * float(kept["part_inr"]), f"what the reserve part bought (Rs {kept['part_inr']:,.0f}) is still held after the baseline's later cuts (Rs {kept['value_after']:,.0f})", "core/baseline_v2.py reserve_protected")
     c.ok(any(p["guards"] for p in res["probe"]), f"the account says why parts waited: {[(p['day'], p['guards'][:1]) for p in res['probe'] if p['option'] != 'buy_in_parts'][:3]}", "think/rule.py")
     c.ok(any(p.get("basis") for p in res["probe"]), f"the base rates' basis is stated ({res['probe'][0]['basis'] if res['probe'] else None}, n={res['probe'][0]['history_n'] if res['probe'] else None})", "think/odds.py")
     c.ok(any(a["class"] == "market_fear" for a in res["model_answers"]), "the scripted model read it as market fear (no number in its answer)", "tools/replays_s85.py")

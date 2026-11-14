@@ -311,6 +311,7 @@ Local models are free. API spend is priced before every call and refused above h
 | sec_8k | every 2 hours inside SEC filing hours, or at app start after a gap of 6 hours or more (S85) | US 8-K items 5.02, 4.01 and 4.02 for the names the book holds, picked, skipped or watches, into the graph (polite rate, bounded) |
 | alarm | every 15 minutes, day and night, while the app is open; also first after a gap (S86) | the alarm lane: fast headlines and the company's own filings on what the book is exposed to, RED heard on Telegram and thought through at once (`think/alarm.py`; code, free until a case is thought) |
 | us_session | every 5 minutes (15 in pre-market and after-hours; nothing when the US market is closed) (S86) | the US session loop: live quotes with their delay, the watch, stops and fills at the first quote after the decision (`core/us_session.py`; code, free) |
+| problems_week | weekly while the app is open (S86b) | the Problems list (`service/problems.py`) refreshed; one line a week on Telegram when the week had problems (code, free) |
 | pick_score | after the close (when its input is newer) | scores every pick, sale and skipped idea against the index at 1, 3, 6 and 12 months after estimated tax, and stores the picks sleeve's daily record (S83, free) |
 | stress_daily | daily | the five stress scenarios on what the India book, the US sub-book and the whole book actually hold (S83, free) |
 
@@ -380,3 +381,11 @@ Tools added in S79 / S79b: `system_allocation`, `propose_allocation`, `debate`, 
 - **Commands:** `pflab alarm status|run`; `pflab service status` shows `eyes:*`.
 - **For screens (nothing built):** `alarm.eyes(con, now)`, `alarm.status(con, day)`, `alarm.report_line`, `fastforward.scorecard(con)`, `us_session.delay_report(con, day)`, tables `alarm_s86` (the four times), `ghost_s86`, `us_fills_s86`.
 - **Also:** model clients are made in `llm/gateway.vendor_client` only (a test greps for it); `test_s79b_verify_book` restores the environment (the order-dependent `test_s65_fd` failure); `drill replay_governance` names the road that sold and checks one sale order.
+
+## S86b (2026-11-14, `pm/s86b-closeout`; schema v353-v356; PLAN amendments A81-A86; ledger `docs/s86b_closeout_notes.md`): S86 closed
+- **Week check / Problems:** `service/week_check.py` armed from 16 Nov with criteria 6-14 (`_s86_criteria`), `service/problems.py` (`collect`, `listing`, `copy_text`, `weekly_line`), job `problems_week`, `pflab problems`, `GET /api/problems`, the server's `page_loads_s86` record. Tables `page_loads_s86`, `problems_s86`.
+- **Lane:** `think/alarm.py` model leads (`_model_lead`), commentary markers, one new look per alarm per 12 hours, `merge_scope`, `funds_text`; `ingest/headlines.py` `through_funds`; `[think] alarm_sources`.
+- **Fast-forward:** `think/fastforward.py` `model_look`, `known_day`, `_tax_inr`, after-tax columns (`ghost_s86` gains `code_option`, `model_*`, `replay_key`, `steps`, `at_5/20/60`).
+- **Entrance:** `entrance/readers.py` `links_in`, `resolve_link`, `why_unreadable`; `app/context.py` file list.
+- **Tools (development):** `tools/s86b_real_gap.py`, `tools/s86b_us_bars.py`, `tools/real_inputs_s86.py`, `tools/real_links_s86.py`, `tools/alarm_real_think_s86.py`, `tools/alarm_live_s86.py --names`.
+

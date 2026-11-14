@@ -67,7 +67,17 @@ def _files(con, chat_id: int, gate=None) -> str:
     out = []
     for name, kind, status, text in reversed(rows):
         t = " ".join((text or "").split())[:900]
-        out.append(f"- {name} ({kind or 'file'}, {status}): {t}" if t else f"- {name} ({kind or 'file'}, {status}): nothing readable was extracted")
+        if t:
+            out.append(f"- {name} ({kind or 'file'}, {status}): {t}")
+            continue
+        why = None                                           # S86b: the TRUE reason, from the file itself, never a bare "nothing readable"
+        try:
+            from pflab.entrance import readers
+            p = con.execute("SELECT path FROM inbox_items WHERE chat_id=? AND name=? ORDER BY item_id DESC LIMIT 1", [chat_id, name]).fetchone()
+            why = readers.why_unreadable(p[0]) if p and p[0] else None
+        except Exception:
+            why = None
+        out.append(f"- {name} ({kind or 'file'}, {status}): an earlier reader extracted nothing from it; " + (f"{why}" if why else "the file does have content now: send it again in the chat and the current reader reads it, with page numbers"))
     return "\n".join(out)
 
 

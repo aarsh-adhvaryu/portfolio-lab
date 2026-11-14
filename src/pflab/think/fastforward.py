@@ -84,6 +84,15 @@ def lane_delay_minutes(con) -> float:
         return 15.0
 
 
+def known_day(market: str, now: datetime) -> date:
+    """The last session of `market` whose close had passed at `now` (point in time: a bar of a later session is never read, whatever the stored file holds)."""
+    from pflab import markets
+    if market == "US":
+        from pflab.us import clock as uc
+        return uc.session_closed_by(now, settle_minutes=30)
+    return markets.get(market).session_closed_by(now)
+
+
 def _closes(con, e: dict, upto: date, root) -> Optional[pd.Series]:
     from pflab.think import watch
     try:
@@ -92,10 +101,17 @@ def _closes(con, e: dict, upto: date, root) -> Optional[pd.Series]:
         return None
 
 
-def _after(s: pd.Series, t: datetime) -> Optional[tuple]:
-    """(date, close) of the first close at or after `t`'s own session close: a decision made before a session's close fills at that close; one made after it, at the next session's close."""
+def _close_time(market: str, d: date) -> datetime:
+    """The moment the session of `d` closed, from the market calendar (IST wall time; a US session closes after midnight IST)."""
+    from pflab import markets
+    w = markets.get(market).window_ist(d)
+    return w[1] if w else datetime.combine(d, time(15, 30))
+
+
+def _after(s: pd.Series, t: datetime, market: str = "IN") -> Optional[tuple]:
+    """(date, close) of the first session close after `t`: a decision made before a session's close fills at that close; one made after it, at the next session's close."""
     for d, px in s.items():
-        if pd.Timestamp(d) + pd.Timedelta(hours=15, minutes=30) > pd.Timestamp(t):
+        if _close_time(market, pd.Timestamp(d).date()) > pd.Timestamp(t):
             return pd.Timestamp(d).date(), float(px)
     return None
 
@@ -106,7 +122,7 @@ def caused_by(con, entries: List[dict], prev: datetime, now: datetime, root) -> 
     out: List[dict] = []
     ix_cache: Dict[str, Optional[pd.Series]] = {}
     for e in entries:
-        s = _closes(con, e, now.date(), root)
+        s = _closes(con, e, known_day(e["market"], now), root)
         if s is None or len(s) < 60:
             continue
         a = s[s.index <= pd.Timestamp(prev.date())]
@@ -152,10 +168,12 @@ def _fx(con, day: date, root) -> float:
         return 1.0
 
 
-def run_gap(con, now: datetime, root, prev: datetime, red_items: List[dict]) -> dict:
-    """The fast-forward over [prev, now]. -> {note, ghosts, caused, skipped?}. Never raises."""
+def run_gap(con, now: datetime, root, prev: datetime, red_items: List[dict], *, model_fn: Optional[Callable] = None, no_model: bool = False) -> dict:
+    """The fast-forward over [prev, now]. -> {note, ghosts, caused, skipped?}. Never raises. `model_fn(system, user) -> {"json", "cost_rupees"}` replaces the gateway call (tests)."""
     out: dict = {"ghosts": [], "caused": [], "note": ""}
+    code_opt = None
     try:
+        model_on = bool(think.settings().get("fast_forward_model", True))
         if not enabled():
             return {"skipped": "switched off", "note": ""}
         rs = release_start()
@@ -173,6 +191,8 @@ def run_gap(con, now: datetime, root, prev: datetime, red_items: List[dict]) -> 
         entries = [e for e in watch.scope(con, now.date(), root=root) if (e["held"] or "pick" in str(e.get("why"))) and not str(e["isin"]).startswith(("STORY:", "MARKET:", "MACRO:"))]
         out["caused"] = caused_by(con, entries, prev, now, root)
         delay = lane_delay_minutes(con)
+        model_budget = MODEL_LOOKS_MAX if model_on and not no_model else 0
+        looks: List[dict] = []
         sold = []
         done = set()
         for it in sorted(red_items, key=lambda x: -x["entry"]["exposure_inr"]):
@@ -186,10 +206,16 @@ def run_gap(con, now: datetime, root, prev: datetime, red_items: List[dict]) -> 
             done.add(e["isin"])
             at = pub + timedelta(minutes=delay)                                                         # counted from its publication plus the lane's own median delay
             opt = _decision(it["kind"], it["sev"])
-            s = _closes(con, e, now.date(), root)
+            s = _closes(con, e, known_day(e["market"], now), root)
             if s is None:
                 continue
-            fill = _after(s, at) if opt == "sell" else None
+            look = None
+            if model_budget > 0 and len(looks) < MODEL_LOOKS_MAX:                                       # C3.1: the model's own look at that moment, RED first (items arrive largest exposure first)
+                look = model_look(con, now, root, e, it, at, prev, rel, model_fn)
+                looks.append(look)
+                if look and look.get("option"):
+                    code_opt, opt = opt, look["option"]
+            fill = _after(s, at, e["market"]) if opt in ("sell", "trim") else None
             qty = _qty(con, e)
             live_px = float(s.iloc[-1])
             cost = None
@@ -198,11 +224,24 @@ def run_gap(con, now: datetime, root, prev: datetime, red_items: List[dict]) -> 
                 px = fill[1] * (1.0 - SLIP)
                 cost = qty * (px - live_px) * fx                                                        # positive: being off cost this much
             gh = (con.execute("SELECT coalesce(max(ghost_id),0)+1 FROM ghost_s86").fetchone()[0])
-            con.execute("INSERT INTO ghost_s86 (ghost_id, gap_id, release, isin, symbol, market, decided_at, option, source, headline, fill_ts, fill_price, qty, live_price, cost_of_being_off_inr, label) "
-                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [gh, gid, rel, e["isin"], e["symbol"], e["market"], at, opt, "code", str(it.get("title"))[:300],
-                        datetime.combine(fill[0], time(15, 30)) if fill else None, (fill[1] * (1.0 - SLIP)) if fill else None, qty, live_px, cost, LABEL])
+            lk = look or {}
+            con.execute("INSERT INTO ghost_s86 (ghost_id, gap_id, release, isin, symbol, market, decided_at, option, source, headline, fill_ts, fill_price, qty, live_price, cost_of_being_off_inr, label, "
+                        "code_option, model_class, model_words, model_reason, model_cost, replay_key, steps) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        [gh, gid, rel, e["isin"], e["symbol"], e["market"], at, opt, "model" if lk.get("option") else "code", str(it.get("title"))[:300],
+                         _close_time(e["market"], fill[0]) if fill else None, (fill[1] * (1.0 - SLIP)) if fill else None, qty, live_px, cost, LABEL,
+                         code_opt or _decision(it["kind"], it["sev"]), lk.get("klass"), lk.get("words"), lk.get("reason"), lk.get("cost"), lk.get("key"), "closes (no minute bars stored for a gap)"])
+            code_opt = None
+            try:                                                                                           # the live book starts from this: stored where `recall` finds it, so it is never paid again
+                from pflab.think import recall
+                recall.write_back(con, now, isin=e["isin"], symbol=e["symbol"], title=f"While the app was off: the replayed decision on {e['symbol']} ({opt})"[:200],
+                                  text=(f"Replayed at {at:%a %d %b %H:%M}: {opt} ({'the model' if lk.get('option') else 'code'}"
+                                        + (f", class {lk.get('klass')}, words {lk.get('words')}: {lk.get('reason')}" if lk.get("option") else "") + f"). Headline: {str(it.get('title'))[:160]}"), source="fastforward")
+            except Exception:
+                pass
             out["ghosts"].append({"ghost_id": gh, "symbol": e["symbol"], "option": opt, "decided_at": str(at), "fill_day": str(fill[0]) if fill else None, "fill_price": round(fill[1] * (1 - SLIP), 2) if fill else None,
                                   "live_price": round(live_px, 2), "cost_inr": None if cost is None else round(cost, 2)})
+            if not fill and opt not in ("sell", "trim"):
+                sold.append(f"Had I been on: {opt.replace('_', ' ')} {e['symbol']}, no sale" + (f" (the model's reading: {lk.get('klass')}, {lk.get('reason', '')[:90]})" if lk.get("option") else "") + ": nothing was lost by being off.")
             if fill and cost is not None:
                 sold.append(f"Had I been on: {opt}s {e['symbol']} {fill[0]:%a} at {fill[1] * (1 - SLIP):,.2f}; the last close is {live_px:,.2f}: being off "
                             + (f"cost Rs {cost:,.0f}" if cost >= 0 else f"saved Rs {-cost:,.0f}") + ".")
@@ -221,7 +260,95 @@ def run_gap(con, now: datetime, root, prev: datetime, red_items: List[dict]) -> 
     return out
 
 
+MODEL_LOOKS_MAX = 3                      # at most this many cases a gap are looked at by the model; the rest by code, labelled so
+SYSTEM_REPLAY = ("You are the thinking desk of a small paper portfolio, REPLAYING a past moment after the app was off. Only the text below was known at that moment: no other news, no web, nothing "
+                 "later. Read it and answer with the closed lists only: the situation's class, ONE option for the name, and a likelihood WORD for the worst, likely and best outcome. "
+                 "Never write a number as a field and never a figure the text does not give. The reason is one plain sentence.")
+REPLAY_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["klass", "option", "worst", "likely", "best", "reason"],
+                 "properties": {"klass": {"type": "string", "enum": list(think.CLASSES)}, "option": {"type": "string", "enum": list(think.OPTIONS)},
+                                "worst": {"type": "string", "enum": list(think.WORDS)}, "likely": {"type": "string", "enum": list(think.WORDS)}, "best": {"type": "string", "enum": list(think.WORDS)},
+                                "reason": {"type": "string"}}}
+
+
+def _known_text(con, e: dict, at: datetime, root) -> str:
+    """Everything the desk would have had at `at`, and nothing later: the headlines published by then (the lane's delay is already in `at`), the stored notes as of that day (`recall`), and the closes
+    of the sessions already over."""
+    parts = []
+    rows = con.execute("SELECT published, outlet, title FROM headlines_s86 WHERE isin=? AND published IS NOT NULL AND published <= ? ORDER BY published DESC LIMIT 12", [e["isin"], at]).fetchall()
+    if rows:
+        parts.append("HEADLINES (newest first):\n" + "\n".join(f"- {p:%a %d %b %H:%M} IST, {o or 'outlet unknown'}: {t[:200]}" for p, o, t in rows))
+    try:
+        from pflab.think import recall
+        r = recall.recall(con, at, isin=e["isin"], symbol=e["symbol"], asof=at, limit_chars=1500)
+        if r.get("text"):
+            parts.append("WHAT WE ALREADY KNEW (stored notes as of then):\n" + r["text"][:1500])
+    except Exception:
+        pass
+    s = _closes(con, e, known_day(e["market"], at), root)
+    if s is not None and len(s) > 6:
+        s = s[s.index <= pd.Timestamp(known_day(e["market"], at))]
+        parts.append("CLOSES SO FAR: last close " + f"{float(s.iloc[-1]):.2f} on {s.index[-1]:%d %b}; five sessions earlier {float(s.iloc[-6]):.2f}.")
+    return "\n\n".join(parts) or "nothing stored."
+
+
+def model_look(con, now: datetime, root, e: dict, it: dict, at: datetime, prev: datetime, release: str, model_fn: Optional[Callable] = None) -> Optional[dict]:
+    """C3.1: ONE replayed model look at the moment `at`. Cached by (gap start, gap end day, release, name, headline): a replay is never paid twice. Budget: the workshop / his cap (the gateway refuses
+    past it: the look is then skipped and the ghost stays a code decision). No web, no tools. Returns {klass, option, words, reason, cost, key} or None."""
+    import hashlib
+    key = hashlib.sha1(f"{prev:%Y%m%d%H%M}|{now:%Y%m%d}|{release}|{e['isin']}|{it.get('id')}".encode()).hexdigest()[:16]
+    old = con.execute("SELECT option, model_class, model_words, model_reason FROM ghost_s86 WHERE replay_key=? AND source='model' LIMIT 1", [key]).fetchone()
+    if old:
+        return {"klass": old[1], "option": old[0], "words": old[2], "reason": old[3], "cost": 0.0, "key": key, "cached": True}
+    user = (f"NAME: {e['symbol']} (the book holds {e.get('exposure_pct', 0.0):.1%} of itself in it)\nMOMENT: {at:%a %d %b %Y %H:%M} IST\n\n" + _known_text(con, e, at, root) +
+            "\n\nAnswer with the form only.")
+    try:
+        if model_fn is not None:
+            r = model_fn(SYSTEM_REPLAY, user)
+        else:
+            from pflab.llm import gateway
+            r = gateway.call(con, "decide", SYSTEM_REPLAY, [{"role": "user", "content": user}], schema=REPLAY_SCHEMA, purpose="s86b_replay_look", now=now, max_tokens=900, agent="think", web=False)
+        j = r.get("json") or {}
+        if j.get("option") not in think.OPTIONS or j.get("klass") not in think.CLASSES:
+            return None
+        return {"klass": j["klass"], "option": j["option"], "words": f"{j.get('worst')}/{j.get('likely')}/{j.get('best')}", "reason": str(j.get("reason") or "")[:300], "cost": float(r.get("cost_rupees") or 0.0), "key": key}
+    except Exception:
+        return None
+
+
 # --- the forward test ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+def _tax_inr(con, market: str, isin: str, symbol: str, qty: float, price: float, day: date, root) -> Optional[float]:
+    """The Indian tax a sale of `qty` at `price` on `day` would add, from the repo's own tax rows (FIFO lots of the book: the US sub-book's `plan_sale`, India's exit estimate); None when no row covers it
+    or the lots are gone. Never writes."""
+    try:
+        if market == "US":
+            from pflab.us import book as usb, instruments as uins
+            held = float(usb.positions(con).get(isin, 0.0))
+            q = min(qty, held)
+            if q <= 1e-9:
+                return None
+            fx = _fx(con, day, root)
+            t = usb.plan_sale(con, uins.canonical(con, isin, day), q, price, 0.0, day, root, commit=False)
+            return None if t.get("no_rate") else float(t.get("tax_inr") or 0.0) * (qty / q)
+        from pflab.core import exits
+        est = exits._estimate(con, isin, qty, price, day)
+        return None if est.get("tax") is None else float(est["tax"])
+    except Exception:
+        return None
+
+
+def _after_tax_edge(con, g: tuple, later_px: float, later_day: date, root) -> Optional[float]:
+    """Rupees: (what selling at the ghost's fill leaves after tax) minus (what holding to `later_day` and selling then leaves after tax), on the ghost's quantity. Positive = selling was right."""
+    gid, isin, sym, mk, fts, fpx, qty = g
+    if not qty or qty <= 1e-9:
+        return None
+    fx = _fx(con, later_day, root) if mk == "US" else 1.0
+    t_fill = _tax_inr(con, mk, isin, sym, qty, float(fpx), fts.date(), root)
+    t_later = _tax_inr(con, mk, isin, sym, qty, float(later_px), later_day, root)
+    if t_fill is None or t_later is None:
+        return None
+    return round((float(fpx) * qty * fx - t_fill) - (float(later_px) * qty * fx - t_later), 2)
+
 
 def score_ghosts(con, day: date, root=None) -> int:
     """Score each ghost SALE at 5, 20 and 60 sessions after its fill: the share of the fill price the name has since fallen (positive = selling was right), pre-tax. Idempotent; point in time (closes up to
@@ -229,27 +356,34 @@ def score_ghosts(con, day: date, root=None) -> int:
     from pflab import markets
     from pflab.think import watch
     n = 0
-    rows = con.execute("SELECT ghost_id, isin, symbol, market, fill_ts, fill_price, scored_5, scored_20, scored_60 FROM ghost_s86 WHERE label=? AND fill_price IS NOT NULL", [LABEL]).fetchall()
-    for gid, isin, sym, mk, fts, fpx, s5, s20, s60 in rows:
+    rows = con.execute("SELECT ghost_id, isin, symbol, market, fill_ts, fill_price, scored_5, scored_20, scored_60, qty, at_5, at_20, at_60 FROM ghost_s86 WHERE label=? AND fill_price IS NOT NULL", [LABEL]).fetchall()
+    for gid, isin, sym, mk, fts, fpx, s5, s20, s60, gq, a5, a20, a60 in rows:
         s = _closes(con, {"market": mk, "isin": isin, "symbol": sym}, day, root)
         if s is None:
             continue
         after = s[s.index > pd.Timestamp(fts.date())]
-        for k, col, cur in ((5, "scored_5", s5), (20, "scored_20", s20), (60, "scored_60", s60)):
+        for k, col, cur, acol, acur in ((5, "scored_5", s5, "at_5", a5), (20, "scored_20", s20, "at_20", a20), (60, "scored_60", s60, "at_60", a60)):
             if cur is None and len(after) >= k:
                 con.execute(f"UPDATE ghost_s86 SET {col}=? WHERE ghost_id=?", [round(float(fpx - after.iloc[k - 1]) / float(fpx), 6), gid])
                 n += 1
+            if acur is None and len(after) >= k:                                                          # S86b C3.3: the same horizon after tax, beside the pre-tax column (the repo's tax rows)
+                e = _after_tax_edge(con, (gid, isin, sym, mk, fts, fpx, gq), float(after.iloc[k - 1]), pd.Timestamp(after.index[k - 1]).date(), root)
+                if e is not None:
+                    con.execute(f"UPDATE ghost_s86 SET {acol}=? WHERE ghost_id=?", [e, gid])
+                    n += 1
     return n
 
 
 def scorecard(con) -> dict:
     """The column `replayed_while_off` of the decision scorecard (never mixed with the live one): how many ghost decisions, how many scored at each horizon, how many were right."""
     rows = con.execute("SELECT option, scored_5, scored_20, scored_60, cost_of_being_off_inr FROM ghost_s86 WHERE label=?", [LABEL]).fetchall()
-    out = {"label": LABEL, "decisions": len(rows), "basis": "pre-tax price move after the decision; code decisions only", "right": {}}
+    out = {"label": LABEL, "decisions": len(rows), "basis": "price move after the decision (pre-tax column) and the rupee edge after tax (the repo's tax rows); each decision says whether code or the model made it", "right": {}}
     for k, i in ((5, 1), (20, 2), (60, 3)):
         xs = [r[i] for r in rows if r[i] is not None]
         out["right"][str(k)] = {"scored": len(xs), "right": sum(1 for x in xs if x > 0)}
     out["cost_of_being_off_inr"] = round(sum(r[4] for r in rows if r[4] is not None), 2)
+    at = con.execute("SELECT count(at_5), coalesce(sum(at_5),0), count(at_20), coalesce(sum(at_20),0), count(at_60), coalesce(sum(at_60),0) FROM ghost_s86 WHERE label=?", [LABEL]).fetchone()
+    out["after_tax_inr"] = {"5": {"scored": at[0], "edge_inr": round(at[1], 2)}, "20": {"scored": at[2], "edge_inr": round(at[3], 2)}, "60": {"scored": at[4], "edge_inr": round(at[5], 2)}}
     return out
 
 

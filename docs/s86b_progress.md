@@ -1,0 +1,35 @@
+# S86b progress (IST). One line per finished or dropped item. If resumed: read this first, continue from the first unfinished item for the clock's phase.
+12:25 setup: branch pm/s86b-closeout from main v2026.11.14.2; scratch C:\Users\dnaad\AppData\Local\Temp/s86b
+12:29 W1 built+tested (week_check criteria 6-14, ARM_FROM 16 Nov, problems list, pflab problems, /api/problems, page_loads middleware); tag at release
+12:30 C1(2): conftest autouse clears hq.board._LIVE (leaked live task ids made reap return 0 in reversed order); proof = reversed suite
+12:30 C2(b) live hour started in D:/s86b_scratch/live (kept)
+12:31 C2(c) built+tested (through_funds, funds_text); C2(b) fixtures test added
+12:34 C2(d) GDELT OFF in config (alarm_sources), merge_held wired earlier (merge_scope); amendment A81 to write
+12:34 C4.1 exam fixes (keyword test, invalid reasons, stops); C4.2 OpenAI exam rerun STARTED (est Rs 41; month spend read before)
+12:36 cli fix (timedelta shadow broke every command; test added); OpenAI exam rerun RESTARTED 12:40
+12:38 C5.3 diagnosed: his xlsx/pdf ARE readable by the S85 reader (6 and 14 facts, Rs 1.70/7.23); old inbox rows said 0 -> chat context cites old rows; fixed with why_unreadable; Tijori link = redirect to the same PDF; links in files resolved. C5.1 real PDFs next
+12:40 C5.1 real PDFs (11p refused by privacy screen: account-like number; 37p read in 2 parts, 2 facts, Rs 25.98; quote matching made punctuation-tolerant); C5.2 links true->supported Rs1.49, false->contradicted Rs1.25
+12:42 C3.1 built+tested (scripted model)
+12:46 C3.5 real gap RUN (Rs 3.77): ghost model look freeze (class unclear), live rule sells at next open; code-only ghost would sell Mon close 178.58 (cost Rs 830). harness in tools/s86b_real_gap.py, data D:/s86b_scratch/gap1
+12:49 C2(a) first run: model flagged 43/63 plain-news items HIGH (19 genuine, 23 commentary, 1 wrong); added commentary filter + 12h new-look spacing; rerun nv2 started
+12:49 C4(5): score_shadow already wired in score_due (S85) and tested (test file listed)
+12:49 C3(6): rerunning march2020 replay with current code (A79 gauge protection) in background; log D:/s86b_scratch/march.log
+12:50 C3(3) after-tax ghost scoring + protocol A4 done
+12:55 C6 real-bars replay done (tools/s86b_us_bars.py): Thu pre-market decision 19:30 -> fill 20:05 first regular quote 156.18 (open 151.01); buy same day held, fills Fri 20:05; found+fixed: open-order names not quoted; first fill must be after the open minute
+12:56 C4.2 OpenAI exam rerun DONE (medium 4/6, 0 facts missed, form FAIL 4 broken lists base_rate_set; high 4/6, form FAIL 5; Rs 15.86 + 25.19); C4.3 Claude exam does not fit cap (est Rs ~50/level), estimate only; C2(e) 2h lane run started (D:/s86b_scratch/live2h)
+12:58 C2(b) live hour read so far: 8 REDs in 2 passes, mostly commentary/stock-pick pieces on Nvidia + one HDFC customer-fraud arrest (rule 'fraud'); added generic commentary/advice markers to both paths
+12:59 docs: CLAUDE.md rule 9, W1 freeze, S86b line done
+12:59 CHECKPOINT 13:15 (early): committed, privacy grep run, branch pushed
+13:02 C3(6): march2020 replay with A79 still shows the baseline's gauge cut of the BASE position (orders on JUNIORBEES, NIFTYBEES, SYNFMCG1 together = the gauge); A79 spares only the part's own units by design; rail trims are limits and stay; drill now checks part units kept; rerun happens in Step A replays
+13:19 Step A normal suite: 4023 passed, 3 failed (3 ghost tests, run mid-edit of fastforward/migrations); rerun alone: pass. reversed suite running
+13:20 docs: findings 12-17 appended
+13:20 migration of a copy of the app store (schema 352, 302 tables, 757,425 rows) to 356: 0 rows lost, 2 new tables; copy deleted
+13:39 docs: PLAN A81-A86 + parked list + BUILT done; remaining docs: What remains block, closeout ledger final, alarm notes, RUNNING after Step A
+14:13 Step A reversed suite: 4058 passed, 1 failed (test_s67_world: problems_week job had no group) -> fixed; test_s67_local passes in reversed order (C1.2 closed). drills running
+14:44 Step A drills: 14 PASS, 3 FAIL (off_fri_mon, off_10_days: weekly Problems line counted as a stale summary -> drill filter; accelerated_long: criterion 8 desk statuses wrong in my code (quiet/budget count) + synthetic world has no desk -> fixed); rerun those 3 + replays next
+15:07 3 failing drills now PASS (off_fri_mon, off_10_days, accelerated_long). replays: rotation, governance PASS; march2020 FAIL on my new check (part units not kept); debugging why (protection computed OK but position fully sold on 2020-04-01)
+15:15 march2020 debug: gauge cuts the BASE position 7.0%->5.4% and spares the part (0.66%); my first etf_kept query was wrong; drill now checks held value >= 90% of part; rerun started
+15:15 Step C: final normal-order suite started (code frozen except docs)
+15:15 docs: ledger + alarm notes updated; 2h lane run: 8 passes, clean
+15:25 docs: PLAN What remains + findings done. march2020 PASS. waiting: final suite
+16:06 Step C: final normal suite 4059 passed, 0 failed. releasing v2026.11.14.3

@@ -59,4 +59,33 @@ MIGRATIONS = [
     """),
 ]
 
+MIGRATIONS += [
+    (353, "page_loads_s86", """
+    CREATE TABLE IF NOT EXISTS page_loads_s86 (loaded_at TIMESTAMP, path VARCHAR, status INTEGER, ms DOUBLE);
+    """),
+    (354, "problems_s86", """
+    CREATE TABLE IF NOT EXISTS problems_s86 (
+        problem_id BIGINT PRIMARY KEY, kind VARCHAR, key VARCHAR, text VARCHAR, context VARCHAR, first_seen TIMESTAMP, last_seen TIMESTAMP, times INTEGER, reported_at TIMESTAMP
+    );
+    """),
+]
+MIGRATIONS += [
+    (355, "ghost_model_s86", """
+    ALTER TABLE ghost_s86 ADD COLUMN IF NOT EXISTS code_option VARCHAR;
+    ALTER TABLE ghost_s86 ADD COLUMN IF NOT EXISTS model_class VARCHAR;
+    ALTER TABLE ghost_s86 ADD COLUMN IF NOT EXISTS model_words VARCHAR;
+    ALTER TABLE ghost_s86 ADD COLUMN IF NOT EXISTS model_reason VARCHAR;
+    ALTER TABLE ghost_s86 ADD COLUMN IF NOT EXISTS model_cost DOUBLE;
+    ALTER TABLE ghost_s86 ADD COLUMN IF NOT EXISTS replay_key VARCHAR;
+    ALTER TABLE ghost_s86 ADD COLUMN IF NOT EXISTS steps VARCHAR;
+    ALTER TABLE ghost_s86 ADD COLUMN IF NOT EXISTS gain_after_tax DOUBLE;
+    """),
+]
+MIGRATIONS += [
+    (356, "ghost_after_tax_s86", """
+    ALTER TABLE ghost_s86 ADD COLUMN IF NOT EXISTS at_5 DOUBLE;
+    ALTER TABLE ghost_s86 ADD COLUMN IF NOT EXISTS at_20 DOUBLE;
+    ALTER TABLE ghost_s86 ADD COLUMN IF NOT EXISTS at_60 DOUBLE;
+    """),
+]
 MIGRATIONS.sort(key=lambda m: m[0])

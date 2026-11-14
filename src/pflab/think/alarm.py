@@ -32,11 +32,12 @@ from pflab.kg2 import classify, headlines as kg
 from pflab.think import cases
 
 DEFAULTS = {"alarm": True, "alarm_heard_per_day": 6, "alarm_outlets": 4, "alarm_outlet_minutes": 60, "alarm_story_hours": 36, "alarm_seconds": 110.0, "alarm_target_minutes": 30,
-            "alarm_blind_minutes": 60, "alarm_gap_minutes": 30, "alarm_gap_days": 7, "alarm_graph_sync": True, "alarm_fresh_hours": 8}
+            "alarm_blind_minutes": 60, "alarm_gap_minutes": 30, "alarm_gap_days": 7, "alarm_graph_sync": True, "alarm_fresh_hours": 8, "alarm_sources": ["google_news", "yahoo", "gdelt_doc"]}
 EYE_LABELS = {"google_news": "news (Google News)", "yahoo": "news (Yahoo Finance)", "gdelt_doc": "news (GDELT)", "filings": "Indian company filings (BSE)", "sec_8k": "US company filings (SEC)",
               "india_quotes": "Indian quotes", "us_quotes": "US quotes"}
 _TURN = re.compile(r"\b(?:resign\w*|steps? down|stepping down|ousted|ouster|removed|fired|dismiss\w*|terminated|arrest\w*|indict\w*|charged|restat\w+|defaults?|downgrad\w+|bankrupt\w*|interim (?:ceo|chief))\b", re.I)
 _DENIAL = re.compile(r"\b(?:denies|denied|denial|refutes?|rejects?|dismisses|baseless|unfounded|false report|clarif\w+|no truth)\b", re.I)
+_COMMENTARY = re.compile(r"\b(?:what to know|what we know|takeaways?|who is|who are|who could|why did|explainer|analysis|opinion|explains why|here.s why|what comes next|what it means|buying dips?|live updates|key questions|raises? (?:critical )?questions|what market pros|stocks? to buy|worth (?:buying|this much)|should you (?:buy|sell)|buy before|top \d+ stocks|stock picks?|the case (?:for|against))\b", re.I)
 LOCK = threading.RLock()
 _RUNNING = threading.Event()
 
@@ -72,7 +73,7 @@ def lane_of(title: str, entry: dict, fresh: bool = True) -> tuple:
     named = ing.linked_by(title, entry) == "title"
     if not named:
         return "grey", kind, sev
-    if kind in classify.THESIS_BREAK_KINDS and sev in ("medium", "high") and entry.get("red_ok") and fresh:
+    if kind in classify.THESIS_BREAK_KINDS and sev in ("medium", "high") and entry.get("red_ok") and fresh and not _COMMENTARY.search(title):      # commentary, explainers and stock-picking pieces are stored, never RED
         return "red", kind, sev
     return "amber", kind, sev
 
@@ -171,8 +172,10 @@ def raise_red(con, now: datetime, root, item: dict, e: dict, kind: str, sev: str
         con.execute("UPDATE headlines_s86 SET alarm_id=?, lane='red', kind=?, severity=? WHERE item_id=?", [prior["alarm_id"], kind, sev, item["id"]])
         case = cases.get_case(con, prior["case_id"]) if prior["case_id"] else None
         last = con.execute("SELECT decided_at FROM alarm_s86 WHERE alarm_id=?", [prior["alarm_id"]]).fetchone()[0]
-        turn = bool(_TURN.search(item["title"])) and (last is None or (now - last) >= timedelta(hours=12))          # a second report that says something DID happen (a resignation, an ouster), not the same story again
-        new_look = bool(case) and case["state"] != "closed" and (kind not in _kinds_in_case(con, prior["case_id"]) | {prior["kind"]} or turn)
+        turn = bool(_TURN.search(item["title"]))                                                                  # a second report that says something DID happen (a resignation, an ouster), not the same story again
+        kind_new = kind not in _kinds_in_case(con, prior["case_id"]) | {prior["kind"]}
+        spaced = last is None or (now - last) >= timedelta(hours=12)                                       # S86b: at most one new look per alarm per 12 hours: the model's HIGH kinds alternate (leadership / fraud) in one crisis and each change would be a paid look
+        new_look = bool(case) and case["state"] != "closed" and spaced and (kind_new or turn)
         if case and case["state"] != "closed":
             _record_signal(con, now, item, e, kind, sev, prior["case_id"])
         out.update({"joined": prior["alarm_id"], "case_id": prior["case_id"], "new_look": new_look})
@@ -340,6 +343,20 @@ def eyes(con, now: datetime) -> List[dict]:
     return out
 
 
+def funds_text(con, day, root=None) -> str:
+    """For `pflab alarm status`: which funds the lane looks through, or "through funds: not known" when no holdings file or index weights exist."""
+    try:
+        from pflab.think import exposure
+        fw = exposure.fund_weights(con, day, root)
+        got = [f"{f['symbol']} ({f['basis']})" for f in fw["funds"].values()]
+        unc = [f"{u['symbol']}: {u['why']}" for u in fw.get("uncovered", [])]
+        if not got:
+            return "through funds: not known" + (f" ({'; '.join(unc)})" if unc else " (the book holds no fund with member data)")
+        return "through funds: " + "; ".join(got) + (f"; not covered: {'; '.join(unc)}" if unc else "")
+    except Exception:
+        return "through funds: not known"
+
+
 def eyes_text(con, now: datetime) -> str:
     lines = []
     for e in eyes(con, now):
@@ -377,6 +394,8 @@ def _model_lead(con, root, it: dict, e: dict, model_fn: Optional[Callable]) -> O
     """H2: a fresh, named headline on a name the book holds that the RULES call plain news: the LOCAL model (free, closed list, never a number) is asked once; only a thesis-break kind at HIGH
     severity makes it RED (a medium guess of an 8B model is not worth a paid case). The answer is cached like the graph's (`classify.append_cache`) so the rebuild gives the same kinds. None when
     the model is off, cannot answer or says nothing serious."""
+    if _COMMENTARY.search(it["title"]):                              # S86b: explainers, takeaways and analysis pieces are commentary on news, not news (43 model HIGHs in the Nvidia week, 23 of them were these): AMBER
+        return None
     try:
         from pathlib import Path
         fn = model_fn or classify.model_classify
@@ -480,7 +499,7 @@ def last_try(con) -> Optional[datetime]:
         return None
 
 
-def run(con, now: datetime, root, *, client: Optional[ing.Client] = None, entries: Optional[List[dict]] = None, sources=ing.SOURCES, think_fn: Optional[Callable] = None,
+def run(con, now: datetime, root, *, client: Optional[ing.Client] = None, entries: Optional[List[dict]] = None, sources=None, think_fn: Optional[Callable] = None,
         tell_fn: Optional[Callable] = None, force: bool = False, gap: Optional[Callable] = None, model_fn: Optional[Callable] = None) -> dict:
     """One pass of the lane. Never raises for a source's sake; a failure is a line in `problems`. `gap` is the fast-forward hook (`think/fastforward.py`): called with the gap's findings BEFORE the live
     book acts."""
@@ -491,6 +510,7 @@ def run(con, now: datetime, root, *, client: Optional[ing.Client] = None, entrie
         return out
     with LOCK:
         try:
+            sources = tuple(sources or settings()["alarm_sources"])                                  # S86b C2(d): which feeds are ON is configuration (GDELT's API refuses this PC's every request: OFF)
             prev = last_try(con)
             gap_min = float(cfg["alarm_gap_minutes"])
             is_gap = prev is not None and (now - prev) >= timedelta(minutes=gap_min)

@@ -71,11 +71,26 @@ def register_thinking_amendment_a3(con, now: datetime) -> List[str]:
     return [note]
 
 
+AMENDMENT_A4 = ("s84:thinking_live_a4", f"{TEMPLATE}_a4", "the replayed model look and after-tax ghost scoring (S86b, Amendment A4 of 2026-11-14): the column replayed_while_off, model and code rows apart")
+
+
+def register_thinking_amendment_a4(con, now: datetime) -> List[str]:
+    """S86b, Amendment A4 of the thinking-loop protocol (dated 2026-11-14, written before a model-made or after-tax ghost decision could be scored): counted once as a new test, with the amended file's hash."""
+    from pflab.learner import counter
+    if not PROTOCOL.exists():
+        return []
+    note, template, _what = AMENDMENT_A4
+    if con.execute("SELECT 1 FROM learn_tests WHERE note=?", [note]).fetchone():
+        return []
+    counter.record(con, now, "study", template, {"protocol": PROTOCOL_REL, "protocol_sha256": protocol_sha(), "amendment": "A4, 2026-11-14"}, note=note)
+    return [note]
+
+
 def protocol_ok(con) -> dict:
     r = con.execute("SELECT params_json FROM learn_tests WHERE note=?", [NOTE]).fetchone()
     registered = r is not None
     stored = json.loads(r[0] or "{}").get("protocol_sha256") if registered else None
-    am = con.execute("SELECT params_json FROM learn_tests WHERE note=?", [AMENDMENT_A3[0]]).fetchone() or con.execute("SELECT params_json FROM learn_tests WHERE note=?", [AMENDMENT_A2[0]]).fetchone()
+    am = con.execute("SELECT params_json FROM learn_tests WHERE note=?", [AMENDMENT_A4[0]]).fetchone() or con.execute("SELECT params_json FROM learn_tests WHERE note=?", [AMENDMENT_A3[0]]).fetchone() or con.execute("SELECT params_json FROM learn_tests WHERE note=?", [AMENDMENT_A2[0]]).fetchone()
     if am and registered:                                                                    # an amendment was counted: the file must be the amended one
         stored = json.loads(am[0] or "{}").get("protocol_sha256")
     try:

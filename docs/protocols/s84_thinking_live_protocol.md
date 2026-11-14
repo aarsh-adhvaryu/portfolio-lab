@@ -179,3 +179,11 @@ His words of 2026-11-13: "if the system is off, it covers the backlog, aligns ne
 5. **Code decisions only, tonight.** Every ghost row carries `source = code` (a HIGH-severity break sells, a medium one only freezes buying). A replayed model look (at most three cases a gap, RED first) is not built;
    when it is, it is a new amendment and its rows are labelled apart.
 6. **Not evidence of an edge.** The column measures whether the loop's rule, run on what was stored by the time, would have beaten waiting; it claims nothing before 20 decisions are scored.
+
+
+## Amendment A4 (2026-11-14, S86b; written before any model-made or after-tax ghost decision was scored): what A3 left out is now built
+
+1. **A model look is added.** At most three cases a gap (RED first, largest exposure first) are also read by the model at the replayed moment, through the gateway, with only what was stored by then (the headlines published by then, `recall` as of then, the closes of the sessions already over), no web, no tools, closed lists only. Its option replaces the code's for that ghost row, which then carries `source = model`, the code's own option beside it (`code_option`), the model's class and likelihood words, and its price. A replay is stored per (gap, release, name, headline) and never paid twice. The rest stay `source = code`.
+2. **After tax beside pre-tax.** A ghost sale is scored at 5, 20 and 60 sessions in rupees after tax (the repo's tax rows, FIFO lots of the book): what selling at the ghost's fill leaves after tax minus what holding to that horizon and selling then leaves. The pre-tax share column stays.
+3. **Still closes only.** No minute bars are stored for a gap: each step is a close; the row says so (`steps`).
+4. **Same label, own column.** Both rows are `replayed_while_off`, never mixed with the live scorecard; model and code rows are counted separately in the report.

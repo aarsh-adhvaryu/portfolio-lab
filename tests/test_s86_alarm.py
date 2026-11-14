@@ -13,6 +13,9 @@ import pytest
 from pflab.ingest import headlines as ing
 from pflab.kg2 import headlines as kg
 from pflab.think import alarm, cases
+from pflab.think import fastforward as _ff0
+
+_REAL_MODEL_LOOK = _ff0.model_look
 from tests.test_s80_core import AAA, BBB, GLD, NOW, con  # noqa: F401  (the fixture)
 
 NAME = "Aardvark Industries"
@@ -24,6 +27,7 @@ def _named(con, monkeypatch, tmp_path):
     con.execute("UPDATE instruments SET name=? WHERE isin=?", [NAME + " Ltd", AAA])
     con.execute("UPDATE instruments SET name='Bobcat Holdings Ltd' WHERE isin=?", [BBB])
     monkeypatch.setattr("pflab.think.watch._index", lambda market, root=None: None)
+    monkeypatch.setattr("pflab.think.fastforward.model_look", lambda *a, **k: None)             # no paid call from a test: the replayed model look is tested with a scripted model below
     monkeypatch.setattr("pflab.kg2.classify.model_classify", lambda *a, **k: None)             # no real model in a test; the lane's own model hook is tested with a fake
 
 
@@ -367,6 +371,7 @@ def test_amendment_a3_is_counted_once_and_the_protocol_stays_ok(con):
     s84.register_thinking_live(con, NOW)
     assert s84.register_thinking_amendment_a2(con, NOW) == ["s84:thinking_live_a2"]
     assert s84.register_thinking_amendment_a3(con, NOW) == ["s84:thinking_live_a3"] and s84.register_thinking_amendment_a3(con, NOW) == []
+    assert s84.register_thinking_amendment_a4(con, NOW) == ["s84:thinking_live_a4"] and s84.register_thinking_amendment_a4(con, NOW) == []
     assert s84.protocol_ok(con)["unchanged"] is True
 
 
@@ -446,3 +451,117 @@ def test_many_outlets_on_mundane_stories_is_not_an_alarm_but_many_with_a_serious
     assert alarm.burst(con, T0, e, cfg) is None                                                             # four outlets, nothing serious in them: no alarm
     con.execute("UPDATE headlines_s86 SET title=? WHERE item_id='m0'", [f"{NAME} CEO ousted by board with immediate effect"])
     assert alarm.burst(con, T0, e, cfg) is not None
+
+
+# ------------------------------------------------------------------ S86b C2(b): the four REDs of the live hour as fixtures
+
+def test_the_live_hours_four_reds_through_the_current_rules():
+    al, tk = ing._aliases("Nvidia Corp", "NVDA", "US")
+    e = {"isin": "ZZ0001045810", "symbol": "NVDA", "market": "US", "name": "Nvidia Corp", "held": True, "red_ok": True, "aliases": al, "tickers": tk}
+    preview = "Here's How Much Traders Expect Nvidia Stock to Move After Earnings Next Week - Investopedia"
+    streak = "Nvidia's stock is on a losing streak not seen in 14 years. What comes next? - MarketWatch"
+    downgrade = "HSBC downgrades Nvidia, says stock to struggle until new CEO named - CNBC"
+    opinion = "Alex Kantrowitz explains why Jensen Huang's ouster as Nvidia CEO is 'good for America' - CNBC"
+    assert alarm.lane_of(preview, e)[0] == "amber" and alarm.lane_of(streak, e)[0] == "amber"          # the two earnings / streak stories are not RED by kind, and not by volume alone any more
+    assert alarm.lane_of(downgrade, e)[:2] == ("red", "rating_downgrade")                                # the genuine downgrade is
+    assert alarm.lane_of(opinion, e)[0] == "amber"                                                       # an opinion piece on a real ouster: "explains why" is a generic commentary marker (with "analysis", "what to know", "takeaways", "stocks to buy"): stored, never RED
+    assert alarm.lane_of("Nvidia CEO ousted by board with immediate effect - Reuters", e)[0] == "red"      # the news itself stays RED
+
+
+# ------------------------------------------------------------------ S86b C2(c): the top ten members of a held fund join the scope, with their look-through rupees
+
+def test_the_ten_largest_members_of_a_held_fund_join_the_scope_hourly_and_can_be_red(con, tmp_path, monkeypatch):
+    from pflab.think import exposure
+    members = {}
+    for k in range(12):
+        isin = f"INE7{k:02d}Z01019"
+        con.execute("INSERT INTO instruments (isin, key_kind, asset_class, tax_class, listed, symbol, name, source, built_at) VALUES (?, 'isin', 'equity', 'EQUITY', TRUE, ?, ?, 'synthetic', now())",
+                    [isin, f"M{k}", f"Member{k} Works Ltd"])
+        members[isin] = 0.20 - 0.01 * k
+    fw = {"funds": {"INF000X01019": {"symbol": "NIFTYBEES", "market": "IN", "value_inr": 100000.0, "weights": members, "basis": "NIFTY50 weights (stored)"}}, "uncovered": [], "whole_inr": 1_000_000.0}
+    monkeypatch.setattr(exposure, "fund_weights", lambda con_, day, root=None: fw)
+    es = entries_for(con, tmp_path)
+    via = [e for e in es if e.get("through_fund")]
+    assert len(via) == 10 and all(e["red_ok"] and not e["held"] and e["exposure_inr"] > 0 for e in via)
+    assert max(e["exposure_inr"] for e in via) == pytest.approx(20000.0) and "through a fund" in via[0]["why"]
+    e = via[0]
+    assert alarm.lane_of(f"{e['name'].replace(' Ltd', '')} CEO ousted by board with immediate effect", e)[0] == "red"                  # A73's exposure rule applies unchanged
+    assert "through funds: NIFTYBEES" in alarm.funds_text(con, NOW.date())
+    monkeypatch.setattr(exposure, "fund_weights", lambda con_, day, root=None: {"funds": {}, "uncovered": [{"symbol": "NIFTYBEES", "why": "no member data for NIFTY50"}], "whole_inr": 1.0})
+    assert alarm.funds_text(con, NOW.date()).startswith("through funds: not known")
+    # asked hourly, not every pass
+    net = Net({"google_news": rss([])})
+    c = ing.Client(net, sleep=lambda s: None, clock=lambda: 0.0)
+    monkeypatch.setattr(exposure, "fund_weights", lambda con_, day, root=None: fw)
+    ing.collect(con, tmp_path, entries_for(con, tmp_path), T0, client=c, sources=("google_news",))
+    first = len(net.asked)
+    ing.collect(con, tmp_path, entries_for(con, tmp_path), T0 + timedelta(minutes=15), client=c, sources=("google_news",))
+    assert len(net.asked) - first <= 3                                                                                                # only the held names again; the ten members wait for the hour
+
+
+def test_the_news_sources_that_are_on_come_from_configuration(con, tmp_path):
+    net = Net({"google_news": rss([]), "yahoo": rss([]), "gdelt_doc": "{}"})
+    r = alarm.run(con, T0, tmp_path, client=ing.Client(net, sleep=lambda s: None, clock=lambda: 0.0), entries=entries_for(con, tmp_path))
+    assert not any("gdelt" in u for u in net.asked) and set(r["by_source"]) == {"google_news", "yahoo"}              # GDELT is OFF in configs/core.toml [think] alarm_sources
+
+
+# ------------------------------------------------------------------ S86b C3.1: the replayed model look (scripted model): cap of three, order, cache, point in time
+
+def test_the_replayed_model_look_is_capped_ordered_cached_and_sees_only_what_was_known(con, tmp_path, monkeypatch):
+    from pflab.think import fastforward as ff
+    monkeypatch.setattr("pflab.think.fastforward.model_look", _REAL_MODEL_LOOK)
+    seen = []
+
+    def scripted(system, user):
+        seen.append(user)
+        return {"json": {"klass": "damage", "option": "sell", "worst": "likely", "likely": "even", "best": "unlikely", "reason": "the board is investigating its chief"}, "cost_rupees": 1.5}
+
+    prev, now = datetime(2026, 10, 26, 18, 0), datetime(2026, 10, 30, 16, 0)
+    es = entries_for(con, tmp_path)
+    mk = lambda e, title, pub: {"id": f"i-{e['symbol']}", "title": title, "published": pub, "lane": "red", "kind": "leadership_crisis", "sev": "high", "entry": e}      # noqa: E731
+    items = [mk(dict(es[0], symbol=f"S{k}", isin=f"INE80{k}Z01019", exposure_inr=1000.0 * (5 - k)), f"{NAME} CEO ousted by board", datetime(2026, 10, 27, 10, 0)) for k in range(4)]
+    items[0]["entry"] = es[0]                                                                                           # the held one: AAA
+    items[0]["id"] = "i-AAA"
+    con.execute("INSERT INTO headlines_s86 (item_id, isin, title, source, published, first_seen, outlet) VALUES ('later', ?, 'a headline from AFTER the moment', 'google_news', ?, ?, 'Wire')", [AAA, datetime(2026, 10, 29, 9, 0), now])
+    con.execute("INSERT INTO headlines_s86 (item_id, isin, title, source, published, first_seen, outlet) VALUES ('before', ?, 'a headline from BEFORE the moment', 'google_news', ?, ?, 'Wire')", [AAA, datetime(2026, 10, 27, 9, 50), now])
+    r = ff.run_gap(con, now, tmp_path, prev, items, model_fn=scripted)
+    assert len(seen) <= 1 + 0 or len(seen) <= ff.MODEL_LOOKS_MAX                                                           # never more than three looks a gap
+    assert all("AFTER the moment" not in u for u in seen) and any("BEFORE the moment" in u for u in seen)                  # point in time
+    g = con.execute("SELECT source, option, code_option, model_class, model_cost FROM ghost_s86 WHERE symbol='AAA'").fetchone()
+    assert g[0] == "model" and g[1] == "sell" and g[3] == "damage" and g[4] == 1.5
+    n = len(seen)
+    r2 = ff.run_gap(con, now, tmp_path, prev, items, model_fn=scripted)                                                    # the same gap again: no second payment
+    assert len(seen) == n or r2.get("skipped")
+
+
+def test_commentary_headlines_are_not_red_by_the_models_word_and_a_crisis_gets_at_most_one_new_look_per_twelve_hours(con, tmp_path):
+    es = entries_for(con, tmp_path)
+    high = lambda t: {"kind": "leadership_crisis", "severity": "high"}                                   # noqa: E731
+    for title in (f"5 takeaways from the {NAME} scandal", f"What to know about the {NAME} investigation", f"Who is the interim chief at {NAME}?", f"Analysis: {NAME} leadership crisis tests the firm"):
+        r = alarm.run(con, T0, tmp_path, client=client({"google_news": rss([(title, "CNBC", T0 - timedelta(minutes=5))])}), entries=es, sources=("google_news",), model_fn=high, force=True)
+        assert r["lanes"]["red"] == 0 and r["lanes"]["amber"] == 1, title
+        con.execute("DELETE FROM headlines_s86")
+    think = fake_think()
+    alarm.run(con, T0, tmp_path, client=client({"google_news": rss([(RED_TITLE, "Reuters", T0)])}), entries=es, sources=("google_news",), think_fn=think, tell_fn=lambda c, n, cid: None)
+    first = len(think.calls)
+    for k, t in enumerate((f"{NAME} faces a fraud investigation by regulators", f"{NAME} CEO resigns after the ouster")):                  # another kind, then a resignation, an hour apart: one look at most per 12 hours
+        alarm.run(con, T0 + timedelta(hours=k + 1), tmp_path, client=client({"google_news": rss([(t, "WSJ", T0 + timedelta(hours=k + 1))])}), entries=es, sources=("google_news",), think_fn=think,
+                  tell_fn=lambda c, n, cid: None)
+    assert len(think.calls) == first
+
+
+def test_a_ghost_sale_is_scored_after_tax_beside_the_pre_tax_column(con, tmp_path):
+    from pflab.think import fastforward as ff
+    _gap_run(con, tmp_path, datetime(2026, 10, 20, 10, 0), prev=datetime(2026, 10, 19, 18, 0), now=datetime(2026, 10, 26, 16, 0))
+    assert ff.score_ghosts(con, date(2026, 10, 30)) >= 1
+    row = con.execute("SELECT scored_5, at_5, qty, fill_price FROM ghost_s86").fetchone()
+    assert row[0] is not None and row[1] is not None                                     # the after-tax cell is filled by the repo's tax rows (India lots of the fixture book)
+    sc = ff.scorecard(con)
+    assert sc["after_tax_inr"]["5"]["scored"] == 1 and "after tax" in sc["basis"]
+
+
+def test_stock_picking_and_valuation_pieces_on_a_crisis_are_not_red():
+    al, tk = ing._aliases("Nvidia Corp", "NVDA", "US")
+    e = {"isin": "ZZ0001045810", "symbol": "NVDA", "market": "US", "name": "Nvidia Corp", "held": True, "red_ok": True, "aliases": al, "tickers": tk}
+    for t in ("Nvidia CEO out - 10 stocks to buy before the S&P 500 hits a new high - Yahoo Finance", "Is Nvidia worth this much less without its CEO? - Yahoo Finance", "Should you buy Nvidia after the CEO resigns? - Motley"):
+        assert alarm.lane_of(t, e)[0] == "amber", t

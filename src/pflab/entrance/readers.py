@@ -134,12 +134,18 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[‘’“”]", "'", str(s or ""))).strip().lower()
 
 
+def _loose(s: str) -> str:
+    """Letters and digits only, lower case: two quotes that differ only in punctuation, spacing or a line break compare equal. Never looser than that: a word or a figure that differs still fails."""
+    return re.sub(r"[^a-z0-9]", "", str(s or "").lower())
+
+
 def check_facts(raw: Sequence[dict], pages: Sequence[Tuple[int, str]], source_text: str, *, numbers_checkable: bool = True) -> Tuple[List[dict], List[str]]:
     """Facts that survive code's checks: the quote is IN the source (where the source has text), and every number of the claim is in the source. `pages` is [(page number, text)]; the page of a
     fact is the page where its quote was found (code decides, not the model). Returns (facts, notes for the dropped ones)."""
     out, notes = [], []
     have_text = bool(re.sub(r"\s+", "", source_text))
     norm_pages = [(p, _norm(t)) for p, t in pages]
+    loose_pages = [(p, _loose(t)) for p, t in pages]
     for f in raw or []:
         claim, quote = " ".join(str(f.get("claim") or "").split()), " ".join(str(f.get("quote") or "").split())
         if not claim:
@@ -148,6 +154,9 @@ def check_facts(raw: Sequence[dict], pages: Sequence[Tuple[int, str]], source_te
         if have_text:
             q = _norm(quote)
             found = [p for p, t in norm_pages if q and q in t]
+            if not found and len(_loose(quote)) >= 12:                    # S86b: the same words and figures in the same order, whatever the commas, spaces and line breaks (a printed "4,610" quoted as "4610")
+                lq = _loose(quote)
+                found = [p for p, t in loose_pages if lq in t]
             if not found:
                 notes.append(f"dropped a claim: its quote is not in the document (\"{quote[:60]}\")")
                 continue
@@ -538,8 +547,26 @@ def read_attachment(con, now: datetime, path, name: str = "", mime: str = "", *,
         st = _storylines(con, l["isin"])
         if st:
             lines.append("Storylines that read this name: " + "; ".join(st))
+    links = []
+    if kind in ("pdf", "text"):
+        try:
+            links = [resolve_link(u, sha) for u in links_in(out["text"])]
+        except Exception:
+            links = []
+    for l in links:
+        host = urlparse(l["url"]).hostname or l["url"]
+        if l["same_file"]:
+            lines.append(f"The link printed in the file ({host}) leads to this same file: nothing more to read there.")
+        elif l["error"]:
+            lines.append(f"The link printed in the file ({host}) could not be opened: {l['error']}.")
+        else:
+            lines.append(f"The link printed in the file ({host}) leads to a different page or file ({(l['content_type'] or 'unknown type').split(';')[0]}): say \"check that link\" and I will read it.")
+    if not out["facts"]:
+        why = why_unreadable(kept) or "the reader found no fact in it that the file itself states (a plain table of figures, or a page of pictures with a few words)"
+        out["warnings"].append("No fact could be taken from this file: " + why)
+        lines.append("Nothing was taken from this file because " + why + ".")
     lines += [f"Note: {w}" for w in out["warnings"][:4]]
-    res = _result(kind, name, facts=out["facts"], summary_text="\n".join(lines), document_id=doc_id, event_id=(door["event_ids"] or [None])[0], isins=door["isins"],
+    res = _result(kind, name, links=links, facts=out["facts"], summary_text="\n".join(lines), document_id=doc_id, event_id=(door["event_ids"] or [None])[0], isins=door["isins"],
                   cost_inr=round(out["cost"], 4), warnings=out["warnings"], pages=out.get("pages"), headline=out["headline"], note_doc=door["note_doc"], event_ids=door["event_ids"],
                   read_on=f"{now:%Y-%m-%d}", graph_nodes=[node_of(i) for i in door["isins"]])
     _save_row(con, doc_id, status="read", pages=out.get("pages"), summary=out["summary"], facts_json=json.dumps(out["facts"]), isins_json=json.dumps(door["isins"]),
@@ -547,7 +574,106 @@ def read_attachment(con, now: datetime, path, name: str = "", mime: str = "", *,
     return res
 
 
+def why_unreadable(path) -> Optional[str]:
+    """S86b C5.3: the TRUE reason in plain words why a file gives nothing, by looking at the file itself (code, free, offline); None when the file does have something to read. A file ends in one of two
+    ways only: read with at least one sourced fact, or this reason; never a bare "nothing readable"."""
+    p = Path(path)
+    if not p.exists():
+        return "the file is no longer on this PC"
+    ext = p.suffix.lower()
+    try:
+        head = p.read_bytes()[:8]
+        if ext == ".pdf":
+            import pypdf
+            r = pypdf.PdfReader(str(p))
+            if r.is_encrypted:
+                try:
+                    if not r.decrypt(""):
+                        return "this PDF is password-protected: send it again without the password, or tell me the password in the secrets file"
+                except Exception:
+                    return "this PDF is password-protected and could not be opened"
+            n = len(r.pages)
+            chars = sum(len((pg.extract_text() or "").strip()) for pg in r.pages[:10])
+            if chars >= 40:
+                return None
+            pics = sum(len(pg.images) for pg in r.pages[:3])
+            if pics:
+                return f"this PDF is a scan with no text layer ({n} pages of pictures): it needs this PC's OCR, which reads the numbers from the pictures"
+            return f"this PDF has {n} page(s) and no text and no pictures: it is empty"
+        if ext in (".xlsx", ".xlsm"):
+            if head[:4] == b"\xd0\xcf\x11\xe0":
+                return "this workbook is password-protected (an encrypted Excel file): remove the password and send it again"
+            import openpyxl
+            wb = openpyxl.load_workbook(str(p), data_only=True, read_only=False)
+            filled, hidden, formulas_only = 0, 0, 0
+            for ws in wb.worksheets:
+                n = sum(1 for row in ws.iter_rows() for c in row if c.value is not None)
+                filled += n
+                hidden += int(ws.sheet_state != "visible")
+            if filled:
+                return None
+            wf = openpyxl.load_workbook(str(p), data_only=False)
+            formulas_only = sum(1 for ws in wf.worksheets for row in ws.iter_rows() for c in row if isinstance(c.value, str) and c.value.startswith("="))
+            if formulas_only:
+                return f"this workbook holds {formulas_only} formula cell(s) whose results were never saved (it was made by a program and never opened in Excel): open and save it in Excel, then send it again"
+            return f"this workbook has {len(wb.worksheets)} sheet(s) ({hidden} hidden) and every cell is empty"
+        if ext == ".xls":
+            if head[:4] != b"\xd0\xcf\x11\xe0":
+                return "this .xls file is not an Excel file"
+            import xlrd
+            try:
+                wb = xlrd.open_workbook(str(p))
+            except Exception as e:
+                return f"this old Excel file could not be opened ({type(e).__name__}): it may be password-protected"
+            filled = sum(1 for sh in wb.sheets() for r in range(sh.nrows) for c in range(sh.ncols) if str(sh.cell_value(r, c)).strip())
+            return None if filled else f"this workbook has {wb.nsheets} sheet(s) and every cell is empty"
+        if ext in (".csv", ".txt"):
+            t = p.read_bytes()[:200000].decode("utf-8", "replace").strip()
+            return None if t else "this file is empty"
+    except Exception as e:
+        return f"this file could not be opened ({type(e).__name__}: {str(e)[:80]})"
+    return None
+
+
 # --- links ---------------------------------------------------------------------------------------------------------------------------
+
+_URL_RX = re.compile(r"https?://[^\s<>\"')\]]+")
+
+
+def links_in(text: str, limit: int = 3) -> List[str]:
+    """The distinct web links printed in a document's text, at most `limit`, trailing punctuation removed (S86b C5.3: a briefing PDF says "Read now: <link>" and the chat answered that it had not opened it)."""
+    out: List[str] = []
+    for m in _URL_RX.findall(text or ""):
+        u = m.rstrip(".,;:!?")
+        if u not in out:
+            out.append(u)
+    return out[:limit]
+
+
+def resolve_link(url: str, own_sha: str, *, timeout: int = 10, max_bytes: int = 8_000_000, getter: Optional[Callable] = None) -> dict:
+    """Follow one link found INSIDE a file (free, public hosts only, bounded) and say where it leads: {"url", "final_url", "status", "content_type", "same_file" (the bytes are this very file), "error"}. A link
+    that leads to the same file needs no second read; another page or file is offered for `check_link`, never read without being asked."""
+    out = {"url": url, "final_url": url, "status": None, "content_type": "", "same_file": False, "error": None}
+    u = urlparse(url)
+    if u.scheme not in ("http", "https") or not u.hostname or _private_host(u.hostname):
+        out["error"] = "not a public web address: not opened"
+        return out
+    try:
+        import requests
+        r = (getter or requests.get)(url, headers={"User-Agent": _user_agent(u.hostname.lower())}, timeout=timeout, stream=True, allow_redirects=True)
+        out.update(final_url=r.url, status=r.status_code, content_type=r.headers.get("Content-Type", ""))
+        if _private_host(urlparse(r.url).hostname or ""):
+            out["error"] = "the link redirected to a private address: not opened"
+            return out
+        if r.status_code >= 400:
+            out["error"] = f"the site answered {r.status_code}"
+            return out
+        body = r.raw.read(max_bytes + 1, decode_content=True) if hasattr(r, "raw") and getattr(r, "raw", None) is not None else getattr(r, "content", b"")
+        out["same_file"] = hashlib.sha256(body[:max_bytes]).hexdigest() == own_sha and len(body) <= max_bytes
+    except Exception as e:
+        out["error"] = f"{type(e).__name__}: {str(e)[:120]}"
+    return out
+
 
 def _private_host(host: str) -> bool:
     import ipaddress

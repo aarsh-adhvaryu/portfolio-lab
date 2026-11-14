@@ -48,6 +48,32 @@ def create_app(rt) -> FastAPI:
     app.state.shutdown_requested = threading.Event()
     app.state.restart_requested = threading.Event()
     app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
+    _seen_ok: dict = {}
+
+    @app.middleware("http")
+    async def _page_loads(request, call_next):
+        """S86b (W1 criterion 11): every page and data request that failed, and one good request per path an hour, in `page_loads_s86`. Never changes a response; never raises."""
+        import time as _t
+        t0 = _t.time()
+        resp = await call_next(request)
+        try:
+            path = request.url.path
+            if not path.startswith("/static") and request.method == "GET":
+                code = int(resp.status_code)
+                if code >= 400 or t0 - _seen_ok.get(path, 0) > 3600:
+                    _seen_ok[path] = t0
+                    rt.cursor().execute("INSERT INTO page_loads_s86 VALUES (?,?,?,?)", [datetime.now(), path[:200], code, round((_t.time() - t0) * 1000, 1)])
+        except Exception:
+            pass
+        return resp
+
+    @app.get("/api/problems")
+    def api_problems(days: int = 7):
+        from datetime import timedelta
+        from pflab.service import problems
+        con = rt.cursor()
+        problems.collect(con, datetime.now(), days)
+        return {"text": problems.copy_text(con, datetime.now() - timedelta(days=days)), "rows": [{**r, "first_seen": str(r["first_seen"]), "last_seen": str(r["last_seen"]), "reported_at": None} for r in problems.listing(con, datetime.now() - timedelta(days=days))]}
 
     @app.get("/")
     def index():

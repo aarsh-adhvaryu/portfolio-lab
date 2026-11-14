@@ -160,6 +160,7 @@ def form_part(run: _Run) -> dict:
             out["ok"] += 1
         else:
             out[k] += 1
+            out.setdefault("stops", {})[str(i + 1)] = str(r.get("stop_reason") or r.get("finish_reason") or "")
             out["problems"].append(f"call {i + 1}: {k}" + (f" ({'; '.join(str(x) for x in probs[:2])[:220]})" if probs else ""))        # S86: the validator's own words are kept, not only the class
     out["pass"] = bool(out["tool_call"] and out["answers"] >= FORM_CALLS and out["number"] == 0 and out["list"] == 0 and out["malformed"] < MALFORMED_FAILS)
     if not out["tool_call"]:
@@ -211,9 +212,11 @@ def judgment_part(run: _Run) -> dict:
         if r is None:
             break
         ans = _json_of(r)
-        if ans is None or session.validate_answer(ans, ref["text"]):
+        bad = ["no JSON in the reply"] if ans is None else session.validate_answer(ans, ref["text"])
+        if bad:
             n += 1
-            rows.append({"case": ref["name"], "got": None, "want": ref["option"]})
+            rows.append({"case": ref["name"], "got": None, "want": [ref["klass"], ref["option"]], "invalid": [str(x)[:200] for x in bad[:3]],           # S86b: WHY it did not count, not only that it did not
+                         "stop": str(r.get("stop_reason") or r.get("finish_reason") or ""), "out_tokens": r.get("output_tokens"), "reply_head": str(r.get("text") or "")[:200]})
             continue
         opts = [c.get("option") for c in ans.get("choices") or [] if isinstance(c, dict)]
         got_opt = opts[0] if opts else None
