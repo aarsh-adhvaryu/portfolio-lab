@@ -325,7 +325,7 @@ Acceptance: within 15 minutes of opening, the catch-up is running and the World 
 - 2026-11-14: merging the old and new knowledge graphs; voice notes; models trained on the system's own scored decisions.
 
 ## What remains (dated; update at each stop)
-**S87 starts at the redesign; W1 is armed (tag v2026.11.14.3: the first-week check counts from the first app open on or after Monday 16 Nov 2026; the freeze it starts excepts the redesign's screens).** S86 is closed (`docs/s86b_closeout_notes.md` is the ledger; the workshop sends nothing outward, so no report of S86 or S86b was sent to Telegram: the earlier line saying the S86 report was also sent there was wrong).
+**S87 starts at the redesign; W1 is armed (tag v2026.11.14.3, which carries all of S86b: the first-week check counts from the first app open on or after Monday 16 Nov 2026; the freeze it starts excepts the redesign's screens).** S86 is closed (`docs/s86b_closeout_notes.md` is the ledger; the workshop sends nothing outward, so no report of S86 or S86b was sent to Telegram: the earlier line saying the S86 report was also sent there was wrong).
 **What S86 still cannot do, short list (each needs a real market day or his decision):**
 1. Monday 16 Nov, Indian hours: the first LIVE same-day Indian filing on a held name through the lane (only synthetic so far); the first real "Off from X to Y" message after a gap with the app really closed; the first week-check evaluation clock starts at the first open.
 2. Monday 16 Nov, US hours: the first LIVE US pre-market and after-hours check of the session loop (replayed on real bars only); a live regular-hours stop or sale in the real sub-book.

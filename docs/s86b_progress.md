@@ -31,3 +31,5 @@
 15:15 march2020 debug: gauge cuts the BASE position 7.0%->5.4% and spares the part (0.66%); my first etf_kept query was wrong; drill now checks held value >= 90% of part; rerun started
 15:15 Step C: final normal-order suite started (code frozen except docs)
 15:15 docs: ledger + alarm notes updated; 2h lane run: 8 passes, clean
+15:25 docs: PLAN What remains + findings done. march2020 PASS. waiting: final suite
+16:06 Step C: final normal suite 4059 passed, 0 failed. releasing v2026.11.14.3
