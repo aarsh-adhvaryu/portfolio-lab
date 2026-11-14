@@ -248,7 +248,9 @@ def _decided(con, now: datetime, alarm_id: int, case_id: int, tell_fn: Optional[
     if fid and not own_freeze:
         cases.release_freeze(con, fid)
     decision = "; ".join(f"{d['symbol']}: {d['acted_option']}" for d in decs)[:200] or "read, nothing to do"
-    con.execute("UPDATE alarm_s86 SET decided_at=?, decision=? WHERE alarm_id=?", [now, decision, alarm_id])
+    real = datetime.now()                                                                      # the decision's own time includes the model's minutes; a simulated clock (tests, replays) is kept as given
+    stamp = real if abs(real - now) < timedelta(minutes=30) else now
+    con.execute("UPDATE alarm_s86 SET decided_at=?, decision=? WHERE alarm_id=?", [stamp, decision, alarm_id])
     try:
         from pflab.think import session as ts
         tell = tell_fn or (lambda c, n, cid: ts.tell(c, n, cid, force=True))
