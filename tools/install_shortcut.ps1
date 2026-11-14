@@ -17,3 +17,16 @@ $s.Description = "Portfolio Lab: start the system; close the window to stop it"
 $s.WindowStyle = 1
 $s.Save()
 Write-Output "shortcut: $lnk"
+
+# S87: a second shortcut: the operator in a terminal Claude Code session (its own folder, his plan, no API key)
+$lnk2 = Join-Path $desktop "Portfolio Operator (terminal).lnk"
+$exe = Join-Path $repo ".venv\Scripts\python.exe"
+$t = $sh.CreateShortcut($lnk2)
+$t.TargetPath = $exe
+$t.Arguments = "-m pflab.cli operator open"
+$t.WorkingDirectory = $repo
+if (Test-Path $ico) { $t.IconLocation = "$ico,0" }
+$t.Description = "Open the operator in Claude Code (terminal)"
+$t.WindowStyle = 7
+$t.Save()
+Write-Output "shortcut: $lnk2"

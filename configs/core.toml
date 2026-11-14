@@ -262,8 +262,10 @@ sec_scope = "book"           # S85: whose 8-Ks (items 5.02, 4.01, 4.02) the SEC 
 # before any switch. `fallback` is where a role's calls go after `fail_streak` failures in a row (a malformed answer, an error, a timeout), for `fallback_minutes`, then it tries again.
 # A role with enabled = false (or missing) falls back to the next role up (quick -> read -> decide) and says so.
 [engines]
-default = "claude"
-fallback = "claude"
+default = "claude_plan"
+force_in_use = "claude_plan"   # S87: every model call runs on his Claude plan through Claude Code (llm/claude_plan.py); no API key is used by any path
+no_api_key = true
+fallback = "claude_plan"
 fail_streak = 3
 fallback_minutes = 30
 case_pin_minutes = 30         # a case's current step finishes on the engine that began it, for this long after its last step
@@ -333,6 +335,62 @@ output = 20.00
 cached_input = 0.20
 source = "Anthropic price list via the claude-api reference"
 date = "2026-11-03"
+
+# S87 O1: Claude Code through the Agent SDK on his Claude plan. No key, no rupees: usage is tokens (api_calls rows, engine claude_plan, cost 0 = "plan"). decide = Opus, read = Sonnet, quick = Haiku.
+[engines.claude_plan]
+provider = "claude_plan"
+vendor = "claude_plan"
+
+[engines.claude_plan.decide]
+model = "claude-opus-5-5"
+thinking = "high"
+min_tokens = 8000
+
+[engines.claude_plan.read]
+model = "claude-sonnet-5-5"
+thinking = "medium"
+min_tokens = 4000
+
+[engines.claude_plan.quick]
+model = "claude-haiku-5-5"
+thinking = "low"
+min_tokens = 1500
+
+[engines.claude_plan.prices.haiku]
+model = "claude-haiku-5-5"
+tier = "quick"
+input = 0.0
+output = 0.0
+source = "his Claude plan: usage limits, no per-token charge"
+date = "2026-11-14"
+
+[engines.claude_plan.prices.sonnet]
+model = "claude-sonnet-5-5"
+tier = "read"
+input = 0.0
+output = 0.0
+source = "his Claude plan: usage limits, no per-token charge"
+date = "2026-11-14"
+
+[engines.claude_plan.prices.opus]
+model = "claude-opus-5-5"
+tier = "decide"
+input = 0.0
+output = 0.0
+source = "his Claude plan: usage limits, no per-token charge"
+date = "2026-11-14"
+
+# S87: the operator (his Claude Code under the app). Daily token budgets per purpose class (a class that has spent its day stops until tomorrow; the code-only parts go on), turns per session.
+[operator]
+enabled = true
+budget_desk = 600000
+budget_cases = 900000
+budget_chat = 1500000
+budget_build = 1200000
+max_turns_desk = 12
+max_turns_chat = 14
+max_turns_build = 40
+build_per_day = 2
 
 # OpenAI, through its Responses API (gpt-6 models need it for tools). Model ids, prices, effort values and endpoints read from OpenAI's own pages on 2026-11-13:
 # developers.openai.com/api/docs/models and /api/docs/pricing, /api/docs/models/gpt-6-luna, gpt-6.1-sol, gpt-6-astra, /api/docs/guides/reasoning, /api/reference/resources/responses.

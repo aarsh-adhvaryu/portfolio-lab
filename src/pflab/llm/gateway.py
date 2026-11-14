@@ -75,7 +75,8 @@ class EngineUnusable(RuntimeError):
 def refusals() -> tuple:
     from pflab.agents import analyst as an
     from pflab.hq import egress
-    return (egress.EgressBlocked, an.BudgetRefused, an.NeedsApproval, guard.OutwardBlocked, ConsentMissing, EngineUnusable)
+    from pflab.llm import claude_plan as cp
+    return (egress.EgressBlocked, an.BudgetRefused, an.NeedsApproval, guard.OutwardBlocked, ConsentMissing, EngineUnusable, cp.PlanPaused, cp.PlanBudgetSpent, cp.PlanUnusable)
 
 
 def set_client(fake: Any, engine: Optional[str] = None) -> None:
@@ -142,6 +143,9 @@ def vendor_of(st: dict, name: str) -> str:
 
 def features_of(st: dict, name: str) -> dict:
     e = econf(st, name)
+    if provider_of(st, name) == "claude_plan":                              # S87: Claude Code on his plan: tools by capture, structured output, documents by the Read tool, web by its own tools
+        return {"tools": True, "structured": True, "thinking_effort": True, "caching": "automatic", "documents": True, "images": True, "web_search": True, "token_count": False, "batch": False,
+                **(e.get("features") or {})}
     base = _ANTHROPIC_FEATURES if provider_of(st, name) == "anthropic" else {"tools": True, "structured": True, "thinking_effort": True, "caching": "automatic", "documents": False, "images": True,
                                                                               "web_search": False, "token_count": False, "batch": True, "wire": "responses"}
     return {**base, **(e.get("features") or {})}
@@ -308,7 +312,12 @@ def _openai_engine():
     return OpenAICompatEngine()
 
 
-ENGINES: Dict[str, Any] = {"anthropic": AnthropicEngine(), "openai_compat": _openai_engine()}      # provider name -> wire-format class
+def _plan_engine():
+    from pflab.llm.claude_plan import ClaudePlanEngine
+    return ClaudePlanEngine()
+
+
+ENGINES: Dict[str, Any] = {"anthropic": AnthropicEngine(), "openai_compat": _openai_engine(), "claude_plan": _plan_engine()}      # provider name -> wire-format class
 
 
 # --- state: the engine in use, shadows, consent ---------------------------------------------------------------------------------------------
@@ -333,6 +342,9 @@ def _set_state(con, key: str, value: str, now: datetime, note: str = "") -> None
 def current_engine(con=None, st: Optional[dict] = None) -> str:
     """The engine in use: the stored one (set by `use`), else the configured default. A stored engine that is no longer configured falls back to the default."""
     st = st or settings()
+    forced = str(st.get("force_in_use") or "")
+    if forced and forced in engine_names(st):                                # S87: the plan engine is set in the file, not by a stored switch; no paid API is used while it is
+        return forced
     name = _get_state(con, "in_use") if con is not None else None
     if name and name in engine_names(st):
         return name
@@ -416,7 +428,7 @@ def engine_problems(st: dict, name: str, *, need_key: bool = True) -> List[str]:
             out.append(f"the {r} model {spec['model']} has no price in the engine's table (an engine without a priced model cannot be used)")
     if not any(isinstance(econf(st, name).get(r), dict) and econf(st, name)[r].get("model") for r in ROLES):
         out.append("no role has a model")
-    if need_key and prov != "anthropic" and not key_set(st, name):                       # Anthropic's SDK finds its key by itself (env, profile): its absence surfaces at the guard / the call
+    if need_key and prov not in ("anthropic", "claude_plan") and not key_set(st, name):                       # Anthropic's SDK finds its key by itself (env, profile): its absence surfaces at the guard / the call
         out.append(f"no key: {econf(st, name).get('key_name') or 'none named'} is not set (pflab setup secrets --only {vendor_of(st, name)})")
     return out
 
@@ -683,7 +695,7 @@ def call(con, role: str, system, messages: list, *, tools: Optional[list] = None
         raise EngineUnusable(f"engine {name} cannot be used: " + "; ".join(why))
     vendor = spec["vendor"]
     need = scope or "use"
-    if not has_consent(con, vendor, need):
+    if spec["provider"] != "claude_plan" and not has_consent(con, vendor, need):          # his plan, his account: no vendor to consent to, the egress gate still reads every prompt
         raise ConsentMissing(f"nothing is sent to {vendor} before his Yes ({need}): {notice(st, name, need)}")
     register_prices(st)
     msgs = _attach(messages, documents, images)

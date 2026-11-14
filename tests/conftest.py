@@ -187,3 +187,20 @@ def _no_live_task_ids_leak():
     yield
     with board._LIVE_LOCK:
         board._LIVE.clear()
+
+
+@pytest.fixture(autouse=True)
+def _legacy_engine(request, monkeypatch):
+    """S87: the shipped config runs every model call on the plan engine; the older tests script the API engine, so they see the legacy default (claude, no force) unless the file is an S87 one."""
+    if request.node.fspath.basename.startswith("test_s87"):
+        return
+    from pflab.llm import gateway as gw
+    orig = gw.settings
+
+    def _settings(path=None):
+        o = orig(path)
+        o.pop("force_in_use", None)
+        o.pop("no_api_key", None)
+        o["default"] = o["fallback"] = "claude"
+        return o
+    monkeypatch.setattr(gw, "settings", _settings)
