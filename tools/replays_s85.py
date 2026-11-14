@@ -323,6 +323,12 @@ def replay_march2020(*, last: date = date(2020, 4, 9)) -> dict:
         res = {"replay": "march2020", "selection": sel, "laid": laid, "timeline": tl, "account": R.account(tl) + "\n" + "\n".join(extra), "model_answers": r.scen.log, "exceptions": r.env.exceptions[:5],
                "errors": r.env.catcher.records[:5], "market_cases": [(c["case_id"], str(c["opened_on"]), c["state"], c["klass"]) for c in mk], "parts": parts,
                "etf_orders": orders_lines(con, etf), "probe": probe, "reserve": reserve.reserve_status(con, "IN", last)}
+        try:                                                                  # S86b C3.6: were the units the reserve PART bought kept? (units held at the end against the units the part added)
+            lots = con.execute("SELECT acq_date, qty FROM paper_lots WHERE isin=? AND qty > 1e-9 ORDER BY acq_date", [etf]).fetchall()
+            part_day = date.fromisoformat(parts[0]["day"]) if parts else None
+            res["etf_kept"] = {"units_after": round(sum(float(q) for _d, q in lots), 3), "part_units_still_held": round(sum(float(q) for d, q in lots if part_day and d > part_day - timedelta(days=1) and d <= part_day + timedelta(days=4)), 3)}
+        except Exception:
+            res["etf_kept"] = None
         return finish(res, "march2020")
     finally:
         r.close()
@@ -347,7 +353,11 @@ def drill_march2020(c) -> None:
     case_orders = [o for o in res["etf_orders"] if "case #" in o]
     c.ok(len(case_orders) == len(parts) and all(": buy " in o for o in case_orders), f"every part is one buy order that names its case ({len(case_orders)} orders, {len(parts)} parts)", "think/session.py")
     baseline_sells = [o for o in res["etf_orders"] if ": sell " in o and "baseline_v2" in o and o.split("placed ")[1][:10] > parts[0]["day"]] if parts else []
-    c.note(f"FINDING: after the first part the core baseline sold the index fund again: {[o[:70] for o in baseline_sells]}")
+    kept = res.get("etf_kept") or {}
+    c.note(f"FINDING (S86b: A79 covers the fall gauge's cut: the part's own units are spared, the base position is still cut): the core baseline sold the index fund again after the first part: {[o[:70] for o in baseline_sells]}; "
+           f"units held at the end {kept.get('units_after')}, units of the part still held {kept.get('part_units_still_held')}")
+    if parts and kept.get("part_units_still_held") is not None:
+        c.ok(float(kept["part_units_still_held"]) > 0.0, f"the units the reserve part bought are still held after the baseline's later cuts ({kept})", "core/baseline_v2.py reserve_protected")
     c.ok(any(p["guards"] for p in res["probe"]), f"the account says why parts waited: {[(p['day'], p['guards'][:1]) for p in res['probe'] if p['option'] != 'buy_in_parts'][:3]}", "think/rule.py")
     c.ok(any(p.get("basis") for p in res["probe"]), f"the base rates' basis is stated ({res['probe'][0]['basis'] if res['probe'] else None}, n={res['probe'][0]['history_n'] if res['probe'] else None})", "think/odds.py")
     c.ok(any(a["class"] == "market_fear" for a in res["model_answers"]), "the scripted model read it as market fear (no number in its answer)", "tools/replays_s85.py")
