@@ -552,6 +552,10 @@ def read_attachment(con, now: datetime, path, name: str = "", mime: str = "", *,
             lines.append(f"The link printed in the file ({host}) could not be opened: {l['error']}.")
         else:
             lines.append(f"The link printed in the file ({host}) leads to a different page or file ({(l['content_type'] or 'unknown type').split(';')[0]}): say \"check that link\" and I will read it.")
+    if not out["facts"]:
+        why = why_unreadable(kept) or "the reader found no fact in it that the file itself states (a plain table of figures, or a page of pictures with a few words)"
+        out["warnings"].append("No fact could be taken from this file: " + why)
+        lines.append("Nothing was taken from this file because " + why + ".")
     lines += [f"Note: {w}" for w in out["warnings"][:4]]
     res = _result(kind, name, links=links, facts=out["facts"], summary_text="\n".join(lines), document_id=doc_id, event_id=(door["event_ids"] or [None])[0], isins=door["isins"],
                   cost_inr=round(out["cost"], 4), warnings=out["warnings"], pages=out.get("pages"), headline=out["headline"], note_doc=door["note_doc"], event_ids=door["event_ids"],
@@ -559,6 +563,67 @@ def read_attachment(con, now: datetime, path, name: str = "", mime: str = "", *,
     _save_row(con, doc_id, status="read", pages=out.get("pages"), summary=out["summary"], facts_json=json.dumps(out["facts"]), isins_json=json.dumps(door["isins"]),
               event_id=res["event_id"], note_doc=door["note_doc"], cost_inr=res["cost_inr"], warnings_json=json.dumps(out["warnings"]), result_json=json.dumps(res, default=str))
     return res
+
+
+def why_unreadable(path) -> Optional[str]:
+    """S86b C5.3: the TRUE reason in plain words why a file gives nothing, by looking at the file itself (code, free, offline); None when the file does have something to read. A file ends in one of two
+    ways only: read with at least one sourced fact, or this reason; never a bare "nothing readable"."""
+    p = Path(path)
+    if not p.exists():
+        return "the file is no longer on this PC"
+    ext = p.suffix.lower()
+    try:
+        head = p.read_bytes()[:8]
+        if ext == ".pdf":
+            import pypdf
+            r = pypdf.PdfReader(str(p))
+            if r.is_encrypted:
+                try:
+                    if not r.decrypt(""):
+                        return "this PDF is password-protected: send it again without the password, or tell me the password in the secrets file"
+                except Exception:
+                    return "this PDF is password-protected and could not be opened"
+            n = len(r.pages)
+            chars = sum(len((pg.extract_text() or "").strip()) for pg in r.pages[:10])
+            if chars >= 40:
+                return None
+            pics = sum(len(pg.images) for pg in r.pages[:3])
+            if pics:
+                return f"this PDF is a scan with no text layer ({n} pages of pictures): it needs this PC's OCR, which reads the numbers from the pictures"
+            return f"this PDF has {n} page(s) and no text and no pictures: it is empty"
+        if ext in (".xlsx", ".xlsm"):
+            if head[:4] == b"\xd0\xcf\x11\xe0":
+                return "this workbook is password-protected (an encrypted Excel file): remove the password and send it again"
+            import openpyxl
+            wb = openpyxl.load_workbook(str(p), data_only=True, read_only=False)
+            filled, hidden, formulas_only = 0, 0, 0
+            for ws in wb.worksheets:
+                n = sum(1 for row in ws.iter_rows() for c in row if c.value is not None)
+                filled += n
+                hidden += int(ws.sheet_state != "visible")
+            if filled:
+                return None
+            wf = openpyxl.load_workbook(str(p), data_only=False)
+            formulas_only = sum(1 for ws in wf.worksheets for row in ws.iter_rows() for c in row if isinstance(c.value, str) and c.value.startswith("="))
+            if formulas_only:
+                return f"this workbook holds {formulas_only} formula cell(s) whose results were never saved (it was made by a program and never opened in Excel): open and save it in Excel, then send it again"
+            return f"this workbook has {len(wb.worksheets)} sheet(s) ({hidden} hidden) and every cell is empty"
+        if ext == ".xls":
+            if head[:4] != b"\xd0\xcf\x11\xe0":
+                return "this .xls file is not an Excel file"
+            import xlrd
+            try:
+                wb = xlrd.open_workbook(str(p))
+            except Exception as e:
+                return f"this old Excel file could not be opened ({type(e).__name__}): it may be password-protected"
+            filled = sum(1 for sh in wb.sheets() for r in range(sh.nrows) for c in range(sh.ncols) if str(sh.cell_value(r, c)).strip())
+            return None if filled else f"this workbook has {wb.nsheets} sheet(s) and every cell is empty"
+        if ext in (".csv", ".txt"):
+            t = p.read_bytes()[:200000].decode("utf-8", "replace").strip()
+            return None if t else "this file is empty"
+    except Exception as e:
+        return f"this file could not be opened ({type(e).__name__}: {str(e)[:80]})"
+    return None
 
 
 # --- links ---------------------------------------------------------------------------------------------------------------------------
