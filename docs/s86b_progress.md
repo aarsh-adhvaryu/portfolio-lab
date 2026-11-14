@@ -20,3 +20,7 @@
 12:58 C2(b) live hour read so far: 8 REDs in 2 passes, mostly commentary/stock-pick pieces on Nvidia + one HDFC customer-fraud arrest (rule 'fraud'); added generic commentary/advice markers to both paths
 12:59 docs: CLAUDE.md rule 9, W1 freeze, S86b line done
 12:59 CHECKPOINT 13:15 (early): committed, privacy grep run, branch pushed
+13:02 C3(6): march2020 replay with A79 still shows the baseline's gauge cut of the BASE position (orders on JUNIORBEES, NIFTYBEES, SYNFMCG1 together = the gauge); A79 spares only the part's own units by design; rail trims are limits and stay; drill now checks part units kept; rerun happens in Step A replays
+13:19 Step A normal suite: 4023 passed, 3 failed (3 ghost tests, run mid-edit of fastforward/migrations); rerun alone: pass. reversed suite running
+13:20 docs: findings 12-17 appended
+13:20 migration of a copy of the app store (schema 352, 302 tables, 757,425 rows) to 356: 0 rows lost, 2 new tables; copy deleted
