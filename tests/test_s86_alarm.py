@@ -491,3 +491,9 @@ def test_the_ten_largest_members_of_a_held_fund_join_the_scope_hourly_and_can_be
     first = len(net.asked)
     ing.collect(con, tmp_path, entries_for(con, tmp_path), T0 + timedelta(minutes=15), client=c, sources=("google_news",))
     assert len(net.asked) - first <= 3                                                                                                # only the held names again; the ten members wait for the hour
+
+
+def test_the_news_sources_that_are_on_come_from_configuration(con, tmp_path):
+    net = Net({"google_news": rss([]), "yahoo": rss([]), "gdelt_doc": "{}"})
+    r = alarm.run(con, T0, tmp_path, client=ing.Client(net, sleep=lambda s: None, clock=lambda: 0.0), entries=entries_for(con, tmp_path))
+    assert not any("gdelt" in u for u in net.asked) and set(r["by_source"]) == {"google_news", "yahoo"}              # GDELT is OFF in configs/core.toml [think] alarm_sources

@@ -247,6 +247,7 @@ tune_thresholds = false       # S85 L1 (think/tuning.py): OFF by default (coordi
 alarm = true                  # S86 (A73): the alarm lane (think/alarm.py): fast headlines on what the book is exposed to, RED ones heard on Telegram and thought through at once
 alarm_heard_per_day = 6       # at most this many "Heard" messages a day, then one summary line
 alarm_outlets = 4             # a RED by volume: at least this many different outlets on one name within alarm_outlet_minutes, and 3x its own usual hour
+alarm_sources = ["google_news", "yahoo"]   # S86b (A81, 2026-11-14): GDELT's DOC API answered 429 to every request from this PC (5 passes on 13 Nov, 3 more at 12-second spacing on 14 Nov, and curl alone): OFF, so "Eyes" shows the two sources that answer; add "gdelt_doc" back to turn it on
 alarm_blind_minutes = 60      # a news source silent this long while the app is open: one line on Telegram, one when it returns
 alarm_gap_minutes = 30        # the app open after a gap this long: the backlog first, one "Off from X to Y" message
 fast_forward = true           # S86 (A77, think/fastforward.py): after a gap the same loop is replayed over it as a ghost book and scored as a forward test (replayed_while_off)

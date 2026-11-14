@@ -302,14 +302,7 @@ def main(argv=None):
     if a.cmd == "alarm":
         return _alarm(a)
     if a.cmd == "problems":
-        from datetime import datetime, timedelta
-        from pflab.pm import store
-        from pflab.service import problems
-        con = store.connect()
-        now = datetime.now()
-        problems.collect(con, now, a.days)
-        print(problems.copy_text(con, now - timedelta(days=a.days)))
-        return 0
+        return _problems(a)
     if a.cmd == "engine":
         return _engine(a)
     if a.cmd == "update":
@@ -559,6 +552,18 @@ def _setup(a) -> int:
     except Exception:
         names = []                                  # no sources file yet: Setup writes it, then run this again for the passwords
     ss.prompt(a.only, None if a.only else names, change=a.change)
+    return 0
+
+
+def _problems(a) -> int:
+    """`pflab problems [--days N]` (S86b): the Problems list as plain text you can paste to Claude Code."""
+    from datetime import datetime, timedelta
+    from pflab.pm import store
+    from pflab.service import problems
+    con = store.connect()
+    now = datetime.now()
+    problems.collect(con, now, a.days)
+    print(problems.copy_text(con, now - timedelta(days=a.days)))
     return 0
 
 

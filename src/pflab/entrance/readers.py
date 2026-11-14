@@ -538,8 +538,22 @@ def read_attachment(con, now: datetime, path, name: str = "", mime: str = "", *,
         st = _storylines(con, l["isin"])
         if st:
             lines.append("Storylines that read this name: " + "; ".join(st))
+    links = []
+    if kind in ("pdf", "text"):
+        try:
+            links = [resolve_link(u, sha) for u in links_in(out["text"])]
+        except Exception:
+            links = []
+    for l in links:
+        host = urlparse(l["url"]).hostname or l["url"]
+        if l["same_file"]:
+            lines.append(f"The link printed in the file ({host}) leads to this same file: nothing more to read there.")
+        elif l["error"]:
+            lines.append(f"The link printed in the file ({host}) could not be opened: {l['error']}.")
+        else:
+            lines.append(f"The link printed in the file ({host}) leads to a different page or file ({(l['content_type'] or 'unknown type').split(';')[0]}): say \"check that link\" and I will read it.")
     lines += [f"Note: {w}" for w in out["warnings"][:4]]
-    res = _result(kind, name, facts=out["facts"], summary_text="\n".join(lines), document_id=doc_id, event_id=(door["event_ids"] or [None])[0], isins=door["isins"],
+    res = _result(kind, name, links=links, facts=out["facts"], summary_text="\n".join(lines), document_id=doc_id, event_id=(door["event_ids"] or [None])[0], isins=door["isins"],
                   cost_inr=round(out["cost"], 4), warnings=out["warnings"], pages=out.get("pages"), headline=out["headline"], note_doc=door["note_doc"], event_ids=door["event_ids"],
                   read_on=f"{now:%Y-%m-%d}", graph_nodes=[node_of(i) for i in door["isins"]])
     _save_row(con, doc_id, status="read", pages=out.get("pages"), summary=out["summary"], facts_json=json.dumps(out["facts"]), isins_json=json.dumps(door["isins"]),
@@ -548,6 +562,44 @@ def read_attachment(con, now: datetime, path, name: str = "", mime: str = "", *,
 
 
 # --- links ---------------------------------------------------------------------------------------------------------------------------
+
+_URL_RX = re.compile(r"https?://[^\s<>\"')\]]+")
+
+
+def links_in(text: str, limit: int = 3) -> List[str]:
+    """The distinct web links printed in a document's text, at most `limit`, trailing punctuation removed (S86b C5.3: a briefing PDF says "Read now: <link>" and the chat answered that it had not opened it)."""
+    out: List[str] = []
+    for m in _URL_RX.findall(text or ""):
+        u = m.rstrip(".,;:!?")
+        if u not in out:
+            out.append(u)
+    return out[:limit]
+
+
+def resolve_link(url: str, own_sha: str, *, timeout: int = 10, max_bytes: int = 8_000_000, getter: Optional[Callable] = None) -> dict:
+    """Follow one link found INSIDE a file (free, public hosts only, bounded) and say where it leads: {"url", "final_url", "status", "content_type", "same_file" (the bytes are this very file), "error"}. A link
+    that leads to the same file needs no second read; another page or file is offered for `check_link`, never read without being asked."""
+    out = {"url": url, "final_url": url, "status": None, "content_type": "", "same_file": False, "error": None}
+    u = urlparse(url)
+    if u.scheme not in ("http", "https") or not u.hostname or _private_host(u.hostname):
+        out["error"] = "not a public web address: not opened"
+        return out
+    try:
+        import requests
+        r = (getter or requests.get)(url, headers={"User-Agent": _user_agent(u.hostname.lower())}, timeout=timeout, stream=True, allow_redirects=True)
+        out.update(final_url=r.url, status=r.status_code, content_type=r.headers.get("Content-Type", ""))
+        if _private_host(urlparse(r.url).hostname or ""):
+            out["error"] = "the link redirected to a private address: not opened"
+            return out
+        if r.status_code >= 400:
+            out["error"] = f"the site answered {r.status_code}"
+            return out
+        body = r.raw.read(max_bytes + 1, decode_content=True) if hasattr(r, "raw") and getattr(r, "raw", None) is not None else getattr(r, "content", b"")
+        out["same_file"] = hashlib.sha256(body[:max_bytes]).hexdigest() == own_sha and len(body) <= max_bytes
+    except Exception as e:
+        out["error"] = f"{type(e).__name__}: {str(e)[:120]}"
+    return out
+
 
 def _private_host(host: str) -> bool:
     import ipaddress

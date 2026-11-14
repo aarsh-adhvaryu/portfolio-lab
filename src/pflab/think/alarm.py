@@ -32,7 +32,7 @@ from pflab.kg2 import classify, headlines as kg
 from pflab.think import cases
 
 DEFAULTS = {"alarm": True, "alarm_heard_per_day": 6, "alarm_outlets": 4, "alarm_outlet_minutes": 60, "alarm_story_hours": 36, "alarm_seconds": 110.0, "alarm_target_minutes": 30,
-            "alarm_blind_minutes": 60, "alarm_gap_minutes": 30, "alarm_gap_days": 7, "alarm_graph_sync": True, "alarm_fresh_hours": 8}
+            "alarm_blind_minutes": 60, "alarm_gap_minutes": 30, "alarm_gap_days": 7, "alarm_graph_sync": True, "alarm_fresh_hours": 8, "alarm_sources": ["google_news", "yahoo", "gdelt_doc"]}
 EYE_LABELS = {"google_news": "news (Google News)", "yahoo": "news (Yahoo Finance)", "gdelt_doc": "news (GDELT)", "filings": "Indian company filings (BSE)", "sec_8k": "US company filings (SEC)",
               "india_quotes": "Indian quotes", "us_quotes": "US quotes"}
 _TURN = re.compile(r"\b(?:resign\w*|steps? down|stepping down|ousted|ouster|removed|fired|dismiss\w*|terminated|arrest\w*|indict\w*|charged|restat\w+|defaults?|downgrad\w+|bankrupt\w*|interim (?:ceo|chief))\b", re.I)
@@ -494,7 +494,7 @@ def last_try(con) -> Optional[datetime]:
         return None
 
 
-def run(con, now: datetime, root, *, client: Optional[ing.Client] = None, entries: Optional[List[dict]] = None, sources=ing.SOURCES, think_fn: Optional[Callable] = None,
+def run(con, now: datetime, root, *, client: Optional[ing.Client] = None, entries: Optional[List[dict]] = None, sources=None, think_fn: Optional[Callable] = None,
         tell_fn: Optional[Callable] = None, force: bool = False, gap: Optional[Callable] = None, model_fn: Optional[Callable] = None) -> dict:
     """One pass of the lane. Never raises for a source's sake; a failure is a line in `problems`. `gap` is the fast-forward hook (`think/fastforward.py`): called with the gap's findings BEFORE the live
     book acts."""
@@ -505,6 +505,7 @@ def run(con, now: datetime, root, *, client: Optional[ing.Client] = None, entrie
         return out
     with LOCK:
         try:
+            sources = tuple(sources or settings()["alarm_sources"])                                  # S86b C2(d): which feeds are ON is configuration (GDELT's API refuses this PC's every request: OFF)
             prev = last_try(con)
             gap_min = float(cfg["alarm_gap_minutes"])
             is_gap = prev is not None and (now - prev) >= timedelta(minutes=gap_min)

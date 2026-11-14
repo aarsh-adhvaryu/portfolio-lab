@@ -46,3 +46,12 @@ def test_blind_spots_and_late_alarms_are_listed_and_the_weekly_line_counts_kinds
 def test_page_loads_table_exists_for_the_server_middleware(con):
     con.execute("INSERT INTO page_loads_s86 VALUES (?,?,?,?)", [NOW, "/api/today", 200, 12.0])
     assert con.execute("SELECT count(*) FROM page_loads_s86").fetchone()[0] == 1
+
+
+def test_the_command_line_parses_and_runs_the_new_commands(tmp_path, monkeypatch, capsys):
+    """S86b: a `from datetime import ... timedelta` inside `cli.main` once made `timedelta` local and broke EVERY command (found when the paid exam would not start): the parser is exercised here."""
+    monkeypatch.setenv("PFLAB_PM_DIR", str(tmp_path))
+    from pflab import cli
+    for argv in (["problems", "--days", "1"], ["alarm", "status"], ["engine", "list"]):
+        assert cli.main(argv) in (0, None)
+    assert "Problems: none." in capsys.readouterr().out

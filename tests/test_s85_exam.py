@@ -292,3 +292,13 @@ def test_shadow_rows_are_scored_under_their_own_tracks(con, monkeypatch):
 def test_the_migration_is_in_place(con):
     for t in ("think_calibration_engine_s85", "think_shadow_s85", "engine_exam_s85"):
         assert con.execute(f"SELECT count(*) FROM {t}").fetchone()[0] == 0
+
+
+def test_every_reading_keyword_occurs_in_its_own_source_document():
+    """S86b (C4.1): the exam's reading part counts a fact found when its keyword is carried by the extract; a keyword the source never uses ("debt" for "borrowings") made every faithful reader
+    miss one fact in every document (the 10 missed facts of 14 Nov were this fault, not the engine)."""
+    from pflab.llm import exam
+    docs = exam.documents()
+    assert len(docs) == 10
+    for d in docs:
+        assert [k for k in d["facts"] if k not in d["text"].lower()] == [], d["company"]

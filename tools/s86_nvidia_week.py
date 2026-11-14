@@ -69,8 +69,7 @@ def main() -> int:
             from pflab.kg2 import classify
             r = classify.model_classify(title)
             with open(mlog, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"title": title, "answer": r}) + "
-")
+                f.write(json.dumps({"title": title, "answer": r}) + chr(10))
             return r
 
         def think(c, now, cid):
