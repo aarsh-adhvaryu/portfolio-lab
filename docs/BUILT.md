@@ -404,3 +404,6 @@ Tools added in S79 / S79b: `system_allocation`, `propose_allocation`, `debate`, 
 - Config `[operator] budget_chat_light` and `budget_chat`; `GET /api/operator` gains `tokens_today.chat_light` (additive); chat replies gain `meta_obj.path` and `meta_obj.turns`.
 - Tests: `tests/test_s88_light.py`.
 
+
+## Repository housekeeping (2026-11-15)
+Session notes, test-finding files and one-session scripts (docs for s79-s86b, `tools/` real-path and drill scripts nothing imports) were taken out of the repo on 2026-11-15; they stay in git history up to tag `v2026.11.15.1`. Old session branches were deleted (all merged). `README.md` and `CLAUDE.md` describe the system as it is now.

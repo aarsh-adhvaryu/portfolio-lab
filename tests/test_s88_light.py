@@ -3,6 +3,7 @@ the path and token line, the one-word reply without a model call, and the full r
 from __future__ import annotations
 
 import asyncio
+import os
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -63,7 +64,7 @@ def _dispatch(con, q, cid=5, first=None):
     ctx = _ctx()
     ctx.con = con
     pid = passes.record(con, NOW, "assistant", [], "m", "assistant", "running")
-    return session.dispatch(SimpleNamespace(data_root=str(Path(".")), settings={}), con, NOW, ctx=ctx, pid=pid, first=first or f"HIS MESSAGE:\n{q}", r=_route(), model_id=None, cid=cid, aid=99, q=q,
+    return session.dispatch(SimpleNamespace(data_root=os.environ["PFLAB_DATA_DIR"], settings={}), con, NOW, ctx=ctx, pid=pid, first=first or f"HIS MESSAGE:\n{q}", r=_route(), model_id=None, cid=cid, aid=99, q=q,
                             progress=lambda s: None)
 
 
