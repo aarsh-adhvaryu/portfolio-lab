@@ -407,3 +407,11 @@ Tools added in S79 / S79b: `system_allocation`, `propose_allocation`, `debate`, 
 
 ## Repository housekeeping (2026-11-15)
 Session notes, test-finding files and one-session scripts (docs for s79-s86b, `tools/` real-path and drill scripts nothing imports) were taken out of the repo on 2026-11-15; they stay in git history up to tag `v2026.11.15.1`. Old session branches were deleted (all merged). `README.md` and `CLAUDE.md` describe the system as it is now.
+
+## S89 (2026-11-15, `pm/s89-screens`; tables created on first use): the redesigned screens
+- Front: `src/pflab/app/static/s89/` (`index.html`, `core.js` router, helpers, offline cache and live refresh; one module per screen: `home`, `money`, `manage`, `book`, `lab`, `graph`, `chat`, `agents`, `usage`, `settings`; `s89.css`; `manifest.webmanifest`, `sw.js`). Served at `/`; the old front at `/classic`.
+- Endpoints (`app/s89.py`): `GET /api/home`, `GET /api/mine?tab=all|in|us`, `POST /api/mine/us` (add / set / remove, validated), `GET|POST /api/mine/watch` (cap 25), `POST /api/lab/pair`, `GET|POST /api/agents`; `POST /api/assistant` gains `road` (auto, quick, full). Tables: `mine_in_s89`, `mine_us_s89`, `watch_s89`, `mine_meta_s89`, `agent_settings_s89`.
+- Chat actions: `oper/actions.py` (the tool `propose_action`, a Yes/No card first; the quick road has none).
+- Alarm lane: `think/watch.scope` also reads `watch_s89` and `mine_in_s89` (India).
+- Tests: `tests/test_s89_screens.py` (endpoints, the Yes rule, a real-browser smoke of every screen on an empty store and on a fixture store, the 390 px phone layout); `tests/_edge.py` sends root URLs of the older UI tests to `/classic`.
+

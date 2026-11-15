@@ -88,6 +88,11 @@ def my_decision_scores(ctx, a: dict) -> str:
     return _short(learn.summary(ctx.con))
 
 
+def propose_action(ctx, a: dict) -> str:
+    from pflab.oper import actions
+    return actions.propose(ctx.con, ctx.now, str(a.get("kind") or ""), dict(a.get("payload") or {}))
+
+
 def request_build(ctx, a: dict) -> str:
     from pflab.oper import build
     return build.request(ctx.con, ctx.now, str(a.get("problem") or "").strip(), source="operator")
@@ -103,6 +108,9 @@ EXTRA = [
     ("log_my_decision", "Log a decision HE made on his real holdings (buy / sell / hold / trim / add / skip, with the symbol and a short note) so it is scored against the index at 5, 20 and 60 sessions. "
      "Only when he says he did or decided it.", {"type": "object", "properties": {"symbol": S, "action": S, "note": S}, "required": ["symbol", "action"]}, log_my_decision),
     ("my_decision_scores", "How his logged decisions scored against the Nifty 500 (5/20/60 sessions), with the tax caveat on sales.", {"type": "object", "properties": {}}, my_decision_scores),
+    ("propose_action", "Propose a CHANGE: kind is watch_add / watch_remove (payload symbol, market India|US, why, alerts), us_add / us_set / us_remove (ticker, shares, avg_price, bought_on), agent_set (agent, model, "
+     "thinking) or run_agent (agent: desk, weekly or case). It posts a Yes/No card; nothing changes before his Yes. Reading needs no card.",
+     {"type": "object", "properties": {"kind": S, "payload": {"type": "object"}}, "required": ["kind", "payload"]}, propose_action),
     ("request_build", "A bug or a 'build:' request: opens a build session on a branch in the workshop and sends him a Yes/No card. Never edit code yourself.",
      {"type": "object", "properties": {"problem": S}, "required": ["problem"]}, request_build),
 ]
@@ -110,7 +118,7 @@ EXTRA = [
 
 # S88 L3: the full operator's DEFAULT set (what the questions of S88's measurement and the skills use); every other tool stays reachable by name through `more_tools` (its names are in its description)
 DEFAULT = ("portfolio", "paper_book", "picture", "stock_facts", "price_history", "graph_timeline", "what_do_you_know", "thinking_cases", "decision_scorecard", "comovement", "pair_study", "scenario",
-           "exposure_shock", "forecasts", "simulation", "lab_policies", "problems_list", "usage_so_far", "decision_log", "log_my_decision", "my_decision_scores", "request_build", "read_file",
+           "exposure_shock", "forecasts", "simulation", "lab_policies", "problems_list", "usage_so_far", "decision_log", "log_my_decision", "my_decision_scores", "request_build", "propose_action", "read_file",
            "read_document", "files", "research_flags", "market_context", "ask_strategist", "look_into")
 
 

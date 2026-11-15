@@ -23,9 +23,13 @@ def normalise(q: str) -> str:
     return re.sub(r"[\s!.?,;:]+$", "", re.sub(r"^[\s!.?,;:]+", "", (q or "").strip().lower()))
 
 
-def choose(q: str, *, has_file: bool = False) -> Tuple[str, str, str]:
+def choose(q: str, *, has_file: bool = False, road: Optional[str] = None) -> Tuple[str, str, str]:
     """-> (path, reason, text): `text` is the message with a leading `/full` removed."""
     raw = (q or "").strip()
+    if road == "full" and not raw.lower().startswith("/full"):
+        return "full", "you picked the full road", raw
+    if road == "quick" and not (has_file or FILE_MARK in raw or LINK.search(raw)):
+        return ("ack", "a one-word reply", raw) if normalise(raw) in ACKS else ("light", "you picked the quick road", raw)
     if raw.lower().startswith("/full"):
         return "full", "you asked for the full operator (/full)", raw[5:].strip() or raw
     if has_file or FILE_MARK in raw:

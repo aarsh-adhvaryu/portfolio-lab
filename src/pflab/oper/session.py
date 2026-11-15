@@ -161,7 +161,7 @@ def dispatch(rt, con, now: datetime, *, ctx, pid: int, first: str, r: dict, mode
              snap: str = "", notes: Optional[List[str]] = None) -> dict:
     """S88 L2: the road for this message (rules only, no model call): ack (a fixed reply), light (quick), full (the whole operator). A quick answer that needs more goes to the full operator ONCE, with the
     thread's summary; the full operator never goes back."""
-    path, why, text = pathrouter.choose(q, has_file=pathrouter.FILE_MARK in first)
+    path, why, text = pathrouter.choose(q, has_file=pathrouter.FILE_MARK in first, road=(r or {}).get("road"))
     kw = dict(ctx=ctx, pid=pid, first=first, r=r, model_id=model_id, cid=cid, aid=aid, q=text, progress=progress, snap=snap, notes=notes)
     if path == "ack":
         _done(con, pid, pathrouter.ACK_REPLY, ctx)
