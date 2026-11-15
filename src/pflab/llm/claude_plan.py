@@ -32,7 +32,7 @@ log = logging.getLogger("pflab.claude_plan")
 
 CONFIG = Path(__file__).resolve().parents[3] / "configs" / "core.toml"
 CLASSES = ("desk", "cases", "chat", "build", "chat_light")        # "chat" is the FULL operator road; "chat_light" the quick road (S88)
-DEFAULTS = {"enabled": True, "budget_desk": 600000, "budget_cases": 900000, "budget_chat": 1500000, "budget_chat_light": 1500000, "budget_build": 1200000, "max_turns_desk": 12, "max_turns_chat": 14, "max_turns_build": 40,
+DEFAULTS = {"enabled": True, "budget_desk": 250000, "budget_cases": 350000, "budget_chat": 600000, "budget_chat_light": 400000, "budget_build": 800000, "max_turns_desk": 12, "max_turns_chat": 14, "max_turns_build": 40,
             "build_per_day": 2, "signin_cache_s": 600, "session_timeout_s": 900}
 KEY_LIKE = re.compile(r"(_API_KEY|_AUTH_TOKEN|_ACCESS_TOKEN|_SECRET_KEY|^ANTHROPIC_BASE_URL$|^CLAUDE_CODE_USE_(BEDROCK|VERTEX|FOUNDRY)$|^CLAUDE_CODE_OAUTH_TOKEN$)", re.I)
 CALLER_SERVER = "caller"
@@ -265,7 +265,7 @@ def agent_def(description: str, prompt: str, tools: Optional[List[str]] = None, 
 def options(*, system, model: str, effort: Optional[str], cwd: Optional[str], tools=None, allowed=None, disallowed=None, mcp=None, resume: Optional[str] = None,
             max_turns: int = 8, can_use_tool=None, schema: Optional[dict] = None, agents=None, setting_sources=None, add_dirs=None, extra_env: Optional[dict] = None, skills=None):
     sdk = _sdk()
-    kw: Dict[str, Any] = dict(model=model, cwd=cwd, max_turns=max_turns, env={**child_env(), **(extra_env or {})}, cli_path=cli_path(), setting_sources=setting_sources if setting_sources is not None else [])
+    kw: Dict[str, Any] = dict(model=model, cwd=cwd, max_turns=max_turns, env={**child_env(), **(extra_env or {})}, cli_path=cli_path(), strict_mcp_config=True, setting_sources=setting_sources if setting_sources is not None else [])
     if system is not None:
         kw["system_prompt"] = system
     if effort in ("low", "medium", "high", "max"):

@@ -399,3 +399,8 @@ Tools added in S79 / S79b: `system_allocation`, `propose_allocation`, `debate`, 
 - **Screens API**: `GET /api/operator`, `POST /api/operator/terminal`; `pflab operator status|open`; `pflab service status` has an `operator` line.
 - Tests: `tests/test_s87_claude_plan.py`, `tests/test_s87_operator.py` (scripted SDK; a scratch git repo with a bare origin for the build flow); `tests/conftest.py` gives the older tests the legacy engine.
 
+## S88 (2026-11-15, `pm/s88-light`; no schema migration: `oper_thread_summary_s88` is created on first use; notes and the before/after table in `docs/s88_light_notes.md`): two roads for the chat
+- `oper/pathrouter.py` (rules: ack / full / light; `skills_for`), `oper/light.py` (the quick road: own system prompt, five tools, 4 turns, thread history and summary, `needs_full`), `oper/session.py` (`dispatch`, `answer_light`, `answer_full`, history size and the 60k reset), `oper/tools.py` (`DEFAULT` set + `more_tools`), `llm/claude_plan.py` (class `chat_light`, `skills` option, `context_probe` for measurement).
+- Config `[operator] budget_chat_light` and `budget_chat`; `GET /api/operator` gains `tokens_today.chat_light` (additive); chat replies gain `meta_obj.path` and `meta_obj.turns`.
+- Tests: `tests/test_s88_light.py`.
+

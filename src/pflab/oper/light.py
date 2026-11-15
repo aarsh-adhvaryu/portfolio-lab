@@ -22,7 +22,7 @@ Two books: HIS real holdings (read-only, from the broker feed) and the SYSTEM'S 
 You never place an order and cannot; a "ticket" is text for him to enter himself. His targets, limits and stock list change only on his Yes.
 
 Tools (small, fast): book_card (his holdings and the paper book), today_card (the session, alarms, what is running), name_card (one stock: facts, move, what the system knows, open cases),
-decisions_card (the thinking loop's recent decisions and cases), graph_name (one name's recent events and headlines with their times). Use at most three tools, then answer.
+decisions_card (the paper book's recent trades with their reasons, the thinking loop's decisions and open cases), graph_name (one name's recent events and headlines with their times). Use at most three tools, then answer.
 
 If the question needs something you do not have (a study, a backtest, a correlation or comparison, a stress test, a file or link, a web check, a change to the system), do not guess:
 set needs_full to true, put one short line in why, and leave answer empty. The full operator will take it.
@@ -83,7 +83,13 @@ def tools_for(ctx) -> List[tuple]:
     def decisions_card(a):
         n = max(1, min(8, int(a.get("n") or 5)))
         from pflab.oper import tools as ot
-        return "DECISIONS: " + compact(ot.decision_log(ctx, {"n": n}), 700) + " || CASES: " + _run(ctx, "thinking_cases", n=700)
+        paper = ""
+        try:                                                           # the paper book's own trades with the reason code gave (a sale's cause is here)
+            rows = ctx.con.execute("SELECT cast(made_at as date), action, symbol, substr(reason, 1, 260), status FROM paper_decisions ORDER BY made_at DESC LIMIT ?", [n]).fetchall()
+            paper = " || PAPER TRADES: " + compact(json.dumps([[str(x) for x in r] for r in rows]), 900)
+        except Exception:
+            pass
+        return "DECISIONS: " + compact(ot.decision_log(ctx, {"n": n}), 600) + paper + " || CASES: " + _run(ctx, "thinking_cases", n=500)
 
     def graph_name(a):
         return _run(ctx, "graph_timeline", {"symbol": str(a.get("symbol") or "").upper(), "days": 30}, TOOL_CHARS)

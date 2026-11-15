@@ -383,11 +383,11 @@ date = "2026-11-14"
 # S87: the operator (his Claude Code under the app). Daily token budgets per purpose class (a class that has spent its day stops until tomorrow; the code-only parts go on), turns per session.
 [operator]
 enabled = true
-budget_desk = 600000
-budget_cases = 900000
-budget_chat = 1500000            # the FULL operator road (S88: set from the measurements, see docs/s88_light_notes.md)
-budget_chat_light = 1500000      # the quick road (S88)
-budget_build = 1200000
+budget_desk = 250000               # S88: measured 14k a desk run; two runs a day and a weekly note fit in a quarter of a million
+budget_cases = 350000              # S88: measured 12k a case; three a day plus alarm cases fit
+budget_chat = 600000               # the FULL road: measured 19k to 80k a question (before S88: 75k to 117k even for plain ones); ten full questions a day fit
+budget_chat_light = 400000         # the QUICK road: measured 5k to 6.5k a question; sixty a day fit
+budget_build = 800000              # two builds a day (S87 measured 400k for one with the account connectors loaded; they are not any more)
 max_turns_desk = 12
 max_turns_chat = 14
 max_turns_build = 40
