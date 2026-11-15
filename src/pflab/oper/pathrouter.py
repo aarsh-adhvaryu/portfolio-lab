@@ -13,7 +13,7 @@ from typing import Optional, Tuple
 ACKS = {"thanks", "thank you", "thanks a lot", "thx", "ty", "ok", "okay", "ok thanks", "okay thanks", "great", "cool", "got it", "noted", "fine", "nice", "good", "perfect", "alright", "k", "👍", "🙏"}
 ACK_REPLY = "You're welcome."
 FULL_PATTERNS = [r"\blook(?:ing)? into\b", r"\bstudy\b", r"\bstudies\b", r"\bbacktest", r"\bcompare\b", r"\bcomparison\b", r"\bstress\b", r"\bsimulat", r"\bmove(?:s)? together\b", r"\bmoves? with\b",
-                 r"\bcorrelat", r"\bcointegrat", r"\blead[- ]lag\b", r"^\s*build:", r"\bfix\b", r"\badd (?:a |an )?(?:new )?skill\b", r"\badd (?:a |an )?(?:new )?tool\b", r"\bmonthly review\b"]
+                 r"\bcorrelat", r"\bcointegrat", r"\blead[- ]lag\b", r"^\s*build:", r"\bfix\b", r"\badd (?:a |an )?(?:new )?skill\b", r"\badd (?:a |an )?(?:new )?tool\b", r"\bmonthly review\b", r"\bplan (?:how|out|to|the)\b", r"\band report\b", r"\bstep by step\b"]
 LINK = re.compile(r"https?://|\bwww\.", re.I)
 FILE_MARK = "FILES HE SENT WITH THIS MESSAGE"
 _FULL = [re.compile(p, re.I) for p in FULL_PATTERNS]
@@ -23,9 +23,13 @@ def normalise(q: str) -> str:
     return re.sub(r"[\s!.?,;:]+$", "", re.sub(r"^[\s!.?,;:]+", "", (q or "").strip().lower()))
 
 
-def choose(q: str, *, has_file: bool = False) -> Tuple[str, str, str]:
+def choose(q: str, *, has_file: bool = False, road: Optional[str] = None) -> Tuple[str, str, str]:
     """-> (path, reason, text): `text` is the message with a leading `/full` removed."""
     raw = (q or "").strip()
+    if road == "full" and not raw.lower().startswith("/full"):
+        return "full", "you picked the full road", raw
+    if road == "quick" and not (has_file or FILE_MARK in raw or LINK.search(raw)):
+        return ("ack", "a one-word reply", raw) if normalise(raw) in ACKS else ("light", "you picked the quick road", raw)
     if raw.lower().startswith("/full"):
         return "full", "you asked for the full operator (/full)", raw[5:].strip() or raw
     if has_file or FILE_MARK in raw:

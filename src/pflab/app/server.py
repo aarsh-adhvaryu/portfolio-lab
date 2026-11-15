@@ -10,6 +10,7 @@ from typing import Optional
 
 from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from pflab.app import views
@@ -75,7 +76,28 @@ def create_app(rt) -> FastAPI:
         problems.collect(con, datetime.now(), days)
         return {"text": problems.copy_text(con, datetime.now() - timedelta(days=days)), "rows": [{**r, "first_seen": str(r["first_seen"]), "last_seen": str(r["last_seen"]), "reported_at": None} for r in problems.listing(con, datetime.now() - timedelta(days=days))]}
 
+    def _versioned(page: str, names) -> HTMLResponse:
+        html = (STATIC / page).read_text(encoding="utf-8")
+        for name in names:
+            f = STATIC / name
+            if f.exists():
+                html = html.replace(f"/static/{name}\"", f"/static/{name}?v={int(f.stat().st_mtime)}\"")
+        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
     @app.get("/")
+    def home_page():
+        """S89: the redesigned screens (static/s89). The old screens stay at /classic until the first week has passed."""
+        return _versioned("s89/index.html", ["s89/core.js", "s89/home.js", "s89/money.js", "s89/manage.js", "s89/book.js", "s89/lab.js", "s89/graph.js", "s89/stock.js", "s89/chat.js", "s89/agents.js", "s89/usage.js", "s89/settings.js", "s89/s89.css"])
+
+    @app.get("/manifest.webmanifest")
+    def manifest():
+        return FileResponse(str(STATIC / "s89" / "manifest.webmanifest"), media_type="application/manifest+json", headers={"Cache-Control": "no-store"})
+
+    @app.get("/sw.js")
+    def service_worker():
+        return FileResponse(str(STATIC / "s89" / "sw.js"), media_type="application/javascript", headers={"Cache-Control": "no-store", "Service-Worker-Allowed": "/"})
+
+    @app.get("/classic")
     def index():
         """The page asks for its script and styles with their modification time, so the window never runs a cached
         old copy after an update (2026-10-24: the browser kept the old app.js)."""
@@ -429,12 +451,12 @@ def create_app(rt) -> FastAPI:
 
     @app.post("/api/assistant")
     def assistant_post(text: str = Body("", embed=True), context: str = Body("", embed=True), model: Optional[str] = Body(None, embed=True), thinking: Optional[str] = Body(None, embed=True),
-                       files: Optional[list] = Body(None, embed=True)):
+                       files: Optional[list] = Body(None, embed=True), road: Optional[str] = Body(None, embed=True)):
         """A message to the assistant (S85: the intake takes it and answers at once; a worker works the answer out and it appears in the thread with its model and price). `model` / `thinking` are the
         picker's choice for this message (omitted: the chat's saved choice, else Auto); `files` are upload ids from /api/assistant/files."""
         from pflab.app import assistant
         try:
-            return assistant.post(rt, text, context, model, thinking, files)
+            return assistant.post(rt, text, context, model, thinking, files, road)
         except ValueError as e:
             raise HTTPException(400, str(e))
 
@@ -1098,4 +1120,6 @@ def create_app(rt) -> FastAPI:
                 rt.client_closed()
         return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-store"})
 
+    from pflab.app import s89 as _s89                         # S89: the endpoints behind the redesigned screens
+    _s89.register(app, rt)
     return app

@@ -37,7 +37,7 @@ def _path(inp: dict, root: Path) -> Optional[Path]:
 def decide(kind: str, tool: str, inp: dict, root: Path, branch: Optional[str] = None) -> Tuple[bool, str]:
     root = Path(root)
     inp = inp or {}
-    if tool.startswith("mcp__oper__") or tool.startswith("mcp__nse__") or tool in FREE_TOOLS:
+    if tool.startswith("mcp__oper__") or tool.startswith("mcp__nse") or tool.startswith("mcp__kite__") or tool in FREE_TOOLS:
         return True, ""
     if tool in READ_TOOLS:
         p = _path(inp, root)

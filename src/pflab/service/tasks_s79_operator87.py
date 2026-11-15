@@ -23,6 +23,11 @@ def _build(ctx) -> dict:
     return {"requested": n, **({"build": r} if r else {"skipped": "no queued build"})}
 
 
+def _plans(ctx) -> dict:
+    from pflab.oper import plans
+    return {"resumed": plans.resume_due(ctx.con, ctx.now)}
+
+
 def _weekly(ctx) -> dict:
     from pflab.oper import introspect, learn
     scored = learn.score_due(ctx.con, ctx.now, ctx.data_root)                  # his logged decisions: scored when their horizon has passed (code only)
@@ -35,3 +40,4 @@ register(Job("operator_build", Interval(30, weekdays_only=False), _build, "S87 O
              cooldown_minutes=20, enabled_fn=_enabled))
 register(Job("operator_weekly", Interval(60, weekdays_only=False), _weekly, "S87 O3/O5: the weekly introspection after the Friday close: what worked, what did not, calibration, what to test next",
              cooldown_minutes=50, enabled_fn=_enabled))
+register(Job("operator_plans", Interval(15, weekdays_only=False), _plans, "S89b: a plan that paused at the plan's limit goes on from where it stopped after the reset", cooldown_minutes=10, enabled_fn=_enabled))

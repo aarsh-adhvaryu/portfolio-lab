@@ -36,13 +36,40 @@ def put_session(con, cid: Optional[int], sid: str, now: datetime) -> None:
         gw._set_state(con, session_key(cid), sid, now, "operator session of the chat")
 
 
+def switches(con) -> dict:
+    """The Agents screen's connection switches (all off by default): kite, nse, tijori, connectors."""
+    try:
+        r = con.execute("SELECT switches_json FROM agent_settings_s89 WHERE agent='_switches'").fetchone()
+        import json as _j
+        return _j.loads(r[0]) if r and r[0] else {}
+    except Exception:
+        return {}
+
+
+def kite_tool(ctx) -> tuple:
+    def holdings(args):
+        import json as _j
+        con = ctx.con
+        try:
+            rows = con.execute("SELECT symbol, qty, avg_price, last_price, day_change_pct FROM mine_in_s89 ORDER BY symbol").fetchall()
+        except Exception:
+            rows = []
+        return _j.dumps([{"symbol": s, "qty": q, "avg": a, "last": l, "day_pct": d} for s, q, a, l, d in rows][:60]) if rows else "No Kite snapshot yet."
+    return ("kite_holdings", "His real Indian holdings from the latest Kite snapshot (read-only; no order tool exists).", {"type": "object", "properties": {}}, holdings)
+
+
 def nse_server() -> Optional[dict]:
+    """NSE's own MCP servers (Streamable HTTP, no login): `[operator] nse_mcp_urls = {name = url}` (the end-of-day bhavcopy server and the live-snapshot server), or the one-address form `nse_mcp_url`.
+    Loaded only when the Agents screen's NSE switch is on AND an address is set."""
     try:
         from pflab import _toml
-        url = str((_toml.load(cp.CONFIG).get("operator") or {}).get("nse_mcp_url") or "")
+        op = _toml.load(cp.CONFIG).get("operator") or {}
     except Exception:
-        url = ""
-    return {"nse": {"type": "http", "url": url}} if url else None
+        return None
+    urls = {str(k): str(v) for k, v in (op.get("nse_mcp_urls") or {}).items() if v}
+    if not urls and op.get("nse_mcp_url"):
+        urls = {"nse": str(op["nse_mcp_url"])}
+    return {k: {"type": "http", "url": u} for k, u in urls.items()} or None
 
 
 def new_prompt(first: str) -> str:
@@ -78,7 +105,11 @@ def answer_full(rt, con, now: datetime, *, ctx, pid: int, first: str, r: dict, m
     if lead:
         prompt = lead + "\n\n" + prompt
     mcp = {"oper": cp.tool_server("oper", otools.items(ctx))}
-    mcp.update(nse_server() or {})
+    sw = switches(con)
+    if sw.get("nse"):                                                # NSE only when switched on AND its address is set
+        mcp.update(nse_server() or {})
+    if sw.get("kite"):                                               # Kite: the read-only snapshot tool; there is no order tool anywhere
+        mcp["kite"] = cp.tool_server("kite", [kite_tool(ctx)])
 
     async def can_use(name, inp, c):
         ok, why = perms.decide("answer", name, inp, ws)
@@ -87,8 +118,8 @@ def answer_full(rt, con, now: datetime, *, ctx, pid: int, first: str, r: dict, m
     steps: List[str] = []
     try:
         res = cp.run(con, prompt=prompt, system=PRESET, model=spec["model"], effort=spec["thinking"], klass="chat", purpose="operator_chat", agent="chat", now=now, cwd=str(ws), tools=BUILTIN,
-                     allowed=["mcp__oper__*"] + (["mcp__nse__*"] if "nse" in mcp else []), mcp=mcp, resume=sid, max_turns=int(cp.settings()["max_turns_chat"]), can_use_tool=can_use,
-                     setting_sources=["project"], chat_id=cid, timeout=600, skills=pathrouter.skills_for(q))
+                     allowed=[f"mcp__{k}__*" for k in mcp], mcp=mcp, resume=sid, max_turns=int(cp.settings()["max_turns_chat"]), can_use_tool=can_use,
+                     setting_sources=["project"], chat_id=cid, timeout=600, skills=pathrouter.skills_for(q), explicit_model=bool(model_id), strict_mcp=not sw.get("connectors"))
     except (cp.PlanPaused, cp.PlanBudgetSpent) as e:
         passes.close(con, pid, "stopped", "", ctx.decisions, 0.0, None, str(e)[:300])
         return {"text": paused_line(e), "status": "done", "cost": None, "meta": "thinking paused (plan limit)", "meta_obj": {"text": "thinking paused (plan limit)", "engine": "claude_plan"},
@@ -161,7 +192,7 @@ def dispatch(rt, con, now: datetime, *, ctx, pid: int, first: str, r: dict, mode
              snap: str = "", notes: Optional[List[str]] = None) -> dict:
     """S88 L2: the road for this message (rules only, no model call): ack (a fixed reply), light (quick), full (the whole operator). A quick answer that needs more goes to the full operator ONCE, with the
     thread's summary; the full operator never goes back."""
-    path, why, text = pathrouter.choose(q, has_file=pathrouter.FILE_MARK in first)
+    path, why, text = pathrouter.choose(q, has_file=pathrouter.FILE_MARK in first, road=(r or {}).get("road"))
     kw = dict(ctx=ctx, pid=pid, first=first, r=r, model_id=model_id, cid=cid, aid=aid, q=text, progress=progress, snap=snap, notes=notes)
     if path == "ack":
         _done(con, pid, pathrouter.ACK_REPLY, ctx)

@@ -132,10 +132,10 @@ def staged(rt, upload_ids) -> List[dict]:
     return out
 
 
-def post(rt, text: str, context: str = "", model: Optional[str] = None, thinking: Optional[str] = None, files: Optional[list] = None) -> dict:
+def post(rt, text: str, context: str = "", model: Optional[str] = None, thinking: Optional[str] = None, files: Optional[list] = None, road: Optional[str] = None) -> dict:
     """His message from the laptop (`files`: upload ids from `stage_file`) -> `intake.submit`. -> {"chat_id", "msg_id", "user_msg_id", "item_id"}."""
     from pflab.entrance import intake
-    return intake.submit(rt, "laptop", text, attachments=staged(rt, files), model=model, thinking=thinking, context=context)
+    return intake.submit(rt, "laptop", text, attachments=staged(rt, files), model=model, thinking=thinking, context=context, road=road)
 
 
 def notify(con, now: datetime, text: str, key: str, route: Optional[List[str]] = None) -> bool:

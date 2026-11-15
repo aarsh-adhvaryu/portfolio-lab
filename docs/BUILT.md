@@ -309,6 +309,7 @@ Local models are free. API spend is priced before every call and refused above h
 | think_loop | every 30 min, when a close, the US step or the catch-up has finished | the thinking loop: notices what changed for the book (the watch), thinks new cases through (at most 3 a day), follows up the open ones, scores and calibrates (S84; the model parts go through the one door and his cap) |
 | operator_build | every 30 min, while the plan engine is in use | S87 O4: new Problems become build requests; one queued build runs on a fix/ branch to a Yes/No card (at most 2 a day) |
 | operator_weekly | hourly check, writes once a week after the Friday close | S87 O3/O5: weekly introspection (what worked, what did not, calibration, candidates) and the scoring of his logged decisions |
+| operator_plans | every 15 min, while the plan engine is in use | S89b: a paused plan goes on from where it stopped after the plan's reset |
 | think_missed | after each close (on demand, S85) | the nightly "what did I miss": the biggest movers the watch did not notice, why (outside scope, below threshold, no event, the daily cap), the threshold that would have caught them |
 | sec_8k | every 2 hours inside SEC filing hours, or at app start after a gap of 6 hours or more (S85) | US 8-K items 5.02, 4.01 and 4.02 for the names the book holds, picked, skipped or watches, into the graph (polite rate, bounded) |
 | alarm | every 15 minutes, day and night, while the app is open; also first after a gap (S86) | the alarm lane: fast headlines and the company's own filings on what the book is exposed to, RED heard on Telegram and thought through at once (`think/alarm.py`; code, free until a case is thought) |
@@ -403,4 +404,21 @@ Tools added in S79 / S79b: `system_allocation`, `propose_allocation`, `debate`, 
 - `oper/pathrouter.py` (rules: ack / full / light; `skills_for`), `oper/light.py` (the quick road: own system prompt, five tools, 4 turns, thread history and summary, `needs_full`), `oper/session.py` (`dispatch`, `answer_light`, `answer_full`, history size and the 60k reset), `oper/tools.py` (`DEFAULT` set + `more_tools`), `llm/claude_plan.py` (class `chat_light`, `skills` option, `context_probe` for measurement).
 - Config `[operator] budget_chat_light` and `budget_chat`; `GET /api/operator` gains `tokens_today.chat_light` (additive); chat replies gain `meta_obj.path` and `meta_obj.turns`.
 - Tests: `tests/test_s88_light.py`.
+
+
+## Repository housekeeping (2026-11-15)
+Session notes, test-finding files and one-session scripts (docs for s79-s86b, `tools/` real-path and drill scripts nothing imports) were taken out of the repo on 2026-11-15; they stay in git history up to tag `v2026.11.15.1`. Old session branches were deleted (all merged). `README.md` and `CLAUDE.md` describe the system as it is now.
+
+## S89 (2026-11-15, `pm/s89-screens`; tables created on first use): the redesigned screens
+- Front: `src/pflab/app/static/s89/` (`index.html`, `core.js` router, helpers, offline cache and live refresh; one module per screen: `home`, `money`, `manage`, `book`, `lab`, `graph`, `chat`, `agents`, `usage`, `settings`; `s89.css`; `manifest.webmanifest`, `sw.js`). Served at `/`; the old front at `/classic`.
+- Endpoints (`app/s89.py`): `GET /api/home`, `GET /api/mine?tab=all|in|us`, `POST /api/mine/us` (add / set / remove, validated), `GET|POST /api/mine/watch` (cap 25), `POST /api/lab/pair`, `GET|POST /api/agents`; `POST /api/assistant` gains `road` (auto, quick, full). Tables: `mine_in_s89`, `mine_us_s89`, `watch_s89`, `mine_meta_s89`, `agent_settings_s89`.
+- Chat actions: `oper/actions.py` (the tool `propose_action`, a Yes/No card first; the quick road has none).
+- Alarm lane: `think/watch.scope` also reads `watch_s89` and `mine_in_s89` (India).
+- Tests: `tests/test_s89_screens.py` (endpoints, the Yes rule, a real-browser smoke of every screen on an empty store and on a fixture store, the 390 px phone layout); `tests/_edge.py` sends root URLs of the older UI tests to `/classic`.
+
+## S89b (2026-11-15, `pm/s89b-screens`; tables created on first use: `plans_s89`, `plan_steps_s89`): the screens finished
+- `app/s89b.py`: `POST /api/lab/simulate`, `GET /api/lab/presets`, `GET /api/lab/forecast`, `GET /api/book/reliability`, `GET /api/stock/{symbol}` (all code, 0 tokens). `oper/plans.py` with `GET /api/plans` and `POST /api/plans/{id}/start|cancel`; the operator tool `propose_plan`; job `operator_plans` resumes a paused plan.
+- `llm/claude_plan.run` reads the agent's own model and thinking (`agent_settings_s89`) at the start of each run (`agent_key`, `explicit_model`); the full road loads Kite (read-only snapshot tool), NSE (switch AND address) and his account connectors (switch only) per the switches, otherwise the strict MCP list.
+- Front: `lab.js` (Pairs, Simulate, Forecast), `stock.js`, reliability on `book.js`, plan cards and running plans on `home.js`. Screenshots of every screen on a fixture store: `docs/s89_shots/`.
+- Tests: `tests/test_s89b_screens.py` (the browser sweep also fails on any 4xx/5xx the server answered).
 

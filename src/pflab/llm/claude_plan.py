@@ -76,6 +76,21 @@ def settings() -> dict:
     return out
 
 
+def agent_key_of(klass: str, purpose: str = "") -> Optional[str]:
+    """The Agents screen's name for what runs: quick, full, desk, weekly, case, fixer."""
+    if klass == "desk":
+        return "weekly" if purpose.startswith("desk_weekly") else "desk"
+    return {"chat_light": "quick", "chat": "full", "cases": "case", "build": "fixer"}.get(klass)
+
+
+def _override(con, key: str) -> Optional[tuple]:
+    try:
+        r = con.execute("SELECT model, thinking FROM agent_settings_s89 WHERE agent=?", [key]).fetchone()
+    except Exception:
+        return None
+    return (r[0], r[1]) if r and (r[0] or r[1]) else None
+
+
 def klass_of(agent: str, purpose: str = "") -> str:
     a = (agent or "").lower()
     if a in ("chat", "assistant", "router", "wording", "operator"):
@@ -104,13 +119,15 @@ def cli_path() -> str:
     return str(p) if p.exists() else (shutil.which("claude") or "claude")
 
 
-def signin(force: bool = False) -> dict:
+def signin(force: bool = False, probe: bool = True) -> dict:
     """{"ok", "method", "detail"}: ok only when Claude Code reports his claude.ai subscription. Cached for `signin_cache_s`. Never prints the account."""
     if signin_fn is not None:
         return signin_fn()
     with _LOCK:
-        if not force and _SIGNIN["val"] is not None and time.time() - _SIGNIN["at"] < settings()["signin_cache_s"]:
+        if not force and _SIGNIN["val"] is not None and (not probe or time.time() - _SIGNIN["at"] < settings()["signin_cache_s"]):
             return _SIGNIN["val"]
+        if not probe:                                               # a status page never waits on the Claude Code process: it shows the last answer, or "not checked yet"
+            return {"ok": False, "method": "unknown", "detail": "not checked yet"}
     env = {**os.environ, **child_env()}
     try:
         p = subprocess.run([cli_path(), "auth", "status"], capture_output=True, text=True, timeout=30, env=env)
@@ -177,10 +194,10 @@ def budget_of(klass: str, cfg: Optional[dict] = None) -> int:
     return int((cfg or settings())[f"budget_{klass}"])
 
 
-def state(con, now: Optional[datetime] = None) -> dict:
+def state(con, now: Optional[datetime] = None, probe: bool = True) -> dict:
     """For `GET /api/operator` and `pflab service status`: the sign-in, paused or running, today's tokens by purpose against their budgets."""
     now = now or datetime.now()
-    s = signin()
+    s = signin(probe=probe)
     cfg = settings()
     until = paused_until(con, now)
     return {"signed_in": bool(s["ok"]), "method": s["method"], "detail": s["detail"], "thinking": "paused" if until else ("running" if s["ok"] else "off"),
@@ -263,9 +280,9 @@ def agent_def(description: str, prompt: str, tools: Optional[List[str]] = None, 
 
 
 def options(*, system, model: str, effort: Optional[str], cwd: Optional[str], tools=None, allowed=None, disallowed=None, mcp=None, resume: Optional[str] = None,
-            max_turns: int = 8, can_use_tool=None, schema: Optional[dict] = None, agents=None, setting_sources=None, add_dirs=None, extra_env: Optional[dict] = None, skills=None):
+            max_turns: int = 8, can_use_tool=None, schema: Optional[dict] = None, agents=None, setting_sources=None, add_dirs=None, extra_env: Optional[dict] = None, skills=None, strict: bool = True):
     sdk = _sdk()
-    kw: Dict[str, Any] = dict(model=model, cwd=cwd, max_turns=max_turns, env={**child_env(), **(extra_env or {})}, cli_path=cli_path(), strict_mcp_config=True, setting_sources=setting_sources if setting_sources is not None else [])
+    kw: Dict[str, Any] = dict(model=model, cwd=cwd, max_turns=max_turns, env={**child_env(), **(extra_env or {})}, cli_path=cli_path(), strict_mcp_config=strict, setting_sources=setting_sources if setting_sources is not None else [])
     if system is not None:
         kw["system_prompt"] = system
     if effort in ("low", "medium", "high", "max"):
@@ -358,7 +375,8 @@ def _parse_reset(text: str, n: datetime) -> Optional[datetime]:
 def run(con, *, prompt: str, system: Optional[str] = None, model: str, effort: Optional[str] = None, klass: str, purpose: str, agent: str = "think", now: Optional[datetime] = None,
         caller_tools: Optional[List[dict]] = None, cwd: Optional[str] = None, tools=None, allowed=None, disallowed=None, mcp: Optional[dict] = None, resume: Optional[str] = None,
         max_turns: Optional[int] = None, can_use_tool=None, schema: Optional[dict] = None, agents=None, setting_sources=None, add_dirs=None, timeout: Optional[float] = None,
-        chat_id: Optional[int] = None, case_id: Optional[int] = None, extra_env: Optional[dict] = None, skills=None) -> Result:
+        chat_id: Optional[int] = None, case_id: Optional[int] = None, extra_env: Optional[dict] = None, skills=None,
+        agent_key: Optional[str] = None, explicit_model: bool = False, strict_mcp: bool = True) -> Result:
     """One session on his plan. Raises PlanUnusable (not his sign-in), PlanPaused (limit reached), PlanBudgetSpent (the class's day budget). Logs the row. `caller_tools`: the gateway's tool
     definitions, shown as stubs; the first call the model makes is captured and returned in `tool_calls` (the session is interrupted)."""
     now = now or datetime.now()
@@ -371,6 +389,13 @@ def run(con, *, prompt: str, system: Optional[str] = None, model: str, effort: O
         raise PlanPaused(f"thinking is paused until {until:%H:%M} (the plan's limit)", until)
     if tokens_today(con, now, klass) >= budget_of(klass, cfg):
         raise PlanBudgetSpent(f"today's {klass} token budget ({budget_of(klass, cfg):,}) is spent", datetime(now.year, now.month, now.day) + timedelta(days=1))
+    key = agent_key or agent_key_of(klass, purpose)
+    ov = _override(con, key) if key else None
+    if ov:                                                              # S89b: what he set on the Agents screen, read at the start of this run
+        if ov[0] and not explicit_model:
+            model = ov[0]
+        if ov[1]:
+            effort = ov[1]
     captured: List[dict] = []
     steps: List[str] = []
     mcp = dict(mcp or {})
@@ -390,7 +415,7 @@ def run(con, *, prompt: str, system: Optional[str] = None, model: str, effort: O
                 return await inner(name, inp, ctx)
             return sdk.PermissionResultDeny(message="not allowed here")
     opts = options(system=system, model=model, effort=effort, cwd=cwd or str(_scratch()), tools=[] if tools is None else tools, allowed=allow, disallowed=disallowed, mcp=mcp or None,
-                   resume=resume, max_turns=int(max_turns or cfg["max_turns_chat"]), can_use_tool=perm, schema=schema, agents=agents, setting_sources=setting_sources, add_dirs=add_dirs, extra_env=extra_env, skills=skills)
+                   resume=resume, max_turns=int(max_turns or cfg["max_turns_chat"]), can_use_tool=perm, schema=schema, agents=agents, setting_sources=setting_sources, add_dirs=add_dirs, extra_env=extra_env, skills=skills, strict=strict_mcp)
     t_out = float(timeout or cfg["session_timeout_s"])
     try:
         res = _run_async(_drive(opts, prompt, captured, steps), t_out)

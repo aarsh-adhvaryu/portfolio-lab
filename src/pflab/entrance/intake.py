@@ -103,7 +103,8 @@ def _ack_text(attachments, text: str) -> str:
     return "Looking into it…"
 
 
-def submit(rt_or_con, channel: str, text: str, *, chat_id: Optional[int] = None, attachments: Optional[List[dict]] = None, model: Optional[str] = None, thinking: Optional[str] = None,
+def submit(rt_or_con, channel: str, text: str, *, chat_id: Optional[int] = None, attachments: Optional[List[dict]] = None, model: Optional[str] = None, thinking: Optional[str] = None, road: Optional[str] = None,
+           
            reply: Optional[Callable] = None, context: str = "") -> Dict[str, Any]:
     """He sent something. -> {"chat_id", "msg_id" (the pending ANSWER's message: what the screen polls and `reply` talks about), "user_msg_id", "item_id"}. Returns within milliseconds: the
     message and a pending answer are in the chat, the item is queued, the workers are woken. `channel`: "laptop" | "telegram". `attachments`: [{"path","name","mime"}]. `model` / `thinking`: the
@@ -120,7 +121,9 @@ def submit(rt_or_con, channel: str, text: str, *, chat_id: Optional[int] = None,
     con, now = rt.cursor(), rt.clock()
     cid = chat_id if chat_id is not None and con.execute("SELECT 1 FROM chats WHERE chat_id=?", [chat_id]).fetchone() else store.latest_chat(con, now)
     prefs = store.get_prefs(con, cid)
-    pick = {"model_key": model or prefs["model_key"], "thinking": thinking or prefs["thinking"]}
+    if road not in (None, "", "auto", "quick", "full"):
+        raise ValueError("road must be auto, quick or full")
+    pick = {"model_key": model or prefs["model_key"], "thinking": thinking or prefs["thinking"], "road": road if road in ("quick", "full") else None}
     uid = store.add_message(con, cid, "me", q or "(a file)", channel=channel, kind="file" if atts and not q else "text", attachments=atts or None, now=now)
     ack = _ack_text(atts, q)
     aid = store.add_message(con, cid, "ai", ack, channel=channel, status="queued", kind="text", meta=ack, reply_to=uid, now=now, mode="chat")
@@ -548,6 +551,7 @@ def answer_item(rt, it: dict, progress: Callable[[str], None]) -> dict:
 
     # 2. the route
     r = router.route(sent_q, [a["name"] for a in atts if a["name"]] if usable else [], {"model_key": pick.get("model_key"), "thinking": pick.get("thinking")})
+    r["road"] = pick.get("road")                                   # S89: the road picker (auto / quick / full) goes to the operator's router
     model_id = _model_id(None if r["auto"] else r["model_key"], r["role"])
     gate = egress.load(con)
     snap = passes.snapshot_id(con, rt.pm_dir) if rt.pm_dir else "no-record"

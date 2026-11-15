@@ -352,6 +352,29 @@ def scope(con, day: date, *, market: Optional[str] = None, root=None, held_only:
                     put(x["market"], x["isin"], x["symbol"], x["why"], 0.0, False, base_day=x["base_day"], base_why=x["base_why"], ref=x["ref"])
         except Exception:
             pass
+        try:                                                                  # S89: his watchlist (names he does not own) and his real holdings are checked by the alarm lane too
+            from pflab.app import s89 as _s89
+            from pflab.agents.tradecheck import isin_of
+            _s89.ensure(con)
+            if market in (None, "IN"):
+                for (sym,) in con.execute("SELECT symbol FROM watch_s89 WHERE market='India'").fetchall():
+                    isin = isin_of(con, sym)
+                    if isin:
+                        put("IN", isin, sym, "his watchlist", 0.0, False)
+                for sym, isin, val in con.execute("SELECT symbol, isin, qty * last_price FROM mine_in_s89").fetchall():
+                    if isin:
+                        put("IN", isin, sym, "his real holding (read-only)", float(val or 0.0), False)
+            if market in (None, "US"):
+                for (sym,) in con.execute("SELECT symbol FROM watch_s89 WHERE market='US'").fetchall():
+                    isin = isin_of(con, sym)
+                    if isin:
+                        put("US", isin, sym, "his watchlist", 0.0, False)
+                for (sym,) in con.execute("SELECT ticker FROM mine_us_s89").fetchall():
+                    isin = isin_of(con, sym)
+                    if isin:
+                        put("US", isin, sym, "his real holding (read-only, entered by hand)", 0.0, False)
+        except Exception:
+            pass
     rows = []
     for e in out.values():
         if not e["held"]:
