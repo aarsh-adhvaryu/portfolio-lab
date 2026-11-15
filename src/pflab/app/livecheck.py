@@ -34,7 +34,7 @@ def checks(rt, con, now: datetime) -> List[tuple]:
                 "no snapshot" if snap is None else f"{str(snap)[11:16]}, {age:.0f} min old, refresh {m[0] if m else 'unknown'}"))
     try:
         from pflab.llm import claude_plan as cp
-        st = cp.state(con, now, probe=False)
+        st = cp.state(con, now)                                      # probes the sign-in (cached for 10 minutes): a job, never a page load
         out.append(("operator available", bool(st["signed_in"]) and st["thinking"] != "paused", f"signed in {st['signed_in']}, thinking {st['thinking']}"))
     except Exception as e:
         out.append(("operator available", False, f"{type(e).__name__}"))
