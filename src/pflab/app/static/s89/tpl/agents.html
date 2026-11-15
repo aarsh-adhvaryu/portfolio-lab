@@ -1,0 +1,78 @@
+<!-- built from design_s89/Agents.dc.html by tools/build_screens.py: do not edit by hand -->
+<div style="height: 100vh; min-height: 860px; background: #F6F5F1; color: #17181C; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.45; box-sizing: border-box; padding: 10px 28px 22px; display: flex; flex-direction: column; gap: 14px; overflow: auto">
+
+
+
+<section style="flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; background: #17181C; color: #FFFFFF; border-radius: 18px; padding: 14px 20px">
+<span style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 18px; font-weight: 600">Claude Code is the engine</span>
+<span style="color: #C9CBD1">Every agent below is a Claude Code session on your plan, with its own model, tools and skills. Maths runs in tools on the laptop, so the model never spends tokens on arithmetic.</span>
+<span style="margin-left: auto; display: inline-flex; align-items: center; gap: 8px; color: #C9CBD1"><svg width="8" height="8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="{{op.dot}}"></circle></svg>{{op.text}}</span>
+</section>
+
+<section style="flex: 1; min-height: 0; display: flex; flex-wrap: wrap; gap: 14px">
+
+<div style="flex: 2 1 700px; min-width: 0; min-height: 0; max-height: 100%; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; align-content: start">
+<sc-for list="{{agents}}" as="a" hint-placeholder-count="7">
+<div style="background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; align-items: flex-start; gap: 10px">
+<div style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 600; font-size: 15px">{{a.name}}</span><span style="font-size: 12.5px; color: #5B5E66">{{a.what}}</span></div>
+<span style="flex: none; padding: 3px 9px; border-radius: 999px; background: {{a.sb}}; color: {{a.sf}}; font-size: 11.5px; font-weight: 700">{{a.status}}</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 10px">
+<div style="flex: 1 1 130px; display: flex; flex-direction: column; gap: 4px"><label for="m-{{a.id}}" style="font-size: 12px; color: #5B5E66">Model</label>
+<select id="m-{{a.id}}" value="{{a.model}}" onChange="{{a.setModel}}" style="min-height: 38px; border: 1px solid #E6E4DD; border-radius: 10px; padding: 6px 10px; font: 500 13.5px Inter, sans-serif; background: #FBFAF7; color: #17181C">
+<option data-for="models" data-as="o" value="{{o.v}}">{{o.l}}</option>
+</select></div>
+<div style="flex: 1 1 110px; display: flex; flex-direction: column; gap: 4px"><label for="e-{{a.id}}" style="font-size: 12px; color: #5B5E66">Thinking</label>
+<select id="e-{{a.id}}" value="{{a.effort}}" onChange="{{a.setEffort}}" style="min-height: 38px; border: 1px solid #E6E4DD; border-radius: 10px; padding: 6px 10px; font: 500 13.5px Inter, sans-serif; background: #FBFAF7; color: #17181C">
+<option data-for="efforts" data-as="o" value="{{o.v}}">{{o.l}}</option>
+</select></div>
+</div>
+<span style="font-size: 12px; color: {{a.dfc}}">{{a.dflt}}</span>
+<div style="display: flex; flex-wrap: wrap; gap: 5px">
+<sc-for list="{{a.chips}}" as="c" hint-placeholder-count="5"><span style="padding: 3px 9px; border-radius: 999px; background: {{c.bg}}; color: {{c.fg}}; font-size: 11.5px; font-weight: 600">{{c.t}}</span></sc-for>
+</div>
+<div style="display: flex; justify-content: space-between; font-size: 12px; color: #5B5E66; border-top: 1px solid #F3F2EE; padding-top: 8px"><span>{{a.last}}</span><b style="color: #17181C">{{a.tok}}</b></div>
+</div>
+</sc-for>
+</div>
+
+<div style="flex: 1 1 340px; min-width: 0; min-height: 0; max-height: 100%; overflow: auto; display: flex; flex-direction: column; gap: 12px">
+<div style="background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px">
+<span style="font-weight: 600">Chip colours</span>
+<div style="display: flex; flex-wrap: wrap; gap: 6px"><span style="padding: 3px 9px; border-radius: 999px; background: #F3F2EE; color: #3E4149; font-size: 11.5px; font-weight: 600">tool on the laptop</span><span style="padding: 3px 9px; border-radius: 999px; background: #EAF0FE; color: #1D3FB8; font-size: 11.5px; font-weight: 600">MCP connection</span><span style="padding: 3px 9px; border-radius: 999px; background: #F4ECFB; color: #5B2A86; font-size: 11.5px; font-weight: 600">skill</span></div>
+</div>
+
+<div style="background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+<span style="font-weight: 600">MCP connections</span>
+<sc-for list="{{mcps}}" as="m" hint-placeholder-count="3">
+<div style="display: flex; align-items: center; gap: 10px">
+<div style="flex: 1"><div style="font-weight: 600; font-size: 13.5px">{{m.name}}</div><div style="font-size: 12px; color: #5B5E66">{{m.note}}</div></div>
+<button type="button" role="switch" aria-checked="{{m.on}}" aria-label="{{m.name}}" onClick="{{m.flip}}" style="flex: none; width: 46px; height: 28px; border-radius: 999px; border: 0; background: {{m.bg}}; position: relative; cursor: pointer"><span style="position: absolute; top: 3px; left: {{m.kx}}; width: 22px; height: 22px; border-radius: 999px; background: #FFFFFF"></span></button>
+</div>
+</sc-for>
+</div>
+
+<div style="background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; justify-content: space-between; align-items: baseline"><span style="font-weight: 600">Skills</span><span style="font-size: 12px; color: #5B5E66">in its operator folder</span></div>
+<sc-for list="{{skills}}" as="s" hint-placeholder-count="5">
+<div style="display: flex; justify-content: space-between; gap: 8px; font-size: 13px"><span style="font-weight: 500">{{s.n}}</span><span style="color: #5B5E66; text-align: right">{{s.u}}</span></div>
+</sc-for>
+<span style="font-size: 12px; color: #5B5E66; background: #F6F5F1; border-radius: 10px; padding: 8px 10px">Ask in chat "add a skill for …". It first checks whether an existing skill already does it, then writes the new one on a branch for your Yes.</span>
+</div>
+
+<div style="background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+<span style="font-weight: 600">Your Claude account's connectors</span>
+<span style="font-size: 12px; color: #5B5E66">Off for every agent since S88: together they added about 12k tokens to every call. Turn one on and it loads only for full answers.</span>
+<sc-for list="{{acct}}" as="m" hint-placeholder-count="3">
+<div style="display: flex; align-items: center; gap: 10px">
+<span style="flex: 1; font-weight: 500; font-size: 13.5px">{{m.name}}</span>
+<button type="button" role="switch" aria-checked="{{m.on}}" aria-label="{{m.name}}" onClick="{{m.flip}}" style="flex: none; width: 46px; height: 28px; border-radius: 999px; border: 0; background: {{m.bg}}; position: relative; cursor: pointer"><span style="position: absolute; top: 3px; left: {{m.kx}}; width: 22px; height: 22px; border-radius: 999px; background: #FFFFFF"></span></button>
+</div>
+</sc-for>
+</div>
+</div>
+
+</section>
+<div style="flex: none; font-size: 12px; color: #5B5E66">Opus uses your weekly limit faster than Sonnet or Haiku. A change here applies from the agent's next run; the alarm reader runs on the local model.</div>
+</div>

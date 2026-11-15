@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-ver="__VER__">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -12,17 +12,9 @@
 <link rel="stylesheet" href="/static/s89/s89.css">
 </head>
 <body>
-<div id="app">
-  <header class="top">
-    <a class="brand" href="#/home"><svg width="26" height="26" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="12" fill="none" stroke="#2F5BEA" stroke-width="2.5"></circle><circle cx="14" cy="14" r="4.5" fill="#2F5BEA"></circle></svg><span>Portfolio Lab</span></a>
-    <nav id="nav" aria-label="Main"></nav>
-    <div class="topr"><a id="pill" class="pill" href="#/usage"><svg width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5" id="pilldot" fill="#9A9DA4"></circle></svg><span id="pilltxt">Starting…</span></a>
-      <a class="gear" href="#/settings" aria-label="Settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="8" stroke-width="3" stroke-dasharray="3.14 3.14"></circle><circle cx="12" cy="12" r="5.5" stroke-width="2"></circle><circle cx="12" cy="12" r="2" stroke-width="2"></circle></svg></a></div>
-  </header>
-  <div id="offline" class="banner warn" hidden></div>
-  <main id="screen" tabindex="-1"><p class="muted">Loading…</p></main>
-  <nav id="bar" class="bar" aria-label="Phone"></nav>
-</div>
+<div id="offline" role="status" hidden><span class="t"></span></div>
+<main id="screen"><div style="padding: 28px; font: 14px Inter, sans-serif; color: #5B5E66">Loading…</div></main>
+<nav id="bar" aria-label="Phone"></nav>
 <script src="/static/s89/core.js"></script>
 <script src="/static/s89/home.js"></script>
 <script src="/static/s89/money.js"></script>

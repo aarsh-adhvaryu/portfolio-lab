@@ -1,0 +1,42 @@
+<!-- built from design_s89/Settings.dc.html by tools/build_screens.py: do not edit by hand -->
+<div style="min-height: 100vh; background: #F6F5F1; color: #17181C; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.45">
+<div style="max-width: 1360px; margin: 0 auto; padding: 24px 32px 48px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+
+
+
+<section style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+<div style="flex: 1 1 380px; min-width: 0; background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 20px; padding: 22px 24px; display: flex; flex-direction: column; gap: 14px">
+<span style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 18px; font-weight: 600">Account</span><sc-for list="{{acct}}" as="a"><div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 0; border-bottom: 1px solid #F3F2EE"><svg width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="{{a.fill}}" stroke="{{a.ring}}" stroke-width="2"></circle></svg><div style="flex: 1 1 200px"><div style="font-weight: 600">{{a.name}}</div><div style="font-size: 12.5px; color: #5B5E66">{{a.sub}}</div></div><sc-if value="{{a.btn}}"><button type="button" onClick="{{a.go}}" style="padding: 8px 14px; border-radius: 999px; border: 1px solid #C9C6BD; background: #FFFFFF; color: #17181C; font: 500 13px Inter, sans-serif; min-height: 36px; cursor: pointer; text-decoration: none">{{a.btn}}</button></sc-if><sc-if value="{{a.link}}"><a href="{{a.href}}" style="padding: 8px 14px; border-radius: 999px; border: 1px solid #C9C6BD; background: #FFFFFF; color: #17181C; font: 500 13px Inter, sans-serif; min-height: 36px; cursor: pointer; text-decoration: none">{{a.link}}</a></sc-if></div></sc-for><div style="display: flex; flex-direction: column; gap: 8px; padding-top: 4px">
+<div style="display: flex; justify-content: space-between; align-items: baseline"><span style="color: #3E4149">Tokens today</span><span><b style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 20px">{{tok.used}}</b> <span style="color: #5B5E66">of {{tok.budget}}</span></span></div>
+<div style="height: 8px; border-radius: 999px; background: #EFEDE6"><div style="height: 8px; width: {{tok.w}}; border-radius: 999px; background: #2F5BEA"></div></div>
+</div>
+</div>
+
+<div style="flex: 1.4 1 480px; min-width: 0; background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 20px; padding: 22px 24px; display: flex; flex-direction: column; gap: 14px">
+<span style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 18px; font-weight: 600">Settings</span><sc-for list="{{rows}}" as="r"><div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; padding: 10px 0; border-bottom: 1px solid #F3F2EE"><sc-if value="{{r.head}}"><span style="flex: 1 1 100%; font-size: 12px; font-weight: 700; letter-spacing: .04em; color: #5B5E66; padding-top: 6px">{{r.head}}</span></sc-if><div style="flex: 1 1 220px"><div style="font-weight: 600">{{r.name}}</div><div style="font-size: 12.5px; color: #5B5E66">{{r.sub}}</div></div><sc-if value="{{r.pills}}"><div role="radiogroup" aria-label="{{r.name}}" style="display: flex; flex-wrap: wrap; gap: 6px"><sc-for list="{{r.pills}}" as="p"><button type="button" role="radio" aria-checked="{{p.on}}" onClick="{{p.pick}}" style="padding: 6px 12px; border-radius: 999px; border: 1px solid {{p.bd}}; background: {{p.bg}}; color: {{p.fg}}; font: {{p.w}} 12.5px Inter, sans-serif; cursor: pointer">{{p.label}}</button></sc-for></div></sc-if><sc-if value="{{r.sw}}"><button type="button" role="switch" aria-checked="{{r.on}}" aria-label="{{r.name}}" onClick="{{r.flip}}" style="flex: none; width: 46px; height: 28px; border-radius: 999px; border: 0; background: {{r.bg}}; position: relative; cursor: pointer"><span style="position: absolute; left: {{r.kx}}; top: 3px; width: 22px; height: 22px; border-radius: 999px; background: #FFFFFF"></span></button></sc-if><sc-if value="{{r.input}}"><input aria-label="{{r.name}}" type="{{r.input}}" value="{{r.val}}" placeholder="{{r.ph}}" onChange="{{r.set}}" onKeydown="{{r.key}}" style="flex: 1 1 200px; min-width: 0; border: 1px solid #E6E4DD; border-radius: 999px; padding: 10px 14px; font: 400 13px Inter, sans-serif; background: #FBFAF7"><button type="button" onClick="{{r.save}}" style="padding: 8px 14px; border-radius: 999px; border: 0; background: #17181C; color: #FFFFFF; font: 600 13px Inter, sans-serif; min-height: 36px; cursor: pointer">Save</button></sc-if><sc-if value="{{r.btn}}"><button type="button" onClick="{{r.go}}" style="padding: 8px 14px; border-radius: 999px; border: 1px solid #C9C6BD; background: #FFFFFF; color: #17181C; font: 500 13px Inter, sans-serif; min-height: 36px; cursor: pointer; text-decoration: none">{{r.btn}}</button></sc-if></div></sc-for>
+<div style="display: flex; flex-direction: column; gap: 8px; padding-top: 4px">
+<span style="font-weight: 600">Standing instructions</span><sc-for list="{{rules}}" as="r"><div style="display: flex; align-items: center; gap: 10px; background: #F6F5F1; border-radius: 12px; padding: 10px 12px"><div style="flex: 1"><div style="font-weight: 600; font-size: 13px">{{r.name}}</div><div style="font-size: 12px; color: #5B5E66">{{r.sub}}</div></div><sc-if value="{{r.undo}}"><button type="button" onClick="{{r.undo}}" style="padding: 8px 14px; border-radius: 999px; border: 1px solid #C9C6BD; background: #FFFFFF; color: #17181C; font: 500 13px Inter, sans-serif; min-height: 36px">Undo</button></sc-if></div></sc-for>
+</div>
+</div>
+
+<div style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+<div style="background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 20px; padding: 22px 24px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; justify-content: space-between; align-items: baseline"><span style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 18px; font-weight: 600">First-week check</span><span style="color: #5B5E66; font-size: 13px">{{wk.day}}</span></div>
+<div style="height: 8px; border-radius: 999px; background: #EFEDE6"><div style="height: 8px; width: {{wk.w}}; border-radius: 999px; background: #2F5BEA"></div></div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{checks}}" as="c" hint-placeholder-count="10">
+<span style="padding: 5px 10px; border-radius: 999px; background: {{c.bg}}; color: {{c.tx}}; font-size: 12px; font-weight: 600">{{c.t}}</span>
+</sc-for>
+</div>
+<span style="font-size: 12.5px; color: #5B5E66">{{wk.note}}</span>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 20px; padding: 22px 24px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; justify-content: space-between; align-items: baseline"><span style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 18px; font-weight: 600">Problems</span><span style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 22px; font-weight: 600">{{pr.n}}</span></div>
+<sc-for list="{{pr.rows}}" as="p"><div style="display: flex; align-items: center; gap: 10px; background: #FDF0E6; border-radius: 12px; padding: 10px 12px"><div style="flex: 1"><div style="font-weight: 600; font-size: 13px">{{p.t}}</div><div style="font-size: 12px; color: #5B5E66">{{p.s}}</div></div></div></sc-for>
+<button type="button" onClick="{{pr.copy}}" style="padding: 8px 14px; border-radius: 999px; border: 1px solid #C9C6BD; background: #FFFFFF; color: #17181C; font: 500 13px Inter, sans-serif; min-height: 36px; align-self: flex-start">{{pr.copyLabel}}</button>
+</div>
+</div>
+</section>
+
+</div>
+</div>

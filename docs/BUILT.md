@@ -410,15 +410,23 @@ Tools added in S79 / S79b: `system_allocation`, `propose_allocation`, `debate`, 
 Session notes, test-finding files and one-session scripts (docs for s79-s86b, `tools/` real-path and drill scripts nothing imports) were taken out of the repo on 2026-11-15; they stay in git history up to tag `v2026.11.15.1`. Old session branches were deleted (all merged). `README.md` and `CLAUDE.md` describe the system as it is now.
 
 ## S89 (2026-11-15, `pm/s89-screens`; tables created on first use): the redesigned screens
-- Front: `src/pflab/app/static/s89/` (`index.html`, `core.js` router, helpers, offline cache and live refresh; one module per screen: `home`, `money`, `manage`, `book`, `lab`, `graph`, `chat`, `agents`, `usage`, `settings`; `s89.css`; `manifest.webmanifest`, `sw.js`). Served at `/`; the old front at `/classic`.
+- Front: `src/pflab/app/static/s89/` (`index.html`, `core.js` router, helpers, offline cache and live refresh; one module per screen: `home`, `money`, `manage`, `book`, `lab`, `graph`, `chat`, `agents`, `usage`, `settings`; `s89.css`; `manifest.webmanifest`, `sw.js`). Served at `/` (since S90 the only front).
 - Endpoints (`app/s89.py`): `GET /api/home`, `GET /api/mine?tab=all|in|us`, `POST /api/mine/us` (add / set / remove, validated), `GET|POST /api/mine/watch` (cap 25), `POST /api/lab/pair`, `GET|POST /api/agents`; `POST /api/assistant` gains `road` (auto, quick, full). Tables: `mine_in_s89`, `mine_us_s89`, `watch_s89`, `mine_meta_s89`, `agent_settings_s89`.
 - Chat actions: `oper/actions.py` (the tool `propose_action`, a Yes/No card first; the quick road has none).
 - Alarm lane: `think/watch.scope` also reads `watch_s89` and `mine_in_s89` (India).
-- Tests: `tests/test_s89_screens.py` (endpoints, the Yes rule, a real-browser smoke of every screen on an empty store and on a fixture store, the 390 px phone layout); `tests/_edge.py` sends root URLs of the older UI tests to `/classic`.
+- Tests: `tests/test_s89_screens.py` (endpoints, the Yes rule, a real-browser smoke of every screen on an empty store and on a fixture store, the 390 px phone layout).
 
 ## S89b (2026-11-15, `pm/s89b-screens`; tables created on first use: `plans_s89`, `plan_steps_s89`): the screens finished
 - `app/s89b.py`: `POST /api/lab/simulate`, `GET /api/lab/presets`, `GET /api/lab/forecast`, `GET /api/book/reliability`, `GET /api/stock/{symbol}` (all code, 0 tokens). `oper/plans.py` with `GET /api/plans` and `POST /api/plans/{id}/start|cancel`; the operator tool `propose_plan`; job `operator_plans` resumes a paused plan.
 - `llm/claude_plan.run` reads the agent's own model and thinking (`agent_settings_s89`) at the start of each run (`agent_key`, `explicit_model`); the full road loads Kite (read-only snapshot tool), NSE (switch AND address) and his account connectors (switch only) per the switches, otherwise the strict MCP list.
 - Front: `lab.js` (Pairs, Simulate, Forecast), `stock.js`, reliability on `book.js`, plan cards and running plans on `home.js`. Screenshots of every screen on a fixture store: `docs/s89_shots/`.
 - Tests: `tests/test_s89b_screens.py` (the browser sweep also fails on any 4xx/5xx the server answered).
+
+## S90 (2026-11-15, `pm/s90-one-ui`): one UI, built from the designs
+- The old front is deleted (`static/app.js`, `ui.js`, `world.js`, `redesign.js`, their CSS, the old `index.html`); `GET /classic` redirects to `/`. The browser tests that drove the old DOM were removed with it (`test_s67_graph3d_ui`, `test_s67_world_ui`, `test_s69_ui`, `test_s75_ui`, `test_s78_screens`, and one test each in `test_s78_newchat`, `test_s80_screens`; `test_s68_ui` keeps only the `server` fixture).
+- Screens are the design's markup: `tools/build_screens.py` turns `design_s89/<Screen>.dc.html` into `static/s89/tpl/<screen>.html` (sample figures replaced by `{{holes}}`, static buttons by handlers; it stops if the design changes under it). `core.js` renders a template with values (`sc-for`, `sc-if`, `on*` handlers) and adds the one header.
+- New endpoints: `GET /api/usage/plan` (tokens by day, road and agent; what they bought), `GET /api/week` (the first-week card), `GET /api/kite/status`; `GET /api/agents` gains `skills`.
+- Settings carries every old switch plus: `chat_road` (the chat's default road, also for Telegram, in `entrance/intake.submit`) and `operator` (`budget_*`, `build_on`, `nse_mcp_url`; validated in `app/settings.py`; `llm/claude_plan.settings` reads them over `[operator]`).
+- Kite login: a second click while a login waits returns the same URL (one flow, one listener); a callback from an older tab no longer ends the wait (`tools/kite_login.wait_for_token`). Home's "Log in" starts the login (`#/kite`).
+- Tests: `tests/test_s90_one_ui.py`; `test_s89_screens` scans the templates for the design's sample figures.
 

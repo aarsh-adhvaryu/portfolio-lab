@@ -1,56 +1,85 @@
-/* S89b Lab: Pairs, Simulate and Forecast. All three are worked out by code from stored data ("worked out by the Lab tools, 0 tokens"); a preset the code does not have is a disabled button that says "not built yet". */
+/* Lab: the design's Lab screen. Pairs (the largest holdings two by two, cointegration by code), Simulate (the block bootstrap of the stored history: normal, the
+   March 2020 episode; "Rates up 1%" has no preset in code and says so) and Forecast (the stored forecast fan and how often past bands caught the outcome). All code, 0 tokens. */
 S89.register('lab', async (el) => {
-  const { esc, rs, api, post, lines, empty } = S89;
-  let tab = sessionStorage.getItem('s89:labTab') || 'pairs', res = null, err = '', sim = null, simErr = '', busy = false;
-  const o = { scenario: 'normal', horizon: 60, basis: 'paper', market: 'IN' };
-  const VERDICT = { tied: ['ok', 'Tied: they tend to come back together'], loose: ['mute', 'Loose: some link, not reliable'], 'not tied': ['warn', 'Not tied: no stable link'] };
-  const presets = await api('/api/lab/presets').catch(() => ({ scenarios: [], horizons: [20, 60, 250] }));
-  const fc = await api('/api/lab/forecast?market=' + o.market).catch(() => null);
-  function pairs() {
-    const r = res;
-    const out = r ? `<div class="row"><span class="chip ${VERDICT[r.verdict][0]}">${esc(VERDICT[r.verdict][1])}</span><span class="small muted">${esc(r.label)} · ${r.days} shared days</span></div>
-      ${lines([r.series_a, r.series_b], 760, 220, ['#2F5BEA', '#D9620F'])}<div class="row small"><span><span class="dot" style="background:#2F5BEA"></span>${esc(r.a)}</span><span><span class="dot" style="background:#D9620F"></span>${esc(r.b)}</span><span class="muted">both set to 100 at the start</span></div>
-      <div class="row"><div class="card"><span class="muted small">Gap today</span><b class="big">${r.gap_z}σ</b></div><div class="card"><span class="muted small">p-value</span><b class="big">${r.p_value}</b></div><div class="card"><span class="muted small">Hedge ratio</span><b class="big">${r.hedge_ratio}</b></div>
-      <div class="card"><span class="muted small">Half-life</span><b class="big">${r.half_life_days == null ? 'none' : r.half_life_days + ' d'}</b></div><div class="card"><span class="muted small">Correlation</span><b class="big">${r.correlation}</b></div></div>
-      <span class="small muted">${esc(r.note)}. A pair is a description of the past; a trading rule from it is a registered study first.</span>` : empty('Pick two names and press Study it.');
-    return `<form class="row" id="pairForm"><label>First name<input name="a" required maxlength="20" style="width:130px" autocapitalize="characters"></label><label>Second name<input name="b" required maxlength="20" style="width:130px" autocapitalize="characters"></label><button class="btn" type="submit">Study it</button></form>${err ? `<div class="err">${esc(err)}</div>` : ''}${out}`;
-  }
-  function simulate() {
-    const sc = (presets.scenarios || []).map((s) => `<button type="button" data-sc="${esc(s.key)}" class="${o.scenario === s.key ? 'on' : ''}" ${s.enabled ? '' : 'disabled'} title="${esc(s.why)}">${esc(s.label)}${s.enabled ? '' : ' · not built yet'}</button>`).join('');
-    const hz = (presets.horizons || []).map((h) => `<button type="button" data-hz="${h}" class="${o.horizon === h ? 'on' : ''}">${h} sessions</button>`).join('');
-    const bs = [['mine', 'Your money today'], ['paper', "Claude's book"]].map(([k, l]) => `<button type="button" data-bs="${k}" class="${o.basis === k ? 'on' : ''}">${l}</button>`).join('');
-    let out = busy ? '<div class="muted">Working it out…</div>' : empty('Choose a scenario, a horizon and whose money, then press Run. They are never added together.');
-    if (simErr) out = `<div class="err">${esc(simErr)}</div>`;
-    if (sim) {
-      out = `<div class="row"><span class="chip">${esc(sim.label)}</span><span class="small muted">${sim.paths_run.toLocaleString('en-IN')} paths of ${sim.horizon} sessions · ${esc(sim.worked_out)}</span></div>
-        ${lines(sim.paths || [], 760, 220, ['#9CB3F2'])}
-        <div class="row"><div class="card"><span class="muted small">Worst 1 in 20</span><b class="big">${rs(sim.worst_1_in_20)}</b></div><div class="card"><span class="muted small">Middle</span><b class="big">${rs(sim.middle)}</b></div><div class="card"><span class="muted small">Best 1 in 20</span><b class="big">${rs(sim.best_1_in_20)}</b></div>
-          <div class="card"><span class="muted small">Chance of a 10% fall on the way</span><b class="big">${(sim.p_fall10 * 100).toFixed(0)}%</b><span class="small muted">± ${(sim.p_fall10_se * 100).toFixed(1)} points</span></div></div>
-        <span class="small muted">Starting from ${rs(sim.start_inr)}. ${esc(sim.note || '')} ${esc(sim.caveat)}.</span>`;
+  const { rs, api, post, render } = S89;
+  const st = { tab: sessionStorage.getItem('s89:labTab') || 'pairs', pair: 0, sc: 'normal', hz: 60, subj: null };
+  let pairs = null, sim = null, simErr = '', fc = null;
+  const K = { tied: ['tied', 'Tied together', '#EAF0FE', '#1D3FB8'], loose: ['loosely tied', 'Loosely tied', '#F3F2EE', '#3E4149'], 'not tied': ['not tied', 'Not tied', '#FDF0E6', '#9A4209'] };
+  const pill = (on) => ({ bg: on ? '#17181C' : '#FFFFFF', fg: on ? '#FFFFFF' : '#3E4149', bd: on ? '#17181C' : '#E6E4DD' });
+  const mk = (list, cur, set) => list.map(([k, l]) => Object.assign(pill(k === cur), { label: l, on: k === cur, pick: () => { set(k); draw(); } }));
+  function pathOf(a, x0, x1, lo, hi, h, pad) { return a.map((v, i) => (i ? 'L' : 'M') + (x0 + (a.length > 1 ? i / (a.length - 1) : 0) * (x1 - x0)).toFixed(1) + ' ' + (pad + (1 - (v - lo) / ((hi - lo) || 1)) * (h - 2 * pad)).toFixed(1)).join(' ') + ' '; }
+  async function ask(text) { try { await post('/api/assistant', { text, road: 'full' }); location.hash = '#/chat'; } catch (e) { alert(e.message); } }
+  const pc = (x) => (x >= 1 ? '+' : '−') + Math.abs((x - 1) * 100).toFixed(1) + '%';
+
+  async function load() {
+    if (st.tab === 'pairs' && !pairs) pairs = (await api('/api/lab/pairs')).pairs || [];
+    if (st.tab === 'sim' && !sim && !simErr) {
+      const basis = (await api('/api/mine?tab=in')).rows.length ? 'mine' : 'paper';
+      try { sim = await post('/api/lab/simulate', { scenario: st.sc, horizon: st.hz, basis }); simErr = ''; } catch (e) { sim = null; simErr = e.message; }
     }
-    return `<div class="col"><div class="row"><span class="small muted">Scenario</span><div class="tabs" id="scs">${sc}</div></div><div class="row"><span class="small muted">Horizon</span><div class="tabs" id="hzs">${hz}</div><span class="small muted">Whose money</span><div class="tabs" id="bss">${bs}</div><button class="btn" id="runSim">Run</button></div>${out}</div>`;
+    if (st.tab === 'fc' && !fc) fc = await api('/api/lab/forecast?market=IN' + (st.subj ? '&subject=' + encodeURIComponent(st.subj) : ''));
   }
-  function forecast() {
-    if (!fc) return empty('The forecast did not answer.');
-    if (fc.empty) return empty(fc.empty);
-    const f = fc.fan || [];
-    const pts = ['q5', 'q25', 'q50', 'q75', 'q95'].map((k) => f.map((x) => x[k]));
-    const cov = (fc.coverage || []).map((c) => `<div class="row small"><b>${c.h} session${c.h > 1 ? 's' : ''}</b><span class="grow">${esc(c.text)}</span><span class="chip ${c.judge ? 'ok' : 'mute'}">${c.judge ? 'judged' : 'too few'}</span></div>`).join('') || '<span class="small muted">Nothing scored yet.</span>';
-    return `<div class="row"><span class="chip mute">${esc(fc.subject || '')}</span><span class="small muted">${esc(fc.forecaster || '')} forecaster · made ${esc(fc.as_of)} · ${esc(fc.worked_out)}</span></div>
-      ${f.length > 1 ? lines(pts, 760, 220, ['#C9D4F7', '#9CB3F2', '#2F5BEA', '#9CB3F2', '#C9D4F7']) : '<div class="small muted">Only the 1-session band is stored so far, so there is no fan to draw yet.</div>'}
-      <div class="row small">${f.map((x) => `<span>${x.h}d: ${S89.num(x.q5, 0)} to ${S89.num(x.q95, 0)}</span>`).join('')}</div><h2>How often the band was right</h2>${cov}`;
+  function pairVals() {
+    const ok = (pairs || []).filter((p) => !p.error);
+    if (!ok.length) return { list: [], pair: { a: '', b: '', tagLong: 'No pair yet', cb: '#F3F2EE', cf: '#3E4149', verdict: (pairs || []).length ? (pairs[0].error || 'Not enough shared history.') : 'Pairs need at least two stocks with stored prices: your Kite holdings, or Claude\'s book.', pa: '', pb: '', pz: '', zy: '75', label1: '', label2: '', stats: [], method: '', months: [] } };
+    if (st.pair >= ok.length) st.pair = 0;
+    const list = ok.map((p, i) => { const on = i === st.pair, k = K[p.verdict]; return { a: p.a, b: p.b, pv: p.p_value.toFixed(3), tag: k[0], cb: k[2], cf: k[3], on, bg: on ? '#F3F6FE' : '#FFFFFF', bd: on ? '#B9C8FB' : '#EFEDE6', pick: () => { st.pair = i; draw(); } }; });
+    const q = ok[st.pair], k = K[q.verdict], A = q.series_a, B = q.series_b, all = A.concat(B), lo = Math.min(...all), hi = Math.max(...all);
+    const z = Math.max(-3.5, Math.min(3.5, q.gap_z));
+    const verdict = q.verdict === 'tied' ? `When the gap between them opens, it tends to close. Half of any gap has closed in about ${q.half_life_days} sessions. Right now the gap is ${q.gap_z.toFixed(1)} standard deviations` + (Math.abs(q.gap_z) >= 2 ? ', outside the usual band.' : ', inside the usual band.')
+      : q.verdict === 'loose' ? `There is some pull back, but the test is not convincing (p-value ${q.p_value.toFixed(3)}). Treat a gap as a hint, not a signal.`
+      : `They often move the same way on the same day (correlation ${q.correlation.toFixed(2)}), but the gap between them wanders and does not come back. Moving together day to day is not the same as being tied.`;
+    const d = q.dates || [], months = d.length ? [0, 1, 2, 3].map((i) => new Date(d[Math.round(i * (d.length - 1) / 3)]).toLocaleDateString('en-IN', { month: 'short', year: i === 0 || i === 3 ? 'numeric' : undefined })) : [];
+    return { list, pair: { a: q.a, b: q.b, tagLong: k[1], cb: k[2], cf: k[3], verdict, pa: pathOf(A, 0, 900, lo, hi, 190, 8), pb: pathOf(B, 0, 900, lo, hi, 190, 8), pz: `M0 75 L900 ${(75 - z / 3.5 * 70).toFixed(1)}`, zy: (75 - z / 3.5 * 70).toFixed(1),
+      days: q.days, backtest: () => ask(`Backtest trading the gap between ${q.a} and ${q.b}: a registered study, against the index after tax.`),
+      save: () => ask(`Remember for the graph: ${q.a} and ${q.b} are ${k[1].toLowerCase()} (p-value ${q.p_value.toFixed(3)}, half-life ${q.half_life_days == null ? 'none' : q.half_life_days + ' sessions'}, ${q.days} sessions to ${(q.dates || []).slice(-1)[0] || 'today'}).`),
+      label1: `${q.a} and ${q.b} over ${q.days} sessions, both starting at 100`, label2: `The gap between ${q.a} and ${q.b} now: ${q.gap_z.toFixed(1)} standard deviations`, months,
+      method: `Engle–Granger test on ${q.days} daily closes, hedge ratio by least squares, half-life from the gap's pull back to zero. ${q.note}.`,
+      stats: [{ v: q.p_value.toFixed(3), l: 'test p-value (under 0.05 = tied)' }, { v: q.gap_z.toFixed(1) + 'σ', l: 'gap now' }, { v: q.half_life_days == null ? 'none' : q.half_life_days + ' sessions', l: 'half-life of a gap' },
+        { v: q.hedge_ratio.toFixed(2), l: 'hedge ratio' }, { v: q.correlation.toFixed(2), l: 'correlation of daily moves' }, { v: String(q.days), l: 'daily closes used' }] } };
   }
-  function draw() {
-    const body = tab === 'pairs' ? pairs() : tab === 'sim' ? simulate() : forecast();
-    el.innerHTML = `<div class="row"><h2 class="grow" style="margin:0">Lab</h2><div class="tabs">${[['pairs', 'Pairs'], ['sim', 'Simulate'], ['fc', 'Forecast']].map(([k, l]) => `<button data-t="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div></div><div class="card">${body}<span class="small muted">Worked out by the Lab tools, 0 tokens.</span></div>`;
-    el.querySelectorAll('[data-t]').forEach((b) => { b.onclick = () => { tab = b.dataset.t; sessionStorage.setItem('s89:labTab', tab); draw(); }; });
-    const f = document.getElementById('pairForm');
-    if (f) f.onsubmit = async (ev) => { ev.preventDefault(); const v = Object.fromEntries(new FormData(f)); err = ''; try { res = await post('/api/lab/pair', v); } catch (e) { err = e.message; res = null; } draw(); };
-    el.querySelectorAll('[data-sc]').forEach((b) => { b.onclick = () => { o.scenario = b.dataset.sc; draw(); }; });
-    el.querySelectorAll('[data-hz]').forEach((b) => { b.onclick = () => { o.horizon = Number(b.dataset.hz); draw(); }; });
-    el.querySelectorAll('[data-bs]').forEach((b) => { b.onclick = () => { o.basis = b.dataset.bs; draw(); }; });
-    const r = document.getElementById('runSim');
-    if (r) r.onclick = async () => { busy = true; simErr = ''; sim = null; draw(); try { sim = await post('/api/lab/simulate', o); } catch (e) { simErr = e.message; } busy = false; draw(); };
+  function simVals() {
+    if (!sim) return { paths: [], band: '', med: '', y0: '0', y90: '0', end: st.hz + ' sessions', note: simErr || 'Working it out…', label: '', title: 'Possible futures', stats: [] };
+    const P = sim.mult_paths, b = sim.band, flat = P.flat().concat(b.p10, b.p90), lo = Math.min(0.86, Math.min(...b.p10) * 0.97), hi = Math.max(...flat) * 1.01;
+    const y = (v) => (6 + (1 - (v - lo) / (hi - lo)) * 348).toFixed(1);
+    const top = pathOf(b.p90, 0, 900, lo, hi, 360, 6), bot = pathOf(b.p10.slice().reverse(), 900, 0, lo, hi, 360, 6).replace(/^M/, 'L');
+    const whose = sim.basis === 'mine' ? 'Your money' : "Claude's book";
+    return { paths: P.map((a) => ({ d: pathOf(a.map((x) => Math.max(lo, Math.min(hi, x))), 0, 900, lo, hi, 360, 6) })), band: top + bot + 'Z', med: pathOf(b.p50, 0, 900, lo, hi, 360, 6), y0: y(1), y90: y(0.9),
+      end: sim.horizon === 250 ? '1 year' : sim.horizon + ' sessions', title: `${whose}, ${sim.paths_run.toLocaleString('en-IN')} possible futures`,
+      note: (sim.scenario === 'covid' ? 'The days of the March 2020 fall, resampled. ' : 'Ordinary ups and downs, resampled from the stored history. ') + (sim.note || '') + ' ' + sim.caveat + '.',
+      label: `${sim.paths_run} simulated paths of ${whose.toLowerCase()} over ${sim.horizon} sessions`,
+      stats: [{ v: Math.round(sim.p_fall10 * 100) + '%', l: 'chance of a 10% fall at some point', c: sim.p_fall10 > 0.25 ? '#9A4209' : '#17181C' },
+        { v: pc(sim.middle / sim.start_inr), l: 'middle outcome · ' + rs(sim.middle), c: '#17181C' }, { v: pc(sim.worst_1_in_20 / sim.start_inr), l: 'worst 1 in 20 · ' + rs(sim.worst_1_in_20), c: '#9A4209' },
+        { v: pc(sim.best_1_in_20 / sim.start_inr), l: 'best 1 in 20 · ' + rs(sim.best_1_in_20), c: '#1D3FB8' }] };
   }
-  draw();
+  function fcVals() {
+    const none = { hist: '', mid: '', b80: '', b50: '', xNow: '720', range80: '—', range50: '—', label: '', cover: [], coverNote: '', from: '', to: '' };
+    if (!fc || fc.empty || !fc.fan.length) return Object.assign(none, { coverNote: (fc && fc.empty) || 'No forecast yet.' });
+    const H = fc.hist.map((x) => x[1]), last = H.length ? H[H.length - 1] : fc.base, xNow = 900 * 80 / 100, maxH = Math.max(...fc.fan.map((f) => f.h));
+    const at = (k) => [last].concat(fc.fan.map((f) => f[k] || last));
+    const u80 = at('q90'), l80 = at('q10'), u50 = at('q75'), l50 = at('q25'), mid = at('q50');
+    const lo = Math.min(...H.concat(l80)) * 0.99, hi = Math.max(...H.concat(u80)) * 1.01;
+    const band = (u, l) => pathOf(u, xNow, 900, lo, hi, 340, 8) + pathOf(l.slice().reverse(), 900, xNow, lo, hi, 340, 8).replace(/^M/, 'L') + 'Z';
+    const fm = (x) => Math.round(x).toLocaleString('en-IN');
+    const cv = (fc.coverage || []).find((c) => c.h === maxH) || (fc.coverage || [])[0];
+    return { hist: pathOf(H, 0, xNow, lo, hi, 340, 8), mid: pathOf(mid, xNow, 900, lo, hi, 340, 8), b80: band(u80, l80), b50: band(u50, l50), xNow: xNow.toFixed(1),
+      range80: fm(l80[l80.length - 1]) + ' – ' + fm(u80[u80.length - 1]), range50: fm(l50[l50.length - 1]) + ' and ' + fm(u50[u50.length - 1]),
+      label: `${fc.subject}: last ${H.length} sessions and the forecast fan for the next ${maxH}`, from: H.length + ' sessions ago', to: '+' + maxH + ' session' + (maxH > 1 ? 's' : ''),
+      cover: cv ? [{ l: '8-in-10 band caught the outcome', v: cv.share == null ? '—' : Math.round(cv.share * 100) + '%', t: '80%' }, { l: '9-in-10 band caught the outcome', v: cv.share90 == null ? '—' : Math.round(cv.share90 * 100) + '%', t: '90%' }] : [],
+      coverNote: cv ? (cv.judge ? `From ${cv.n} scored forecasts at ${cv.h} session${cv.h > 1 ? 's' : ''}. Below the black tick means the fans are a little too narrow.` : `${cv.n} scored so far, needs 20 to judge.`) : 'None scored yet.' };
+  }
+  async function draw() {
+    await load();
+    const p = st.tab === 'pairs' ? pairVals() : { list: [], pair: pairVals().pair };
+    const subjects = (fc && fc.subjects) || [];
+    await render(el, 'lab', {
+      tabs: mk([['pairs', 'Pairs'], ['sim', 'Simulate'], ['fc', 'Forecast']], st.tab, (k) => { st.tab = k; sessionStorage.setItem('s89:labTab', k); }),
+      tabNote: { pairs: 'Which of the stocks held are tied together, so a gap between them tends to close.', sim: 'What could happen to the money, resampled from the stored history.', fc: 'Where prices could be, and how often past fans were right.' }[st.tab],
+      isPairs: st.tab === 'pairs', isSim: st.tab === 'sim', isFc: st.tab === 'fc', simStart: sim ? rs(sim.start_inr) : '—',
+      pairs: p.list, pair: p.pair,
+      scen: mk([['normal', 'Normal times'], ['covid', 'March 2020 again'], ['rates', 'Rates up 1% · not built yet']], st.sc, (k) => { st.sc = k; sim = null; simErr = ''; }),
+      hor: mk([[20, '20 sessions'], [60, '60 sessions'], [250, '1 year']], st.hz, (k) => { st.hz = k; sim = null; simErr = ''; }), sim: simVals(),
+      inst: mk(subjects.map((s) => [s, s === 'US_SP500' ? 'S&P 500' : s]), (fc && fc.subject) || '', (k) => { st.subj = k; fc = null; }), fc: fcVals() });
+  }
+  await draw();
 });

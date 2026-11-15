@@ -33,7 +33,7 @@ log = logging.getLogger("pflab.claude_plan")
 CONFIG = Path(__file__).resolve().parents[3] / "configs" / "core.toml"
 CLASSES = ("desk", "cases", "chat", "build", "chat_light")        # "chat" is the FULL operator road; "chat_light" the quick road (S88)
 DEFAULTS = {"enabled": True, "budget_desk": 250000, "budget_cases": 350000, "budget_chat": 600000, "budget_chat_light": 400000, "budget_build": 800000, "max_turns_desk": 12, "max_turns_chat": 14, "max_turns_build": 40,
-            "build_per_day": 2, "signin_cache_s": 600, "session_timeout_s": 900}
+            "build_per_day": 2, "signin_cache_s": 600, "session_timeout_s": 900, "build_on": True, "nse_mcp_url": ""}
 KEY_LIKE = re.compile(r"(_API_KEY|_AUTH_TOKEN|_ACCESS_TOKEN|_SECRET_KEY|^ANTHROPIC_BASE_URL$|^CLAUDE_CODE_USE_(BEDROCK|VERTEX|FOUNDRY)$|^CLAUDE_CODE_OAUTH_TOKEN$)", re.I)
 CALLER_SERVER = "caller"
 LIMIT_WORDS = re.compile(r"usage limit|limit reached|rate.?limit|too many requests|overloaded|quota|resets? at|try again (later|at)", re.I)
@@ -71,6 +71,12 @@ def settings() -> dict:
     try:
         from pflab import _toml
         out.update({k: v for k, v in (_toml.load(CONFIG).get("operator") or {}).items() if k in DEFAULTS})
+    except Exception:
+        pass
+    try:                                                   # S90: what he set on the Settings screen wins over the configuration
+        from pflab.app import settings as app_settings
+        from pflab.pm import store as pm_store
+        out.update({k: v for k, v in (app_settings.load(pm_store.pm_dir()).get("operator") or {}).items() if k in DEFAULTS})
     except Exception:
         pass
     return out

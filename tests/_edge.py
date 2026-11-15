@@ -10,15 +10,7 @@ def _free():
     s = socket.socket(); s.bind(("127.0.0.1", 0)); p = s.getsockname()[1]; s.close(); return p
 
 
-def classic(url):
-    """S89: the redesigned screens are at "/", the older ones at "/classic". The older UI tests drive the old DOM, so a root URL (and its #/screen) is sent to /classic; a URL with ?s89 stays."""
-    from urllib.parse import urlsplit, urlunsplit
-    u = urlsplit(url)
-    return urlunsplit(u._replace(path="/classic")) if u.path in ("", "/") and "s89" not in u.query else url
-
-
 async def _run(url, out, width, height, wait_s, steps, port):
-    url = classic(url)
     for _ in range(60):
         try:
             tabs = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/json", timeout=2).read())

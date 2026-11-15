@@ -92,7 +92,8 @@ def test_email_is_gone_no_job_no_connector_no_tool_no_screen(ctx):
     rt = runtime.Runtime(ctx.pm_dir, ctx.data_root, ctx.repo, con=ctx.con, clock=lambda: NOW)
     assert "gmail" not in {c["id"] for c in system.picture(rt, NOW)["connectors"]} and questions.open_questions(ctx.con) == []
     static = Path(__file__).resolve().parents[1] / "src" / "pflab" / "app" / "static"
-    assert "/api/mail" not in (static / "app.js").read_text(encoding="utf-8") and "gmail" not in (static / "app.js").read_text(encoding="utf-8").lower()
+    screens = "".join(f.read_text(encoding="utf-8") for f in (static / "s89").rglob("*") if f.suffix in (".js", ".html"))     # S90: the one set of screens
+    assert "/api/mail" not in screens and "gmail" not in screens.lower()
     tables = {t for (t,) in ctx.con.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='main'").fetchall()}
     assert not {"mail_seen", "mail_facts", "mail_scan"} & tables and "statement_periods" in tables
 

@@ -69,6 +69,8 @@ def nse_server() -> Optional[dict]:
     urls = {str(k): str(v) for k, v in (op.get("nse_mcp_urls") or {}).items() if v}
     if not urls and op.get("nse_mcp_url"):
         urls = {"nse": str(op["nse_mcp_url"])}
+    if not urls and cp.settings().get("nse_mcp_url"):              # S90: the address he saved on the Settings screen
+        urls = {"nse": str(cp.settings()["nse_mcp_url"])}
     return {k: {"type": "http", "url": u} for k, u in urls.items()} or None
 
 

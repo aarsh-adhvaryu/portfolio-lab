@@ -1,0 +1,72 @@
+<!-- built from design_s89/Stock.dc.html by tools/build_screens.py: do not edit by hand -->
+<div style="min-height: 100vh; background: #F6F5F1; color: #17181C; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.45">
+<div style="max-width: 1360px; margin: 0 auto; padding: 24px 32px 48px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+
+
+
+<section style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 24px">
+<div>
+<div style="color: #5B5E66; font-weight: 500">{{s.title}}</div>
+<div style="display: flex; align-items: baseline; gap: 12px"><span style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 40px; font-weight: 600">{{s.price}}</span><span style="color: #1D3FB8; font-weight: 600">{{s.day}}</span></div>
+</div>
+<div role="group" aria-label="Candle size" style="margin-left: auto; display: flex; background: #EFEDE6; border-radius: 999px; padding: 3px"><sc-for list="{{tfs}}" as="t"><button type="button" onClick="{{t.pick}}" style="padding: 7px 14px; border-radius: 999px; border: 0; background: {{t.bg}}; color: {{t.fg}}; font: {{t.w}} 13px Inter, sans-serif; cursor: pointer">{{t.label}}</button></sc-for></div>
+</section>
+
+<section style="display: flex; flex-wrap: wrap; gap: 20px">
+<div style="flex: 3 1 760px; min-width: 0; background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 20px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<span style="padding: 6px 12px; border-radius: 999px; border: 1px solid #2F5BEA; background: #EAF0FE; color: #1D3FB8; font: 600 12px Inter, sans-serif">Volume profile</span>
+<span style="padding: 6px 12px; border-radius: 999px; border: 1px solid #2F5BEA; background: #EAF0FE; color: #1D3FB8; font: 600 12px Inter, sans-serif">Forecast</span>
+<span style="padding: 6px 12px; border-radius: 999px; border: 1px solid #2F5BEA; background: #EAF0FE; color: #1D3FB8; font: 600 12px Inter, sans-serif">Stop</span>
+<span style="padding: 6px 12px; border-radius: 999px; border: 1px solid #2F5BEA; background: #EAF0FE; color: #1D3FB8; font: 600 12px Inter, sans-serif">Events</span>
+<span style="padding: 6px 12px; border-radius: 999px; border: 1px solid #E6E4DD; background: #FFFFFF; color: #3E4149; font: 500 12px Inter, sans-serif">Its trades</span>
+</div>
+<svg viewBox="0 0 1100 440" width="100%" role="img" aria-label="Candles for {{s.name}} over {{s.n}} sessions with volume, the volume profile on the right, the stop level, three events and a 20-session forecast fan">
+<rect x="20" y="{{vaTop}}" width="840" height="{{vaH}}" fill="#2F5BEA" opacity="0.05"></rect>
+<g stroke="#F0EEE8"><line x1="20" y1="66" x2="860" y2="66"></line><line x1="20" y1="134" x2="860" y2="134"></line><line x1="20" y1="202" x2="860" y2="202"></line><line x1="20" y1="270" x2="860" y2="270"></line></g>
+<sc-for list="{{candles}}" as="c" hint-placeholder-count="60">
+<g><line x1="{{c.cx}}" y1="{{c.hi}}" x2="{{c.cx}}" y2="{{c.lo}}" stroke="{{c.col}}" stroke-width="1.2"></line><rect x="{{c.x}}" y="{{c.top}}" width="7" height="{{c.h}}" fill="{{c.col}}" rx="1"></rect><rect x="{{c.x}}" y="{{c.vy}}" width="7" height="{{c.vh}}" fill="{{c.col}}" opacity="0.35"></rect></g>
+</sc-for>
+<path d="{{fan}}" fill="#2F5BEA" opacity="0.12"></path>
+<path d="{{fanMid}}" fill="none" stroke="#2F5BEA" stroke-width="2" stroke-dasharray="5 4"></path>
+<line x1="20" y1="{{stopY}}" x2="860" y2="{{stopY}}" stroke="#D9620F" stroke-width="1.5" stroke-dasharray="6 4"></line>
+<line x1="20" y1="{{pocY}}" x2="860" y2="{{pocY}}" stroke="#17181C" stroke-width="1" stroke-dasharray="2 3"></line>
+<sc-for list="{{prof}}" as="p" hint-placeholder-count="14">
+<rect x="880" y="{{p.y}}" width="{{p.w}}" height="15" rx="2" fill="{{p.fill}}"></rect>
+</sc-for>
+<g font-family="Inter, sans-serif" font-size="12">
+<text x="866" y="{{stopLbl}}" fill="#9A4209" font-weight="600">{{s.stopText}}</text>
+<text x="24" y="{{pocLbl}}" fill="#17181C" font-weight="600">most traded price</text>
+<text x="1080" y="24" text-anchor="end" fill="#5B5E66">volume at each price</text>
+</g>
+<sc-for list="{{evs}}" as="e"><g><circle cx="{{e.x}}" cy="414" r="9" fill="#FFFFFF" stroke="#17181C" stroke-width="1.5"></circle><text x="{{e.x}}" y="418" text-anchor="middle" font-size="10" font-weight="700" fill="#17181C">{{e.k}}</text><text x="{{e.x}}" y="436" text-anchor="middle" font-size="11" fill="#5B5E66">{{e.t}}</text></g></sc-for>
+</svg>
+</div>
+
+<div style="flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+<div style="background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 20px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px">
+<span style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 17px; font-weight: 600">What it sees</span>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<sc-for list="{{sees}}" as="x"><span style="padding: 6px 10px; border-radius: 999px; background: #EAF0FE; color: #1D3FB8; font-size: 12.5px; font-weight: 600">{{x}}</span></sc-for>
+</div>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 20px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+<span style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 17px; font-weight: 600">Its plan for this stock</span>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+<div style="background: #F6F5F1; border-radius: 12px; padding: 10px 12px"><div style="font-size: 12px; color: #5B5E66">stop</div><div style="font-weight: 600">{{s.stopPct}}</div></div>
+<div style="background: #F6F5F1; border-radius: 12px; padding: 10px 12px"><div style="font-size: 12px; color: #5B5E66">target</div><div style="font-weight: 600">{{s.target}}</div></div>
+<div style="background: #F6F5F1; border-radius: 12px; padding: 10px 12px"><div style="font-size: 12px; color: #5B5E66">tax</div><div style="font-weight: 600">{{s.tax}}</div></div>
+<div style="background: #F6F5F1; border-radius: 12px; padding: 10px 12px"><div style="font-size: 12px; color: #5B5E66">thesis</div><div style="font-weight: 600; color: #1D3FB8">{{s.thesis}}</div></div>
+</div>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 20px; padding: 18px 20px; display: flex; flex-direction: column; gap: 8px">
+<span style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 17px; font-weight: 600">Next month</span>
+<div style="display: flex; justify-content: space-between; font-size: 13px"><span style="color: #5B5E66">{{s.rangeLabel}}</span><b>{{s.range}}</b></div>
+<div style="position: relative; height: 12px; border-radius: 999px; background: #EFEDE6"><div style="position: absolute; left: {{s.bl}}; width: {{s.bw}}; top: 0; bottom: 0; border-radius: 999px; background: #C9D6FB"></div><div style="position: absolute; left: {{s.bm}}; top: -3px; width: 4px; height: 18px; border-radius: 2px; background: #17181C"></div></div>
+<a href="#/graph/{{s.sym}}" style="font-size: 13px; font-weight: 500; margin-top: 6px">See it in the graph</a>
+</div>
+</div>
+</section>
+
+</div>
+</div>

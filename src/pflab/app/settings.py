@@ -23,12 +23,17 @@ DEFAULTS: Dict[str, Any] = {
     "features": {},               # S65: his switch per beta feature (configs/features.toml); none set = the channel's default
     "backup_dir": "",             # S78: where the nightly backup of the ledger goes ("" = none); must be outside the PM folder
     "abilities": {},            # S78: what the AI may see and use (ABILITIES); a missing key means ON. Enforced where the thing is used, not just shown
+    "chat_road": "auto",          # S90: the chat's default road (auto | quick | full), for the laptop picker and Telegram
+    "operator": {},               # S90: the Settings screen's operator values over the configuration: OPERATOR_KEYS
 }
+# S90: what the Settings screen may set for the operator (llm/claude_plan.settings reads them over the configuration's [operator])
+OPERATOR_KEYS = {"budget_chat_light": int, "budget_chat": int, "budget_desk": int, "budget_cases": int, "budget_build": int, "build_on": bool, "nse_mcp_url": str}
+MAX_BUDGET = 5_000_000
 # S78: the abilities he can switch off. Each is checked by code where it is used: `tools.run` (charts, web, calculations), the live quote paths (kite_live), the chat front (local_first).
 ABILITIES = {"charts": "Look at candlestick charts (the picture and the figures beside it)", "web": "Search the web and read pages", "calculations": "Run its own calculations in the closed box",
              "kite_live": "Use Kite's live prices and candles (read only; orders are blocked in code)", "local_first": "Let the local model take small jobs and the front of the chat first"}
 CHOICES = {"theme": ("dark", "light", "system"), "preset": ("off", "light", "full", "marathon"),
-           "brain": ("off", "economy", "normal")}
+           "brain": ("off", "economy", "normal"), "chat_road": ("auto", "quick", "full")}
 
 # What each preset runs. Light keeps the data and the checks current and leaves out the heavy agents; full runs every
 # job; marathon adds the nightly 100,000-path simulation. The outbox stays held until Telegram is switched on.
@@ -102,6 +107,19 @@ def _save(pm_dir: Path, changes: Dict[str, Any], current: Optional[Dict[str, Any
             cur["features"] = {**cur.get("features", {}), **{f: b for f, b in v.items() if f in known and isinstance(b, bool)}}
         elif k == "abilities" and isinstance(v, dict):          # S78: only the listed abilities, only true or false
             cur["abilities"] = {**cur.get("abilities", {}), **{a: b for a, b in v.items() if a in ABILITIES and isinstance(b, bool)}}
+        elif k == "operator" and isinstance(v, dict):           # S90: budgets 0..5M tokens, the fixes switch, the NSE address (https or empty)
+            op = dict(cur.get("operator") or {})
+            for ok, ov in v.items():
+                want = OPERATOR_KEYS.get(ok)
+                if want is int and isinstance(ov, (int, float)) and not isinstance(ov, bool) and 0 <= ov <= MAX_BUDGET:
+                    op[ok] = int(ov)
+                elif want is bool and isinstance(ov, bool):
+                    op[ok] = ov
+                elif want is str and isinstance(ov, str) and (ov == "" or (ov.startswith("https://") and len(ov) < 300 and " " not in ov)):
+                    op[ok] = ov
+                else:
+                    raise ValueError(f"{ok}: not an allowed value")
+            cur["operator"] = op
         elif k in DEFAULTS and type(v) is type(DEFAULTS[k]) and v in CHOICES.get(k, (v,)):
             cur[k] = v
     p = path(pm_dir)

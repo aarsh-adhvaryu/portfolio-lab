@@ -176,10 +176,12 @@ def test_the_road_picker_reaches_the_router_as_an_override(app):
 
 # --- the pages --------------------------------------------------------------------------------------------------------------------------------------
 
-def test_the_new_shell_is_at_root_the_old_one_at_classic_and_the_phone_files_are_served(app):
+def test_one_shell_at_root_the_old_address_leads_there_and_the_phone_files_are_served(app):
     rt, c = app
-    new, old = c.get("/"), c.get("/classic")
-    assert new.status_code == old.status_code == 200 and "/static/s89/core.js" in new.text and "/static/app.js" in old.text and "/static/app.js" not in new.text
+    new, old = c.get("/"), c.get("/classic", follow_redirects=False)
+    assert new.status_code == 200 and "/static/s89/core.js" in new.text and "/static/app.js" not in new.text
+    assert old.status_code in (302, 307) and old.headers["location"] == "/"                                    # S90: one UI only; an old bookmark lands on it
+    assert c.get("/static/app.js").status_code == 404 and c.get("/static/index.html").status_code == 404
     m = c.get("/manifest.webmanifest")
     assert m.status_code == 200 and m.json()["display"] == "standalone" and m.json()["start_url"] == "/"
     sw = c.get("/sw.js")
@@ -191,8 +193,8 @@ def test_the_new_shell_is_at_root_the_old_one_at_classic_and_the_phone_files_are
 
 def test_no_sample_numbers_ship_in_the_screens():
     root = Path(__file__).resolve().parents[1] / "src" / "pflab" / "app" / "static" / "s89"
-    text = "\n".join(p.read_text(encoding="utf-8") for p in root.glob("*.js"))
-    for sample in ("9,79,697", "10,42,380", "HDFCBANK", "NVDA", "+11.2%", "94%", "Thu 16:30"):                 # figures and names from the design's sample data
+    text = "\n".join(p.read_text(encoding="utf-8") for p in list(root.glob("*.js")) + list((root / "tpl").glob("*.html")))     # S90: the templates too
+    for sample in ("9,79,697", "10,42,380", "HDFCBANK", "NVDA", "+11.2%", "94%", "Thu 16:30", "412k", "688k", "day 3 of 7", "Gold buys paused", "News top-up", "fix/15-nov", "16 Oct", "Fable"):                 # figures and names from the design's sample data
         assert sample not in text, sample
     assert "Math.random" not in text
 
@@ -222,7 +224,7 @@ def test_every_screen_loads_in_a_browser_on_an_empty_store_without_a_console_err
     port = srv.servers[0].sockets[0].getsockname()[1]
     try:
         for name in ("home", "money", "manage", "book", "lab", "graph", "chat", "agents", "usage", "settings"):
-            steps = [("new Promise(r => { let n = 0; const t = setInterval(() => { const l = document.getElementById('screen').innerText.length; if ((l > 20 && document.getElementById('screen').innerText.indexOf('Loading') < 0) || ++n > 200) { clearInterval(t); r(l); } }, 100); })", 0.3), ("document.querySelectorAll('#screen .card, #screen .empty, #screen .banner').length", 0.1),
+            steps = [("new Promise(r => { let n = 0; const t = setInterval(() => { const l = document.getElementById('screen').innerText.length; if ((l > 20 && document.getElementById('screen').innerText.indexOf('Loading') < 0) || ++n > 200) { clearInterval(t); r(l); } }, 100); })", 0.3), ("document.querySelectorAll('#screen header nav a').length", 0.1),
                      ("document.getElementById('screen').innerText.indexOf('Could not load') < 0", 0.1)]
             errors, res = _edge.shoot(f"http://127.0.0.1:{port}/?s89=1#/{name}", str(tmp_path / f"{name}.png"), 1600, 1000, 3, steps)
             assert errors == [], (name, errors)

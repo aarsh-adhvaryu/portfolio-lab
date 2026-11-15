@@ -64,6 +64,8 @@ def request(con, now: datetime, problem: str, source: str = "operator") -> str:
     problem = problem.strip()
     if len(problem) < 8:
         return "Say what is wrong in a few words, then I can open a build."
+    if not cp.settings().get("build_on", True):
+        return "Fixes to the app are switched off in Settings: switch them on there and ask again."
     dup = con.execute("SELECT build_id, status FROM operator_builds_s87 WHERE problem = ? AND created_at >= ?", [problem, datetime(now.year, now.month, now.day)]).fetchone()
     if dup:
         return f"Build #{dup[0]} for this is already {dup[1]}."
@@ -124,7 +126,7 @@ def tests_for(wt: Path, src_files: List[str], limit: int = 6) -> List[str]:
 def run_pending(con, now: datetime, *, repo: Optional[Path] = None, venv_python: Optional[Path] = None) -> Optional[dict]:
     """The oldest queued build, if today's quota and token budget allow: one session, one card. Returns the build row or None."""
     ensure(con)
-    if not cp.settings()["enabled"] or _started_today(con, now) >= int(cp.settings()["build_per_day"]):
+    if not cp.settings()["enabled"] or not cp.settings().get("build_on", True) or _started_today(con, now) >= int(cp.settings()["build_per_day"]):
         return None
     row = con.execute("SELECT build_id, problem FROM operator_builds_s87 WHERE status='requested' ORDER BY build_id LIMIT 1").fetchone()
     if not row:
