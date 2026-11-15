@@ -41,8 +41,9 @@ def test_answer_session_cannot_write_src_or_push(tmp_path):
     assert not d("Bash", {"command": "pflab pm networth; rm -rf x"})
     assert not d("Bash", {"command": "pflab --live service run"})
     assert d("Bash", {"command": "pflab pm networth"})
-    assert d("Bash", {"command": "python -I research/study.py"})
+    assert not d("Bash", {"command": "python -I research/study.py"})          # S91: a script written by the model is never run from an answer (python -I is not a filesystem boundary)
     assert not d("Bash", {"command": "python -I ../src/x.py"})
+    assert not d("Bash", {"command": "python research/study.py"})
     assert not d("Read", {"file_path": "C:/Windows/win.ini"})
     assert not d("WebFetch", {"url": "https://x"})
 
@@ -235,8 +236,11 @@ def test_problems_become_build_requests_but_plan_limits_do_not(con):
     from pflab.service import problems
     build.ensure(con)
     t0 = datetime(2026, 11, 16, 9, 0)
-    problems._upsert(con, "job_failed", "k1", "job x failed: KeyError 'a'", "job x", t0, t0, 1)
-    problems._upsert(con, "model_engine", "k2", "claude_plan: limit", "gateway", t0, t0, 1)
+    problems._upsert(con, "job_failed", "k1", "job x failed: KeyError 'a'", "job x", t0, t0, 2)
+    problems._upsert(con, "model_engine", "k2", "claude_plan: limit", "gateway", t0, t0, 2)
+    problems._upsert(con, "blind_spot", "k3", "news source is down", "eyes", t0, t0, 5)                   # S91: a source that is down is not a code fault: no automatic build
+    problems._upsert(con, "job_failed", "k4", "job once failed: KeyError 'b'", "job y", t0, t0, 1)       # seen once: wait to see whether it repeats
+    problems._upsert(con, "thinking_failed", "k5", "thinking failed again", "think", t0, t0, 3)            # a second code fault the same day: one automatic build a day
     assert build.scan_problems(con, datetime(2026, 11, 16, 10, 0)) == 1
     assert con.execute("SELECT count(*) FROM operator_builds_s87").fetchone()[0] == 1
 

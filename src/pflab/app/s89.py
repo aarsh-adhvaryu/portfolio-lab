@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import threading
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -45,6 +46,9 @@ def _set_meta(con, key: str, value: str, now: datetime) -> None:
 
 # --- his Indian holdings: the Kite snapshot -----------------------------------------------------------------------------------------------------
 
+_REFRESH_LOCK = threading.Lock()
+
+
 def refresh_india(rt, con, now: datetime, force: bool = False, kite=None) -> dict:
     """Read Kite holdings (read-only) at most every REFRESH_MIN minutes and REPLACE the one snapshot. -> {"state": ok | expired | none | error, "snapshot_at"}."""
     ensure(con)
@@ -70,14 +74,35 @@ def refresh_india(rt, con, now: datetime, force: bool = False, kite=None) -> dic
     except Exception as e:                                          # a failure keeps the old snapshot and says so
         _set_meta(con, "india_refresh", "error", now)
         return {"state": "error", "snapshot_at": _snap_at(con), "error": type(e).__name__}
-    con.execute("DELETE FROM mine_in_s89")
-    for r in rows:
-        qty = float(r.get("quantity", 0) or 0) + float(r.get("t1_quantity", 0) or 0)
-        if qty <= 0:
-            continue
-        con.execute("INSERT OR REPLACE INTO mine_in_s89 VALUES (?,?,?,?,?,?,?,?)", [r.get("tradingsymbol"), r.get("isin"), r.get("exchange"), qty, float(r.get("average_price", 0) or 0),
-                                                                              float(r.get("last_price", 0) or 0), float(r.get("day_change_percentage", 0) or 0), now])
-    _set_meta(con, "india_refresh", "ok", now)
+    try:                                                            # S91: the WHOLE response is checked before the snapshot is touched
+        new = []
+        for r in rows or []:
+            qty = float(r.get("quantity", 0) or 0) + float(r.get("t1_quantity", 0) or 0)
+            if qty <= 0:
+                continue
+            row = [r.get("tradingsymbol"), r.get("isin"), r.get("exchange"), qty, float(r.get("average_price", 0) or 0), float(r.get("last_price", 0) or 0),
+                   float(r.get("day_change_percentage", 0) or 0), now]
+            if not row[0] or not row[1] or not all(math.isfinite(x) for x in row[3:7]):
+                raise ValueError("a holdings row has no symbol, no ISIN or a number that is not finite")
+            new.append(row)
+    except (ValueError, TypeError, AttributeError) as e:
+        _set_meta(con, "india_refresh", "error", now)               # the last complete snapshot stays; the screen says the refresh failed
+        return {"state": "error", "snapshot_at": _snap_at(con), "error": f"{type(e).__name__}: {str(e)[:120]}"}
+    with _REFRESH_LOCK:                                             # one replace at a time: an older response cannot overwrite a newer snapshot
+        newest = _snap_at(con)
+        if newest is not None and newest > now:
+            return {"state": "ok", "snapshot_at": newest, "cached": True}
+        con.execute("BEGIN")
+        try:
+            con.execute("DELETE FROM mine_in_s89")
+            for row in new:
+                con.execute("INSERT OR REPLACE INTO mine_in_s89 VALUES (?,?,?,?,?,?,?,?)", row)
+            con.execute("DELETE FROM mine_meta_s89 WHERE key=?", ["india_refresh"])
+            con.execute("INSERT INTO mine_meta_s89 VALUES (?,?,?)", ["india_refresh", "ok", now])
+            con.execute("COMMIT")
+        except Exception:
+            con.execute("ROLLBACK")
+            raise
     return {"state": "ok", "snapshot_at": now}
 
 
@@ -260,6 +285,61 @@ def mine(rt, con, now: datetime, tab: str = "all") -> dict:
 
 # --- the Home screen ----------------------------------------------------------------------------------------------------------------------------------
 
+def status_rows(con, now: datetime, token_ok: bool, plan: dict) -> dict:
+    """S91: what the morning needs to show at a glance: the running release, the last complete Kite snapshot, the latest closed five-minute candle, the day's saved study, and the next action
+    or the specific reason something waits. Each row {name, text, state: ok | wait | bad}."""
+    rows: List[dict] = []
+    try:
+        from pflab import release
+        r = (release.load() or {}).get("app") or {}
+        rows.append({"name": "Running release", "text": r.get("tag") or "workshop copy", "state": "ok"})
+    except Exception:
+        pass
+    snap = _snap_at(con)
+    m = _meta(con, "india_refresh")
+    if snap is None:
+        rows.append({"name": "Your holdings (Kite)", "text": "no snapshot yet" + ("" if token_ok else ": log in to Kite"), "state": "wait"})
+    else:
+        age = (now - snap).total_seconds() / 60
+        bad = bool(m and m[0] == "error")
+        rows.append({"name": "Your holdings (Kite)", "text": f"complete snapshot {str(snap)[11:16]} ({'today' if snap.date() == now.date() else str(snap)[:10]})" + (" · the last refresh failed, this one is kept" if bad else ""),
+                     "state": "bad" if bad else ("ok" if age < 15 or snap.date() != now.date() else "wait")})
+    try:
+        from pflab.ingest import intraday5
+        lc = intraday5.latest_closed_any(con, now)
+        last = con.execute("SELECT started_at, status, detail FROM job_runs WHERE job='candles_5m' ORDER BY run_id DESC LIMIT 1").fetchone()
+        if lc:
+            t = datetime.strptime(lc, "%Y-%m-%d %H:%M")
+            rows.append({"name": "Latest closed 5-minute candle", "text": f"{t.day} {t:%b} {t:%H:%M}", "state": "ok"})
+        else:
+            why = "waiting for the Kite login" if not token_ok else ("starts in market hours; the first session candles arrive within 5 minutes of 09:20" if last is None else "none stored yet")
+            rows.append({"name": "Latest closed 5-minute candle", "text": why, "state": "wait"})
+    except Exception:
+        pass
+    try:
+        from pflab.app import investigation
+        inv = investigation.get(con, now.date())
+        if inv and inv["status"] == "done":
+            rows.append({"name": "Saved study today", "text": f"{inv['subject']}: {inv['result'].get('verdict')} (p {inv['result'].get('p_value')}), {inv['period_from']} to {inv['period_to']}", "state": "ok"})
+        else:
+            why = (inv or {}).get("detail") or investigation.waiting_reason(con, now) or "runs within 15 minutes"
+            rows.append({"name": "Saved study today", "text": why, "state": "wait"})
+    except Exception:
+        pass
+    try:
+        from pflab.app import livecheck
+        lv = livecheck.latest(con, now.date())
+        if lv:
+            ok = sum(1 for c in lv["checks"] if c["ok"])
+            bad = [c["name"] for c in lv["checks"] if not c["ok"]]
+            rows.append({"name": "Live check", "text": f"{ok} of {len(lv['checks'])} passed at {lv['at'][11:]}" + (f" · waiting: {bad[0]}" if bad else ""), "state": "ok" if not bad else "wait"})
+    except Exception:
+        pass
+    nxt = ("Log in to Kite: nothing live starts until you do" if not token_ok else "Paused: the plan limit; code-only work goes on" if plan.get("thinking") == "paused"
+           else "Not signed in on your Claude plan" if not plan.get("signed_in") else "Nothing needs you: it is working through the day's agenda")
+    return {"rows": rows, "next": nxt}
+
+
 def _eyes(con, now: datetime) -> List[dict]:
     try:
         from pflab.think import alarm
@@ -367,8 +447,14 @@ def home(rt, con, now: datetime) -> dict:
         last_job = None
     recent = []
     try:                                                              # S90: what it actually did, newest first, for "What it is doing now"
+        try:
+            from pflab.service import jobs as _jobs
+            desc = {k: (v.description or "") for k, v in _jobs.REGISTRY.items()}
+        except Exception:
+            desc = {}
         for job, st_at, status in con.execute("SELECT job, started_at, status FROM job_runs WHERE status <> 'skipped' ORDER BY run_id DESC LIMIT 7").fetchall():
-            recent.append({"job": job, "at": str(st_at)[:16], "status": status})
+            what = re.split(r"[;(:]| - ", desc.get(job, ""), maxsplit=1)[0].strip()
+            recent.append({"job": job, "at": str(st_at)[:16], "status": status, "what": what[:70]})
     except Exception:
         recent = []
     paper = None
@@ -382,7 +468,7 @@ def home(rt, con, now: datetime) -> dict:
         paper = None
     m = mine(rt, con, now, "all")
     return {"now": str(now)[:16], "banner": banner, "needs": needs, "heard": heard, "eyes": eyes, "plan": plan, "paper": paper, "mine": {"value_inr": m["summary"]["value_inr"], "today_pct": m["summary"]["today_pct"],
-            "snapshot_at": m["state"]["snapshot_at"]}, "fall_chance": _fall(con), "plans": _plans_now(con), "storyline": story, "counts": counts, "last_job": last_job, "recent": recent, "kite_ok": token_ok, "kite_login": getattr(rt, "kite_state", None),
+            "snapshot_at": m["state"]["snapshot_at"]}, "fall_chance": _fall(con), "plans": _plans_now(con), "storyline": story, "counts": counts, "last_job": last_job, "recent": recent, "kite_ok": token_ok, "status": status_rows(con, now, token_ok, plan), "kite_login": getattr(rt, "kite_state", None),
             "doing": {"mode": (con.execute("SELECT mode FROM desk_sessions_s84 ORDER BY session_id DESC LIMIT 1").fetchone() or [None])[0] if _has(con, "desk_sessions_s84") else None}}
 
 
@@ -660,12 +746,14 @@ def register(app, rt) -> None:
     @app.get("/api/stock/{symbol}")
     def stock_view(symbol: str, tf: str = "day"):
         try:
-            return json.loads(json.dumps(s89b.stock(rt, rt.cursor(), rt.clock(), symbol, "week" if tf == "week" else "day"), default=str))
+            return json.loads(json.dumps(s89b.stock(rt, rt.cursor(), rt.clock(), symbol, tf if tf in ("week", "5min") else "day"), default=str))
         except ValueError as e:
             err(e)
 
     from pflab.oper import plans as _plans
     _plans.bind(rt)
+    from pflab.service import tasks_s91_investigation as _inv
+    _inv.bind(rt)
 
     @app.get("/api/plans")
     def plans_view():

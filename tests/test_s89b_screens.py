@@ -60,7 +60,7 @@ def test_simulate_presets_and_refusals(app, monkeypatch):
     rt, c = app
     p = c.get("/api/lab/presets").json()
     by = {s["key"]: s for s in p["scenarios"]}
-    assert by["rates"]["enabled"] is False and by["rates"]["why"] == "not built yet" and by["normal"]["enabled"] and p["horizons"] == [20, 60, 250]
+    assert by["rates"]["enabled"] is False and by["rates"]["why"].startswith(("Tested", "not tested")) and by["normal"]["enabled"] and p["horizons"] == [20, 60, 250]     # S91: the registered study's result is the reason
     assert c.post("/api/lab/simulate", json={"scenario": "rates", "horizon": 60, "basis": "paper"}).status_code == 400
     assert c.post("/api/lab/simulate", json={"scenario": "normal", "horizon": 61, "basis": "paper"}).status_code == 400
     assert c.post("/api/lab/simulate", json={"scenario": "normal", "horizon": 60, "basis": "both"}).status_code == 400                         # never added together

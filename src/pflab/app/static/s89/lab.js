@@ -75,9 +75,9 @@ S89.register('lab', async (el) => {
     await render(el, 'lab', {
       tabs: mk([['pairs', 'Pairs'], ['sim', 'Simulate'], ['fc', 'Forecast']], st.tab, (k) => { st.tab = k; sessionStorage.setItem('s89:labTab', k); }),
       tabNote: { pairs: 'Which of the stocks held are tied together, so a gap between them tends to close.', sim: 'What could happen to the money, resampled from the stored history.', fc: 'Where prices could be, and how often past fans were right.' }[st.tab],
-      isPairs: st.tab === 'pairs', isSim: st.tab === 'sim', isFc: st.tab === 'fc', simStart: sim ? rs(sim.start_inr) : '—',
+      isPairs: st.tab === 'pairs', isSim: st.tab === 'sim', isFc: st.tab === 'fc', simStart: sim ? rs(sim.start_inr) + (sim.coverage && sim.coverage.uncovered_pct > 0.5 ? ' (the ' + Math.round(sim.coverage.covered_pct) + '% with price history)' : '') : '—',
       pairs: p.list, pair: p.pair,
-      scen: mk([['normal', 'Normal times'], ['covid', 'March 2020 again'], ['rates', 'Rates up 1% · not built yet']], st.sc, (k) => { st.sc = k; sim = null; simErr = ''; }),
+      scen: mk([['normal', 'Normal times'], ['covid', 'March 2020 again'], ['rates', 'Rates up 1% · tested: not supported']], st.sc, (k) => { st.sc = k; sim = null; simErr = ''; }),
       hor: mk([[20, '20 sessions'], [60, '60 sessions'], [250, '1 year']], st.hz, (k) => { st.hz = k; sim = null; simErr = ''; }), sim: simVals(),
       inst: mk(subjects.map((s) => [s, s === 'US_SP500' ? 'S&P 500' : s]), (fc && fc.subject) || '', (k) => { st.subj = k; fc = null; }), fc: fcVals() });
   }

@@ -228,6 +228,7 @@ class Result:
     stop_reason: str = ""
     call_id: Optional[int] = None
     steps: List[str] = field(default_factory=list)
+    web: List[dict] = field(default_factory=list)            # S91: what WebSearch / WebFetch returned: [{"tool", "input", "text"}] (the caller checks numbers against it and keeps the sources)
 
 
 def _sdk():
@@ -321,6 +322,7 @@ async def _drive(opts, prompt, captured: List[dict], steps: List[str]) -> Result
     res = Result()
     texts: List[str] = []
     limit: Dict[str, Any] = {}
+    web_pending: Dict[str, tuple] = {}
     factory = client_factory or sdk.ClaudeSDKClient
     t0 = time.time()
     async with factory(opts) as c:
@@ -334,7 +336,16 @@ async def _drive(opts, prompt, captured: List[dict], steps: List[str]) -> Result
                         texts.append(b.text)
                     elif bn == "ToolUseBlock":
                         steps.append(str(b.name))
+                        if str(b.name) in ("WebSearch", "WebFetch"):
+                            web_pending[str(getattr(b, "id", ""))] = (str(b.name), dict(getattr(b, "input", None) or {}))
                 res.model = res.model or str(getattr(m, "model", "") or "")
+            elif name == "UserMessage" and web_pending:
+                for b in (m.content if isinstance(getattr(m, "content", None), list) else []):
+                    if type(b).__name__ == "ToolResultBlock" and str(getattr(b, "tool_use_id", "")) in web_pending:
+                        tool, inp = web_pending.pop(str(b.tool_use_id))
+                        c = getattr(b, "content", "")
+                        txt = c if isinstance(c, str) else " ".join(str(x.get("text", "")) if isinstance(x, dict) else str(x) for x in (c or []))
+                        res.web.append({"tool": tool, "input": inp, "text": txt[:60000]})
             elif name == "RateLimitEvent":
                 info = getattr(m, "rate_limit_info", None) or getattr(m, "info", None)
                 if info is not None and str(getattr(info, "status", "")) == "rejected":

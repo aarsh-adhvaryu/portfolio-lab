@@ -704,7 +704,7 @@ def _load_s79_jobs() -> None:
     import pkgutil
     from pathlib import Path
     for m in sorted(pkgutil.iter_modules([str(Path(__file__).parent)]), key=lambda x: x.name):
-        if m.name.startswith("tasks_s79_"):
+        if m.name.startswith(("tasks_s79_", "tasks_s91_")):          # S91: the candle and study jobs live in tasks_s91_*.py
             importlib.import_module(f"pflab.service.{m.name}")
 
 

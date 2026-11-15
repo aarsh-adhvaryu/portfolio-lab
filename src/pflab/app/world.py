@@ -18,15 +18,15 @@ import json
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
-SENSES = [("markets", "Market data", ["collect", "prices", "nav", "global", "backfill", "instruments", "bars_1m", "data_s79b"], "prices, NAVs, world markets"),
+SENSES = [("markets", "Market data", ["collect", "prices", "nav", "global", "backfill", "instruments", "bars_1m", "candles_5m", "data_s79b"], "prices, NAVs, world markets"),
           ("filings", "Filings and news", ["filings", "kg", "sec_8k", "alarm", "problems_week"], "company filings, news, the graph's intake"),
-          ("broker", "Kite", ["live", "tradecheck", "idle_cash", "kite_token"], "live prices for what the system holds; his own trades are ignored"),
+          ("broker", "Kite", ["live", "tradecheck", "idle_cash", "kite_token", "live_check"], "live prices for what the system holds; his own trades are ignored"),
           ("record", "The account", ["ledger", "deposits"], "the system's own account (statements and deposits stand aside)"),
           ("us", "US sleeve", ["us_fx"], "USDINR rates")]
 ROUTINES = [("thinking", "Thinking rounds", ["hq", "conductor", "research", "analyst", "forecast", "comove", "scans", "twin", "paper", "paper_daily", "selfcheck", "companion", "review", "learner", "catch_up", "fills_calibrate", "pick_score", "stress_daily", "macro_attribution", "bear_resolve", "implied_calibration", "forecast_loop", "seats_mode", "benchmark_attr", "core_loop", "autonomy_check", "kg2_nightly", "news_s81_topup", "us_close", "us_prices_daily", "preopen_job", "session_job", "us_session", "session_report", "lab_close", "strategist", "story_daily", "situation", "think_loop", "operator_build", "operator_weekly", "operator_plans"],
              "the brain, research, forecasts, the learner"),
             ("plans", "Plans and alerts", ["plans", "guards", "watches", "watches_close"], "ready plans, guards, price watches"),
-            ("reports", "Reports", ["summary_morning", "summary_evening", "outbox", "voice", "outgoing", "week_check"], "the morning and evening summaries")]
+            ("reports", "Reports", ["summary_morning", "summary_evening", "outbox", "voice", "outgoing", "week_check", "investigation_daily"], "the morning and evening summaries")]
 SAFETY = [("safety", "Safety routines", ["backup", "sandbox", "security"], "backups, the sandbox proof, the privacy check")]
 GROUP_OF = {j: g for g, _l, js, _d in SENSES + ROUTINES + SAFETY for j in js}
 

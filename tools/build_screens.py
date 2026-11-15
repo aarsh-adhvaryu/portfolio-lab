@@ -54,7 +54,10 @@ REPLACE = {
     "Stock": [("HDFC Bank · you hold 120 · 6.1% of Claude's book", "{{s.title}}"), ("₹1,742.30", "{{s.price}}"), ("+1.4% today", "{{s.day}}"),
               ("Daily candles for HDFC Bank over 60 sessions", "Candles for {{s.name}} over {{s.n}} sessions"), ("stop ₹1,376 · 21% below", "{{s.stopText}}"),
               (">21% below<", ">{{s.stopPct}}<"), (">none · held long<", ">{{s.target}}<"), (">long-term<", ">{{s.tax}}<"), (">intact<", ">{{s.thesis}}<"),
-              ("₹1,640 – ₹1,860", "{{s.range}}"), ("left: 22%; width: 56%;", "left: {{s.bl}}; width: {{s.bw}};"), ("left: 48%; top: -3px;", "left: {{s.bm}}; top: -3px;"), (">8 in 10 chance<", ">{{s.rangeLabel}}<"), ('href="#/graph"', 'href="#/graph/{{s.sym}}"')],
+              ("₹1,640 – ₹1,860", "{{s.range}}"), ("left: 22%; width: 56%;", "left: {{s.bl}}; width: {{s.bw}};"), ("{{s.day}}</span></div>", "{{s.day}}</span></div><div style=\"font-size: 12.5px; color: #5B5E66\">{{s.fresh}}</div>"),
+              ('<g><line x1="{{c.cx}}"', '<g opacity="{{c.op}}"><line x1="{{c.cx}}"'), ('<rect x="{{c.x}}" y="{{c.top}}" width="7"', '<rect x="{{c.x}}" y="{{c.top}}" width="{{c.w}}"'),
+              ('<rect x="{{c.x}}" y="{{c.vy}}" width="7"', '<rect x="{{c.x}}" y="{{c.vy}}" width="{{c.w}}"'),
+              ('<path d="{{fan}}"', '<sc-for list="{{ticks}}" as="k"><line x1="{{k.x}}" y1="40" x2="{{k.x}}" y2="404" stroke="#E6E4DD" stroke-dasharray="2 3"></line><text x="{{k.tx}}" y="432" font-size="10" fill="#5B5E66">{{k.l}}</text></sc-for><path d="{{fan}}"'), ("left: 48%; top: -3px;", "left: {{s.bm}}; top: -3px;"), (">8 in 10 chance<", ">{{s.rangeLabel}}<"), ('href="#/graph"', 'href="#/graph/{{s.sym}}"')],
     "Money": [
         (">90 days<", ">{{days}}<"), ("90 sessions ago", "{{sel.from}}"), ("Claude's view · {{sel.conf}} sure", "{{sel.viewLine}}"),
         ("On its record, when it says {{sel.conf}} it has been right {{sel.calib}} of the time.", "{{sel.calibText}}"),

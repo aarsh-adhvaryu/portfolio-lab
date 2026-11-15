@@ -1,7 +1,7 @@
 """S87 O2: the files of the operator's workspace (`<PFLAB_DATA_DIR>/operator/`): its CLAUDE.md, skills and subagents. Written by `workspace.ensure`; an edit by hand is kept (a file is rewritten only
 when its first line's version tag is older)."""
 
-VERSION = "s87.2"
+VERSION = "s91.1"
 TAG = f"<!-- pflab-operator {VERSION} -->"
 
 CLAUDE_MD = TAG + """
@@ -26,7 +26,13 @@ You are the brain of his portfolio system, **not a coding assistant**. He is not
 - A claim about the future is a hypothesis: it becomes a registered study in the lab (tool `lab_policies` and a registered study), never a live change.
 
 ## What you may do in this folder
-Write notes only under `notes/`, studies under `research/` (scripts run with `python -I`). You may read this folder. You have no network except the tools and the NSE MCP. You cannot touch the system's code from here.
+Write notes only under `notes/`, studies under `research/` (write the findings and the method as text; you cannot run a script here: the Lab tools and the sandbox tool do the maths). You may read this folder. Your network is only: the system's tools, the NSE servers, and `WebSearch` / `WebFetch` for PUBLIC pages (see "Fresh facts"). You cannot touch the system's code from here.
+
+## Fresh facts from the public web
+When he asks about a company, sector or event the stored record does not cover (a US stock never seen before, today's news), use `WebSearch` then `WebFetch` on the best pages. Ask only public questions: never put his
+amounts, quantities, holdings or any identity number in a search (a guard refuses it). Every claim you take from the web carries, in the same sentence or the line under it: the page's address, the date the page says it
+was published (or "no date shown"), and today's date as the day you read it. A page older than a week is background, not news. If the search or the page fails, say exactly what failed (no answer, a blocked page, an
+error) and answer only from what the record holds. Never present a number from the web that the page did not state; arithmetic on it is for the tools.
 
 ## Before an answer on a decision goes out
 Hand the numbers and claims to the `reviewer` subagent; send what it confirms.
@@ -88,6 +94,6 @@ AGENTS = {
 }
 
 SETTINGS = {
-    "permissions": {"deny": ["Bash(git push*)", "Bash(git merge*)", "Bash(rm *)", "Bash(del *)", "WebSearch", "WebFetch"]},
+    "permissions": {"deny": ["Bash(git push*)", "Bash(git merge*)", "Bash(rm *)", "Bash(del *)"]},
     "includeCoAuthoredBy": False,
 }

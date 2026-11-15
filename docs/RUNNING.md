@@ -87,3 +87,12 @@ default 0), sends nothing outward unless run as `pflab --live ...`, and never re
 **Releases:** work on a branch `pm/sN-<slug>`; once it is confirmed bug free, merge to `main`, run the suite and the privacy grep
 (`.venv\Scripts\python -m pflab.hq.security` must print "privacy grep: clean"), tag `vYYYY.MM.DD[.N]`, and push. The app takes the newest tag at its next start.
 `data/` and `pm/` are gitignored and are never in a release.
+
+## A trading day's live acceptance (first: Monday 16 Nov 2026)
+Open the icon between 09:00 and 11:00 IST and log in to Kite (Home's "Log in" or Settings). The market opens at 09:15; the first five-minute candle completes at 09:20.
+* **Within 10 minutes of the login**, Home's "Its eyes" shows: the running release, "Your holdings (Kite): complete snapshot HH:MM", the operator's state, and the catch-up (the latest closed candle appears once the first `candles_5m` run has fetched, up to 5 minutes later).
+* **Over the next 30-60 minutes** `live_check` (every 10 minutes from 09:20) records, in `live_checks_s91`, each check: release, complete snapshot, operator available, a NEW closed candle since the last check, no failed job, the day's saved study. It tells you once in the chat (when all pass, or at 11:00 with what is missing and why).
+* A task that lacks data or access shows its reason on Home (for example "waiting for the Kite login", "waiting for today's complete Kite snapshot"); nothing is silent.
+* Evidence kinds stay apart: a row in `live_checks_s91`, `candles_5m` or `investigations_s91` is a LIVE observation; synthetic tests and replays are in `tests/` and `docs/STUDIES.md` only.
+* If the update did not take: `pflab update --check`; to go back: `pflab update --rollback` (the store is backed up before every update).
+

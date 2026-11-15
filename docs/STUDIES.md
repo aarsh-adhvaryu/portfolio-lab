@@ -192,3 +192,18 @@ In plain words: selling to harvest tax does save tax, but not by enough, over en
 ## S82 C3 (2026-11-12 night): the 60% broad-index limit in the lab (A56), after tax and charges, 2005-2017
 `index_hold_s82` (the India core as index ETFs only, the 40% stock sleeve and the international share kept): 10.78% a year against the Nifty 500 ETF's 14.32% (lag 3.54 points, worst fall -51.2% against -63.8%); the current allocation `alloc_default` (core 60 / longterm 40): 10.86% (lag 3.45, worst fall -51.6%): both fail the A50 index rule, so nothing was adopted and the 2018-2021 window was not looked at. A pure two-ETF index held under the same limit (diagnostic only): 12.05%, lag 2.26 points (S81's 1.9 held a third ETF). The 60% limit never binds in these replays (two ETFs sit near 49% each); the lag is the cost of the 40% stock sleeve. With `index_fallback = true` the fallback would therefore NOT adopt index-only.
 <!-- s82-c4-results:end -->
+
+<!-- s91-rates-results:begin -->
+## S91 (2026-11-16 night): "Rates up 1%" for the Lab (protocol: docs/protocols/s91_rates_up_protocol.md, committed before the code; code `lab/rates_study.py`; result `docs/research/rates_study_results_s91.json`)
+Registered as ONE test in the learner's counter (N 96 on the store copy, the development bar t >= 3.28); run ONCE. Rate: India's 10-year government bond yield, monthly (FRED INDIRLTLT01STM); shock +100 basis points; book: the 73 NIFTY 100 members of 2011-12-31 with a complete record; development 2012-2017 (72 months), check 2018-2021 (48 months, used once); 2022-2025 untouched.
+
+| result | value |
+|---|---|
+| monthly response of the equal-weighted book to +1 point in the yield | -3.6% (95% interval -10.5% to +3.2%) |
+| development t (bar 3.28) | -1.04: fail |
+| check years: paired t of squared errors against a plain average (needed 1.65) | -0.37: fail; out-of-sample R-squared -0.8% |
+| verdict | **fail**: the yield's monthly changes do not explain the book's monthly moves in this history |
+
+In plain words: the best estimate is that a one-point rise in India's borrowing rate went with the book falling by a few percent in the month, but the range includes zero and the estimate did not predict the check years any better than a plain average. Per rule 10 nothing is wired: the "Rates up 1%" button stays off and shows this reason. Limits (stated in advance): monthly data, one rate, an equal-weighted book of survivors, association not cause. A new claim (for example a daily yield series, or a rate-sensitive sector basket) would be a new registered study.
+<!-- s91-rates-results:end -->
+
