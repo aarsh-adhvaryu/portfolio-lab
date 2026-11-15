@@ -320,7 +320,7 @@ def status_rows(con, now: datetime, token_ok: bool, plan: dict) -> dict:
         from pflab.app import investigation
         inv = investigation.get(con, now.date())
         if inv and inv["status"] == "done":
-            rows.append({"name": "Saved study today", "text": f"{inv['subject']}: {inv['result'].get('verdict')} (p {inv['result'].get('p_value')}), {inv['period_from']} to {inv['period_to']}", "state": "ok"})
+            rows.append({"name": "Saved study today", "text": f"{inv['subject'].replace(' and ', ' + ')}: {inv['result'].get('verdict')}, p {inv['result'].get('p_value')}", "state": "ok"})
         else:
             why = (inv or {}).get("detail") or investigation.waiting_reason(con, now) or "runs within 15 minutes"
             rows.append({"name": "Saved study today", "text": why, "state": "wait"})

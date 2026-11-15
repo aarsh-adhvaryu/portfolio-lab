@@ -114,7 +114,7 @@ def test_home_shows_release_snapshot_candle_study_and_next_action(env, monkeypat
     con.execute("INSERT INTO bars_5m_s91 VALUES ('ISIN_AAAA', TIMESTAMP '2026-11-13 15:25:00', 1,1,1,1,1, now())") if con.execute("SELECT 1 FROM information_schema.tables WHERE table_name='bars_5m_s91'").fetchone() else None
     h = c.get("/api/home").json()["status"]
     st = {r["name"]: r for r in h["rows"]}
-    assert st["Saved study today"]["state"] == "ok" and "to" in st["Saved study today"]["text"] and st["Your holdings (Kite)"]["text"].startswith("complete snapshot")
+    assert st["Saved study today"]["state"] == "ok" and ", p " in st["Saved study today"]["text"] and st["Your holdings (Kite)"]["text"].startswith("complete snapshot")
 
 
 # --- the automatic live check ---------------------------------------------------------------------------------------------------------------
