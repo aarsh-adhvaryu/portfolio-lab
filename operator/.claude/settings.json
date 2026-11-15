@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(git push*)",
+      "Bash(git merge*)",
+      "Bash(rm *)",
+      "Bash(del *)",
+      "WebSearch",
+      "WebFetch"
+    ]
+  },
+  "includeCoAuthoredBy": false
+}

@@ -590,7 +590,7 @@ def converse(rt, con, now: datetime, *, first: str, r: dict, model_id: Optional[
     defs = chat_tools.definitions(r["tools"])
     if client is None and _operator_on(con):                      # S87 O2: the operator (his Claude Code session for this chat) answers; the loop below is the fallback road
         from pflab.oper import session as _opsess
-        return _opsess.answer(rt, con, now, ctx=ctx, pid=pid, first=first, r=r, model_id=model_id, cid=cid, aid=aid, q=q, progress=progress, snap=snap, notes=notes)
+        return _opsess.dispatch(rt, con, now, ctx=ctx, pid=pid, first=first, r=r, model_id=model_id, cid=cid, aid=aid, q=q, progress=progress, snap=snap, notes=notes)
     messages: list = [{"role": "user", "content": [{"type": "text", "text": first}]}]
     cost, steps, text, last = 0.0, [], "", None
     stop_exc: Optional[BaseException] = None

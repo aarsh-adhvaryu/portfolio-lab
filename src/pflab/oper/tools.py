@@ -108,10 +108,17 @@ EXTRA = [
 ]
 
 
-def items(ctx, kind: str = "all") -> List[tuple]:
-    """[(name, description, schema, fn(args)->str)] for the SDK server: the chat's tools bound to this chat's context, then the operator's own."""
+# S88 L3: the full operator's DEFAULT set (what the questions of S88's measurement and the skills use); every other tool stays reachable by name through `more_tools` (its names are in its description)
+DEFAULT = ("portfolio", "paper_book", "picture", "stock_facts", "price_history", "graph_timeline", "what_do_you_know", "thinking_cases", "decision_scorecard", "comovement", "pair_study", "scenario",
+           "exposure_shock", "forecasts", "simulation", "lab_policies", "problems_list", "usage_so_far", "decision_log", "log_my_decision", "my_decision_scores", "request_build", "read_file",
+           "read_document", "files", "research_flags", "market_context", "ask_strategist", "look_into")
+
+
+def items(ctx, kind: str = "all", core_only: bool = True) -> List[tuple]:
+    """[(name, description, schema, fn(args)->str)] for the SDK server: the chat's tools bound to this chat's context, then the operator's own. With `core_only` (the default) only DEFAULT is offered
+    by name (descriptions shortened to their first sentence) and `more_tools` reaches the rest."""
     from pflab.entrance import tools as ct
-    out: List[tuple] = []
+    full: List[tuple] = []
     seen = set()
     for d in ct.definitions(kind):
         n = d["name"]
@@ -121,8 +128,23 @@ def items(ctx, kind: str = "all") -> List[tuple]:
 
         def run(args, _n=n):
             text, err = ct.run(ctx, _n, args, 1)
-            return ("error: " if err else "") + _short(text, 9000)
-        out.append((n, d.get("description", ""), d.get("input_schema"), run))
+            return ("error: " if err else "") + _short(text, 5000)
+        full.append((n, d.get("description", ""), d.get("input_schema"), run))
     for n, desc, schema, fn in EXTRA:
-        out.append((n, desc, schema, (lambda args, _f=fn: _short(_f(ctx, args)))))
+        full.append((n, desc, schema, (lambda args, _f=fn: _short(_f(ctx, args, ), 5000))))
+    if not core_only:
+        return full
+    by = {n: (n, d, sc, fn) for n, d, sc, fn in full}
+    out = [(n, (by[n][1].split(". ")[0])[:200], by[n][2], by[n][3]) for n in DEFAULT if n in by]
+    rest = sorted(n for n in by if n not in DEFAULT)
+
+    def more(args):
+        name = str(args.get("name") or "")
+        if name == "?" or name not in by or name in DEFAULT:
+            return "Other tools: " + ", ".join(rest) + ". Call more_tools with name and args (a JSON object); name='?' lists them; name='<tool>' with no args shows its description and inputs."
+        if not args.get("args"):
+            return json.dumps({"name": name, "description": by[name][1][:600], "input_schema": by[name][2]}, default=str)[:1500]
+        a = args["args"]
+        return by[name][3](json.loads(a) if isinstance(a, str) else dict(a))
+    out.append(("more_tools", "Reach any other tool by name: " + ", ".join(rest)[:900], {"type": "object", "properties": {"name": {"type": "string"}, "args": {"type": "object"}}, "required": ["name"]}, more))
     return out
