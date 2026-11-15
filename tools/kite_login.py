@@ -39,17 +39,23 @@ def wait_for_token(flow: k.LoginFlow, redirect: str, timeout: int = 300) -> str:
                 self.end_headers()
                 return
             params = {a: b[0] for a, b in parse_qs(q.query).items()}
+            finished = True
             try:
                 got["token"] = flow.finish(params, datetime.now())
                 msg = "Kite login done. You can close this tab."
             except Exception as e:
-                got["error"] = str(e)
-                msg = f"Kite login failed: {e}"
+                if "state does not match" in str(e):    # an old tab's callback: keep waiting for this login's own one
+                    finished = False
+                    msg = "This tab is from an older login attempt. Use the newest Kite login tab, or press Log in again in the app."
+                else:
+                    got["error"] = str(e)
+                    msg = f"Kite login failed: {e}"
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.end_headers()
             self.wfile.write(msg.encode())
-            done.set()
+            if finished:
+                done.set()
 
         def log_message(self, *a):
             pass

@@ -1,0 +1,75 @@
+<!-- built from design_s89/Manage.dc.html by tools/build_screens.py: do not edit by hand -->
+<div style="height: 100vh; min-height: 860px; background: #F6F5F1; color: #17181C; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.45; box-sizing: border-box; padding: 10px 28px 22px; display: flex; flex-direction: column; gap: 14px; overflow: auto">
+
+
+
+<section style="flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px">
+<a href="#/money" style="font-weight: 500">Your money</a><span style="color: #8A8D94">/</span><span style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 22px; font-weight: 600">Add and watch</span>
+<span style="font-size: 13px; color: #5B5E66">Everything here stays on your laptop. Claude reads it; it never places orders.</span>
+</section>
+
+<section style="flex: 1; min-height: 0; display: flex; flex-wrap: wrap; gap: 14px">
+
+<div style="flex: 1 1 560px; min-width: 0; min-height: 0; max-height: 100%; background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 18px 20px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; overflow: hidden">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px"><span style="font-weight: 600; font-size: 17px">Your US holdings</span><span style="font-size: 12.5px; color: #5B5E66">entered by hand until you connect a US broker · {{usTotal}}</span></div>
+
+<form onSubmit="{{addUs}}" style="display: grid; grid-template-columns: 1.1fr 0.8fr 0.9fr 1fr auto; gap: 10px; align-items: end; background: #F6F5F1; border-radius: 14px; padding: 12px">
+<div style="display: flex; flex-direction: column; gap: 4px"><label for="us-t" style="font-size: 12px; color: #5B5E66; font-weight: 500">Ticker</label><input id="us-t" type="text" placeholder="e.g. AAPL" value="{{f.t}}" onChange="{{f.setT}}" style="min-height: 40px; border: 1px solid #E6E4DD; border-radius: 10px; padding: 8px 10px; font: 500 14px Inter, sans-serif; background: #FFFFFF; text-transform: uppercase"></div>
+<div style="display: flex; flex-direction: column; gap: 4px"><label for="us-q" style="font-size: 12px; color: #5B5E66; font-weight: 500">Shares</label><input id="us-q" type="number" min="0" step="0.0001" placeholder="10" value="{{f.q}}" onChange="{{f.setQ}}" style="min-height: 40px; border: 1px solid #E6E4DD; border-radius: 10px; padding: 8px 10px; font: 500 14px Inter, sans-serif; background: #FFFFFF"></div>
+<div style="display: flex; flex-direction: column; gap: 4px"><label for="us-p" style="font-size: 12px; color: #5B5E66; font-weight: 500">Average price ($)</label><input id="us-p" type="number" min="0" step="0.01" placeholder="150.00" value="{{f.p}}" onChange="{{f.setP}}" style="min-height: 40px; border: 1px solid #E6E4DD; border-radius: 10px; padding: 8px 10px; font: 500 14px Inter, sans-serif; background: #FFFFFF"></div>
+<div style="display: flex; flex-direction: column; gap: 4px"><label for="us-d" style="font-size: 12px; color: #5B5E66; font-weight: 500">Bought on</label><input id="us-d" type="date" value="{{f.d}}" onChange="{{f.setD}}" style="min-height: 40px; border: 1px solid #E6E4DD; border-radius: 10px; padding: 8px 10px; font: 500 14px Inter, sans-serif; background: #FFFFFF"></div>
+<button type="submit" style="min-height: 40px; padding: 0 18px; border-radius: 999px; border: 0; background: #17181C; color: #FFFFFF; font: 600 13.5px Inter, sans-serif; cursor: pointer">Add</button>
+</form>
+<sc-if value="{{f.err}}" hint-placeholder-val="{{ false }}"><span style="font-size: 12.5px; color: #9A4209; margin-top: -6px">{{f.errText}}</span></sc-if>
+
+<div style="display: grid; grid-template-columns: 1.4fr 0.9fr 0.9fr 1fr 0.8fr auto; gap: 10px; padding: 0 4px; font-size: 12px; color: #5B5E66; font-weight: 600"><span>Holding</span><span>Shares</span><span style="text-align: right">Avg price</span><span style="text-align: right">Value today</span><span style="text-align: right">Since buy</span><span style="width: 76px"></span></div>
+<div style="flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px">
+<sc-for list="{{us}}" as="h" hint-placeholder-count="3">
+<div style="display: grid; grid-template-columns: 1.4fr 0.9fr 0.9fr 1fr 0.8fr auto; gap: 10px; align-items: center; padding: 8px 4px; border-bottom: 1px solid #F3F2EE">
+<span style="display: flex; flex-direction: column"><span style="font-weight: 600">{{h.t}}</span><span style="font-size: 12px; color: #5B5E66">{{h.name}} · since {{h.d}}</span></span>
+<span><label for="{{h.qid}}" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Shares of {{h.t}}</label><input id="{{h.qid}}" type="number" min="0" step="0.0001" value="{{h.q}}" onChange="{{h.setQ}}" style="width: 90px; min-height: 36px; border: 1px solid #E6E4DD; border-radius: 10px; padding: 6px 8px; font: 500 13.5px Inter, sans-serif; background: #FBFAF7"></span>
+<span style="text-align: right; color: #3E4149">{{h.avg}}</span>
+<span style="text-align: right; font-weight: 600">{{h.val}}</span>
+<span style="text-align: right; font-weight: 600; color: {{h.rc}}">{{h.ret}}</span>
+<button type="button" onClick="{{h.remove}}" aria-label="Remove {{h.t}}" style="width: 76px; min-height: 36px; border-radius: 999px; border: 1px solid #C9C6BD; background: #FFFFFF; color: #17181C; font: 500 12.5px Inter, sans-serif; cursor: pointer">Remove</button>
+</div>
+</sc-for>
+<sc-if value="{{usEmpty}}" hint-placeholder-val="{{ false }}"><span style="padding: 20px; text-align: center; color: #5B5E66">No US holdings yet. Add one above.</span></sc-if>
+</div>
+<span style="font-size: 12px; color: #5B5E66; border-top: 1px solid #EFEDE6; padding-top: 10px">Prices come from the US bars feed at each regular-hours check. A new ticker shows its value after the next check. Selling? Lower the shares, or remove it.</span>
+</div>
+
+<div style="flex: 1 1 560px; min-width: 0; min-height: 0; max-height: 100%; background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 18px 20px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; overflow: hidden">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px"><span style="font-weight: 600; font-size: 17px">Watchlist</span><span style="font-size: 12.5px; color: #5B5E66">names you don't own yet that Claude watches for you · {{wlCount}}</span></div>
+
+<form onSubmit="{{addWl}}" style="display: flex; flex-direction: column; gap: 10px; background: #F6F5F1; border-radius: 14px; padding: 12px">
+<div style="display: grid; grid-template-columns: 1.2fr 0.8fr 2fr auto; gap: 10px; align-items: end">
+<div style="display: flex; flex-direction: column; gap: 4px"><label for="wl-n" style="font-size: 12px; color: #5B5E66; font-weight: 500">Name or ticker</label><input id="wl-n" type="text" placeholder="e.g. Tata Steel" value="{{w.n}}" onChange="{{w.setN}}" style="min-height: 40px; border: 1px solid #E6E4DD; border-radius: 10px; padding: 8px 10px; font: 500 14px Inter, sans-serif; background: #FFFFFF"></div>
+<div style="display: flex; flex-direction: column; gap: 4px"><label for="wl-m" style="font-size: 12px; color: #5B5E66; font-weight: 500">Market</label><select id="wl-m" value="{{w.m}}" onChange="{{w.setM}}" style="min-height: 40px; border: 1px solid #E6E4DD; border-radius: 10px; padding: 8px 10px; font: 500 14px Inter, sans-serif; background: #FFFFFF"><option value="India">India</option><option value="US">US</option></select></div>
+<div style="display: flex; flex-direction: column; gap: 4px"><label for="wl-y" style="font-size: 12px; color: #5B5E66; font-weight: 500">Why you're watching (optional)</label><input id="wl-y" type="text" placeholder="e.g. buy if it dips under ₹130" value="{{w.y}}" onChange="{{w.setY}}" style="min-height: 40px; border: 1px solid #E6E4DD; border-radius: 10px; padding: 8px 10px; font: 400 14px Inter, sans-serif; background: #FFFFFF"></div>
+<button type="submit" style="min-height: 40px; padding: 0 18px; border-radius: 999px; border: 0; background: #17181C; color: #FFFFFF; font: 600 13.5px Inter, sans-serif; cursor: pointer">Watch</button>
+</div>
+<div role="group" aria-label="Tell me when" style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px"><span style="font-size: 12px; color: #5B5E66; margin-right: 4px">Tell me when</span>
+<sc-for list="{{w.alerts}}" as="a" hint-placeholder-count="4"><button type="button" aria-pressed="{{a.on}}" onClick="{{a.flip}}" style="min-height: 34px; padding: 5px 12px; border-radius: 999px; border: 1px solid {{a.bd}}; background: {{a.bg}}; color: {{a.fg}}; font: 600 12.5px Inter, sans-serif; cursor: pointer">{{a.label}}</button></sc-for>
+</div>
+</form>
+<sc-if value="{{w.err}}" hint-placeholder-val="{{ false }}"><span style="font-size: 12.5px; color: #9A4209; margin-top: -6px">Type a name or ticker first.</span></sc-if>
+
+<div style="flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 8px">
+<sc-for list="{{wl}}" as="x" hint-placeholder-count="5">
+<div style="display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; border: 1px solid #EFEDE6">
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px"><span style="font-weight: 600">{{x.n}}</span><span style="padding: 2px 8px; border-radius: 999px; background: #F3F2EE; font-size: 11.5px; font-weight: 600">{{x.m}}</span><span style="font-size: 12px; color: #5B5E66">{{x.px}}</span></div>
+<span style="font-size: 12.5px; color: #3E4149">{{x.y}}</span>
+<div style="display: flex; flex-wrap: wrap; gap: 5px"><sc-for list="{{x.al}}" as="t" hint-placeholder-count="2"><span style="padding: 2px 8px; border-radius: 999px; background: #EAF0FE; color: #1D3FB8; font-size: 11.5px; font-weight: 600">{{t.l}}</span></sc-for></div>
+<span style="font-size: 12px; color: #5B5E66">Claude: {{x.note}}</span>
+</div>
+<button type="button" onClick="{{x.remove}}" aria-label="Stop watching {{x.n}}" style="flex: none; min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid #C9C6BD; background: #FFFFFF; color: #17181C; font: 500 12.5px Inter, sans-serif; cursor: pointer">Stop watching</button>
+</div>
+</sc-for>
+</div>
+<span style="font-size: 12px; color: #5B5E66; border-top: 1px solid #EFEDE6; padding-top: 10px">The alarm reader checks every name each 15 minutes, so each one adds a little to its tokens. Up to 25 names.</span>
+</div>
+
+</section>
+</div>

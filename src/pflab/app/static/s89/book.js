@@ -1,38 +1,43 @@
-/* S89 Claude's book: "Is it right?" and "Its holdings", India / US. Reads the paper book and the thinking loop's scorecard; where a figure does not exist yet the screen says so. */
+/* Claude's book: the design's Calibration screen. "Is it right?" (its curve against the index, how sure it said it was against how often it was right, every decision
+   and how it scored, what it changed about itself) and "Its holdings" (stops, the 12-month tax clock, thesis), India and US. Below 20 scored decisions it says so. */
 S89.register('book', async (el) => {
-  const { esc, rs, pct, cls, api, lines, empty, num } = S89;
-  let view = sessionStorage.getItem('s89:bookView') || 'right', market = sessionStorage.getItem('s89:bookMkt') || 'IN';
-  const [p, core, rel] = await Promise.all([api('/api/paper'), api('/api/core').catch(() => ({})), api('/api/book/reliability').catch(() => null)]);
-  const t = core.think || {};
-  function reliability() {
-    if (!rel) return '<span class="small muted">The reliability numbers did not answer.</span>';
-    const pts = rel.points || [];
-    const W = 260, H = 160, X = (v) => 24 + v * (W - 34), Y = (v) => H - 20 - v * (H - 34);
-    const dots = pts.map((q) => `<circle cx="${X(q.said)}" cy="${Y(q.right)}" r="${4 + Math.min(8, q.n)}" fill="#2F5BEA" fill-opacity=".55"><title>${esc(q.word)}: said ${(q.said * 100).toFixed(0)}%, right ${(q.right * 100).toFixed(0)}% of ${q.n}</title></circle>`).join('');
-    const chart = `<svg width="100%" viewBox="0 0 ${W} ${H}" role="img" aria-label="Said versus right" style="max-width:300px"><line x1="${X(0)}" y1="${Y(0)}" x2="${X(1)}" y2="${Y(1)}" stroke="#C9C6BD" stroke-dasharray="4 3"/><rect x="${X(0)}" y="${Y(1)}" width="${X(1) - X(0)}" height="${Y(0) - Y(1)}" fill="none" stroke="#E6E4DD"/>${dots}<text x="${X(0.5)}" y="${H - 4}" text-anchor="middle" font-size="10" fill="#5B5E66">it said</text><text x="6" y="${Y(0.5)}" font-size="10" fill="#5B5E66" transform="rotate(-90 6 ${Y(0.5)})">right</text></svg>`;
-    return `<span class="small b">${esc(rel.text)}</span>${pts.length ? chart : '<span class="small muted">No points yet: a point needs a likelihood word used on at least one scored decision.</span>'}<span class="small muted">Dots are what it said (across) against how often it was right (up), sized by how many cases. Closer to the dashed line is better.</span>${rel.brier != null ? `<span class="small">Brier score <b>${rel.brier.toFixed(3)}</b> (lower is better; 0.25 is a coin toss).</span>` : '<span class="small muted">The Brier score is shown from 20 scored decisions.</span>'}`;
+  const { api, render, path, num } = S89;
+  let book = sessionStorage.getItem('s89:book') || 'in', view = sessionStorage.getItem('s89:bookView') || 'right';
+  const VB = { right: ['#EAF0FE', '#1D3FB8'], wrong: ['#FDF0E6', '#9A4209'], open: ['#F3F2EE', '#3E4149'] };
+  const KC = { equity: '#D9620F', etf: '#2F5BEA', index: '#2F5BEA', gold: '#C9A227', cash: '#D3D0C7' };
+  async function draw() {
+    const d = await api('/api/book?market=' + (book === 'us' ? 'US' : 'IN'));
+    const days = d.days || [], nifty = d.nifty || [];
+    const c = days.map((x) => x[1] / days[0][1] * 100), b = nifty.map((x) => x[1] / nifty[0][1] * 100);
+    const all = c.concat(b), lo = Math.min(...all) * 0.995, hi = Math.max(...all) * 1.005;
+    const curve = { claude: c.length > 1 ? path(c, 900, 260, lo, hi, 6) : '', base: b.length > 1 ? path(b, 900, 260, lo, hi, 6) : '', you: '' };
+    const marks = (d.log || []).filter((l) => days.length > 1).map((l) => { const i = days.findIndex((x) => String(x[0]) >= l.when); return i < 0 ? null : { x: (i / (days.length - 1) * 900).toFixed(1), label: l.when + ' · weekly look' }; }).filter(Boolean);
+    const rel = d.rel || {}, px = (v) => 30 + (Math.min(90, Math.max(40, v)) - 40) / 50 * 200, py = (v) => 210 - (Math.min(90, Math.max(40, v)) - 40) / 50 * 200;
+    const points = (rel.points || []).map((p) => ({ said: Math.round(p.said * 100) + '%', act: Math.round(p.right * 100) + '%', l: p.word, x: px(p.said * 100).toFixed(1), y: py(p.right * 100).toFixed(1), yp: py(p.said * 100).toFixed(1), r: (4 + p.n / 2.5).toFixed(1) }));
+    const dec = (d.dec || []).map((x) => ({ when: x.when, what: x.what, said: x.said, res: x.res, v: x.v, vb: VB[x.v][0], vf: VB[x.v][1] }));
+    if (!dec.length) dec.push({ when: '', what: 'No decisions yet', said: 'Every decision is scored at 5, 20 and 60 sessions, after tax.', res: '', v: 'open', vb: VB.open[0], vf: VB.open[1] });
+    const log = (d.log || []).map((l) => ({ when: l.when, kind: l.kind, t: l.t, after: l.after }));
+    if (!log.length) log.push({ when: '', kind: 'not yet', t: 'The weekly look runs after the first Friday close the app is open for.', after: 'It writes what worked, what did not and what to test next; it never changes a rule by itself.' });
+    const blue = '#2F5BEA', orange = '#D9620F', lb = '#93A9F6';
+    const rows = (d.hold || []).map((h) => { const w = h.weight || 0, lt = h.days_left != null && h.days_left <= 0;
+      return { name: h.name, sleeve: h.kind === 'cash' ? 'reserve and cash' : (h.kind || '') + (h.you ? ' · you hold it too' : ''), color: KC[h.kind] || (book === 'us' ? lb : orange), weight: w.toFixed(1) + '%', barW: Math.min(w / 55 * 100, 100) + '%',
+        ret: h.ret == null ? '—' : (h.ret >= 0 ? '+' : '−') + Math.abs(h.ret).toFixed(1) + '%', rc: (h.ret || 0) >= 0 ? '#1D3FB8' : '#9A4209',
+        stopW: h.stop_pct == null ? '0%' : Math.min(h.stop_pct / 35 * 100, 100) + '%', stopC: h.stop_pct != null && h.stop_pct < 10 ? orange : lb, stop: h.stop_pct == null ? 'no stop' : h.stop_pct.toFixed(0) + '% away',
+        clock: h.days_left == null ? '—' : lt ? 'long-term' : h.days_left + ' days left', thesis: h.plan ? 'intact' : 'n/a', tc: h.plan ? blue : '#C9C6BD' }; });
+    const kinds = {}; (d.hold || []).forEach((h) => { const k = h.kind === 'cash' ? 'Cash' : (h.kind === 'equity' ? 'Stocks' : 'Funds'); kinds[k] = (kinds[k] || 0) + (h.weight || 0); });
+    const MC = { Funds: blue, Stocks: orange, Cash: '#D3D0C7' };
+    const mix = [{ l: 'Now', o: 1, parts: Object.keys(kinds).map((k) => ({ w: kinds[k].toFixed(0) + '%', c: MC[k] })) }];
+    const r = d.rules || {};
+    const tabs = [['in', 'India book'], ['us', 'US book']].map(([k, l]) => ({ label: l, on: k === book, bg: k === book ? '#17181C' : 'transparent', fg: k === book ? '#FFFFFF' : '#3E4149', pick: () => { book = k; sessionStorage.setItem('s89:book', k); draw(); } }));
+    const views = [['right', 'Is it right?'], ['hold', 'Its holdings']].map(([k, l]) => ({ label: l, on: k === view, bg: k === view ? '#17181C' : 'transparent', fg: k === view ? '#FFFFFF' : '#3E4149', pick: () => { view = k; sessionStorage.setItem('s89:bookView', k); draw(); } }));
+    const fri = new Date(); fri.setDate(fri.getDate() + ((5 - fri.getDay() + 7) % 7 || 7));
+    const months = days.length > 1 ? [0, 1, 2, 3, 4, 5].map((k) => new Date(days[Math.round(k * (days.length - 1) / 5)][0]).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })) : [];
+    await render(el, 'book', { months, views, tabs, isRight: view === 'right', isHold: view === 'hold', toHold: () => { view = 'hold'; draw(); },
+      kpis: (d.kpis || []).map((k) => ({ v: k.v, l: k.l })), baseName: book === 'us' ? 'S&P 500' : 'Nifty 500', curve, marks, rel: points,
+      relNote: rel.text || '', brier: rel.brier == null ? '—' : rel.brier.toFixed(3), brierX: rel.brier == null ? '0%' : (Math.min(rel.brier / 0.3, 1) * 100).toFixed(0) + '%', dec, log,
+      nextLook: 'next look: after the close on ' + fri.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }),
+      hold: { rows, kpis: (d.hold_kpis || []).map((k) => ({ v: k.v, l: k.l, c: '#17181C' })), mix, legend: Object.keys(kinds).map((k) => ({ n: k, c: MC[k] })),
+        rules: [{ v: String(r.stops == null ? '—' : r.stops), l: 'stops watched' }, { v: String(r.trades == null ? '—' : r.trades), l: 'trades so far' }, { v: String(r.over_rails == null ? '—' : r.over_rails), l: 'over a rail' }, { v: r.breaker || '—', l: 'the fall breaker' }] } });
   }
-  function right() {
-    const days = (p.days || []).map((d) => d.value), nifty = (p.nifty || []).map((d) => d.value);
-    const chart = days.length > 1 ? lines([days, nifty], 760, 220, ['#2F5BEA', '#9A9DA4']) : empty("The paper book has no closes yet, so there is no curve. It appears after its first closes.");
-    const dec = p.decisions && p.decisions.length ? p.decisions.slice(0, 12).map((d) => `<div class="row small"><span class="chip mute">${esc(d.action || d.kind || '')}</span><b>${esc(d.symbol || '')}</b><span class="grow">${esc(String(d.reason || d.text || '').slice(0, 110))}</span><span class="muted">${esc(String(d.made_at || d.at || '').slice(0, 10))}</span></div>`).join('') : empty('No decisions yet.');
-    return `<section class="grid"><div class="card" style="flex:2 1 600px"><h2>Growth against the baseline</h2><span class="small muted">After tax. The paper book only counts if it beats the baseline.</span>${chart}
-        <div class="row small"><span>Claude's book <b>${rs(p.value)}</b></span>${p.returns ? `<span>Since start <b class="${cls(p.returns.since_start)}">${pct((p.returns.since_start || 0) * 100)}</b></span>` : ''}</div></div>
-      <div class="col" style="flex:1 1 360px"><div class="card"><h2>Is it right?</h2><span class="small">${esc(t.scorecard || 'Decisions: none scored yet.')}</span>${reliability()}</div>
-        <div class="card"><h2>Picks</h2><span class="small">${esc((core.picks && core.picks.line) || 'No picks yet.')}</span></div></div></section>
-      <div class="card"><h2>Decisions, scored after tax</h2><div class="col scroll" style="gap:6px;max-height:260px">${dec}</div></div>
-      <div class="card"><h2>What it changed about itself</h2><span class="small">${esc(t.plan || 'The weekly look has not run yet. After each Friday close it writes what worked, what did not and what to test next.')}</span></div>`;
-  }
-  function holdings() {
-    const h = p.holdings || [];
-    if (!h.length) return `<div class="card">${empty('The paper book holds nothing yet.')}</div>`;
-    return `<div class="card"><h2>Its holdings</h2><div class="scroll"><table><thead><tr><th>Holding</th><th class="n">Value</th><th class="n">Weight</th><th>Stop</th><th>Thesis</th></tr></thead><tbody>${h.map((x) => `<tr><td><b>${esc(x.symbol || x.name)}</b></td><td class="n">${rs(x.value)}</td><td class="n">${x.weight != null ? (x.weight * 100).toFixed(1) + '%' : '—'}</td><td>${x.stop != null ? esc(num(x.stop, 2)) : '<span class="muted small">none</span>'}</td><td class="small">${esc(String(x.thesis || '').slice(0, 120))}</td></tr>`).join('')}</tbody></table></div></div>`;
-  }
-  function draw() {
-    const tabs = `<div class="tabs">${[['right', 'Is it right?'], ['hold', 'Its holdings']].map(([k, l]) => `<button data-v="${k}" class="${view === k ? 'on' : ''}">${l}</button>`).join('')}</div><div class="tabs">${[['IN', 'India'], ['US', 'US']].map(([k, l]) => `<button data-m="${k}" class="${market === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
-    el.innerHTML = `<div class="row"><h2 class="grow" style="margin:0">Claude's book</h2>${tabs}</div>${p.started === false ? `<div class="card">${empty(p.note || 'The paper book has not started yet.')}</div>` : (view === 'right' ? right() : holdings())}${market === 'US' ? '<div class="small muted">The US sub-book is shown inside the same account; its own split appears here once the US book has closes.</div>' : ''}`;
-    el.querySelectorAll('[data-v]').forEach((b) => { b.onclick = () => { view = b.dataset.v; sessionStorage.setItem('s89:bookView', view); draw(); }; });
-    el.querySelectorAll('[data-m]').forEach((b) => { b.onclick = () => { market = b.dataset.m; sessionStorage.setItem('s89:bookMkt', market); draw(); }; });
-  }
-  draw();
+  await draw();
 });

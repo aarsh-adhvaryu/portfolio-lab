@@ -1,0 +1,109 @@
+<!-- built from design_s89/Main.dc.html by tools/build_screens.py: do not edit by hand -->
+<div style="height: 100vh; min-height: 860px; background: #F6F5F1; color: #17181C; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.45; box-sizing: border-box; padding: 10px 28px 22px; display: flex; flex-direction: column; gap: 14px; overflow: auto">
+
+
+
+<sc-if value="{{banner.on}}" hint-placeholder-val="{{ false }}">
+<section role="status" style="flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; background: {{banner.bg}}; border: 1px solid {{banner.bd}}; border-radius: 16px; padding: 12px 18px">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{{banner.fg}}" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><line x1="12" y1="7" x2="12" y2="13"></line><circle cx="12" cy="16.5" r="0.6" fill="{{banner.fg}}"></circle></svg>
+<div style="flex: 1 1 400px; display: flex; flex-direction: column"><span style="font-weight: 600; color: {{banner.fg}}">{{banner.t}}</span><span style="font-size: 13px; color: #3E4149">{{banner.s}}</span></div>
+<a href="{{banner.href}}" style="padding: 9px 16px; border-radius: 999px; background: #17181C; color: #FFFFFF; text-decoration: none; font-weight: 600; font-size: 13px">{{banner.cta}}</a>
+</section>
+</sc-if>
+
+<section style="flex: 1.1; min-height: 0; display: flex; flex-wrap: wrap; gap: 14px">
+
+<div style="flex: 1 1 380px; min-width: 0; min-height: 0; max-height: 100%; background: #FFFFFF; border: 2px solid #2F5BEA; border-radius: 18px; padding: 14px 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; overflow: hidden">
+<div style="display: flex; align-items: baseline; gap: 10px"><span style="font-weight: 600; font-size: 17px">Needs you</span><span style="padding: 2px 9px; border-radius: 999px; background: #2F5BEA; color: #FFFFFF; font-size: 12px; font-weight: 700">{{needCount}}</span><span style="margin-left: auto; font-size: 12px; color: #5B5E66">also on Telegram</span></div>
+<div style="flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 8px">
+<sc-for list="{{needs}}" as="n" hint-placeholder-count="3">
+<div style="border-radius: 14px; background: {{n.bg}}; padding: 11px 12px; display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; gap: 8px"><span style="padding: 2px 8px; border-radius: 999px; background: #FFFFFF; color: {{n.kc}}; font-size: 11.5px; font-weight: 700">{{n.kind}}</span><span style="font-size: 12px; color: #5B5E66">{{n.when}}</span></div>
+<span style="font-weight: 600">{{n.t}}</span>
+<span style="font-size: 12.5px; color: #3E4149">{{n.s}}</span>
+<sc-if value="{{n.open}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<sc-if value="{{n.isLink}}" hint-placeholder-val="{{ false }}"><a href="{{n.href}}" style="padding: 8px 14px; border-radius: 999px; background: #17181C; color: #FFFFFF; text-decoration: none; font: 600 13px Inter, sans-serif">{{n.yes}}</a></sc-if>
+<sc-if value="{{n.isAsk}}" hint-placeholder-val="{{ true }}"><button type="button" onClick="{{n.onYes}}" style="min-height: 36px; padding: 7px 14px; border-radius: 999px; border: 0; background: #17181C; color: #FFFFFF; font: 600 13px Inter, sans-serif; cursor: pointer">{{n.yes}}</button><button type="button" onClick="{{n.onNo}}" style="min-height: 36px; padding: 7px 14px; border-radius: 999px; border: 1px solid #C9C6BD; background: #FFFFFF; color: #17181C; font: 500 13px Inter, sans-serif; cursor: pointer">{{n.no}}</button></sc-if>
+<sc-if value="{{n.hasMore}}" hint-placeholder-val="{{ false }}"><a href="{{n.moreHref}}" style="padding: 8px 4px; font: 500 13px Inter, sans-serif">{{n.more}}</a></sc-if>
+</div>
+</sc-if>
+<sc-if value="{{n.done}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px"><span style="font-weight: 600; color: #1F6B47">{{n.doneText}}</span></div>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</div>
+
+<div style="flex: 1.5 1 560px; min-width: 0; min-height: 0; max-height: 100%; background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 14px 18px; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; flex-wrap: wrap; gap: 10px 28px; align-items: flex-end">
+<a href="#/money" style="display: flex; flex-direction: column; text-decoration: none; color: #17181C"><span style="font-size: 12.5px; color: #5B5E66; font-weight: 500; display: inline-flex; align-items: center; gap: 6px"><svg width="14" height="4" aria-hidden="true"><rect width="14" height="3" rx="1.5" fill="#D9620F"></rect></svg>Your money</span><span style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 30px; font-weight: 600; line-height: 1.1">{{money.v}}</span><span style="font-size: 12.5px; font-weight: 600; color: {{money.c}}">{{money.s}}</span></a>
+<a href="#/book" style="display: flex; flex-direction: column; text-decoration: none; color: #17181C"><span style="font-size: 12.5px; color: #5B5E66; font-weight: 500; display: inline-flex; align-items: center; gap: 6px"><svg width="14" height="4" aria-hidden="true"><rect width="14" height="3" rx="1.5" fill="#2F5BEA"></rect></svg>Claude's paper book</span><span style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 30px; font-weight: 600; line-height: 1.1">{{book.v}}</span><span style="font-size: 12.5px; font-weight: 600; color: {{book.c}}">{{book.s}}</span></a>
+<div style="margin-left: auto; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px">
+<span style="color: #5B5E66">This year, after tax</span>
+<span>{{race}}</span>
+</div>
+</div>
+<svg viewBox="0 0 900 220" width="100%" style="flex: 1; min-height: 120px" preserveAspectRatio="none" role="img" aria-label="Your money, Claude's paper book and the baseline over the last 90 sessions, each starting at 100">
+<g stroke="#EFEDE6" vector-effect="non-scaling-stroke"><line x1="0" y1="55" x2="900" y2="55" vector-effect="non-scaling-stroke"></line><line x1="0" y1="110" x2="900" y2="110" vector-effect="non-scaling-stroke"></line><line x1="0" y1="165" x2="900" y2="165" vector-effect="non-scaling-stroke"></line></g>
+<path d="{{lines.base}}" fill="none" stroke="#9A9DA4" stroke-width="2" stroke-dasharray="5 4" vector-effect="non-scaling-stroke"></path>
+<path d="{{lines.you}}" fill="none" stroke="#D9620F" stroke-width="2.2" vector-effect="non-scaling-stroke"></path>
+<path d="{{lines.book}}" fill="none" stroke="#2F5BEA" stroke-width="2.6" vector-effect="non-scaling-stroke"></path>
+</svg>
+<div style="display: flex; justify-content: space-between; font-size: 12px; color: #6B6E76"><sc-for list="{{months}}" as="mo"><span>{{mo}}</span></sc-for><span style="display: inline-flex; align-items: center; gap: 6px"><svg width="16" height="4" aria-hidden="true"><line x1="0" y1="2" x2="16" y2="2" stroke="#9A9DA4" stroke-width="2" stroke-dasharray="4 3"></line></svg>blended baseline</span></div>
+</div>
+
+<div style="flex: 0.85 1 300px; min-width: 0; min-height: 0; max-height: 100%; background: #17181C; color: #FFFFFF; border-radius: 18px; padding: 14px 18px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; align-items: center; gap: 10px"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><circle class="{{doing.pulse}}" cx="6" cy="6" r="4" fill="{{doing.dot}}"></circle><circle cx="6" cy="6" r="4" fill="{{doing.dot}}"></circle></svg><span style="font-weight: 600">What it is doing now</span><span style="margin-left: auto; font-size: 12px; color: #C9CBD1">{{doing.when}}</span></div>
+<span style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 28px; font-weight: 600; line-height: 1.1">{{doing.big}}</span>
+<span style="font-size: 13px; color: #C9CBD1">{{doing.small}}</span>
+<div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px">
+<sc-for list="{{steps}}" as="s" hint-placeholder-count="7">
+<div style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: {{s.fg}}"><svg width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="{{s.dot}}" stroke="{{s.ring}}" stroke-width="1.5"></circle></svg><span style="font-weight: {{s.w}}">{{s.name}}</span></div>
+</sc-for>
+</div>
+<div style="margin-top: auto; display: flex; justify-content: space-between; border-top: 1px solid #2B2D33; padding-top: 8px; font-size: 12px; color: #C9CBD1"><span><b style="color: #FFFFFF">{{counts.a}}</b> {{counts.al}}</span><span><b style="color: #FFFFFF">{{counts.b}}</b> {{counts.bl}}</span><span><b style="color: #FFFFFF">{{counts.c}}</b> {{counts.cl}}</span></div>
+</div>
+</section>
+
+<section style="flex: 1; min-height: 0; display: flex; flex-wrap: wrap; gap: 14px">
+<div style="flex: 1.5 1 560px; min-width: 0; min-height: 0; max-height: 100%; background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 14px 18px; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; overflow: hidden">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px"><span style="font-weight: 600; font-size: 16px">Heard</span><span style="font-size: 12.5px; color: #5B5E66">headlines checked every 15 min against your money and your watchlist</span><a href="#/manage" style="margin-left: auto; font-size: 12.5px; font-weight: 500">Edit watchlist</a></div>
+<div style="flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px">
+<sc-for list="{{heard}}" as="h" hint-placeholder-count="4">
+<div style="display: flex; align-items: flex-start; gap: 12px; padding: 9px 12px; border-radius: 12px; background: {{h.bg}}">
+<span style="flex: none; width: 64px; text-align: center; padding: 3px 0; border-radius: 999px; background: #FFFFFF; color: {{h.kc}}; font-size: 11.5px; font-weight: 700">{{h.k}}</span>
+<div style="flex: 1; min-width: 0"><div style="font-weight: 600">{{h.t}}</div><div style="font-size: 12px; color: #5B5E66">{{h.s}}</div></div>
+</div>
+</sc-for>
+</div>
+</div>
+
+<div style="flex: 1 1 360px; min-width: 0; min-height: 0; max-height: 100%; background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 14px 18px; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; overflow: auto">
+<div style="display: flex; align-items: baseline; justify-content: space-between"><span style="font-weight: 600; font-size: 16px">Its eyes</span><a href="#/agents" style="font-size: 12.5px; font-weight: 500">Connections</a></div>
+<sc-for list="{{eyes}}" as="e" hint-placeholder-count="6">
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px"><svg width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="{{e.fill}}" stroke="{{e.stroke}}" stroke-width="2"></circle></svg><span style="flex: 1">{{e.n}}</span><span style="color: {{e.sc}}; font-weight: {{e.sw}}">{{e.s}}</span></div>
+</sc-for>
+</div>
+
+<div style="flex: 0.85 1 300px; min-width: 0; min-height: 0; max-height: 100%; display: flex; flex-direction: column; gap: 14px">
+<div style="flex: 1; background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 12px 16px; display: flex; align-items: center; gap: 12px">
+<svg viewBox="0 0 240 132" width="110" role="img" aria-label="{{fall.aria}}">
+<path d="M30 110 A90 90 0 0 1 85.6 26.8" fill="none" stroke="#C9D6FB" stroke-width="18" stroke-linecap="round"></path>
+<path d="M85.6 26.8 A90 90 0 0 1 183.6 46.4" fill="none" stroke="#F2D29B" stroke-width="18"></path>
+<path d="M183.6 46.4 A90 90 0 0 1 210 110" fill="none" stroke="#F0A56E" stroke-width="18" stroke-linecap="round"></path>
+<line x1="120" y1="110" x2="{{fall.nx}}" y2="{{fall.ny}}" stroke="#17181C" stroke-width="4" stroke-linecap="round"></line><circle cx="120" cy="110" r="8" fill="#17181C"></circle>
+</svg>
+<div style="display: flex; flex-direction: column"><span style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 26px; font-weight: 600; line-height: 1">{{fall.v}}</span><span style="font-size: 12.5px; color: #5B5E66">{{fall.t}}</span><a href="#/lab" style="font-size: 12.5px; font-weight: 500">Simulate it</a></div>
+</div>
+<a href="#/graph" style="flex: 1; background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; text-decoration: none; color: #17181C">
+<span style="font-size: 12.5px; color: #5B5E66; font-weight: 500">Top storyline</span>
+<div style="display: flex; align-items: baseline; gap: 10px"><span style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 24px; font-weight: 600">{{story.p}}</span><span style="font-size: 13px; font-weight: 500">{{story.t}}</span></div>
+<div style="height: 6px; border-radius: 999px; background: #EFEDE6"><div style="height: 6px; width: {{story.w}}; border-radius: 999px; background: #2F5BEA"></div></div>
+<span style="font-size: 12px; color: #5B5E66">{{story.s}}</span>
+</a>
+</div>
+</section>
+
+</div>

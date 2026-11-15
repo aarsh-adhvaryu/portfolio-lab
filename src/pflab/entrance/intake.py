@@ -123,6 +123,13 @@ def submit(rt_or_con, channel: str, text: str, *, chat_id: Optional[int] = None,
     prefs = store.get_prefs(con, cid)
     if road not in (None, "", "auto", "quick", "full"):
         raise ValueError("road must be auto, quick or full")
+    if road in (None, ""):                                          # S90: no road given (Telegram, or the laptop on Auto): his default road from Settings
+        try:
+            from pflab.app import settings as app_settings
+            from pflab.pm import store as pm_store
+            road = app_settings.load(pm_store.pm_dir()).get("chat_road") or None
+        except Exception:
+            road = None
     pick = {"model_key": model or prefs["model_key"], "thinking": thinking or prefs["thinking"], "road": road if road in ("quick", "full") else None}
     uid = store.add_message(con, cid, "me", q or "(a file)", channel=channel, kind="file" if atts and not q else "text", attachments=atts or None, now=now)
     ack = _ack_text(atts, q)

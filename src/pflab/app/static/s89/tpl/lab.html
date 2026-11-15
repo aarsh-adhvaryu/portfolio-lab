@@ -1,0 +1,147 @@
+<!-- built from design_s89/Lab.dc.html by tools/build_screens.py: do not edit by hand -->
+<div style="height: 100vh; min-height: 860px; background: #F6F5F1; color: #17181C; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.45; box-sizing: border-box; padding: 10px 28px 22px; display: flex; flex-direction: column; gap: 14px; overflow: auto">
+
+
+
+<section style="flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px">
+<div role="tablist" aria-label="Lab tools" style="display: flex; gap: 4px; background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 999px; padding: 4px">
+<sc-for list="{{tabs}}" as="t" hint-placeholder-count="3">
+<button type="button" role="tab" aria-selected="{{t.on}}" onClick="{{t.pick}}" style="min-height: 38px; padding: 8px 18px; border-radius: 999px; border: 0; background: {{t.bg}}; color: {{t.fg}}; font: 600 13.5px Inter, sans-serif; cursor: pointer">{{t.label}}</button>
+</sc-for>
+</div>
+<span style="font-size: 13px; color: #3E4149">{{tabNote}}</span>
+<span style="margin-left: auto; font-size: 12.5px; color: #5B5E66; background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 999px; padding: 6px 12px">Worked out by the Lab tools on your laptop · 0 tokens · Claude only reads the result</span>
+</section>
+
+<sc-if value="{{isPairs}}" hint-placeholder-val="{{ true }}">
+<section style="flex: 1; min-height: 0; display: flex; flex-wrap: wrap; gap: 14px">
+<div style="flex: 0.75 1 280px; min-width: 0; min-height: 0; background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 14px; box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; overflow: auto">
+<span style="font-weight: 600; padding: 4px 6px 8px">Do they move together?</span>
+<sc-for list="{{pairs}}" as="p" hint-placeholder-count="5">
+<button type="button" onClick="{{p.pick}}" aria-pressed="{{p.on}}" style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px 12px; border-radius: 12px; border: 1px solid {{p.bd}}; background: {{p.bg}}; font: 400 14px Inter, sans-serif; color: #17181C; text-align: left; cursor: pointer">
+<span style="font-weight: 600">{{p.a}} · {{p.b}}</span>
+<span style="display: flex; align-items: center; gap: 8px"><span style="padding: 2px 8px; border-radius: 999px; background: {{p.cb}}; color: {{p.cf}}; font-size: 11.5px; font-weight: 700">{{p.tag}}</span><span style="font-size: 12px; color: #5B5E66">test p = {{p.pv}}</span></span>
+</button>
+</sc-for>
+<a href="#/chat" style="margin-top: auto; padding: 10px 12px; border-radius: 12px; border: 1px dashed #C9C6BD; color: #3E4149; text-decoration: none; font-size: 13px">Test another pair: ask in chat, e.g. "do Tata Steel and JSW move together?"</a>
+</div>
+
+<div style="flex: 2 1 620px; min-width: 0; min-height: 0; background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 16px 20px; box-sizing: border-box; display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px"><span style="font-weight: 600; font-size: 16px">{{pair.a}} and {{pair.b}} · last {{pair.days}} sessions</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #3E4149"><svg width="18" height="4" aria-hidden="true"><rect width="18" height="3" rx="1.5" fill="#2F5BEA"></rect></svg>{{pair.a}}</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #3E4149"><svg width="18" height="4" aria-hidden="true"><rect width="18" height="3" rx="1.5" fill="#D9620F"></rect></svg>{{pair.b}}</span><span style="font-size: 12px; color: #5B5E66">both start at 100</span></div>
+<svg viewBox="0 0 900 190" width="100%" style="flex: 1.1; min-height: 120px" preserveAspectRatio="none" role="img" aria-label="{{pair.label1}}">
+<path d="{{pair.pa}}" fill="none" stroke="#2F5BEA" stroke-width="2.2" vector-effect="non-scaling-stroke"></path>
+<path d="{{pair.pb}}" fill="none" stroke="#D9620F" stroke-width="2.2" vector-effect="non-scaling-stroke"></path>
+</svg>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 6px"><span style="font-weight: 600">The gap between them</span><span style="font-size: 12px; color: #5B5E66">in standard deviations · shaded band is ±2 · a tied pair keeps coming back to 0</span></div>
+<svg viewBox="0 0 900 150" width="100%" style="flex: 1; min-height: 100px" preserveAspectRatio="none" role="img" aria-label="{{pair.label2}}">
+<rect x="0" y="35" width="900" height="80" fill="#EAF0FE"></rect>
+<line x1="0" y1="75" x2="900" y2="75" stroke="#9A9DA4" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"></line>
+<path d="{{pair.pz}}" fill="none" stroke="#17181C" stroke-width="1.8" vector-effect="non-scaling-stroke"></path>
+<circle cx="898" cy="{{pair.zy}}" r="5" fill="#D9620F"></circle>
+</svg>
+<div style="display: flex; justify-content: space-between; font-size: 12px; color: #6B6E76"><sc-for list="{{pair.months}}" as="mo"><span>{{mo}}</span></sc-for></div>
+</div>
+
+<div style="flex: 0.9 1 300px; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 14px; overflow: auto">
+<div style="background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+<span style="align-self: flex-start; padding: 5px 12px; border-radius: 999px; background: {{pair.cb}}; color: {{pair.cf}}; font-weight: 700">{{pair.tagLong}}</span>
+<span style="color: #3E4149">{{pair.verdict}}</span>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 16px 18px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+<sc-for list="{{pair.stats}}" as="s" hint-placeholder-count="6">
+<div><div style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 22px; font-weight: 600">{{s.v}}</div><div style="font-size: 12px; color: #5B5E66">{{s.l}}</div></div>
+</sc-for>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 14px 18px; display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 12.5px; color: #5B5E66">{{pair.method}}</span>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" onClick="{{pair.backtest}}">Backtest trading this gap</button>
+<button type="button" onClick="{{pair.save}}">Ask Claude to note it</button>
+</div>
+</div>
+</div>
+</section>
+</sc-if>
+
+<sc-if value="{{isSim}}" hint-placeholder-val="{{ false }}">
+<section style="flex: 1; min-height: 0; display: flex; flex-wrap: wrap; gap: 14px">
+<div style="flex: 2.2 1 680px; min-width: 0; min-height: 0; background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 16px 20px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px">
+<span style="font-weight: 600; font-size: 16px">{{sim.title}}</span>
+<div role="radiogroup" aria-label="What happens" style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{scen}}" as="c" hint-placeholder-count="3"><button type="button" role="radio" aria-checked="{{c.on}}" onClick="{{c.pick}}" style="min-height: 36px; padding: 7px 14px; border-radius: 999px; border: 1px solid {{c.bd}}; background: {{c.bg}}; color: {{c.fg}}; font: 600 12.5px Inter, sans-serif; cursor: pointer">{{c.label}}</button></sc-for>
+</div>
+<div role="radiogroup" aria-label="How far ahead" style="margin-left: auto; display: flex; gap: 6px">
+<sc-for list="{{hor}}" as="c" hint-placeholder-count="3"><button type="button" role="radio" aria-checked="{{c.on}}" onClick="{{c.pick}}" style="min-height: 36px; padding: 7px 14px; border-radius: 999px; border: 1px solid {{c.bd}}; background: {{c.bg}}; color: {{c.fg}}; font: 600 12.5px Inter, sans-serif; cursor: pointer">{{c.label}}</button></sc-for>
+</div>
+</div>
+<svg viewBox="0 0 900 360" width="100%" style="flex: 1; min-height: 220px" preserveAspectRatio="none" role="img" aria-label="{{sim.label}}">
+<line x1="0" y1="{{sim.y0}}" x2="900" y2="{{sim.y0}}" stroke="#C9C6BD" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"></line>
+<line x1="0" y1="{{sim.y90}}" x2="900" y2="{{sim.y90}}" stroke="#D9620F" stroke-dasharray="3 5" vector-effect="non-scaling-stroke"></line>
+<sc-for list="{{sim.paths}}" as="p" hint-placeholder-count="30"><path d="{{p.d}}" fill="none" stroke="#93A9F6" stroke-width="1" opacity="0.45" vector-effect="non-scaling-stroke"></path></sc-for>
+<path d="{{sim.band}}" fill="#2F5BEA" opacity="0.14"></path>
+<path d="{{sim.med}}" fill="none" stroke="#17181C" stroke-width="2.4" vector-effect="non-scaling-stroke"></path>
+</svg>
+<div style="display: flex; flex-wrap: wrap; gap: 16px; font-size: 12px; color: #5B5E66">
+<span style="display: inline-flex; align-items: center; gap: 6px"><svg width="18" height="4" aria-hidden="true"><rect width="18" height="3" fill="#17181C"></rect></svg>middle outcome</span>
+<span style="display: inline-flex; align-items: center; gap: 6px"><svg width="14" height="10" aria-hidden="true"><rect width="14" height="10" fill="#2F5BEA" opacity="0.2"></rect></svg>8 in 10 futures land here</span>
+<span style="display: inline-flex; align-items: center; gap: 6px"><svg width="18" height="4" aria-hidden="true"><line x1="0" y1="2" x2="18" y2="2" stroke="#D9620F" stroke-width="2" stroke-dasharray="3 3"></line></svg>10% below today</span>
+<span style="margin-left: auto">today → {{sim.end}}</span>
+</div>
+</div>
+<div style="flex: 0.9 1 300px; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 14px; overflow: auto">
+<div style="background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 16px 18px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px">
+<sc-for list="{{sim.stats}}" as="s" hint-placeholder-count="4">
+<div><div style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 24px; font-weight: 600; color: {{s.c}}">{{s.v}}</div><div style="font-size: 12px; color: #5B5E66">{{s.l}}</div></div>
+</sc-for>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 16px 18px; display: flex; flex-direction: column; gap: 8px">
+<span style="font-weight: 600">What this scenario means</span>
+<span style="color: #3E4149">{{sim.note}}</span>
+<span style="font-size: 12px; color: #5B5E66">Starts from your money today, {{simStart}}. Daily moves drawn from the last 5 years of your holdings, bunched the way they really bunch.</span>
+</div>
+</div>
+</section>
+</sc-if>
+
+<sc-if value="{{isFc}}" hint-placeholder-val="{{ false }}">
+<section style="flex: 1; min-height: 0; display: flex; flex-wrap: wrap; gap: 14px">
+<div style="flex: 2.2 1 680px; min-width: 0; min-height: 0; background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 16px 20px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px">
+<span style="font-weight: 600; font-size: 16px">Next 20 sessions</span>
+<div role="radiogroup" aria-label="What to forecast" style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{inst}}" as="c" hint-placeholder-count="3"><button type="button" role="radio" aria-checked="{{c.on}}" onClick="{{c.pick}}" style="min-height: 36px; padding: 7px 14px; border-radius: 999px; border: 1px solid {{c.bd}}; background: {{c.bg}}; color: {{c.fg}}; font: 600 12.5px Inter, sans-serif; cursor: pointer">{{c.label}}</button></sc-for>
+</div>
+</div>
+<svg viewBox="0 0 900 340" width="100%" style="flex: 1; min-height: 220px" preserveAspectRatio="none" role="img" aria-label="{{fc.label}}">
+<line x1="{{fc.xNow}}" y1="0" x2="{{fc.xNow}}" y2="340" stroke="#C9C6BD" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"></line>
+<path d="{{fc.b80}}" fill="#2F5BEA" opacity="0.10"></path>
+<path d="{{fc.b50}}" fill="#2F5BEA" opacity="0.20"></path>
+<path d="{{fc.mid}}" fill="none" stroke="#2F5BEA" stroke-width="2" stroke-dasharray="5 4" vector-effect="non-scaling-stroke"></path>
+<path d="{{fc.hist}}" fill="none" stroke="#17181C" stroke-width="2.2" vector-effect="non-scaling-stroke"></path>
+</svg>
+<div style="display: flex; justify-content: space-between; font-size: 12px; color: #6B6E76"><span>{{fc.from}}</span><span>today</span><span>{{fc.to}}</span></div>
+</div>
+<div style="flex: 0.9 1 300px; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 14px; overflow: auto">
+<div style="background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 16px 18px; display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 12.5px; color: #5B5E66">8 in 10 chance it ends between</span>
+<span style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 26px; font-weight: 600">{{fc.range80}}</span>
+<span style="font-size: 12.5px; color: #5B5E66">5 in 10 chance between {{fc.range50}}</span>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+<span style="font-weight: 600">Can you trust these fans?</span>
+<sc-for list="{{fc.cover}}" as="v" hint-placeholder-count="2">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<div style="display: flex; justify-content: space-between; font-size: 13px"><span>{{v.l}}</span><b>{{v.v}}</b></div>
+<div style="position: relative; height: 8px; border-radius: 999px; background: #EFEDE6"><div style="height: 8px; border-radius: 999px; width: {{v.v}}; background: #2F5BEA"></div><span style="position: absolute; top: -3px; left: {{v.t}}; width: 2px; height: 14px; background: #17181C"></span></div>
+</div>
+</sc-for>
+<span style="font-size: 12px; color: #5B5E66">{{fc.coverNote}}</span>
+</div>
+</div>
+</section>
+</sc-if>
+
+</div>

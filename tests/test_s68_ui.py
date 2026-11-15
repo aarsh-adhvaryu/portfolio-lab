@@ -1,21 +1,13 @@
-"""S68: the redesigned dashboard in a REAL browser (headless Edge), on a synthetic profile. Every screen draws without a script error; the rail has
-the new screens and none of the retired ones; the assistant's conversation is one persistent thread that shows what the system told it and what he
-sent; an investigation shows its card with the blocker and next trigger; the limits in force are shown. Skipped where Edge is missing."""
+"""The app on a synthetic profile, served on a free port: the `server` fixture the endpoint tests use. (S90: the browser tests of the old screens that lived here
+were removed with those screens; the screens of today are driven in tests/test_s89_screens.py and tests/test_s89b_screens.py.)"""
 from __future__ import annotations
 
-import json
-import os
 import socket
 import threading
 import time
 from datetime import datetime
 
 import pytest
-
-pytest.importorskip("websockets")
-from tests import _edge  # noqa: E402
-
-pytestmark = [pytest.mark.ui, pytest.mark.skipif(not os.path.exists(_edge.EDGE), reason="Microsoft Edge is not installed here")]
 
 NOW = datetime(2026, 10, 31, 15, 0)
 
@@ -50,31 +42,3 @@ def server(tmp_path, monkeypatch):
     yield rt, port
     srv.should_exit = True
     th.join(5)
-
-
-def test_the_bar_has_the_redesigned_screens_a_gear_for_settings_and_the_assistant_is_one_click_away(server, tmp_path):
-    """S78 (the redesign): Today, Account, Watchlist, Research, Assistant, System in a top bar; Settings is the gear."""
-    rt, port = server
-    steps = [("[...document.querySelectorAll('#tabs a:not(.rd-gear)')].map(a => a.textContent.replace(/[0-9]+$/, '').replace(/^[^A-Za-z]+/, '').trim()).join('|')", 0.3),
-             ("!!document.querySelector('#status a.rd-gear[href=\"#/settings\"]')", 0.1),
-             ("document.querySelector('#tabs a.on').textContent.trim().replace(/^[^A-Za-z]+/, '')", 0.1)]
-    errors, res = _edge.shoot(f"http://127.0.0.1:{port}/", str(tmp_path / "home.png"), 1500, 1000, 5, steps)
-    assert errors == [], errors
-    assert res[0] == "Today|Account|Watchlist|Research|Assistant|System"
-    assert "Command centre" not in res[0] and "AI centre" not in res[0] and "Schedule" not in res[0] and "World" not in res[0]
-    assert res[1] is True or res[1] == "true"
-    assert res[2] == "Today"
-    steps2 = [("!!document.getElementById('thread') && !!document.getElementById('chatIn') && !!document.getElementById('arail')", 0.3)]
-    errors, res2 = _edge.shoot(f"http://127.0.0.1:{port}/#/assistant", str(tmp_path / "asst.png"), 1500, 1000, 5, steps2)
-    assert errors == [], errors
-    assert res2[0] is True or res2[0] == "true"
-
-
-def test_the_limits_screen_shows_the_window_and_every_limit(server, tmp_path):
-    rt, port = server
-    steps = [("document.getElementById('screen').innerText", 1.5)]
-    errors, res = _edge.shoot(f"http://127.0.0.1:{port}/#/system/limits", str(tmp_path / "limits.png"), 1500, 1000, 4, steps)
-    assert errors == [], errors
-    t = res[0].lower()
-    assert "spending policy now: acceptance" in t and "1,500" in t and "brain layer, rupees a day" in t and "lifted by the acceptance window" in t
-

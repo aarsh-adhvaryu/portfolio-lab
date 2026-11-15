@@ -10,7 +10,7 @@ from typing import Optional
 
 from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from pflab.app import views
@@ -82,11 +82,13 @@ def create_app(rt) -> FastAPI:
             f = STATIC / name
             if f.exists():
                 html = html.replace(f"/static/{name}\"", f"/static/{name}?v={int(f.stat().st_mtime)}\"")
+        ver = max((int(f.stat().st_mtime) for f in (STATIC / "s89").rglob("*") if f.is_file()), default=0)
+        html = html.replace("__VER__", str(ver))                         # the screen templates are fetched with this, so an update is never a stale copy
         return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
     @app.get("/")
     def home_page():
-        """S89: the redesigned screens (static/s89). The old screens stay at /classic until the first week has passed."""
+        """The screens (static/s89): the only UI."""
         return _versioned("s89/index.html", ["s89/core.js", "s89/home.js", "s89/money.js", "s89/manage.js", "s89/book.js", "s89/lab.js", "s89/graph.js", "s89/stock.js", "s89/chat.js", "s89/agents.js", "s89/usage.js", "s89/settings.js", "s89/s89.css"])
 
     @app.get("/manifest.webmanifest")
@@ -98,13 +100,9 @@ def create_app(rt) -> FastAPI:
         return FileResponse(str(STATIC / "s89" / "sw.js"), media_type="application/javascript", headers={"Cache-Control": "no-store", "Service-Worker-Allowed": "/"})
 
     @app.get("/classic")
-    def index():
-        """The page asks for its script and styles with their modification time, so the window never runs a cached
-        old copy after an update (2026-10-24: the browser kept the old app.js)."""
-        html = (STATIC / "index.html").read_text(encoding="utf-8")
-        for name in ("app.js", "app.css", "ui.js", "world.js", "world.css"):
-            html = html.replace(f"/static/{name}\"", f"/static/{name}?v={int((STATIC / name).stat().st_mtime)}\"")
-        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+    def classic():
+        """S90: one UI only. The old screens are gone; an old bookmark lands on the screens of today."""
+        return RedirectResponse("/", status_code=307)
 
     @app.get("/api/health")
     def health():
@@ -1073,7 +1071,10 @@ def create_app(rt) -> FastAPI:
 
     @app.post("/api/settings")
     def set_settings(changes: dict = Body(...)):
-        return rt.set_settings(changes)
+        try:
+            return rt.set_settings(changes)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
 
     @app.get("/api/models")
     def get_models():

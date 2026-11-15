@@ -2,14 +2,12 @@
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime
 
 import pytest
 
 from pflab.app import assistant, chat, context
 from pflab.pm import store
-from tests import _edge
 
 NOW = datetime(2026, 11, 2, 15, 0)
 
@@ -77,22 +75,3 @@ def test_history_lists_the_earlier_chats_for_the_screen(con):
     assert h["messages"] == [] and h["earlier"][0]["title"].startswith("Something about the account")
 
 
-from tests.test_s68_ui import server  # noqa: E402,F401  (the fixture)
-
-
-@pytest.mark.ui
-@pytest.mark.skipif(not os.path.exists(_edge.EDGE), reason="Microsoft Edge is not installed here")
-def test_the_new_chat_button_clears_the_thread_and_lists_the_old_one(server, tmp_path):
-    rt, port = server
-    con = rt.cursor()
-    cid = assistant.thread(con, NOW)
-    _say(con, cid, "Tell me about the gold bonds in the account.")
-    _say(con, cid, "They are a diversifier.", "ai")
-    steps = [("(document.getElementById('thread') || {}).innerText", 3.5),
-             ("document.getElementById('newChat').click(); 1", 1.8),
-             ("document.getElementById('thread').innerText + ' || ' + document.getElementById('chatBar').innerText", 0.2)]
-    errors, res = _edge.shoot(f"http://127.0.0.1:{port}/#/assistant", str(tmp_path / "n.png"), 1400, 900, 5, steps)
-    assert errors == [], errors
-    assert "gold bonds" in res[0]
-    after = res[2]
-    assert "gold bonds" not in after.split("||")[0] and "Tell me about the gold bonds" in after.split("||")[1]

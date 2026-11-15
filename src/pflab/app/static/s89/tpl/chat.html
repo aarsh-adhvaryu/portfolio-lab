@@ -1,0 +1,80 @@
+<!-- built from design_s89/Chat.dc.html by tools/build_screens.py: do not edit by hand -->
+<div style="height: 100vh; min-height: 760px; background: #F6F5F1; color: #17181C; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.45; box-sizing: border-box; padding: 10px 28px 22px; display: flex; flex-direction: column; gap: 14px; overflow: hidden">
+
+
+
+<section style="flex: 1; min-height: 0; display: flex; gap: 14px">
+
+<aside aria-label="Chats" style="flex: 0 0 220px; min-height: 0; display: flex; flex-direction: column; gap: 6px; overflow: auto">
+<button type="button" onClick="{{newChat}}" style="flex: none; height: 44px; border-radius: 999px; border: 0; background: #17181C; color: #FFFFFF; font: 600 14px Inter, sans-serif; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>New chat</button>
+<sc-for list="{{chats}}" as="c" hint-placeholder-count="5">
+<a href="#/chat" onClick="{{c.open}}" style="display: flex; flex-direction: column; gap: 1px; padding: 10px 14px; border-radius: 14px; text-decoration: none; color: #17181C; background: {{c.bg}}">
+<span style="font-weight: {{c.weight}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.title}}</span>
+<span style="font-size: 12px; color: #5B5E66">{{c.when}}</span>
+</a>
+</sc-for>
+<span style="margin-top: auto; font-size: 12px; color: #5B5E66; padding: 8px 4px">One thread with Telegram. Messages sent there show here too.</span>
+</aside>
+
+<div style="flex: 1 1 0; min-width: 0; min-height: 0; background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; display: flex; flex-direction: column; overflow: hidden">
+<div role="log" aria-label="Messages" style="flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 16px">
+<sc-for list="{{msgs}}" as="m" hint-placeholder-count="9">
+<div style="align-self: {{m.side}}; max-width: {{m.maxw}}; display: flex; flex-direction: column; align-items: {{m.align}}; gap: 6px">
+<span style="font-size: 11.5px; color: #5B5E66">{{m.meta}}</span>
+<div style="background: {{m.bg}}; color: {{m.fg}}; border-radius: {{m.radius}}; padding: 12px 14px; display: flex; flex-direction: column; gap: 9px">
+<sc-if value="{{m.hasQuote}}" hint-placeholder-val="{{ false }}"><span style="font-size: 13px; color: #B9C8FB">{{m.quote}}</span></sc-if>
+<span style="white-space: pre-line">{{m.text}}</span>
+<sc-if value="{{m.hasFile}}" hint-placeholder-val="{{ false }}"><span style="display: inline-flex; align-items: center; gap: 10px; background: #2B2D33; border-radius: 12px; padding: 9px 12px; font-size: 13px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C9CBD1" stroke-width="2" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"></path><path d="M14 3v4h4"></path></svg>{{m.file}}</span></sc-if>
+<sc-if value="{{m.hasChips}}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-wrap: wrap; gap: 6px"><sc-for list="{{m.chips}}" as="c" hint-placeholder-count="3"><span style="padding: 4px 10px; border-radius: 999px; background: {{c.bg}}; color: {{c.fg}}; font-size: 12px; font-weight: 600">{{c.t}}</span></sc-for></div></sc-if>
+<sc-if value="{{m.hasUsed}}" hint-placeholder-val="{{ false }}"><span style="font-size: 12px; color: #5B5E66">{{m.used}}</span></sc-if>
+<sc-if value="{{m.hasLink}}" hint-placeholder-val="{{ false }}"><a href="{{m.href}}" style="font-size: 13px; font-weight: 500">{{m.link}}</a></sc-if>
+<sc-if value="{{m.hasActs}}"><div style="display: flex; flex-wrap: wrap; gap: 8px"><sc-for list="{{m.acts}}" as="a"><button type="button" onClick="{{a.go}}" style="padding: 7px 13px; border-radius: 999px; border: 1px solid {{a.bd}}; background: {{a.bg}}; color: {{a.fg}}; font: 600 13px Inter, sans-serif; cursor: pointer">{{a.label}}</button></sc-for></div></sc-if>
+</div>
+</div>
+</sc-for>
+</div>
+
+<div style="flex: none; border-top: 1px solid #EFEDE6; padding: 10px 16px 14px; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px">
+<div role="radiogroup" aria-label="Answer road" style="display: flex; align-items: center; gap: 5px"><span style="font-size: 12px; color: #5B5E66; margin-right: 2px">Answer</span>
+<sc-for list="{{roads}}" as="r" hint-placeholder-count="3"><button type="button" role="radio" aria-checked="{{r.on}}" onClick="{{r.pick}}" style="padding: 5px 11px; border-radius: 999px; border: 1px solid {{r.bd}}; background: {{r.bg}}; color: {{r.fg}}; font: 600 12px Inter, sans-serif; cursor: pointer">{{r.label}}</button></sc-for>
+</div>
+<div role="radiogroup" aria-label="Model" style="display: flex; flex-wrap: wrap; align-items: center; gap: 5px"><span style="font-size: 12px; color: #5B5E66; margin-right: 2px">Model</span>
+<sc-for list="{{models}}" as="r" hint-placeholder-count="5"><button type="button" role="radio" aria-checked="{{r.on}}" onClick="{{r.pick}}" style="padding: 5px 11px; border-radius: 999px; border: 1px solid {{r.bd}}; background: {{r.bg}}; color: {{r.fg}}; font: 600 12px Inter, sans-serif; cursor: pointer">{{r.label}}</button></sc-for>
+</div>
+<span style="margin-left: auto; font-size: 12px; color: #5B5E66">{{hint}}</span>
+</div>
+<form onSubmit="{{send}}" style="display: flex; align-items: center; gap: 10px">
+<button type="button" aria-label="Attach a file" onClick="{{attach}}" title="Attach a file" style="cursor: pointer; width: 44px; height: 44px; border-radius: 999px; border: 1px solid #E6E4DD; background: #FFFFFF; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3E4149" stroke-width="2" aria-hidden="true"><path d="M20 11.5 12.5 19a5 5 0 0 1-7-7l8-8a3.3 3.3 0 0 1 4.7 4.7l-8 8a1.7 1.7 0 0 1-2.4-2.4L15 7.5"></path></svg></button>
+<label for="chat-in" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Message</label>
+<input id="chat-in" aria-label="Message" autocomplete="off" type="text" placeholder="Ask, send a file or a link, or type build: or /full" value="{{draft}}" onChange="{{setDraft}}" style="flex: 1; border: 1px solid #E6E4DD; border-radius: 999px; padding: 12px 16px; font: 400 14px Inter, sans-serif; background: #FBFAF7">
+<button type="submit" aria-label="Send" style="width: 44px; height: 44px; border-radius: 999px; border: 0; background: #17181C; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" aria-hidden="true"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg></button>
+</form>
+</div>
+</div>
+
+<div style="flex: 0 1 340px; min-width: 280px; min-height: 0; display: flex; flex-direction: column; gap: 12px; overflow: auto">
+<div style="background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; justify-content: space-between; align-items: center"><span style="font-weight: 600">Operator</span><span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #3E4149"><svg width="8" height="8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="{{op.dot}}"></circle></svg>{{op.text}}</span></div>
+<sc-for list="{{budgets}}" as="b" hint-placeholder-count="2">
+<div style="display: flex; flex-direction: column; gap: 4px"><div style="display: flex; justify-content: space-between; font-size: 12.5px"><span style="color: #5B5E66">{{b.l}}</span><b>{{b.v}}</b></div><div style="height: 6px; border-radius: 999px; background: #EFEDE6"><div style="height: 6px; width: {{b.w}}; border-radius: 999px; background: {{b.c}}"></div></div></div>
+</sc-for>
+<div style="display: flex; gap: 14px; font-size: 12.5px"><a href="#/usage" style="font-weight: 500">Usage</a><a href="#/agents" style="font-weight: 500">Agents and tools</a></div>
+</div>
+
+<sc-for list="{{cards}}" as="k"><div style="background: #FFFFFF; border: 2px solid #2F5BEA; border-radius: 18px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px"><span style="font-size: 12px; color: #1D3FB8; font-weight: 600">{{k.head}}</span><span style="font-weight: 600">{{k.text}}</span><sc-if value="{{k.sub}}"><span style="font-size: 12px; color: #5B5E66">{{k.sub}}</span></sc-if><div style="display: flex; flex-wrap: wrap; gap: 8px"><sc-for list="{{k.acts}}" as="a"><button type="button" onClick="{{a.go}}" style="padding: 7px 13px; border-radius: 999px; border: 1px solid {{a.bd}}; background: {{a.bg}}; color: {{a.fg}}; font: 600 13px Inter, sans-serif; cursor: pointer">{{a.label}}</button></sc-for></div><a href="#/home" style="font-size: 12px; font-weight: 500">All that needs you is on Home</a></div></sc-for>
+
+<div style="background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+<span style="font-weight: 600">Working on what you sent</span>
+<sc-for list="{{queue}}" as="q" hint-placeholder-count="3">
+<div style="display: flex; flex-direction: column; gap: 5px"><div style="display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px"><span style="font-weight: 500">{{q.name}}</span><span style="color: #5B5E66">{{q.state}}</span></div><div style="height: 5px; border-radius: 999px; background: #EFEDE6"><div style="height: 5px; border-radius: 999px; width: {{q.p}}; background: #2F5BEA"></div></div></div>
+</sc-for>
+</div>
+
+<div style="background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px">
+<span style="font-weight: 600">Your standing instructions</span><sc-for list="{{rules}}" as="r"><div style="display: flex; align-items: center; gap: 10px; background: #F6F5F1; border-radius: 12px; padding: 9px 12px"><div style="flex: 1"><div style="font-weight: 600; font-size: 13px">{{r.name}}</div><div style="font-size: 12px; color: #5B5E66">{{r.sub}}</div></div><sc-if value="{{r.undo}}"><button type="button" onClick="{{r.undo}}" style="padding: 6px 11px; border-radius: 999px; border: 1px solid #C9C6BD; background: #FFFFFF; font: 500 12px Inter, sans-serif; color: #17181C">Undo</button></sc-if></div></sc-for>
+</div>
+</div>
+
+</section>
+</div>

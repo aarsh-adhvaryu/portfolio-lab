@@ -305,7 +305,7 @@ def home(rt, con, now: datetime) -> dict:
     except Exception:
         pass
     if kite and kite[0] in ("expired", "none"):
-        needs.insert(0, {"kind": "do this", "id": "kite", "text": "Log in to Kite", "detail": "Takes 20 seconds. Until then your money shows the last snapshot.", "link": "#/settings"})
+        needs.insert(0, {"kind": "do this", "id": "kite", "text": "Log in to Kite", "detail": "Takes 20 seconds. Until then your money shows the last snapshot.", "link": "#/kite"})
     heard = []
     try:
         for sym, head, at, mode, dec in con.execute("SELECT symbol, headline, first_seen_at, coalesce(mode,'live'), decided_at FROM alarm_s86 ORDER BY alarm_id DESC LIMIT 8").fetchall():
@@ -317,7 +317,7 @@ def home(rt, con, now: datetime) -> dict:
     plan = cp.state(con, now)
     banner = None
     if kite and kite[0] in ("expired", "none"):
-        banner = {"kind": "kite", "title": "Kite login expired", "text": "Your Indian prices are the last snapshot. Claude's India book will not trade until you log in; stops are still checked on the last prices.", "cta": "Log in to Kite", "href": "#/settings"}
+        banner = {"kind": "kite", "title": "Kite login expired", "text": "Your Indian prices are the last snapshot. Claude's India book will not trade until you log in; stops are still checked on the last prices.", "cta": "Log in to Kite", "href": "#/kite"}
     elif plan["thinking"] == "paused":
         banner = {"kind": "plan", "title": f"Plan limit reached · thinking paused until {plan['paused_until']}", "text": "No model calls until then. The paper book's rails, stops, alarm keywords and Telegram alerts keep running without the model. Chat answers wait too.", "cta": "See usage", "href": "#/usage"}
     elif not plan["signed_in"]:
@@ -327,16 +327,32 @@ def home(rt, con, now: datetime) -> dict:
         if down:
             banner = {"kind": "down", "title": f"{down[0]['name']} not answering", "text": "Alarms keep running on the sources that answer. It retries every 15 minutes and tells you on Telegram when it is back.", "cta": "See its eyes", "href": "#/agents"}
     story = None
-    try:
-        from pflab.app import views as _v
-        cv = rt.core_view() if hasattr(rt, "core_view") else None
-    except Exception:
-        cv = None
-    try:
-        rows = con.execute("SELECT * FROM storylines_s80 ORDER BY 1 DESC LIMIT 1").fetchall()
-        story = None if not rows else {"text": str(rows[0])[:160]}
+    try:                                                              # the most likely open storyline (the graph's own table)
+        cur = con.execute("SELECT * FROM storylines_s80 WHERE status='open' ORDER BY probability DESC NULLS LAST LIMIT 1")
+        cols = [d[0] for d in cur.description]
+        r = cur.fetchone()
+        if r:
+            row = dict(zip(cols, r))
+            n_open = con.execute("SELECT count(*) FROM storylines_s80 WHERE status='open'").fetchone()[0]
+            story = {"claim": row.get("claim"), "probability": row.get("probability"), "direction": row.get("direction"), "more": max(0, int(n_open) - 1)}
     except Exception:
         story = None
+    day0 = datetime(now.year, now.month, now.day)
+
+    def n_(sql, args=()):
+        try:
+            return int(con.execute(sql, list(args)).fetchone()[0] or 0)
+        except Exception:
+            return None
+    counts = {"checks": n_("SELECT count(*) FROM job_runs WHERE started_at >= ? AND status='ok'", [day0]),
+              "forecasts": n_("SELECT count(*) FROM forecasts_s79 WHERE made_at >= ? AND source='live'", [day0]),
+              "filings": n_("SELECT count(*) FROM kg_docs WHERE kind='filing' AND published_at >= ?", [day0])}
+    last_job = None
+    try:
+        r = con.execute("SELECT job, started_at, finished_at, status FROM job_runs ORDER BY run_id DESC LIMIT 1").fetchone()
+        last_job = {"job": r[0], "started_at": str(r[1])[:16], "finished_at": str(r[2])[:16] if r[2] else None, "status": r[3]} if r else None
+    except Exception:
+        last_job = None
     paper = None
     try:
         from pflab.paper import manager
@@ -348,17 +364,20 @@ def home(rt, con, now: datetime) -> dict:
         paper = None
     m = mine(rt, con, now, "all")
     return {"now": str(now)[:16], "banner": banner, "needs": needs, "heard": heard, "eyes": eyes, "plan": plan, "paper": paper, "mine": {"value_inr": m["summary"]["value_inr"], "today_pct": m["summary"]["today_pct"],
-            "snapshot_at": m["state"]["snapshot_at"]}, "fall_chance": _fall(con), "fall_text": None, "plans": _plans_now(con), "storyline": story,
+            "snapshot_at": m["state"]["snapshot_at"]}, "fall_chance": _fall(con), "plans": _plans_now(con), "storyline": story, "counts": counts, "last_job": last_job, "kite_login": getattr(rt, "kite_state", None),
             "doing": {"mode": (con.execute("SELECT mode FROM desk_sessions_s84 ORDER BY session_id DESC LIMIT 1").fetchone() or [None])[0] if _has(con, "desk_sessions_s84") else None}}
 
 
 def _fall(con) -> Optional[dict]:
     """The stored chance of a fall (the forecaster's own table), or None while none has been made."""
     try:
-        r = con.execute("SELECT p, horizon_sessions, as_of FROM fall_risk_s79 WHERE market='IN' AND source='live' AND p IS NOT NULL ORDER BY as_of DESC LIMIT 1").fetchone()
+        r = con.execute("SELECT p, horizon_sessions, as_of, threshold, ref_high FROM fall_risk_s79 WHERE market='IN' AND source='live' AND p IS NOT NULL ORDER BY as_of DESC LIMIT 1").fetchone()
     except Exception:
         return None
-    return {"p": float(r[0]), "horizon": int(r[1]), "as_of": str(r[2])} if r else None
+    if not r:
+        return None
+    drop = (1 - float(r[3]) / float(r[4])) * 100 if r[3] and r[4] else None
+    return {"p": float(r[0]), "horizon": int(r[1]), "as_of": str(r[2]), "drop_pct": drop}
 
 
 def _plans_now(con) -> list:
@@ -442,7 +461,7 @@ def agents(con, now: datetime) -> dict:
         m, t, sw = sets.get(key, (None, None, {}))
         last = None
         try:
-            r = con.execute("SELECT max(created_at) FROM api_calls WHERE engine='claude_plan' AND topic LIKE ?", [f"plan:{klass}:%"]).fetchone()
+            r = con.execute("SELECT max(created_at) FROM api_calls WHERE mode='plan' AND topic LIKE ?", [f"plan:{klass}:%"]).fetchone()
             last = str(r[0])[:16] if r and r[0] else None
         except Exception:
             pass
@@ -452,8 +471,16 @@ def agents(con, now: datetime) -> dict:
                               "fixer": "files in src and tests, git on a fix branch, tests", "weekly": "none (reads facts)"}[key],
                     "applies": ("this reader uses the local model, not a plan model" if key == "alarm" else "from the next run")})
     sw = sets.get("_switches", (None, None, {}))[2]
+    skills = []
+    try:
+        from pflab.oper import texts
+        for name, body in texts.SKILLS.items():
+            m = re.search(r"^description:\s*(.+)$", body, re.M)
+            skills.append({"name": name, "description": (m.group(1) if m else "").strip()})
+    except Exception:
+        skills = []
     return {"agents": out, "models": list(MODELS), "levels": list(LEVELS), "switches": {k: bool(sw.get(k, False)) for k in ("kite", "nse", "tijori", "connectors")},
-            "switch_note": "These load for full answers only and are off by default.", "signed_in": st["signed_in"]}
+            "switch_note": "These load for full answers only and are off by default.", "signed_in": st["signed_in"], "skills": skills}
 
 
 def agents_set(con, now: datetime, body: dict) -> dict:
@@ -572,8 +599,41 @@ def register(app, rt) -> None:
             err(e)
 
     @app.get("/api/lab/forecast")
-    def lab_forecast(market: str = "IN"):
-        return json.loads(json.dumps(s89b.forecast(rt.cursor(), market), default=str))
+    def lab_forecast(market: str = "IN", subject: str = ""):
+        return json.loads(json.dumps(s89b.forecast(rt.cursor(), market, subject or None, rt.data_root), default=str))
+
+    @app.get("/api/lab/pairs")
+    def lab_pairs():
+        return json.loads(json.dumps({"pairs": s89b.pairs_of_book(rt, rt.cursor(), rt.clock())}, default=str))
+
+    @app.get("/api/book")
+    def book_view(market: str = "IN"):
+        return json.loads(json.dumps(s89b.book(rt, rt.cursor(), rt.clock(), market), default=str))
+
+    @app.get("/api/graph/ego")
+    def graph_ego_view(symbol: str = ""):
+        return json.loads(json.dumps(s89b.graph_ego(rt, rt.cursor(), rt.clock(), symbol or None), default=str))
+
+    @app.get("/api/kite/status")
+    def kite_status():
+        """Settings' Kite line: the login in progress (idle / waiting / done / failed: why) and the day's token (ok or not)."""
+        from pflab.ingest import kite as k
+        try:
+            tok = k.TokenStore().load(rt.clock()) is not None
+        except Exception:
+            tok = False
+        con = rt.cursor()
+        ensure(con)
+        m = _meta(con, "india_refresh")
+        return {"login": getattr(rt, "kite_state", "idle"), "token_today": tok, "refresh": m[0] if m else None, "refresh_at": str(m[1])[:16] if m else None}
+
+    @app.get("/api/week")
+    def week_view():
+        return json.loads(json.dumps(s89b.week_status(rt.cursor(), rt.clock()), default=str))
+
+    @app.get("/api/usage/plan")
+    def usage_plan_view():
+        return json.loads(json.dumps(s89b.usage_plan(rt.cursor(), rt.clock()), default=str))
 
     @app.get("/api/book/reliability")
     def book_reliability():

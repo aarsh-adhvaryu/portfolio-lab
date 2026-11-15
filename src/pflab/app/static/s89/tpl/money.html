@@ -1,0 +1,104 @@
+<!-- built from design_s89/Money.dc.html by tools/build_screens.py: do not edit by hand -->
+<div style="height: 100vh; min-height: 860px; background: #F6F5F1; color: #17181C; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.45; box-sizing: border-box; padding: 10px 28px 22px; display: flex; flex-direction: column; gap: 14px; overflow: auto">
+
+
+
+<section style="flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 14px 22px; background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 14px 20px">
+<div role="tablist" aria-label="Which market" style="display: flex; gap: 4px; background: #F3F2EE; border-radius: 999px; padding: 4px">
+<sc-for list="{{tabs}}" as="t" hint-placeholder-count="3">
+<button type="button" role="tab" aria-selected="{{t.on}}" onClick="{{t.pick}}" style="min-height: 36px; padding: 8px 16px; border-radius: 999px; border: 0; background: {{t.bg}}; color: {{t.fg}}; font: 600 13px Inter, sans-serif; cursor: pointer">{{t.label}}</button>
+</sc-for>
+</div>
+<div style="display: flex; flex-direction: column">
+<span style="font-size: 12.5px; color: #5B5E66; font-weight: 500">Your money</span>
+<span style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 32px; font-weight: 600; line-height: 1.1">{{sum.value}}</span>
+</div>
+<span style="padding: 6px 10px; border-radius: 999px; background: #EAF0FE; color: #1D3FB8; font-weight: 600">{{sum.today}}</span>
+<span style="padding: 6px 10px; border-radius: 999px; background: #F3F2EE; color: #3E4149; font-weight: 500">{{sum.base}}</span>
+<a href="#/manage" style="margin-left: auto; padding: 8px 14px; border-radius: 999px; background: #17181C; color: #FFFFFF; text-decoration: none; font-weight: 600; font-size: 13px">Add US holdings · watchlist</a>
+<span style="display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: #5B5E66"><svg width="8" height="8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="{{sum.dot}}"></circle></svg>{{sum.source}}</span>
+</section>
+
+<section style="flex: 1; min-height: 0; display: flex; flex-wrap: wrap; gap: 14px">
+
+<div style="flex: 1.6 1 560px; min-width: 0; min-height: 0; max-height: 100%; background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; display: flex; flex-direction: column; overflow: hidden">
+<div style="flex: none; display: grid; grid-template-columns: 1.7fr 1fr 1.1fr 0.7fr 0.8fr 0.8fr 1.3fr; gap: 10px; padding: 12px 18px; border-bottom: 1px solid #EFEDE6; font-size: 12px; color: #5B5E66; font-weight: 600">
+<span>Holding</span><span>{{days}}</span><span style="text-align: right">Value</span><span style="text-align: right">Weight</span><span style="text-align: right">Today</span><span style="text-align: right">Since buy</span><span>Claude's view</span>
+</div>
+<div style="flex: 1; min-height: 0; overflow: auto; padding: 6px 8px; display: flex; flex-direction: column; gap: 2px">
+<sc-for list="{{rows}}" as="h" hint-placeholder-count="8">
+<button type="button" onClick="{{h.pick}}" aria-pressed="{{h.on}}" style="width: 100%; display: grid; grid-template-columns: 1.7fr 1fr 1.1fr 0.7fr 0.8fr 0.8fr 1.3fr; gap: 10px; align-items: center; padding: 10px; border-radius: 12px; border: 1px solid {{h.bd}}; background: {{h.bg}}; font: 400 14px Inter, sans-serif; color: #17181C; text-align: left; cursor: pointer">
+<span style="display: flex; flex-direction: column; min-width: 0"><span style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{h.name}}</span><span style="font-size: 12px; color: #5B5E66">{{h.sub}}</span></span>
+<svg viewBox="0 0 110 30" width="100%" height="30" preserveAspectRatio="none" aria-hidden="true"><path d="{{h.spark}}" fill="none" stroke="{{h.sc}}" stroke-width="1.6" vector-effect="non-scaling-stroke"></path></svg>
+<span style="text-align: right; font-weight: 600">{{h.val}}</span>
+<span style="text-align: right; color: #3E4149">{{h.w}}</span>
+<span style="text-align: right; font-weight: 600; color: {{h.dc}}">{{h.day}}</span>
+<span style="text-align: right; color: {{h.tc}}">{{h.tot}}</span>
+<span style="display: flex; align-items: center; gap: 8px"><span style="padding: 4px 10px; border-radius: 999px; background: {{h.vb}}; color: {{h.vf}}; font-size: 12px; font-weight: 700">{{h.view}}</span><span style="font-size: 12px; color: #5B5E66">{{h.conf}}</span></span>
+</button>
+</sc-for>
+</div>
+<div style="flex: none; padding: 10px 18px; border-top: 1px solid #EFEDE6; font-size: 12px; color: #5B5E66">Claude only watches this money. It cannot place orders here. Its own decisions go into its paper book.</div>
+</div>
+
+<div style="flex: 1 1 400px; min-width: 0; min-height: 0; max-height: 100%; background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 18px 20px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; overflow: auto">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px">
+<div style="display: flex; flex-direction: column"><span style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 22px; font-weight: 600">{{sel.name}}</span><span style="font-size: 12.5px; color: #5B5E66">{{sel.sub}}</span></div>
+<div style="text-align: right"><div style="font-family: 'Space Grotesk', Inter, sans-serif; font-size: 22px; font-weight: 600">{{sel.price}}</div><div style="font-size: 12.5px; font-weight: 600; color: {{sel.dc}}">{{sel.day}} today</div></div>
+</div>
+<svg viewBox="0 0 440 180" width="100%" height="180" preserveAspectRatio="none" role="img" aria-label="{{sel.chartLabel}}">
+<line x1="0" y1="{{sel.stopY}}" x2="440" y2="{{sel.stopY}}" stroke="#D9620F" stroke-width="1.5" stroke-dasharray="5 4" vector-effect="non-scaling-stroke"></line>
+<path d="{{sel.area}}" fill="#2F5BEA" opacity="0.08"></path>
+<path d="{{sel.line}}" fill="none" stroke="#2F5BEA" stroke-width="2.2" vector-effect="non-scaling-stroke"></path>
+</svg>
+<div style="display: flex; justify-content: space-between; font-size: 12px; color: #5B5E66; margin-top: -6px"><span>{{sel.from}}</span><span style="color: #9A4209">dashed: stop Claude would use, {{sel.stop}}</span><span>today</span></div>
+<div style="background: #F6F5F1; border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; align-items: center; gap: 10px"><span style="padding: 5px 12px; border-radius: 999px; background: {{sel.vb}}; color: {{sel.vf}}; font-weight: 700">{{sel.view}}</span><span style="font-weight: 600">{{sel.viewLine}}</span></div>
+<div style="height: 6px; border-radius: 999px; background: #E6E4DD"><div style="height: 6px; border-radius: 999px; width: {{sel.confW}}; background: #2F5BEA"></div></div>
+<span style="color: #3E4149">{{sel.why}}</span>
+<span style="font-size: 12px; color: #5B5E66">{{sel.calibText}}</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px">
+<div><div style="font-size: 12px; color: #5B5E66">You hold</div><div style="font-weight: 600">{{sel.qty}}</div></div>
+<div><div style="font-size: 12px; color: #5B5E66">Claude's book holds</div><div style="font-weight: 600">{{sel.claude}}</div></div>
+<div><div style="font-size: 12px; color: #5B5E66">Next check</div><div style="font-weight: 600">{{sel.next}}</div></div>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto">
+<a href="#/stock/{{sel.sym}}" style="padding: 9px 14px; border-radius: 999px; background: #17181C; color: #FFFFFF; text-decoration: none; font-weight: 600; font-size: 13px">Open candles</a>
+<a href="#/lab" style="padding: 9px 14px; border-radius: 999px; border: 1px solid #C9C6BD; color: #17181C; text-decoration: none; font-weight: 500; font-size: 13px">Study it in the Lab</a>
+<a href="#/chat" style="padding: 9px 14px; border-radius: 999px; border: 1px solid #C9C6BD; color: #17181C; text-decoration: none; font-weight: 500; font-size: 13px">Ask about it</a>
+</div>
+</div>
+
+<div style="flex: 0.85 1 300px; min-width: 0; min-height: 0; max-height: 100%; display: flex; flex-direction: column; gap: 14px; overflow: auto">
+<div style="background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+<span style="font-weight: 600">Where it sits</span>
+<div style="display: flex; height: 14px; border-radius: 999px; overflow: hidden; gap: 2px">
+<sc-for list="{{alloc}}" as="a" hint-placeholder-count="4"><div style="width: {{a.w}}; background: {{a.c}}"></div></sc-for>
+</div>
+<sc-for list="{{alloc}}" as="a" hint-placeholder-count="4">
+<div style="display: flex; align-items: center; gap: 8px; font-size: 13px"><svg width="10" height="10" aria-hidden="true"><rect width="10" height="10" rx="3" fill="{{a.c}}"></rect></svg><span style="flex: 1">{{a.name}}</span><b>{{a.w}}</b></div>
+</sc-for>
+</div>
+
+<div style="background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; justify-content: space-between; align-items: baseline"><span style="font-weight: 600">Since Claude's book started</span><a href="#/book" style="font-size: 12.5px; font-weight: 500">Claude's book</a></div>
+<sc-for list="{{race}}" as="r" hint-placeholder-count="3">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<div style="display: flex; justify-content: space-between; font-size: 13px"><span>{{r.name}}</span><b>{{r.v}}</b></div>
+<div style="height: 8px; border-radius: 999px; background: #EFEDE6"><div style="height: 8px; border-radius: 999px; width: {{r.w}}; background: {{r.c}}"></div></div>
+</div>
+</sc-for>
+<span style="font-size: 12px; color: #5B5E66">The paper book only counts if it beats its index.</span>
+</div>
+
+<div style="background: #FFFFFF; border: 1px solid #E6E4DD; border-radius: 18px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+<span style="font-weight: 600">Heard about what you hold</span>
+<sc-for list="{{alarms}}" as="x" hint-placeholder-count="2">
+<div style="border-radius: 12px; background: {{x.bg}}; padding: 10px 12px"><div style="font-weight: 600; font-size: 13px">{{x.t}}</div><div style="font-size: 12px; color: #5B5E66">{{x.s}}</div></div>
+</sc-for>
+</div>
+</div>
+
+</section>
+</div>

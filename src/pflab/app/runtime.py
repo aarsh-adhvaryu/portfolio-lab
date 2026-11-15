@@ -34,6 +34,7 @@ LIVE_EVERY_S = 60
 MC_PATHS, MC_MAX_AGE_H = 10_000, 20
 WAKE_GAP = timedelta(minutes=5)     # the heart beats every 30 s and does nothing else: a longer silence is a sleep, never a long job
 HEART_EVERY_S = 30
+KITE_WAIT_S = 300                   # how long one Kite login listens for its callback
 SETTLE_MAX = timedelta(hours=2)     # a wake whose prices are not current by then is recorded as blocked, with what failed
 BATCH_POLL_MIN = 30                 # a submitted Opus batch is collected this often while the window is open
 
@@ -550,23 +551,32 @@ class Runtime:
     # --- Kite login from the screen -------------------------------------------------------------------------------------
     def kite_login(self) -> str:
         """Start the day's Kite login: returns the URL to open; a background thread waits for Kite's redirect."""
+        """S90: a second click while a login is waiting returns the SAME url (one flow, one state, one listener on the callback port): two flows made the
+        first listener refuse the second flow's callback ("state does not match")."""
         from pflab.ingest import kite as k
         if self.secrets is None:
             raise RuntimeError("no secrets file: Kite's api_key and api_secret are needed")
-        flow = k.LoginFlow(self.secrets)
-        url = flow.begin()
-        redirect = self.secrets.get("kite", "redirect_url") if self.secrets.has("kite", "redirect_url") \
-            else "http://127.0.0.1:5000/redirect"
-        self.kite_state = "waiting"
+        lock = self.__dict__.setdefault("_kite_lock", threading.Lock())
+        with lock:
+            cur = self.__dict__.get("_kite_flow")
+            if self.kite_state == "waiting" and cur and _time.time() - cur[1] < KITE_WAIT_S - 20:
+                return cur[0]
+            flow = k.LoginFlow(self.secrets)
+            url = flow.begin()
+            self._kite_flow = (url, _time.time())
+            redirect = self.secrets.get("kite", "redirect_url") if self.secrets.has("kite", "redirect_url") \
+                else "http://127.0.0.1:5000/redirect"
+            self.kite_state = "waiting"
         self.bump("kite")
 
         def wait():
             try:
-                _kite_tools().wait_for_token(flow, redirect)
+                _kite_tools().wait_for_token(flow, redirect, KITE_WAIT_S)
                 self.kite_state = "done"
                 self._want("tradecheck")               # S58b: the portfolio today, straight after the login
             except Exception as e:                      # shown on the screen
                 self.kite_state = f"failed: {e}"
+            self._kite_flow = None
             self.bump("kite", "command")
         threading.Thread(target=wait, name="kite-login", daemon=True).start()
         return url
