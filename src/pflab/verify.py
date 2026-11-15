@@ -474,6 +474,12 @@ def seed_store_for_drill(db: Path, now: datetime) -> None:
     con.execute("INSERT INTO learn_experiments (exp_id, key, registered_at, hypothesis, why_it_matters, disproof, source_kind, dataset, max_attempts, protocol_path, "
                 "protocol_sha, evaluator_sha, status) VALUES (1, 'drill', ?, 'drill hypothesis', 'w', 'd', 'investor', 'index:NIFTY50_TRI', 3, 'none', 'x', 'x', 'running')", [now])
     con.execute("INSERT INTO learn_attempts (attempt_id, exp_id, n, made_at, kind, status, note) VALUES (1, 1, 1, ?, 'candidate', 'rejected', 'recorded before the stop')", [now])
+    from pflab.oper import plans as _plans                  # S91: a plan the dead process left 'running' (step 1 done, step 2 cut off)
+    _plans.ensure(con)
+    con.execute("INSERT INTO plans_s89 (plan_id, created_at, title, status, est_tokens, tokens) VALUES (1, ?, 'drill plan', 'running', 600, 0)", [now])
+    con.execute("INSERT INTO plan_steps_s89 (plan_id, n, text, uses, est_tokens, status, result) VALUES (1, 1, 'step one', '', 200, 'done', 'first result')")
+    con.execute("INSERT INTO plan_steps_s89 (plan_id, n, text, uses, est_tokens, status) VALUES (1, 2, 'step two', '', 200, 'running')")
+    con.execute("INSERT INTO plan_steps_s89 (plan_id, n, text, uses, est_tokens, status) VALUES (1, 3, 'step three', '', 200, 'pending')")
     con.execute("INSERT INTO job_runs (run_id, job, started_at, status) VALUES (1, 'collect', ?, 'running')", [now])
     con.execute("INSERT INTO questions VALUES (1, ?, 'drill', 'drill:q', 'asked once', 'open', NULL, NULL)", [now])
     con.close()
@@ -529,8 +535,10 @@ def restart_drill(ctx: Ctx, rep: Report, *, python: Optional[str] = None, cwd: O
         b = _get(port, "/api/system")                    # ... goes away; another comes: the worker did not depend on the first
         tasks = {t["id"]: t for t in _get(port, "/api/hq")["tasks"]}
         t1 = tasks.get(1, {})
-        recovered = t1.get("attempts", 0) >= 2 and ("interrupted" in str(t1.get("progress") or "") or t1.get("status") in ("retry", "failed", "done"))
-        steps.append("work in flight recovered at start" if recovered else "recovery NOT seen")
+        pl = {x["plan_id"]: x for x in _get(port, "/api/plans")["plans"]}.get(1) or {}          # S91: plans are the work in flight today (the old hq task workers were cut in S80)
+        st = [x["status"] for x in pl.get("steps", [])]
+        recovered = pl.get("status") in ("paused", "running", "done") and st[:1] == ["done"] and (st[1:2] or [""])[0] in ("pending", "running", "done") and "first result" in str(pl["steps"][0].get("result"))
+        steps.append("a plan left running was recovered at start, its finished step kept" if recovered else f"plan recovery NOT seen (status {pl.get('status')}, steps {st})")
         p1.kill()                                        # force-stop: no cleanup
         p1.wait(15)
         steps.append("force-killed")
@@ -553,7 +561,7 @@ def restart_drill(ctx: Ctx, rep: Report, *, python: Optional[str] = None, cwd: O
                 rc = None
             steps.append("stopped cleanly" if rc == 0 else f"did not stop cleanly (exit {rc})")
             extra_ok = _drill_store_checks(pm / "ledger.duckdb", steps)
-            ok = recovered and rc == 0 and once and t.get("attempts", 0) <= 3 and extra_ok
+            ok = recovered and rc == 0 and once and extra_ok
             rep.add("restart drill", PASS if ok else FAIL, "; ".join(steps))
         finally:
             if p2.poll() is None:
@@ -693,7 +701,7 @@ def live_model(ctx: Ctx, rep: Report) -> None:
         pm = ctx.pm_copy()
         con = store.connect(pm / "ledger.duckdb")
         gate = egress.load(con)
-        client = _gw_vendor_client(secrets)
+        client = None if gateway.current_engine(con) == "claude_plan" else _gw_vendor_client(secrets)         # S91: on his plan there is no API client: the door makes its own
         nonce = f"v{ctx.now:%H%M%S}"
         tool = {"name": "echo_code", "description": "Report the verification code you were given.",
                 "input_schema": {"type": "object", "additionalProperties": False, "properties": {"code": {"type": "string"}}, "required": ["code"]}}

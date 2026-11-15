@@ -148,7 +148,7 @@ def test_a_force_killed_worker_with_work_in_flight_recovers_once_and_stops_clean
     verify.restart_drill(ctx, rep, seconds=120)
     c = rep.checks[0]
     assert c.status == verify.PASS, c.detail
-    assert "work in flight recovered at start" in c.detail and "force-killed" in c.detail and "restarted" in c.detail and "stopped cleanly" in c.detail
+    assert "a plan left running was recovered at start" in c.detail and "force-killed" in c.detail and "restarted" in c.detail and "stopped cleanly" in c.detail
     assert time.time() - t0 < 200
 
 
