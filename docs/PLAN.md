@@ -325,6 +325,8 @@ Acceptance: within 15 minutes of opening, the catch-up is running and the World 
 - 2026-11-14: merging the old and new knowledge graphs; voice notes; models trained on the system's own scored decisions.
 
 ## What remains (dated; update at each stop)
+**S88 (2026-11-15, `pm/s88-light`): a plain chat answer is cheap.** Two roads (A88): quick for plain questions, full for work; see `docs/s88_light_notes.md` for the measured before and after and the budgets. Still his / still open:
+(1) watch `tokens_today` in `GET /api/operator` for a week and move the two chat budgets; (2) if the quick road escalates often, add a tool to it (measure first).
 **S87 (2026-11-14 night, branch `pm/s87-operator`): the engine is Claude Code on his plan, no API key anywhere** (his decision; amendment A87: rule 9 now reads "no paid API"). Built: O1 the engine, O2 the operator
 (its own folder, skills, subagents, permissions in code), O3 the desk and cases on the same engine plus the weekly introspection, O4 self-fixing with his Yes (worktree, branch, card), O5 his logged decisions scored beside the
 paper book's. Still to do (his): (1) open the app once and watch the `operator` line of `pflab service status` / `GET /api/operator`; (2) the screens (his, Sunday) use the endpoints in `docs/s87_operator_notes.md`;

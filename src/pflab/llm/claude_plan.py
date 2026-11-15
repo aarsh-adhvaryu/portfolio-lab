@@ -31,8 +31,8 @@ from typing import Any, Callable, Dict, List, Optional
 log = logging.getLogger("pflab.claude_plan")
 
 CONFIG = Path(__file__).resolve().parents[3] / "configs" / "core.toml"
-CLASSES = ("desk", "cases", "chat", "build")
-DEFAULTS = {"enabled": True, "budget_desk": 600000, "budget_cases": 900000, "budget_chat": 1500000, "budget_build": 1200000, "max_turns_desk": 12, "max_turns_chat": 14, "max_turns_build": 40,
+CLASSES = ("desk", "cases", "chat", "build", "chat_light")        # "chat" is the FULL operator road; "chat_light" the quick road (S88)
+DEFAULTS = {"enabled": True, "budget_desk": 250000, "budget_cases": 350000, "budget_chat": 600000, "budget_chat_light": 400000, "budget_build": 800000, "max_turns_desk": 12, "max_turns_chat": 14, "max_turns_build": 40,
             "build_per_day": 2, "signin_cache_s": 600, "session_timeout_s": 900}
 KEY_LIKE = re.compile(r"(_API_KEY|_AUTH_TOKEN|_ACCESS_TOKEN|_SECRET_KEY|^ANTHROPIC_BASE_URL$|^CLAUDE_CODE_USE_(BEDROCK|VERTEX|FOUNDRY)$|^CLAUDE_CODE_OAUTH_TOKEN$)", re.I)
 CALLER_SERVER = "caller"
@@ -41,6 +41,7 @@ LIMIT_WORDS = re.compile(r"usage limit|limit reached|rate.?limit|too many reques
 # tests: a scripted stand-in for the SDK client (an async context manager with query / receive_response / interrupt), and for the sign-in check
 client_factory: Optional[Callable[..., Any]] = None
 signin_fn: Optional[Callable[[], dict]] = None
+context_probe: Optional[list] = None                  # S88 measurement: a list; each session appends Claude Code's own context breakdown (categories) after it ends
 _SIGNIN: Dict[str, Any] = {"at": 0.0, "val": None}
 _LOCK = threading.Lock()
 
@@ -261,10 +262,10 @@ def agent_def(description: str, prompt: str, tools: Optional[List[str]] = None, 
     return _sdk().AgentDefinition(description=description, prompt=prompt, tools=tools, model=model)
 
 
-def options(*, system: Optional[str], model: str, effort: Optional[str], cwd: Optional[str], tools=None, allowed=None, disallowed=None, mcp=None, resume: Optional[str] = None,
-            max_turns: int = 8, can_use_tool=None, schema: Optional[dict] = None, agents=None, setting_sources=None, add_dirs=None, extra_env: Optional[dict] = None):
+def options(*, system, model: str, effort: Optional[str], cwd: Optional[str], tools=None, allowed=None, disallowed=None, mcp=None, resume: Optional[str] = None,
+            max_turns: int = 8, can_use_tool=None, schema: Optional[dict] = None, agents=None, setting_sources=None, add_dirs=None, extra_env: Optional[dict] = None, skills=None):
     sdk = _sdk()
-    kw: Dict[str, Any] = dict(model=model, cwd=cwd, max_turns=max_turns, env={**child_env(), **(extra_env or {})}, cli_path=cli_path(), setting_sources=setting_sources if setting_sources is not None else [])
+    kw: Dict[str, Any] = dict(model=model, cwd=cwd, max_turns=max_turns, env={**child_env(), **(extra_env or {})}, cli_path=cli_path(), strict_mcp_config=True, setting_sources=setting_sources if setting_sources is not None else [])
     if system is not None:
         kw["system_prompt"] = system
     if effort in ("low", "medium", "high", "max"):
@@ -287,6 +288,8 @@ def options(*, system: Optional[str], model: str, effort: Optional[str], cwd: Op
         kw["agents"] = agents
     if add_dirs:
         kw["add_dirs"] = add_dirs
+    if skills is not None:
+        kw["skills"] = skills
     return sdk.ClaudeAgentOptions(**kw)
 
 
@@ -314,6 +317,12 @@ async def _drive(opts, prompt, captured: List[dict], steps: List[str]) -> Result
                 if info is not None and str(getattr(info, "status", "")) == "rejected":
                     limit = {"resets_at": getattr(info, "resets_at", None)}
             elif name == "ResultMessage":
+                if context_probe is not None:
+                    try:
+                        u = await c.get_context_usage()
+                        context_probe.append({"total": u["totalTokens"], "cats": [(x["name"], x["tokens"]) for x in u["categories"] if x["tokens"]], "memory": [(m_.get("path", "")[-60:], m_.get("tokens")) for m_ in u.get("memoryFiles", [])]})
+                    except Exception as e_:
+                        context_probe.append({"error": str(e_)[:100]})
                 u = m.usage or {}
                 res.input_tokens = int(u.get("input_tokens", 0) or 0) + int(u.get("cache_creation_input_tokens", 0) or 0) + int(u.get("cache_read_input_tokens", 0) or 0)
                 res.cached_tokens = int(u.get("cache_read_input_tokens", 0) or 0)
@@ -349,7 +358,7 @@ def _parse_reset(text: str, n: datetime) -> Optional[datetime]:
 def run(con, *, prompt: str, system: Optional[str] = None, model: str, effort: Optional[str] = None, klass: str, purpose: str, agent: str = "think", now: Optional[datetime] = None,
         caller_tools: Optional[List[dict]] = None, cwd: Optional[str] = None, tools=None, allowed=None, disallowed=None, mcp: Optional[dict] = None, resume: Optional[str] = None,
         max_turns: Optional[int] = None, can_use_tool=None, schema: Optional[dict] = None, agents=None, setting_sources=None, add_dirs=None, timeout: Optional[float] = None,
-        chat_id: Optional[int] = None, case_id: Optional[int] = None, extra_env: Optional[dict] = None) -> Result:
+        chat_id: Optional[int] = None, case_id: Optional[int] = None, extra_env: Optional[dict] = None, skills=None) -> Result:
     """One session on his plan. Raises PlanUnusable (not his sign-in), PlanPaused (limit reached), PlanBudgetSpent (the class's day budget). Logs the row. `caller_tools`: the gateway's tool
     definitions, shown as stubs; the first call the model makes is captured and returned in `tool_calls` (the session is interrupted)."""
     now = now or datetime.now()
@@ -381,7 +390,7 @@ def run(con, *, prompt: str, system: Optional[str] = None, model: str, effort: O
                 return await inner(name, inp, ctx)
             return sdk.PermissionResultDeny(message="not allowed here")
     opts = options(system=system, model=model, effort=effort, cwd=cwd or str(_scratch()), tools=[] if tools is None else tools, allowed=allow, disallowed=disallowed, mcp=mcp or None,
-                   resume=resume, max_turns=int(max_turns or cfg["max_turns_chat"]), can_use_tool=perm, schema=schema, agents=agents, setting_sources=setting_sources, add_dirs=add_dirs, extra_env=extra_env)
+                   resume=resume, max_turns=int(max_turns or cfg["max_turns_chat"]), can_use_tool=perm, schema=schema, agents=agents, setting_sources=setting_sources, add_dirs=add_dirs, extra_env=extra_env, skills=skills)
     t_out = float(timeout or cfg["session_timeout_s"])
     try:
         res = _run_async(_drive(opts, prompt, captured, steps), t_out)

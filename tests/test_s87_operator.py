@@ -253,7 +253,7 @@ def test_operator_endpoint_and_terminal(tmp_path, monkeypatch):
     rt = runtime.Runtime(pm, data, tmp_path, con=store.connect(tmp_path / "l.duckdb"), clock=lambda: NOW)
     c = TestClient(server.create_app(rt))
     j = c.get("/api/operator").json()
-    assert j["signed_in"] is True and j["thinking"] == "running" and set(j["tokens_today"]) == {"desk", "cases", "chat", "build"} and "open_cards" in j and "builds" in j
+    assert j["signed_in"] is True and j["thinking"] == "running" and {"desk", "cases", "chat", "build"} <= set(j["tokens_today"]) and "open_cards" in j and "builds" in j
     seen = {}
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-planted")
     r = terminal.open_terminal(str(data), popen=lambda argv, **kw: seen.update(kw, argv=argv))
