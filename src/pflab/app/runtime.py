@@ -131,6 +131,8 @@ class Runtime:
             s79.register_swing(self.cursor(), self.clock())            # S81 B5
             from pflab.learner import s83
             s83.register_picks_live(self.cursor(), self.clock())        # S83 L5: the picks sleeve's live test, one per market
+            from pflab.lab import rates_study
+            rates_study.register(self.cursor(), self.clock())            # S91: the Rates up 1% study counts in the counter (its result is in docs/research)
             from pflab.learner import s84
             s84.register_thinking_live(self.cursor(), self.clock())     # S84 T8: the thinking loop's live test, once
             s84.register_thinking_amendment_a4(self.cursor(), self.clock())     # S86b: its Amendment A4 (the replayed model look, after-tax scoring), once

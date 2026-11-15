@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import threading
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -45,6 +46,9 @@ def _set_meta(con, key: str, value: str, now: datetime) -> None:
 
 # --- his Indian holdings: the Kite snapshot -----------------------------------------------------------------------------------------------------
 
+_REFRESH_LOCK = threading.Lock()
+
+
 def refresh_india(rt, con, now: datetime, force: bool = False, kite=None) -> dict:
     """Read Kite holdings (read-only) at most every REFRESH_MIN minutes and REPLACE the one snapshot. -> {"state": ok | expired | none | error, "snapshot_at"}."""
     ensure(con)
@@ -70,14 +74,35 @@ def refresh_india(rt, con, now: datetime, force: bool = False, kite=None) -> dic
     except Exception as e:                                          # a failure keeps the old snapshot and says so
         _set_meta(con, "india_refresh", "error", now)
         return {"state": "error", "snapshot_at": _snap_at(con), "error": type(e).__name__}
-    con.execute("DELETE FROM mine_in_s89")
-    for r in rows:
-        qty = float(r.get("quantity", 0) or 0) + float(r.get("t1_quantity", 0) or 0)
-        if qty <= 0:
-            continue
-        con.execute("INSERT OR REPLACE INTO mine_in_s89 VALUES (?,?,?,?,?,?,?,?)", [r.get("tradingsymbol"), r.get("isin"), r.get("exchange"), qty, float(r.get("average_price", 0) or 0),
-                                                                              float(r.get("last_price", 0) or 0), float(r.get("day_change_percentage", 0) or 0), now])
-    _set_meta(con, "india_refresh", "ok", now)
+    try:                                                            # S91: the WHOLE response is checked before the snapshot is touched
+        new = []
+        for r in rows or []:
+            qty = float(r.get("quantity", 0) or 0) + float(r.get("t1_quantity", 0) or 0)
+            if qty <= 0:
+                continue
+            row = [r.get("tradingsymbol"), r.get("isin"), r.get("exchange"), qty, float(r.get("average_price", 0) or 0), float(r.get("last_price", 0) or 0),
+                   float(r.get("day_change_percentage", 0) or 0), now]
+            if not row[0] or not row[1] or not all(math.isfinite(x) for x in row[3:7]):
+                raise ValueError("a holdings row has no symbol, no ISIN or a number that is not finite")
+            new.append(row)
+    except (ValueError, TypeError, AttributeError) as e:
+        _set_meta(con, "india_refresh", "error", now)               # the last complete snapshot stays; the screen says the refresh failed
+        return {"state": "error", "snapshot_at": _snap_at(con), "error": f"{type(e).__name__}: {str(e)[:120]}"}
+    with _REFRESH_LOCK:                                             # one replace at a time: an older response cannot overwrite a newer snapshot
+        newest = _snap_at(con)
+        if newest is not None and newest > now:
+            return {"state": "ok", "snapshot_at": newest, "cached": True}
+        con.execute("BEGIN")
+        try:
+            con.execute("DELETE FROM mine_in_s89")
+            for row in new:
+                con.execute("INSERT OR REPLACE INTO mine_in_s89 VALUES (?,?,?,?,?,?,?,?)", row)
+            con.execute("DELETE FROM mine_meta_s89 WHERE key=?", ["india_refresh"])
+            con.execute("INSERT INTO mine_meta_s89 VALUES (?,?,?)", ["india_refresh", "ok", now])
+            con.execute("COMMIT")
+        except Exception:
+            con.execute("ROLLBACK")
+            raise
     return {"state": "ok", "snapshot_at": now}
 
 
@@ -660,7 +685,7 @@ def register(app, rt) -> None:
     @app.get("/api/stock/{symbol}")
     def stock_view(symbol: str, tf: str = "day"):
         try:
-            return json.loads(json.dumps(s89b.stock(rt, rt.cursor(), rt.clock(), symbol, "week" if tf == "week" else "day"), default=str))
+            return json.loads(json.dumps(s89b.stock(rt, rt.cursor(), rt.clock(), symbol, tf if tf in ("week", "5min") else "day"), default=str))
         except ValueError as e:
             err(e)
 

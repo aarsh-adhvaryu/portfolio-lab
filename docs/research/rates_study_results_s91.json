@@ -1,0 +1,57 @@
+{
+ "names_used": 73,
+ "names_in_index": 100,
+ "dev_months": 72,
+ "val_months": 48,
+ "dy_sd_pp": 0.1694446632907696,
+ "rule": {
+  "rate": "INDIRLTLT01STM",
+  "shock_pp": 1.0,
+  "development": [
+   "2012-01",
+   "2017-12"
+  ],
+  "validation": [
+   "2018-01",
+   "2021-12"
+  ],
+  "universe": "NIFTY100 members on 2011-12-31 with complete month ends",
+  "model": "r = a + b*dy, OLS HC1",
+  "comparator": "development mean",
+  "dev_rule": "abs(t_b) >= counter.t_needed(N)",
+  "val_rule": "paired t of squared-error differences >= 1.65 and same sign of b",
+  "min_dev_months": 60,
+  "min_names": 40,
+  "wiring": "first-month shift b/21 per session, b ~ N(b, se^2) per path"
+ },
+ "t_bar_dev": 3.279024297718021,
+ "t_bar_val": 1.65,
+ "n_tests": 96,
+ "dev": {
+  "a": 0.01392118364138989,
+  "b": -0.03632036642796255,
+  "se_b": 0.03498203485992148,
+  "t_b": -1.038257682075961,
+  "n": 72,
+  "r2": 0.015440792680666005
+ },
+ "val_alone": {
+  "b": -0.003968544164601973,
+  "t_b": -0.10567354064084757
+ },
+ "b_ci95": [
+  -0.10488515475340865,
+  0.032244421897483555
+ ],
+ "paired_t_val": -0.37455605372485257,
+ "oos_r2": -0.008412845825654491,
+ "dev_pass": false,
+ "val_pass": false,
+ "verdict": "fail",
+ "response_per_100bp_pct": -3.6320366427962547,
+ "why": "Tested on India's 10-year yield and 73 names of the NIFTY 100, 2012-2017 to fit and 2018-2021 to check once: a rise of 1 point moved the book by -3.6% a month (give or take 6.9); development t -1.04 against a bar of 3.28; on the check years it predicted monthly moves worse than a plain average (t -0.37 against 1.65).",
+ "ran_at": "2026-11-16 00:05:00",
+ "protocol_sha256": "93221cdac6a757ba3150c3480bb523d7b4a2253d7333638d9019417a3f6e2c05",
+ "series": "FRED INDIRLTLT01STM (OECD), monthly average",
+ "series_last": "2026-09"
+}

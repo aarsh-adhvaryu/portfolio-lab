@@ -41,8 +41,9 @@ def test_answer_session_cannot_write_src_or_push(tmp_path):
     assert not d("Bash", {"command": "pflab pm networth; rm -rf x"})
     assert not d("Bash", {"command": "pflab --live service run"})
     assert d("Bash", {"command": "pflab pm networth"})
-    assert d("Bash", {"command": "python -I research/study.py"})
+    assert not d("Bash", {"command": "python -I research/study.py"})          # S91: a script written by the model is never run from an answer (python -I is not a filesystem boundary)
     assert not d("Bash", {"command": "python -I ../src/x.py"})
+    assert not d("Bash", {"command": "python research/study.py"})
     assert not d("Read", {"file_path": "C:/Windows/win.ini"})
     assert not d("WebFetch", {"url": "https://x"})
 

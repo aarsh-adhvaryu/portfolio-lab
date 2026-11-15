@@ -1,6 +1,6 @@
 """S87 O2/O4: what a session may do, enforced by the SDK's permission callback (not by words alone). Pure functions: `decide(kind, tool, input, root)` -> (allowed, reason).
 
-kind "answer": the chat's operator. Writes only under <root>/notes and <root>/research; shell only from an allow-list (pflab read commands, `python -I research/<script>.py`); reads inside the folder; no network.
+kind "answer": the chat's operator. Writes only under <root>/notes and <root>/research; shell only from an allow-list (pflab read commands: NO script run, S91); reads inside the folder; no network. Model-written code runs only in the Docker sandbox (`agents/sandbox.py`, fail-closed), never as a shell command here.
 kind "build":  a build session in the workshop checkout. Writes only under src/ and tests/ (and docs/s87*); shell: git (status, diff, log, add, commit, checkout -b fix/..., branch), the test run, the privacy
                grep; never push, merge, reset --hard, checkout of another branch, or touch main.
 """
@@ -63,10 +63,7 @@ def decide(kind: str, tool: str, inp: dict, root: Path, branch: Optional[str] = 
         if kind == "answer":
             if cmd.startswith("pflab ") and any(cmd[6:].startswith(c) for c in PFLAB_READ) and " --live" not in cmd and " --paid" not in cmd:
                 return True, ""
-            m = re.match(r"^python(?:\.exe)? -I (research/[A-Za-z0-9_./-]+\.py)(?: [A-Za-z0-9_./=-]+)*$", cmd)
-            if m and ".." not in m.group(1):
-                return True, ""
-            return False, "shell is limited to read-only pflab commands and python -I on research/ scripts"
+            return False, "shell is limited to read-only pflab commands: a script is never run from an answer (python -I is not a filesystem boundary); the Lab tools and the sandbox tool run the maths"
         if kind == "build":
             if re.search(r"git (push|merge|reset|rebase|checkout (?!-b fix/)|switch (?!-c fix/)|branch -[dD]|clean|remote|config)", cmd):
                 return False, "no push, merge, reset, rebase, other checkouts or branch deletion in a build"

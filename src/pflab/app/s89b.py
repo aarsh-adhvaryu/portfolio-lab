@@ -20,15 +20,25 @@ SHOW = 30
 LABEL = "worked out by the Lab tools, 0 tokens"
 
 
+def _rates_why() -> str:
+    """The recorded result of the registered S91 study (lab/rates_study.py): the preset is off, and says what was tested and why it is not supported."""
+    try:
+        from pflab.lab import rates_study
+        return rates_study.verdict()["why"]
+    except Exception:
+        return "not tested yet"
+
+
 def presets(con, now: datetime) -> List[dict]:
     """The scenario buttons: `enabled` False with a plain reason when the code has no preset (rates up 1% has none: the scenario table holds oil, the rupee and a US crash only)."""
     return [{"key": "normal", "label": SCENARIOS["normal"], "enabled": True, "why": ""},
             {"key": "covid", "label": SCENARIOS["covid"], "enabled": True, "why": "uses the stress episode the simulator already holds (15 Jan to 31 Mar 2020)"},
-            {"key": "rates", "label": SCENARIOS["rates"], "enabled": False, "why": "not built yet"}]
+            {"key": "rates", "label": SCENARIOS["rates"], "enabled": False, "why": _rates_why()}]
 
 
 def _his_returns(con, root, asof: date) -> tuple:
-    """Daily returns of HIS Indian holdings (the stored Kite snapshot) and their value weights, over the days they all have. -> (DataFrame, weights, start value, names used, names held)."""
+    """Daily returns of HIS Indian holdings (the stored Kite snapshot) and their value weights, over the days they all have. -> (DataFrame, weights over the COVERED names, covered value, names used, names held, total value held, uncovered names).
+    S91: only the covered names' rupees are simulated; the rest is reported as uncovered, never given the covered names' returns."""
     from pflab.hq import stocks
     rows = con.execute("SELECT symbol, isin, qty * last_price FROM mine_in_s89 WHERE qty > 0 AND last_price > 0").fetchall()
     if not rows:
@@ -49,7 +59,8 @@ def _his_returns(con, root, asof: date) -> tuple:
     r = df.pct_change().dropna()
     tot = sum(vals.values())
     w = np.array([vals[c] / tot for c in r.columns])
-    return r, w, float(sum(v for _, _, v in rows)), len(cols), len(rows)
+    total_held = float(sum(v for _, _, v in rows))
+    return r, w, float(tot), len(cols), len(rows), total_held, sorted(str(sym) for sym, _, _ in rows if sym not in cols)
 
 
 def simulate(rt, con, now: datetime, scenario: str, horizon: int, basis: str, paths: int = PATHS) -> dict:
@@ -59,13 +70,13 @@ def simulate(rt, con, now: datetime, scenario: str, horizon: int, basis: str, pa
     if scenario not in SCENARIOS:
         raise ValueError("scenario must be normal, covid or rates")
     if scenario == "rates":
-        raise ValueError("Rates up 1% is not built yet.")
+        raise ValueError("Rates up 1% is off: " + _rates_why())
     if int(horizon) not in HORIZONS:
         raise ValueError("horizon must be 20, 60 or 250 sessions")
     if basis not in ("mine", "paper"):
         raise ValueError("basis is mine or paper: never both added together")
     horizon, asof, root = int(horizon), now.date(), rt.data_root
-    note = ""
+    note, cover = "", None
     if basis == "paper":
         try:
             R, Rd, _ = sims.history(con, root, asof)
@@ -77,9 +88,12 @@ def simulate(rt, con, now: datetime, scenario: str, horizon: int, basis: str, pa
         if start <= 0:
             raise ValueError("Claude's paper book has no value yet.")
     else:
-        r, w, start, used, held = _his_returns(con, root, asof)
+        r, w, start, used, held, total_held, uncovered = _his_returns(con, root, asof)
         port = pd.Series(r.values @ w, index=r.index)
-        note = f"{used} of your {held} Indian holdings had enough price history; US holdings entered by hand are not simulated."
+        cover = {"covered_inr": start, "uncovered_inr": max(0.0, total_held - start), "total_inr": total_held, "covered_pct": (start / total_held * 100) if total_held else 0.0,
+                 "uncovered_pct": (max(0.0, total_held - start) / total_held * 100) if total_held else 0.0, "uncovered_names": uncovered}
+        note = (f"{used} of your {held} Indian holdings had enough price history ({cover['covered_pct']:.0f}% of the value). The result is for that covered part only; "
+                f"the other {cover['uncovered_pct']:.0f}% (₹{cover['uncovered_inr']:,.0f}) has no simulated value here. US holdings entered by hand are not simulated.")
     if scenario == "covid":
         port = port[(port.index >= pd.Timestamp(COVID[0])) & (port.index <= pd.Timestamp(COVID[1]))]
         if len(port) < 30:
@@ -98,7 +112,7 @@ def simulate(rt, con, now: datetime, scenario: str, horizon: int, basis: str, pa
             "percentiles": {str(q): start * pc(q) for q in (5, 25, 50, 75, 95)}, "paths": [[round(float(start * x), 0) for x in p[:: max(1, horizon // 60)]] for p in show],
             "mult_paths": [[1.0] + [round(float(x), 5) for x in p] for p in show],
             "band": {k: [1.0] + [round(float(x), 5) for x in np.percentile(cum, q, axis=0)] for k, q in (("p10", 10), ("p50", 50), ("p90", 90))},
-            "history_days": int(len(port)), "caveat": "resampled from past days: a description of what the past allows, not a forecast"}
+            "coverage": cover, "history_days": int(len(port)), "caveat": "resampled from past days: a description of what the past allows, not a forecast"}
 
 
 def forecast(con, market: str = "IN", subject: Optional[str] = None, root=None) -> dict:
@@ -206,9 +220,20 @@ def stock(rt, con, now: datetime, symbol: str, tf: str = "day") -> dict:
     df = candles.daily(root, isin, now.date(), 400)
     if df is None or len(df) < 5:
         return {"symbol": sym, "empty": "No stored prices for this name yet.", "tf": tf}
-    d = candles.weekly(df).tail(120) if tf == "week" else df.tail(120)
-    d = d.reset_index() if "date" not in d.columns else d
-    bars = [{"d": str(r["date"])[:10], "o": float(r["open"]), "h": float(r["high"]), "l": float(r["low"]), "c": float(r["close"]), "v": float(r.get("volume", 0) or 0)} for _, r in d.iterrows()]
+    intra = None
+    if tf == "5min":                                                       # S91: Kite's five-minute candles, exchange-local times, gaps kept, the forming candle flagged
+        from pflab.ingest import intraday5
+        intraday5.refresh_async(rt, isin, sym, now)
+        intra = intraday5.candles(con, isin, now)
+        bars = intra["bars"]
+        if not bars:
+            kite = intraday5._LAST.get(isin, (0, {}))[1]
+            return {"symbol": sym, "tf": tf, "empty": kite.get("why") or "No five-minute candles stored for this name yet: they arrive after a Kite login, on a trading day, within a minute.",
+                    "intraday": {k: v for k, v in intra.items() if k != "bars"}}
+    else:
+        d = candles.weekly(df).tail(120) if tf == "week" else df.tail(120)
+        d = d.reset_index() if "date" not in d.columns else d
+        bars = [{"d": str(r["date"])[:10], "o": float(r["open"]), "h": float(r["high"]), "l": float(r["low"]), "c": float(r["close"]), "v": float(r.get("volume", 0) or 0)} for _, r in d.iterrows()]
     lo, hi = min(b["l"] for b in bars), max(b["h"] for b in bars)
     nb = 24
     edges = np.linspace(lo, hi, nb + 1)
@@ -254,8 +279,10 @@ def stock(rt, con, now: datetime, symbol: str, tf: str = "day") -> dict:
             fc = {"as_of": str(r[2]), "base": r[1], "quantiles": json.loads(r[0])}
     except Exception:
         fc = None
+    if intra is not None:
+        fc = None                                                          # the stored forecast is for the daily close, not for five-minute candles
     return {"symbol": sym, "tf": tf, "bars": bars, "profile": profile, "plan": plan, "stop": plan["stop"] if plan else None, "events": events, "sees": facts, "forecast": fc, "mine": mine, "book_weight": weight,
-            "in_claudes_book": plan is not None, "note": None if plan else "Not in Claude's book, so there is no stop or plan for it.", "intraday": "needs a Kite login today (not shown)"}
+            "in_claudes_book": plan is not None, "note": None if plan else "Not in Claude's book, so there is no stop or plan for it.", "intraday": ({k: v for k, v in intra.items() if k != "bars"} if intra else None)}
 
 
 def book(rt, con, now: datetime, market: str = "IN") -> dict:

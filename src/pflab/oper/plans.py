@@ -21,6 +21,7 @@ DDL = ["CREATE TABLE IF NOT EXISTS plans_s89 (plan_id INTEGER PRIMARY KEY, creat
 RT: Dict[str, Any] = {"rt": None}
 RUN_STEP = None                                        # tests: a scripted `fn(con, plan, step, prior_text) -> (text, tokens)`
 _LOCK = threading.Lock()
+_OWNED: set = set()
 _RUNNING: set = set()
 
 
@@ -105,7 +106,9 @@ def start(con, now: datetime, plan_id: int) -> None:
     p = get(con, plan_id)
     if not p or p["status"] not in ("proposed", "paused"):
         return
-    con.execute("UPDATE plans_s89 SET status='running', resume_after=NULL WHERE plan_id=?", [plan_id])
+    with _LOCK:
+        _OWNED.add(plan_id)                                           # S91: this process runs it (a 'running' plan nobody owns is abandoned: see reconcile)
+    con.execute("UPDATE plans_s89 SET status='running', resume_after=NULL WHERE plan_id=? AND status IN ('proposed','paused')", [plan_id])
     _bump()
     cur = con.cursor()
     threading.Thread(target=run, args=(cur, plan_id), name=f"plan-{plan_id}", daemon=True).start()
@@ -139,7 +142,8 @@ def _real_step(con, plan: dict, step: dict, prior: str) -> tuple:
         ok, why = perms.decide("answer", name, inp, ws)
         return cp.allow_result() if ok else cp.deny_result(f"refused: {why}")
     prompt = (f"PLAN: {plan['title']}\nSTEP {step['n']} of {len(plan['steps'])}: {step['text']}\n" + (f"EARLIER STEPS' RESULTS:\n{prior}\n" if prior else "")
-              + "Do only this step, with the tools; answer in 10 lines or fewer; every number from a tool.")
+              + "Do only this step, with the tools; answer in 10 lines or fewer; every number from a tool."
+              + (" NOTE: an earlier attempt of this step was cut off by a restart: look in research/ and notes/ for a half-written file before you write again." if str(step.get("result") or "").startswith("interrupted") else ""))
     res = cp.run(con, prompt=prompt, system={"type": "preset", "preset": "claude_code"}, model=(over and over[0]) or spec["model"], effort=(over and over[1]) or "medium", klass="chat", purpose="plan_step",
                  agent="chat", now=now, cwd=str(ws), tools=["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Skill", "Agent"], allowed=["mcp__oper__*"], mcp=mcp, max_turns=12, can_use_tool=can_use,
                  setting_sources=["project"], timeout=900, skills=[])
@@ -166,14 +170,20 @@ def run(con, plan_id: int) -> None:
             try:
                 text, tokens = (RUN_STEP or _real_step)(con, p, step, prior)
             except (cp.PlanPaused, cp.PlanBudgetSpent) as e:
-                con.execute("UPDATE plan_steps_s89 SET status='pending' WHERE plan_id=? AND n=?", [plan_id, step["n"]])
-                when = getattr(e, "resume_at", None) or datetime.now()
-                con.execute("UPDATE plans_s89 SET status='paused', resume_after=? WHERE plan_id=?", [when, plan_id])
+                if _still_running(con, plan_id):                          # a cancel that arrived meanwhile stays cancelled
+                    con.execute("UPDATE plan_steps_s89 SET status='pending' WHERE plan_id=? AND n=?", [plan_id, step["n"]])
+                    when = getattr(e, "resume_at", None) or datetime.now()
+                    con.execute("UPDATE plans_s89 SET status='paused', resume_after=? WHERE plan_id=? AND status='running'", [when, plan_id])
                 _bump()
                 return
             except Exception as e:
-                con.execute("UPDATE plan_steps_s89 SET status='failed', result=? WHERE plan_id=? AND n=?", [f"{type(e).__name__}: {str(e)[:200]}", plan_id, step["n"]])
-                con.execute("UPDATE plans_s89 SET status='failed', finished_at=now() WHERE plan_id=?", [plan_id])
+                if _still_running(con, plan_id):
+                    con.execute("UPDATE plan_steps_s89 SET status='failed', result=? WHERE plan_id=? AND n=?", [f"{type(e).__name__}: {str(e)[:200]}", plan_id, step["n"]])
+                    con.execute("UPDATE plans_s89 SET status='failed', finished_at=now() WHERE plan_id=? AND status='running'", [plan_id])
+                _bump()
+                return
+            if not _still_running(con, plan_id):                          # cancelled while the step ran: keep what it produced, but the plan stays cancelled and the step skipped
+                con.execute("UPDATE plan_steps_s89 SET result=?, tokens=? WHERE plan_id=? AND n=?", ["finished after the cancel: " + str(text)[:3900], int(tokens or 0), plan_id, step["n"]])
                 _bump()
                 return
             con.execute("UPDATE plan_steps_s89 SET status='done', result=?, tokens=?, finished_at=now() WHERE plan_id=? AND n=?", [str(text)[:4000], int(tokens or 0), plan_id, step["n"]])
@@ -182,7 +192,9 @@ def run(con, plan_id: int) -> None:
         p = get(con, plan_id)
         body = "\n".join(f"{s['n']}. {s['text']}\n{str(s['result'])[:900]}" for s in p["steps"] if s["status"] == "done")
         text = f"The plan is done: {p['title']}\n\n{body}\n\n({p['tokens']:,} tokens of your plan)"
-        con.execute("UPDATE plans_s89 SET status='done', result_text=?, finished_at=now() WHERE plan_id=?", [text, plan_id])
+        con.execute("UPDATE plans_s89 SET status='done', result_text=?, finished_at=now() WHERE plan_id=? AND status='running'", [text, plan_id])
+        if not _still_running(con, plan_id) and get(con, plan_id)["status"] != "done":
+            return
         try:
             from pflab.entrance import store
             store.post_system(con, datetime.now(), text[:3500], kind="plan", key=f"plan:{plan_id}", chat_id=p.get("chat_id"), channels=("laptop", "telegram"))
@@ -192,11 +204,37 @@ def run(con, plan_id: int) -> None:
     finally:
         with _LOCK:
             _RUNNING.discard(plan_id)
+            _OWNED.discard(plan_id)
+
+
+def _still_running(con, plan_id: int) -> bool:
+    r = con.execute("SELECT status FROM plans_s89 WHERE plan_id=?", [plan_id]).fetchone()
+    return bool(r) and r[0] == "running"
+
+
+def reconcile(con, now: datetime) -> int:
+    """S91: a plan left 'running' by a process that died (a crash, a kill, the laptop losing power) has no owner in THIS process: it is set back to 'paused' with its finished steps
+    kept, and the step that was running becomes 'pending' again with a note that an earlier attempt was cut off (the next attempt is told, so it checks research/ and notes/ for
+    a half-written file before it writes again). -> the number of plans recovered. Called at the start of every `resume_due`, and so at the app's start."""
+    ensure(con)
+    n = 0
+    with _LOCK:
+        owned = set(_OWNED)
+    for (pid,) in con.execute("SELECT plan_id FROM plans_s89 WHERE status='running'").fetchall():
+        if int(pid) in owned:
+            continue
+        con.execute("UPDATE plan_steps_s89 SET status='pending', result='interrupted: an earlier attempt of this step was cut off by a restart' WHERE plan_id=? AND status='running'", [pid])
+        con.execute("UPDATE plans_s89 SET status='paused', resume_after=NULL WHERE plan_id=?", [pid])
+        n += 1
+    if n:
+        _bump()
+    return n
 
 
 def resume_due(con, now: datetime) -> int:
-    """Paused plans whose reset time has passed go on from where they stopped."""
+    """Paused plans whose reset time has passed go on from where they stopped (and, first, plans abandoned by a dead process: `reconcile`)."""
     ensure(con)
+    reconcile(con, now)
     n = 0
     for (pid,) in con.execute("SELECT plan_id FROM plans_s89 WHERE status='paused' AND (resume_after IS NULL OR resume_after <= ?)", [now]).fetchall():
         if cp.paused_until(con, now):
