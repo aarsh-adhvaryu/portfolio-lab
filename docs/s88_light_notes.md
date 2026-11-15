@@ -15,10 +15,10 @@ A measurement trap, fixed: my first S88 run re-used one chat id and so one resum
 |---|---|---|---|---|---|---|
 | 1 | How is my book today? | 117,070 (3 turns) | 66.1* | **6,220** | 12.6 | quick (book_card, today_card) |
 | 2 | What did Nvidia do this week? | 110,728 | 8.8 | **4,793** | 5.6 | quick (name_card, graph_name) |
-| 3 | Why did the paper book sell RELIANCE? | 76,223 | 12.5 | **6,474** | 12.1 | quick (decisions_card, name_card) |
+| 3 | Why did the paper book sell a large conglomerate stock? | 76,223 | 12.5 | **6,474** | 12.1 | quick (decisions_card, name_card) |
 | 4 | What is my biggest risk right now? | 118,085 | 11.6 | **6,222** | 9.0 | quick (book_card, today_card) |
 | 5 | Thanks | 27,274 | 3.4 | **0 (no model call)** | 0.1 | ack |
-| 6 | Do HDFCBANK and ICICIBANK move together? | 110,925 | 9.4 | **33,472** | 7.8 | full (pair_study, comovement) |
+| 6 | Do two large banks move together? | 110,925 | 9.4 | **33,472** | 7.8 | full (pair_study, comovement) |
 | 7 | Read this PDF and tell me the debt (a public filing) | 30,505 | 8.2 | **19,133** | 6.3 | full |
 (*the first call of a session includes its start-up.) Fresh-input / cache-read / output / turns per question are in `scratchpad` logs `before.log` and `after.log` of this session (not committed: they hold the store's answers).
 

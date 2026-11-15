@@ -28,7 +28,7 @@ def con(tmp_path, monkeypatch):
 
 # --- the router (rules only) ----------------------------------------------------------------------------------------------------------------------
 
-@pytest.mark.parametrize("q", ["look into HDFCBANK", "run a study of this", "backtest a trim rule", "compare INFY and TCS", "stress my book", "simulate a 20% fall", "do A and B move together?",
+@pytest.mark.parametrize("q", ["look into AAAA", "run a study of this", "backtest a trim rule", "compare CCCC and DDDD", "stress my book", "simulate a 20% fall", "do A and B move together?",
                                "build: the alarm is slow", "please fix the sync", "add a skill for taxes", "add a tool", "/full what is my book", "monthly review please"])
 def test_full_triggers(q):
     assert pathrouter.choose(q)[0] == "full", q
@@ -38,7 +38,7 @@ def test_file_and_link_go_full_and_plain_goes_light():
     assert pathrouter.choose("what is this?", has_file=True)[0] == "full"
     assert pathrouter.choose(pathrouter.FILE_MARK + " (x)\n\nHIS MESSAGE:\nhi")[0] == "full"
     assert pathrouter.choose("read https://example.com/a")[0] == "full" and pathrouter.choose("see www.x.com")[0] == "full"
-    for q in ("How is my book today?", "What did Nvidia do this week?", "Why did the paper book sell RELIANCE?", "What is my biggest risk right now?", "is the prefix fixed income ok"):
+    for q in ("How is my book today?", "What did Nvidia do this week?", "Why did the paper book sell EEEE?", "What is my biggest risk right now?", "is the prefix fixed income ok"):
         assert pathrouter.choose(q)[0] == "light", q
     assert pathrouter.choose("/full how is my book")[2] == "how is my book"
 
@@ -105,7 +105,7 @@ def test_escalation_happens_once_with_the_summary_and_never_loops(con):
     assert len(FakeClient.seen) == 2 and isinstance(FakeClient.seen[0].system_prompt, str) and FakeClient.seen[1].system_prompt == session.PRESET
     FakeClient.seen.clear()                                                                  # the full road has no way back
     FakeClient.script = [result("done", sid="F2")]
-    _dispatch(con, "look into INFY", cid=6)
+    _dispatch(con, "look into CCCC", cid=6)
     assert len(FakeClient.seen) == 1 and FakeClient.seen[0].system_prompt == session.PRESET
 
 
@@ -148,12 +148,12 @@ def test_full_road_offers_a_trimmed_toolset_with_a_door_to_the_rest():
 
 
 def test_full_road_loads_only_the_skills_a_request_needs_and_resets_a_long_session(con):
-    assert pathrouter.skills_for("do A and B move together") == ["pair_study"] and pathrouter.skills_for("look into INFY") == ["case_review"]
+    assert pathrouter.skills_for("do A and B move together") == ["pair_study"] and pathrouter.skills_for("look into CCCC") == ["case_review"]
     assert pathrouter.skills_for("anything else") == []
     session.put_session(con, 9, "OLD", NOW)
     session.put_hist(con, 9, 70000, NOW)
     FakeClient.script = [result("ok", sid="NEW")]
-    _dispatch(con, "look into INFY", cid=9)
+    _dispatch(con, "look into CCCC", cid=9)
     o = FakeClient.seen[-1]
     assert o.resume is None and o.skills == ["case_review"]                                  # past 60k tokens: a fresh session
     assert session.get_session(con, 9) == "NEW" and session.hist_tokens(con, 9) < 70000
