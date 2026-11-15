@@ -58,6 +58,9 @@ def kite_tool(ctx) -> tuple:
     return ("kite_holdings", "His real Indian holdings from the latest Kite snapshot (read-only; no order tool exists).", {"type": "object", "properties": {}}, holdings)
 
 
+NSE_OFFICIAL = {"nse-bhavcopy": "https://mcp.nseindia.in/bhavcopy/cm/mcp", "cm-market": "https://mcp.nseindia.in/cmmkt/mcp"}
+
+
 def nse_server() -> Optional[dict]:
     """NSE's own MCP servers (Streamable HTTP, no login): `[operator] nse_mcp_urls = {name = url}` (the end-of-day bhavcopy server and the live-snapshot server), or the one-address form `nse_mcp_url`.
     Loaded only when the Agents screen's NSE switch is on AND an address is set."""
@@ -71,6 +74,8 @@ def nse_server() -> Optional[dict]:
         urls = {"nse": str(op["nse_mcp_url"])}
     if not urls and cp.settings().get("nse_mcp_url"):              # S90: the address he saved on the Settings screen
         urls = {"nse": str(cp.settings()["nse_mcp_url"])}
+    if not urls:                                                    # S90: NSE's own two public servers (no login), the ones he named
+        urls = dict(NSE_OFFICIAL)
     return {k: {"type": "http", "url": u} for k, u in urls.items()} or None
 
 

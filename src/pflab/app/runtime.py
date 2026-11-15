@@ -574,6 +574,11 @@ class Runtime:
                 _kite_tools().wait_for_token(flow, redirect, KITE_WAIT_S)
                 self.kite_state = "done"
                 self._want("tradecheck")               # S58b: the portfolio today, straight after the login
+                try:                                    # S90: his money shows at once, not at the next 5-minute refresh
+                    from pflab.app import s89
+                    s89.refresh_india(self, self.cursor(), self.clock(), force=True)
+                except Exception:
+                    log.exception("India snapshot after the Kite login failed")
             except Exception as e:                      # shown on the screen
                 self.kite_state = f"failed: {e}"
             self._kite_flow = None

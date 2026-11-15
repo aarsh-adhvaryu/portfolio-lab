@@ -6,13 +6,13 @@ S89.register('agents', async (el) => {
   const WHAT = { quick: 'Plain questions in the chat: a short prompt, five small tools, at most 4 turns', full: 'Files, links, studies and builds: a Claude Code session in its own folder',
     desk: 'The working session after the Indian close and in the US morning', case: 'Thinks a case through: class, options, likelihood word', alarm: 'Reads fast headlines and filings every 15 minutes',
     fixer: 'Writes a fix on its own branch; nothing merges without your Yes', weekly: 'The weekly look back: candidates for new studies, never a live change' };
-  const NAMES = { kite: ['Kite', 'read-only: holdings and prices'], nse: ['NSE', 'filings and announcements'], tijori: ['Tijori', 'company facts'] };
+  const NAMES = { kite: ['Kite', 'read-only: holdings and prices'], nse: ['NSE', 'NSE’s own servers: bhavcopy and the market snapshot'] };
   const sw = (on) => ({ on: String(on), bg: on ? '#2F5BEA' : '#C9C6BD', kx: on ? '21px' : '3px' });
   const chip = (t, k) => ({ t, bg: k === 'mcp' ? '#EAF0FE' : k === 'skill' ? '#F4ECFB' : '#F3F2EE', fg: k === 'mcp' ? '#1D3FB8' : k === 'skill' ? '#5B2A86' : '#3E4149' });
   async function save(body) { try { await post('/api/agents', body); } catch (e) { alert(e.message); } draw(); }
   async function draw() {
     const [d, op] = await Promise.all([api('/api/agents'), api('/api/operator').catch(() => ({}))]);
-    const s = d.switches || {}, mcpOn = ['kite', 'nse', 'tijori'].filter((k) => s[k]);
+    const s = d.switches || {}, mcpOn = ['kite', 'nse'].filter((k) => s[k]);
     const agents = (d.agents || []).map((a) => {
       const today = Number(a.tokens_today || 0), ranToday = a.last_run && a.last_run.slice(0, 10) === new Date().toISOString().slice(0, 10);
       const chips = [chip(a.tools, 'tool')];
@@ -23,7 +23,7 @@ S89.register('agents', async (el) => {
         dflt: a.changed ? `your choice · default ${LABEL[a.default_model] || a.default_model || '—'}, ${a.default_thinking}` : 'default setting', dfc: a.changed ? '#1D3FB8' : '#5B5E66', chips,
         last: a.last_run ? 'last run ' + ago(a.last_run) : 'no run yet', tok: kTok(today) + (a.budget ? ' of ' + kTok(a.budget) + ' today' : ' today') };
     });
-    const mcps = ['kite', 'nse', 'tijori'].map((k) => Object.assign({ name: NAMES[k][0], note: NAMES[k][1] + ' · full answers only', flip: () => save({ switch: k, on: !s[k] }) }, sw(!!s[k])));
+    const mcps = ['kite', 'nse'].map((k) => Object.assign({ name: NAMES[k][0], note: NAMES[k][1] + ' · full answers only', flip: () => save({ switch: k, on: !s[k] }) }, sw(!!s[k])));
     const acct = [Object.assign({ name: 'Mail, calendar and drive connectors', flip: () => save({ switch: 'connectors', on: !s.connectors }) }, sw(!!s.connectors))];
     const skills = (d.skills || []).map((k) => ({ n: k.name.replace(/_/g, ' '), u: String(k.description || '').split(/[:.]\s/)[0].replace(/^(.{52}).*$/, (m, a) => a.replace(/\s+\S*$/, '') + '…') }));
     const ok = op.signed_in;

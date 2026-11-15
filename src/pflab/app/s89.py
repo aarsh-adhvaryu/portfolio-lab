@@ -278,6 +278,18 @@ def home(rt, con, now: datetime) -> dict:
     ensure(con)
     needs: List[dict] = []
     kite = _meta(con, "india_refresh")
+    try:                                                              # S90: the day's Kite token decides, not a snapshot note that may be minutes old
+        from pflab.ingest import kite as _k
+        token_ok = _k.TokenStore().load(now) is not None
+    except Exception:
+        token_ok = False
+    if token_ok and (not kite or kite[0] in ("expired", "none", "never")):
+        try:
+            refresh_india(rt, con, now, force=True)
+            kite = _meta(con, "india_refresh")
+        except Exception:
+            pass
+    kite_bad = not token_ok
     try:
         from pflab.oper import build
         build.ensure(con)
@@ -304,7 +316,7 @@ def home(rt, con, now: datetime) -> dict:
                                  "steps": [{"n": s["n"], "text": s["text"], "uses": s["uses"]} for s in pl["steps"]], "plan_card": True})
     except Exception:
         pass
-    if kite and kite[0] in ("expired", "none"):
+    if kite_bad:
         needs.insert(0, {"kind": "do this", "id": "kite", "text": "Log in to Kite", "detail": "Takes 20 seconds. Until then your money shows the last snapshot.", "link": "#/kite"})
     heard = []
     try:
@@ -316,7 +328,7 @@ def home(rt, con, now: datetime) -> dict:
     from pflab.llm import claude_plan as cp
     plan = cp.state(con, now)
     banner = None
-    if kite and kite[0] in ("expired", "none"):
+    if kite_bad:
         banner = {"kind": "kite", "title": "Kite login expired", "text": "Your Indian prices are the last snapshot. Claude's India book will not trade until you log in; stops are still checked on the last prices.", "cta": "Log in to Kite", "href": "#/kite"}
     elif plan["thinking"] == "paused":
         banner = {"kind": "plan", "title": f"Plan limit reached · thinking paused until {plan['paused_until']}", "text": "No model calls until then. The paper book's rails, stops, alarm keywords and Telegram alerts keep running without the model. Chat answers wait too.", "cta": "See usage", "href": "#/usage"}
@@ -353,6 +365,12 @@ def home(rt, con, now: datetime) -> dict:
         last_job = {"job": r[0], "started_at": str(r[1])[:16], "finished_at": str(r[2])[:16] if r[2] else None, "status": r[3]} if r else None
     except Exception:
         last_job = None
+    recent = []
+    try:                                                              # S90: what it actually did, newest first, for "What it is doing now"
+        for job, st_at, status in con.execute("SELECT job, started_at, status FROM job_runs WHERE status <> 'skipped' ORDER BY run_id DESC LIMIT 7").fetchall():
+            recent.append({"job": job, "at": str(st_at)[:16], "status": status})
+    except Exception:
+        recent = []
     paper = None
     try:
         from pflab.paper import manager
@@ -364,7 +382,7 @@ def home(rt, con, now: datetime) -> dict:
         paper = None
     m = mine(rt, con, now, "all")
     return {"now": str(now)[:16], "banner": banner, "needs": needs, "heard": heard, "eyes": eyes, "plan": plan, "paper": paper, "mine": {"value_inr": m["summary"]["value_inr"], "today_pct": m["summary"]["today_pct"],
-            "snapshot_at": m["state"]["snapshot_at"]}, "fall_chance": _fall(con), "plans": _plans_now(con), "storyline": story, "counts": counts, "last_job": last_job, "kite_login": getattr(rt, "kite_state", None),
+            "snapshot_at": m["state"]["snapshot_at"]}, "fall_chance": _fall(con), "plans": _plans_now(con), "storyline": story, "counts": counts, "last_job": last_job, "recent": recent, "kite_ok": token_ok, "kite_login": getattr(rt, "kite_state", None),
             "doing": {"mode": (con.execute("SELECT mode FROM desk_sessions_s84 ORDER BY session_id DESC LIMIT 1").fetchone() or [None])[0] if _has(con, "desk_sessions_s84") else None}}
 
 

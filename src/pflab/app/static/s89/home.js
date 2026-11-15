@@ -41,12 +41,22 @@ S89.register('home', async (el) => {
     const bkRet = bk.length > 1 ? bk[bk.length - 1] - 100 : null, bsRet = bs.length > 1 ? bs[bs.length - 1] - 100 : null;
     const race = days.length > 1 ? `Since it started: Claude ${pct(bkRet)} · baseline ${pct(bsRet)} · yours is not kept as history` : "Claude's book has no closes yet";
     const bookToday = days.length > 1 ? days[days.length - 1][1] - days[days.length - 2][1] : null;
-    const plan = d.plan || {}, lj = d.last_job, stage = lj && STAGE_OF[lj.job] != null ? STAGE_OF[lj.job] : null, paused = plan.thinking === 'paused';
-    const steps = STAGES.map((s, i) => { const cur = i === stage && !paused, done = stage != null && i < stage && !paused;
-      return { name: cur ? s + ' · now' : s, fg: paused ? '#6B6E76' : (cur ? '#FFFFFF' : '#C9CBD1'), w: cur ? 700 : 500, dot: cur ? '#7F9AF4' : (done ? '#3E4F86' : '#2B2D33'), ring: cur ? '#B9C8FB' : '#3A3C44' }; });
+    const plan = d.plan || {};
+    const JOB = { collect: 'collected the day’s data', prices: 'updated prices', filings: 'read company filings', news_s81_topup: 'read the news', alarm: 'checked headlines on what you hold',
+      conductor: 'checked every job is on time', forecast_loop: 'made and scored forecasts', fcast: 'made forecasts', story_daily: 'updated the storylines', kg2_nightly: 'updated the knowledge graph',
+      guards: 'checked the limits', tradecheck: 'checked your Kite holdings', desk: 'Claude’s daily desk session', desk_us: 'Claude’s US morning session', paper: 'marked Claude’s book at the close',
+      us_session: 'watched the US session', catch_up: 'caught up after the laptop was off', backup: 'backed up the record', week_check: 'checked its first week', problems_week: 'listed problems',
+      operator_plans: 'worked on a plan you started', think: 'thought a case through', sims: 'ran the night’s simulation', summary_evening: 'wrote the evening report', summary_morning: 'wrote the morning plan' };
+    const plain = (j) => JOB[j] || String(j || '').replace(/_s\d+\w*$/, '').replace(/_/g, ' ');
+    const tk = Object.values(plan.tokens_today || {}).reduce((a, x) => a + Number(x.used || 0), 0);
+    const steps = (d.recent || []).map((r, i) => ({ name: `${String(r.at).slice(11, 16)} · ${plain(r.job)}${r.status === 'failed' ? ' (failed)' : ''}`, fg: i === 0 ? '#FFFFFF' : '#C9CBD1', w: i === 0 ? 700 : 500,
+      dot: r.status === 'failed' ? '#F0A56E' : (i === 0 ? '#7F9AF4' : '#3E4F86'), ring: i === 0 ? '#B9C8FB' : '#3A3C44' }));
+    if (!steps.length) steps.push({ name: 'nothing has run yet', fg: '#C9CBD1', w: 500, dot: '#2B2D33', ring: '#3A3C44' });
+    const lj = d.last_job, paused = plan.thinking === 'paused';
+    const tokLine = ` Claude used ${S89.kTok(tk)} tokens of your plan today (Usage shows where).`;
     const doing = paused ? { big: 'Thinking paused', small: `Until ${plan.paused_until || 'the reset'}. Stops and rails still run without the model.`, when: 'plan limit', dot: '#9A9DA4', pulse: '' }
-      : lj ? { big: stage != null ? STAGES[stage] : 'Working', small: `Last job: ${lj.job.replace(/_/g, ' ')} (${lj.status}).`, when: ago(lj.finished_at || lj.started_at), dot: lj.status === 'failed' ? '#F0A56E' : '#7F9AF4', pulse: lj.finished_at ? '' : 'pl-pulse' }
-      : { big: 'Starting', small: 'No job has run yet in this session.', when: '', dot: '#9A9DA4', pulse: '' };
+      : lj ? { big: lj.finished_at ? 'Watching' : 'Working', small: `Now: ${plain(lj.job)}.` + tokLine, when: ago(lj.finished_at || lj.started_at), dot: lj.status === 'failed' ? '#F0A56E' : '#7F9AF4', pulse: lj.finished_at ? '' : 'pl-pulse' }
+      : { big: 'Starting', small: 'No job has run yet in this session.' + tokLine, when: '', dot: '#9A9DA4', pulse: '' };
     const heard = (d.heard || []).map((h) => ({ k: h.kind, kc: h.kind === 'alarm' ? '#9A4209' : '#3E4149', bg: h.kind === 'alarm' ? '#FDF0E6' : '#F6F5F1', t: (h.symbol ? h.symbol + ': ' : '') + h.text, s: h.at }));
     if (!heard.length) heard.push({ k: 'quiet', kc: '#6B6E76', bg: '#FBFAF7', t: 'Nothing heard yet', s: 'the alarm reader checks every 15 minutes while the app is open' });
     const eyes = (d.eyes || []).map((e) => { const ok = e.state === 'ok', off = e.state === 'never';

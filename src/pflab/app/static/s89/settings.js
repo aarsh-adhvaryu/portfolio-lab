@@ -59,8 +59,7 @@ S89.register('settings', async (el) => {
           set: (e) => { drafts[k] = e.target.value; }, key: () => null,
           save: () => { const v = Number(drafts[k] != null ? drafts[k] : cur); if (!(v >= 0 && v <= 5000000)) return alert('Between 0 and 5,000,000 tokens.'); delete drafts[k]; save({ operator: { [k]: Math.round(v) } }); } }; }) : []),
       Object.assign({ name: 'Fixes to the app', sub: 'it writes the fix on its own branch and runs the tests; nothing goes in until you say Yes' }, sw(o.build_on !== false, () => save({ operator: { build_on: o.build_on === false } }))),
-      { name: 'NSE data address', sub: o.nse_mcp_url ? 'set · used for full answers when NSE is on in Agents' : 'off until set · the NSE connection’s https address', input: 'url', val: drafts.nse != null ? drafts.nse : (o.nse_mcp_url || ''), ph: 'https://…',
-        set: (e) => { drafts.nse = e.target.value; }, key: () => null, save: () => { const v = (drafts.nse != null ? drafts.nse : o.nse_mcp_url || '').trim(); delete drafts.nse; save({ operator: { nse_mcp_url: v } }); } },
+      { name: 'NSE data', sub: 'NSE’s own two servers (end-of-day bhavcopy and the market snapshot), no login · used by full answers while NSE is on in Agents' },
       { head: 'THIS RELEASE', name: rel.tag || 'workshop copy', sub: rel.is_app ? `installed ${String(rel.installed_on || '').slice(0, 10)}${rel.previous_tag ? ' · before it ' + rel.previous_tag : ''} · the app takes the newest release at its next start` : 'not an installed app' }];
     const fmtUntil = (u) => (u ? 'until ' + new Date(u).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'no end date');
     const rules = (rl.active || []).map((r) => ({ name: r.text || r.name, sub: fmtUntil(r.until) + (r.kind === 'hold_name' ? ' · stops still apply' : ''),
