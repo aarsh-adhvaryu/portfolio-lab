@@ -119,13 +119,15 @@ def cli_path() -> str:
     return str(p) if p.exists() else (shutil.which("claude") or "claude")
 
 
-def signin(force: bool = False) -> dict:
+def signin(force: bool = False, probe: bool = True) -> dict:
     """{"ok", "method", "detail"}: ok only when Claude Code reports his claude.ai subscription. Cached for `signin_cache_s`. Never prints the account."""
     if signin_fn is not None:
         return signin_fn()
     with _LOCK:
-        if not force and _SIGNIN["val"] is not None and time.time() - _SIGNIN["at"] < settings()["signin_cache_s"]:
+        if not force and _SIGNIN["val"] is not None and (not probe or time.time() - _SIGNIN["at"] < settings()["signin_cache_s"]):
             return _SIGNIN["val"]
+        if not probe:                                               # a status page never waits on the Claude Code process: it shows the last answer, or "not checked yet"
+            return {"ok": False, "method": "unknown", "detail": "not checked yet"}
     env = {**os.environ, **child_env()}
     try:
         p = subprocess.run([cli_path(), "auth", "status"], capture_output=True, text=True, timeout=30, env=env)
@@ -192,10 +194,10 @@ def budget_of(klass: str, cfg: Optional[dict] = None) -> int:
     return int((cfg or settings())[f"budget_{klass}"])
 
 
-def state(con, now: Optional[datetime] = None) -> dict:
+def state(con, now: Optional[datetime] = None, probe: bool = True) -> dict:
     """For `GET /api/operator` and `pflab service status`: the sign-in, paused or running, today's tokens by purpose against their budgets."""
     now = now or datetime.now()
-    s = signin()
+    s = signin(probe=probe)
     cfg = settings()
     until = paused_until(con, now)
     return {"signed_in": bool(s["ok"]), "method": s["method"], "detail": s["detail"], "thinking": "paused" if until else ("running" if s["ok"] else "off"),

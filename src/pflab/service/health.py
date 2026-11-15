@@ -115,10 +115,10 @@ def check(ctx: jobs.Ctx, backup_target: Optional[Path] = None) -> List[Item]:
     try:                                                       # S87: the operator's sign-in (his plan) and whether thinking is paused
         from pflab.llm import claude_plan as cp, gateway as gw
         if gw.current_engine(con) == "claude_plan":
-            st = cp.state(con, now)
+            st = cp.state(con, now, probe=False)
             items.append(Item("operator", "OK" if st["signed_in"] and st["thinking"] == "running" else "WARN",
                               "signed in on his Claude plan; thinking running" if st["signed_in"] and st["thinking"] == "running" else
-                              (f"thinking paused until {st['paused_until']}" if st["paused_until"] else f"not signed in on his plan: {st['detail']}")))
+                              (f"thinking paused until {st['paused_until']}" if st["paused_until"] else ("sign-in not checked yet (checked at the first model call)" if st["method"] == "unknown" else f"not signed in on his plan: {st['detail']}"))))
     except Exception as e:
         items.append(Item("operator", "WARN", f"could not read the sign-in ({type(e).__name__})"))
     return items
