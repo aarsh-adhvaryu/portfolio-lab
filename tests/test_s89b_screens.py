@@ -370,7 +370,7 @@ def test_every_screen_in_a_browser_on_both_stores_no_console_error_no_4xx_5xx_an
     from pflab.oper import plans
     pm, data = tmp_path / "pm", tmp_path / "data"
     (data / "indices").mkdir(parents=True)
-    os.environ["PFLAB_DATA_DIR"] = str(data)
+    monkeypatch.setenv("PFLAB_DATA_DIR", str(data))
     monkeypatch.setattr(cp, "signin_fn", lambda: {"ok": True, "method": "claude.ai", "detail": ""})
     monkeypatch.setattr("pflab.agents.tradecheck.isin_of", lambda con, s: "ISIN_" + s if s == "AAAA" else None)
     monkeypatch.setattr("pflab.quant.candles.daily", lambda root, isin, end, bars=120: _ohlcv())

@@ -201,7 +201,7 @@ EDGE = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 
 
 @pytest.mark.skipif(not os.path.exists(EDGE), reason="Microsoft Edge is not installed here")
-def test_every_screen_loads_in_a_browser_on_an_empty_store_without_a_console_error(tmp_path):
+def test_every_screen_loads_in_a_browser_on_an_empty_store_without_a_console_error(tmp_path, monkeypatch):
     import threading
     import time
 
@@ -209,7 +209,7 @@ def test_every_screen_loads_in_a_browser_on_an_empty_store_without_a_console_err
     from tests import _edge
     pm, data = tmp_path / "pm", tmp_path / "data"
     (data / "indices").mkdir(parents=True)
-    os.environ["PFLAB_DATA_DIR"] = str(data)
+    monkeypatch.setenv("PFLAB_DATA_DIR", str(data))
     rt = runtime.Runtime(pm, data, tmp_path, con=store.connect(tmp_path / "e.duckdb"), clock=lambda: NOW)
     cfg = uvicorn.Config(server.create_app(rt), host="127.0.0.1", port=_edge._free(), log_level="error")
     srv = uvicorn.Server(cfg)
