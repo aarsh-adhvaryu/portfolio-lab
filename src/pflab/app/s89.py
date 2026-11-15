@@ -296,6 +296,14 @@ def home(rt, con, now: datetime) -> dict:
             needs.append({"kind": "alarm", "id": f"alarm:{aid}", "text": f"{sym}: {head}"[:160], "detail": "A case is open; the decision is told here and on Telegram.", "when": str(at)[:16], "link": "#/graph"})
     except Exception:
         pass
+    try:
+        from pflab.oper import plans as _pl
+        for pl in _pl.listing(con, 6):
+            if pl["status"] == "proposed":
+                needs.insert(0, {"kind": "plan", "id": f"plan:{pl['plan_id']}", "plan_id": pl["plan_id"], "text": pl["title"], "detail": f"{len(pl['steps'])} steps, about {pl['est_tokens']:,} tokens of your plan",
+                                 "steps": [{"n": s["n"], "text": s["text"], "uses": s["uses"]} for s in pl["steps"]], "plan_card": True})
+    except Exception:
+        pass
     if kite and kite[0] in ("expired", "none"):
         needs.insert(0, {"kind": "do this", "id": "kite", "text": "Log in to Kite", "detail": "Takes 20 seconds. Until then your money shows the last snapshot.", "link": "#/settings"})
     heard = []
@@ -340,8 +348,25 @@ def home(rt, con, now: datetime) -> dict:
         paper = None
     m = mine(rt, con, now, "all")
     return {"now": str(now)[:16], "banner": banner, "needs": needs, "heard": heard, "eyes": eyes, "plan": plan, "paper": paper, "mine": {"value_inr": m["summary"]["value_inr"], "today_pct": m["summary"]["today_pct"],
-            "snapshot_at": m["state"]["snapshot_at"]}, "fall_chance": None, "storyline": story,
+            "snapshot_at": m["state"]["snapshot_at"]}, "fall_chance": _fall(con), "fall_text": None, "plans": _plans_now(con), "storyline": story,
             "doing": {"mode": (con.execute("SELECT mode FROM desk_sessions_s84 ORDER BY session_id DESC LIMIT 1").fetchone() or [None])[0] if _has(con, "desk_sessions_s84") else None}}
+
+
+def _fall(con) -> Optional[dict]:
+    """The stored chance of a fall (the forecaster's own table), or None while none has been made."""
+    try:
+        r = con.execute("SELECT p, horizon_sessions, as_of FROM fall_risk_s79 WHERE market='IN' AND source='live' AND p IS NOT NULL ORDER BY as_of DESC LIMIT 1").fetchone()
+    except Exception:
+        return None
+    return {"p": float(r[0]), "horizon": int(r[1]), "as_of": str(r[2])} if r else None
+
+
+def _plans_now(con) -> list:
+    try:
+        from pflab.oper import plans as _pl
+        return [p for p in _pl.listing(con, 6) if p["status"] in ("running", "paused")]
+    except Exception:
+        return []
 
 
 def _has(con, table: str) -> bool:
@@ -425,7 +450,7 @@ def agents(con, now: datetime) -> dict:
                     "tokens_today": st["tokens_today"].get(klass, {}).get("used", 0), "budget": st["tokens_today"].get(klass, {}).get("budget"),
                     "tools": {"quick": "5 small tools", "full": "the system's tools (30 by default, the rest by name)", "desk": "none (reads facts)", "case": "the case tools", "alarm": "none",
                               "fixer": "files in src and tests, git on a fix branch, tests", "weekly": "none (reads facts)"}[key],
-                    "applies": "from the next run" if key in ("quick", "full") else "recorded; applies once the job reads it"})
+                    "applies": ("this reader uses the local model, not a plan model" if key == "alarm" else "from the next run")})
     sw = sets.get("_switches", (None, None, {}))[2]
     return {"agents": out, "models": list(MODELS), "levels": list(LEVELS), "switches": {k: bool(sw.get(k, False)) for k in ("kite", "nse", "tijori", "connectors")},
             "switch_note": "These load for full answers only and are off by default.", "signed_in": st["signed_in"]}
@@ -532,6 +557,53 @@ def register(app, rt) -> None:
             return json.loads(json.dumps(pair(rt.cursor(), rt.data_root, rt.clock().date(), str(body.get("a") or ""), str(body.get("b") or "")), default=str))
         except ValueError as e:
             err(e)
+
+    from pflab.app import s89b
+
+    @app.get("/api/lab/presets")
+    def lab_presets():
+        return {"scenarios": s89b.presets(rt.cursor(), rt.clock()), "horizons": list(s89b.HORIZONS), "bases": ["mine", "paper"]}
+
+    @app.post("/api/lab/simulate")
+    def lab_simulate(body: dict = Body(...)):
+        try:
+            return json.loads(json.dumps(s89b.simulate(rt, rt.cursor(), rt.clock(), str(body.get("scenario") or "normal"), int(body.get("horizon") or 60), str(body.get("basis") or "paper")), default=str))
+        except (ValueError, TypeError) as e:
+            err(e)
+
+    @app.get("/api/lab/forecast")
+    def lab_forecast(market: str = "IN"):
+        return json.loads(json.dumps(s89b.forecast(rt.cursor(), market), default=str))
+
+    @app.get("/api/book/reliability")
+    def book_reliability():
+        return json.loads(json.dumps(s89b.reliability(rt.cursor(), rt.clock()), default=str))
+
+    @app.get("/api/stock/{symbol}")
+    def stock_view(symbol: str, tf: str = "day"):
+        try:
+            return json.loads(json.dumps(s89b.stock(rt, rt.cursor(), rt.clock(), symbol, "week" if tf == "week" else "day"), default=str))
+        except ValueError as e:
+            err(e)
+
+    from pflab.oper import plans as _plans
+    _plans.bind(rt)
+
+    @app.get("/api/plans")
+    def plans_view():
+        return json.loads(json.dumps({"plans": _plans.listing(rt.cursor())}, default=str))
+
+    @app.post("/api/plans/{plan_id}/{action}")
+    def plans_act(plan_id: int, action: str):
+        con = rt.cursor()
+        if action == "start":
+            _plans.start(con, rt.clock(), plan_id)
+        elif action == "cancel":
+            _plans.cancel(con, plan_id)
+        else:
+            raise HTTPException(400, "action is start or cancel")
+        rt.bump("plans", "chat")
+        return _plans.get(con, plan_id) or {}
 
     @app.get("/api/agents")
     def agents_view():

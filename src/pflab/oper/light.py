@@ -161,7 +161,7 @@ def answer(rt, con, now: datetime, *, ctx, q: str, route: dict, model_id: Option
     async def deny_builtin(name, inp, c):                              # nothing but the light tools: a built-in or other tool is refused (and none is offered)
         return cp.deny_result("not available on the light road")
     res = cp.run(con, prompt=prompt, system=SYSTEM, model=spec["model"], effort=spec["thinking"], klass="chat_light", purpose="light_chat", agent="chat", now=now, tools=[], mcp={"light": server},
-                 allowed=["mcp__light__*"], can_use_tool=deny_builtin, schema=SCHEMA, max_turns=MAX_TURNS, setting_sources=[], chat_id=cid, timeout=240)
+                 allowed=["mcp__light__*"], can_use_tool=deny_builtin, schema=SCHEMA, max_turns=MAX_TURNS, setting_sources=[], chat_id=cid, timeout=240, explicit_model=bool(model_id))
     o = res.structured if isinstance(res.structured, dict) else {}
     if not o:
         from pflab.hq import llm

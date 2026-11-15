@@ -222,7 +222,7 @@ def test_every_screen_loads_in_a_browser_on_an_empty_store_without_a_console_err
     port = srv.servers[0].sockets[0].getsockname()[1]
     try:
         for name in ("home", "money", "manage", "book", "lab", "graph", "chat", "agents", "usage", "settings"):
-            steps = [("document.getElementById('screen').innerText.length", 4.5), ("document.querySelectorAll('#screen .card, #screen .empty, #screen .banner').length", 0.1),
+            steps = [("new Promise(r => { let n = 0; const t = setInterval(() => { const l = document.getElementById('screen').innerText.length; if ((l > 20 && document.getElementById('screen').innerText.indexOf('Loading') < 0) || ++n > 200) { clearInterval(t); r(l); } }, 100); })", 0.3), ("document.querySelectorAll('#screen .card, #screen .empty, #screen .banner').length", 0.1),
                      ("document.getElementById('screen').innerText.indexOf('Could not load') < 0", 0.1)]
             errors, res = _edge.shoot(f"http://127.0.0.1:{port}/?s89=1#/{name}", str(tmp_path / f"{name}.png"), 1600, 1000, 3, steps)
             assert errors == [], (name, errors)

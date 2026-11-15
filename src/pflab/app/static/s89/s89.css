@@ -56,3 +56,8 @@ form.row label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:v
  .bar a{flex:1;text-align:center;padding:8px 2px;font-size:12px;color:var(--mute);font-weight:500}.bar a.on{color:var(--ink);font-weight:700}
  .grid{flex-direction:column}.col{width:100%}.msg{max-width:92%}table{font-size:12.5px}
 }
+[hidden]{display:none!important}
+.card{overflow:hidden}
+.card>.scroll,.card>.col.scroll{flex:1 1 auto;min-height:0}
+main>.grid{min-height:0}
+@media(min-width:1000px){body.wide main>.grid{flex:1 1 0}body.wide main>.grid>.card,body.wide main>.grid>.col{max-height:100%}}

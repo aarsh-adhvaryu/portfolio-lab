@@ -364,6 +364,15 @@ def scope(con, day: date, *, market: Optional[str] = None, root=None, held_only:
                 for sym, isin, val in con.execute("SELECT symbol, isin, qty * last_price FROM mine_in_s89").fetchall():
                     if isin:
                         put("IN", isin, sym, "his real holding (read-only)", float(val or 0.0), False)
+            if market in (None, "US"):
+                for (sym,) in con.execute("SELECT symbol FROM watch_s89 WHERE market='US'").fetchall():
+                    isin = isin_of(con, sym)
+                    if isin:
+                        put("US", isin, sym, "his watchlist", 0.0, False)
+                for (sym,) in con.execute("SELECT ticker FROM mine_us_s89").fetchall():
+                    isin = isin_of(con, sym)
+                    if isin:
+                        put("US", isin, sym, "his real holding (read-only, entered by hand)", 0.0, False)
         except Exception:
             pass
     rows = []

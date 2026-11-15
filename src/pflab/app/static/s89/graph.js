@@ -5,6 +5,6 @@ S89.register('graph', async (el) => {
   const st = core.storylines || [];
   const stories = st.length ? st.map((s) => `<div class="card" style="flex:1 1 260px"><span class="b">${s.direction === 'up' ? '▲' : '▼'} ${Math.round((s.probability || 0) * 100)}%</span><span>${esc(s.claim || s.title || s.text || '')}</span><span class="small muted">${esc(s.calls_due || '')}</span></div>`).join('') : `<div class="card" style="flex:1">${empty('No open storylines yet.')}</div>`;
   const nodes = (g.nodes || []).slice(0, 60);
-  const body = g.off ? empty(g.why || 'The knowledge graph is off until its nightly audit passes.') : (nodes.length ? `<div class="row">${nodes.map((n) => `<span class="chip mute" title="${esc(n.kind || '')}">${esc(n.label || n.name || n.id)}</span>`).join('')}</div><span class="small muted">${(g.nodes || []).length} nodes, ${(g.edges || []).length} links</span>` : empty('The graph has no nodes yet.'));
+  const body = g.off ? empty(g.why || 'The knowledge graph is off until its nightly audit passes.') : (nodes.length ? `<div class="row">${nodes.map((n) => `<a class="chip mute" href="#/stock/${encodeURIComponent(n.symbol || n.label || n.name || n.id)}" title="${esc(n.kind || '')}">${esc(n.label || n.name || n.id)}</a>`).join('')}</div><span class="small muted">${(g.nodes || []).length} nodes, ${(g.edges || []).length} links</span>` : empty('The graph has no nodes yet.'));
   el.innerHTML = `<h2 style="margin:0">Graph</h2><div class="grid">${stories}</div><div class="card"><h2>Knowledge graph</h2>${body}</div>`;
 });

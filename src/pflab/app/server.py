@@ -87,7 +87,7 @@ def create_app(rt) -> FastAPI:
     @app.get("/")
     def home_page():
         """S89: the redesigned screens (static/s89). The old screens stay at /classic until the first week has passed."""
-        return _versioned("s89/index.html", ["s89/core.js", "s89/home.js", "s89/money.js", "s89/manage.js", "s89/book.js", "s89/lab.js", "s89/graph.js", "s89/chat.js", "s89/agents.js", "s89/usage.js", "s89/settings.js", "s89/s89.css"])
+        return _versioned("s89/index.html", ["s89/core.js", "s89/home.js", "s89/money.js", "s89/manage.js", "s89/book.js", "s89/lab.js", "s89/graph.js", "s89/stock.js", "s89/chat.js", "s89/agents.js", "s89/usage.js", "s89/settings.js", "s89/s89.css"])
 
     @app.get("/manifest.webmanifest")
     def manifest():

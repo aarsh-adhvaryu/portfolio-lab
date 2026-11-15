@@ -12,8 +12,8 @@ const S89 = (() => {
   const SCREENS = {};
   const NAV = [['home', 'Home'], ['money', 'Your money'], ['book', "Claude's book"], ['lab', 'Lab'], ['graph', 'Graph'], ['chat', 'Chat'], ['agents', 'Agents'], ['usage', 'Usage']];
   const BAR = [['home', 'Home'], ['money', 'Money'], ['lab', 'Lab'], ['graph', 'Graph'], ['chat', 'Chat']];
-  const WIDE = ['home', 'money', 'manage', 'book', 'lab', 'agents', 'chat'];
-  const TOPICS = { home: ['portfolio', 'hq', 'settings', 'live', 'kite'], money: ['portfolio', 'live', 'kite'], chat: ['chat'], usage: ['hq', 'settings'], agents: ['hq', 'settings'] };
+  const WIDE = ['stock', 'home', 'money', 'manage', 'book', 'lab', 'agents', 'chat'];
+  const TOPICS = { home: ['portfolio', 'hq', 'settings', 'live', 'kite', 'plans', 'chat'], money: ['portfolio', 'live', 'kite'], chat: ['chat', 'plans'], usage: ['hq', 'settings'], agents: ['hq', 'settings'] };
 
   async function api(path, opts) {
     try {

@@ -2,7 +2,7 @@
    shows the last numbers (the page adds the "can't reach your laptop" banner itself). Nothing is cached for writes. */
 const SHELL = 'pl-shell-s89';
 const DATA = 'pl-data-s89';
-const FILES = ['/', '/static/s89/s89.css', '/static/s89/core.js', '/static/s89/home.js', '/static/s89/money.js', '/static/s89/manage.js', '/static/s89/book.js', '/static/s89/lab.js', '/static/s89/graph.js',
+const FILES = ['/', '/static/s89/s89.css', '/static/s89/core.js', '/static/s89/home.js', '/static/s89/money.js', '/static/s89/manage.js', '/static/s89/book.js', '/static/s89/lab.js', '/static/s89/graph.js', '/static/s89/stock.js',
   '/static/s89/chat.js', '/static/s89/agents.js', '/static/s89/usage.js', '/static/s89/settings.js', '/static/icon.svg'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(SHELL).then((c) => c.addAll(FILES).catch(() => null)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== SHELL && k !== DATA).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });

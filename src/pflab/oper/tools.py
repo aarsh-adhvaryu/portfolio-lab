@@ -93,6 +93,11 @@ def propose_action(ctx, a: dict) -> str:
     return actions.propose(ctx.con, ctx.now, str(a.get("kind") or ""), dict(a.get("payload") or {}))
 
 
+def propose_plan(ctx, a: dict) -> str:
+    from pflab.oper import plans
+    return plans.propose(ctx.con, ctx.now, str(a.get("title") or ""), list(a.get("steps") or []), getattr(ctx, "chat_id", None))
+
+
 def request_build(ctx, a: dict) -> str:
     from pflab.oper import build
     return build.request(ctx.con, ctx.now, str(a.get("problem") or "").strip(), source="operator")
@@ -111,6 +116,10 @@ EXTRA = [
     ("propose_action", "Propose a CHANGE: kind is watch_add / watch_remove (payload symbol, market India|US, why, alerts), us_add / us_set / us_remove (ticker, shares, avg_price, bought_on), agent_set (agent, model, "
      "thinking) or run_agent (agent: desk, weekly or case). It posts a Yes/No card; nothing changes before his Yes. Reading needs no card.",
      {"type": "object", "properties": {"kind": S, "payload": {"type": "object"}}, "required": ["kind", "payload"]}, propose_action),
+    ("propose_plan", "A request with several steps ('plan how to test pairs trading', 'look into IT stocks and report'): post a PLAN CARD first (title, steps each with the tool or agent it uses and an estimate). "
+     "Nothing runs until he taps Start. Use it instead of doing a long job unasked.",
+     {"type": "object", "properties": {"title": S, "steps": {"type": "array", "items": {"type": "object", "properties": {"text": S, "uses": S, "est_tokens": {"type": "integer"}}, "required": ["text"]}}}, "required": ["title", "steps"]},
+     propose_plan),
     ("request_build", "A bug or a 'build:' request: opens a build session on a branch in the workshop and sends him a Yes/No card. Never edit code yourself.",
      {"type": "object", "properties": {"problem": S}, "required": ["problem"]}, request_build),
 ]
@@ -118,7 +127,7 @@ EXTRA = [
 
 # S88 L3: the full operator's DEFAULT set (what the questions of S88's measurement and the skills use); every other tool stays reachable by name through `more_tools` (its names are in its description)
 DEFAULT = ("portfolio", "paper_book", "picture", "stock_facts", "price_history", "graph_timeline", "what_do_you_know", "thinking_cases", "decision_scorecard", "comovement", "pair_study", "scenario",
-           "exposure_shock", "forecasts", "simulation", "lab_policies", "problems_list", "usage_so_far", "decision_log", "log_my_decision", "my_decision_scores", "request_build", "propose_action", "read_file",
+           "exposure_shock", "forecasts", "simulation", "lab_policies", "problems_list", "usage_so_far", "decision_log", "log_my_decision", "my_decision_scores", "request_build", "propose_action", "propose_plan", "read_file",
            "read_document", "files", "research_flags", "market_context", "ask_strategist", "look_into")
 
 
