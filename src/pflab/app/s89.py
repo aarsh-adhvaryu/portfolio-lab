@@ -306,10 +306,11 @@ def status_rows(con, now: datetime, token_ok: bool, plan: dict) -> dict:
                      "state": "bad" if bad else ("ok" if age < 15 or snap.date() != now.date() else "wait")})
     try:
         from pflab.ingest import intraday5
-        lc = intraday5.latest_closed_any(con)
+        lc = intraday5.latest_closed_any(con, now)
         last = con.execute("SELECT started_at, status, detail FROM job_runs WHERE job='candles_5m' ORDER BY run_id DESC LIMIT 1").fetchone()
         if lc:
-            rows.append({"name": "Latest closed 5-minute candle", "text": lc[5:] if lc[:4] == str(now.year) else lc, "state": "ok"})
+            t = datetime.strptime(lc, "%Y-%m-%d %H:%M")
+            rows.append({"name": "Latest closed 5-minute candle", "text": f"{t.day} {t:%b} {t:%H:%M}", "state": "ok"})
         else:
             why = "waiting for the Kite login" if not token_ok else ("starts in market hours; the first session candles arrive within 5 minutes of 09:20" if last is None else "none stored yet")
             rows.append({"name": "Latest closed 5-minute candle", "text": why, "state": "wait"})
@@ -323,6 +324,15 @@ def status_rows(con, now: datetime, token_ok: bool, plan: dict) -> dict:
         else:
             why = (inv or {}).get("detail") or investigation.waiting_reason(con, now) or "runs within 15 minutes"
             rows.append({"name": "Saved study today", "text": why, "state": "wait"})
+    except Exception:
+        pass
+    try:
+        from pflab.app import livecheck
+        lv = livecheck.latest(con, now.date())
+        if lv:
+            ok = sum(1 for c in lv["checks"] if c["ok"])
+            bad = [c["name"] for c in lv["checks"] if not c["ok"]]
+            rows.append({"name": "Live check", "text": f"{ok} of {len(lv['checks'])} passed at {lv['at'][11:]}" + (f" · waiting: {bad[0]}" if bad else ""), "state": "ok" if not bad else "wait"})
     except Exception:
         pass
     nxt = ("Log in to Kite: nothing live starts until you do" if not token_ok else "Paused: the plan limit; code-only work goes on" if plan.get("thinking") == "paused"
@@ -437,8 +447,14 @@ def home(rt, con, now: datetime) -> dict:
         last_job = None
     recent = []
     try:                                                              # S90: what it actually did, newest first, for "What it is doing now"
+        try:
+            from pflab.service import jobs as _jobs
+            desc = {k: (v.description or "") for k, v in _jobs.REGISTRY.items()}
+        except Exception:
+            desc = {}
         for job, st_at, status in con.execute("SELECT job, started_at, status FROM job_runs WHERE status <> 'skipped' ORDER BY run_id DESC LIMIT 7").fetchall():
-            recent.append({"job": job, "at": str(st_at)[:16], "status": status})
+            what = re.split(r"[;(:]| - ", desc.get(job, ""), maxsplit=1)[0].strip()
+            recent.append({"job": job, "at": str(st_at)[:16], "status": status, "what": what[:70]})
     except Exception:
         recent = []
     paper = None

@@ -57,7 +57,7 @@ def _run(ctx: Ctx, kite=None, sleep: Callable[[float], None] = _time.sleep) -> d
             why = r.get("why", "")
             break
         sleep(SPACING_S)
-    out = {"names": len(want), "states": states, "latest_closed": i5.latest_closed_any(ctx.con)}
+    out = {"names": len(want), "states": states, "latest_closed": i5.latest_closed_any(ctx.con, ctx.now)}
     if why:
         out["skipped"] = why
     return out

@@ -206,3 +206,12 @@ def test_the_stock_endpoint_serves_five_minute_candles_with_their_freshness(env,
     j = c.get("/api/stock/AAAA?tf=5min").json()
     assert j["tf"] == "5min" and len(j["bars"]) == 75 and j["forecast"] is None and j["intraday"]["latest_closed"] == "2026-11-13 15:25" and j["bars"][0]["t"] == "09:15"
     assert c.get("/api/stock/AAAA").json()["tf"] == "day" and c.get("/api/stock/AAAA?tf=week").json()["tf"] == "week"
+
+
+def test_the_new_jobs_are_registered_and_scheduled_in_market_hours():
+    from pflab.service import jobs
+    import pflab.service.tasks  # noqa: F401  (loads every tasks_* module)
+    assert "candles_5m" in jobs.REGISTRY and "investigation_daily" in jobs.REGISTRY
+    sch = jobs.REGISTRY["candles_5m"].schedule
+    assert (sch.minutes, sch.start_hour, sch.end_hour, sch.weekdays_only) == (5, 9, 17, True)
+    assert list(jobs.REGISTRY)[-1] == "conductor"                                          # the long-standing expectation: conductor stays last

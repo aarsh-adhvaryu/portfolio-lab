@@ -227,10 +227,10 @@ def candles(con, isin: str, now: datetime, sessions: int = SESSIONS) -> dict:
             "fetched_at": str(fetched)[:19] if fetched is not None else None, "gaps": max(0, slots_expected - len([b for b in bars if not b["partial"]]))}
 
 
-def latest_closed_any(con) -> Optional[str]:
-    """The newest closed candle over every name (Home's "latest closed candle")."""
+def latest_closed_any(con, now: Optional[datetime] = None) -> Optional[str]:
+    """The newest closed candle over every name (Home's "latest closed candle"): a candle is closed when its five minutes have passed at `now`."""
     try:
-        r = con.execute("SELECT max(ts) FROM bars_5m_s91 WHERE ts + INTERVAL 5 MINUTE <= now()").fetchone()
+        r = con.execute("SELECT max(ts) FROM bars_5m_s91 WHERE ts + INTERVAL 5 MINUTE <= ?", [now or datetime.now()]).fetchone()
         return str(r[0])[:16] if r and r[0] else None
     except Exception:
         return None

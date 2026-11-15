@@ -9,7 +9,7 @@ import logging
 import os
 import re
 import subprocess
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
 
@@ -23,6 +23,12 @@ DDL = """CREATE TABLE IF NOT EXISTS operator_builds_s87 (build_id INTEGER PRIMAR
 SCHEMA = {"type": "object", "properties": {"cause": {"type": "string"}, "change": {"type": "array", "items": {"type": "string"}, "maxItems": 3}, "tests": {"type": "string"},
                                           "fixed": {"type": "boolean"}}, "required": ["cause", "change", "tests", "fixed"]}
 IGNORE_KINDS = ("model_engine", "plan_limit", "usage_limit")
+# S91 (his question "how many tokens does it burn without me asking"): the first live evening spent 562,047 tokens of his plan on ONE automatic fix attempt. A build session now starts by itself only for
+# a CODE fault that has repeated (a job failing, the thinking loop failing; never a source that is down, a late alarm or an engine line), and at most ONE automatic build a day; what he asks for
+# ("build:", "fix") is unchanged (2 a day). Safe fallback: set AUTO_KINDS = () to switch the automatic ones off.
+AUTO_KINDS = ("job_failed", "thinking_failed")
+AUTO_MIN_TIMES = 2
+AUTO_PER_DAY = 1
 BRANCH_FN = "pflab.oper.build:merge_and_tag"
 SYSTEM = """You are fixing a bug in the portfolio-lab code, on a git branch of your own. Rules: find the ROOT cause (not the symptom); write a failing test first; make the smallest fix; run the tests that
 touch the change and `python -m pflab.hq.security` (it must print "privacy grep: clean"); commit on this branch with a message of 10 lines or fewer. Engine tests (test_engine_*, test_lookahead,
@@ -87,10 +93,16 @@ def scan_problems(con, now: datetime) -> int:
     except Exception:
         return 0
     n = 0
+    d0 = datetime(now.year, now.month, now.day)
+    done = int(con.execute("SELECT count(*) FROM operator_builds_s87 WHERE source='problems' AND created_at >= ?", [d0]).fetchone()[0])
     for r in rows:
-        if r["first_seen"] < since or r["kind"] in IGNORE_KINDS or "claude_plan" in str(r["text"]) or "plan's limit" in str(r["text"]):
+        if r["last_seen"] < since or r["kind"] in IGNORE_KINDS or "claude_plan" in str(r["text"]) or "plan's limit" in str(r["text"]):
             continue
-        request(con, now, f"[{r['kind']}] {r['text']} ({r['context'] or 'no context'})", source="problems")
+        if r["kind"] not in AUTO_KINDS or int(r.get("times") or 1) < AUTO_MIN_TIMES or done + n >= AUTO_PER_DAY:
+            continue
+        if con.execute("SELECT 1 FROM operator_builds_s87 WHERE problem LIKE ? AND created_at >= ?", [f"%#{r['key']}%", now - timedelta(days=3)]).fetchone():
+            continue                                                  # the same problem was already tried in the last 3 days (its text changes as its count grows; its key does not)
+        request(con, now, f"[{r['kind']}] {r['text']} ({r['context'] or 'no context'}) #{r['key']}", source="problems")
         n += 1
     gw._set_state(con, "build_scan", now.isoformat(), now, "problems scanned for builds")
     return n

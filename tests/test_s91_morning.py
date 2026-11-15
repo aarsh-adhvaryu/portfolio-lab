@@ -115,3 +115,42 @@ def test_home_shows_release_snapshot_candle_study_and_next_action(env, monkeypat
     h = c.get("/api/home").json()["status"]
     st = {r["name"]: r for r in h["rows"]}
     assert st["Saved study today"]["state"] == "ok" and "to" in st["Saved study today"]["text"] and st["Your holdings (Kite)"]["text"].startswith("complete snapshot")
+
+
+# --- the automatic live check ---------------------------------------------------------------------------------------------------------------
+
+def test_the_live_check_records_each_check_and_tells_once(env, monkeypatch):
+    from pflab.app import livecheck
+    from pflab.ingest import intraday5
+    from pflab.ingest import kite as km
+    rt, con = env
+    mon = datetime(2026, 11, 16, 9, 40)
+    monkeypatch.setattr(km.TokenStore, "load", lambda self, now: "tok")
+    assert "outside" in livecheck.run(rt, con, datetime(2026, 11, 14, 10, 0))["skipped"]                      # a Saturday
+    assert "outside" in livecheck.run(rt, con, datetime(2026, 11, 16, 9, 0))["skipped"]                        # before 09:20
+    monkeypatch.setattr(km.TokenStore, "load", lambda self, now: None)
+    assert "no Kite login" in livecheck.run(rt, con, mon)["skipped"]
+    monkeypatch.setattr(km.TokenStore, "load", lambda self, now: "tok")
+    _snap(con, mon - timedelta(minutes=3))
+    con.execute("DELETE FROM mine_meta_s89")
+    con.execute("INSERT INTO mine_meta_s89 VALUES ('india_refresh', 'ok', ?)", [mon - timedelta(minutes=3)])
+    intraday5.ensure(con)
+    con.execute("INSERT INTO bars_5m_s91 VALUES ('ISIN_AAAA', TIMESTAMP '2026-11-16 09:30:00', 1,1,1,1,1, ?)", [mon])
+    inv.run(rt, con, mon)
+    out = livecheck.run(rt, con, mon)
+    names = {r[0]: r[1] for r in con.execute("SELECT check_name, ok FROM live_checks_s91").fetchall()}
+    assert names["complete holdings snapshot"] and names["new closed candle"] and names["saved study of the day"] and names["no failed job in 30 minutes"]
+    assert out["of"] == 6 and out["passed"] >= 4 and "running release" in out["failed"]                        # the workshop is not an installed release: said, not hidden
+    later = livecheck.run(rt, con, mon + timedelta(minutes=10))                                                  # the same candle again: not a NEW one
+    assert "new closed candle" in later["failed"]
+    late = livecheck.run(rt, con, datetime(2026, 11, 16, 11, 5))
+    assert late["told"] is True and livecheck.run(rt, con, datetime(2026, 11, 16, 11, 15)).get("told") is False     # told once at 11:00
+    assert con.execute("SELECT count(*) FROM chat_messages WHERE post_key='livecheck:2026-11-16'").fetchone()[0] == 1
+    assert livecheck.latest(con, mon.date())["checks"]
+
+
+def test_the_live_check_job_is_registered():
+    from pflab.service import jobs
+    import pflab.service.tasks  # noqa: F401
+    s = jobs.REGISTRY["live_check"].schedule
+    assert (s.minutes, s.start_hour, s.end_hour, s.weekdays_only) == (10, 9, 16, True)

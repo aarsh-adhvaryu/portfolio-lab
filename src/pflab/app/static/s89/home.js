@@ -47,7 +47,8 @@ S89.register('home', async (el) => {
       guards: 'checked the limits', tradecheck: 'checked your Kite holdings', desk: 'Claude’s daily desk session', desk_us: 'Claude’s US morning session', paper: 'marked Claude’s book at the close',
       us_session: 'watched the US session', catch_up: 'caught up after the laptop was off', backup: 'backed up the record', week_check: 'checked its first week', problems_week: 'listed problems',
       operator_plans: 'worked on a plan you started', think: 'thought a case through', sims: 'ran the night’s simulation', summary_evening: 'wrote the evening report', summary_morning: 'wrote the morning plan' };
-    const plain = (j) => JOB[j] || String(j || '').replace(/_s\d+\w*$/, '').replace(/_/g, ' ');
+    const whatOf = {}; (d.recent || []).forEach((r) => { if (r.what) whatOf[r.job] = r.what.charAt(0).toLowerCase() + r.what.slice(1); });
+    const plain = (j) => JOB[j] || whatOf[j] || String(j || '').replace(/_s\d+\w*$/, '').replace(/_/g, ' ');
     const tk = Object.values(plan.tokens_today || {}).reduce((a, x) => a + Number(x.used || 0), 0);
     const steps = (d.recent || []).map((r, i) => ({ name: `${String(r.at).slice(11, 16)} · ${plain(r.job)}${r.status === 'failed' ? ' (failed)' : ''}`, fg: i === 0 ? '#FFFFFF' : '#C9CBD1', w: i === 0 ? 700 : 500,
       dot: r.status === 'failed' ? '#F0A56E' : (i === 0 ? '#7F9AF4' : '#3E4F86'), ring: i === 0 ? '#B9C8FB' : '#3A3C44' }));

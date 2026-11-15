@@ -131,8 +131,11 @@ class Runtime:
             s79.register_swing(self.cursor(), self.clock())            # S81 B5
             from pflab.learner import s83
             s83.register_picks_live(self.cursor(), self.clock())        # S83 L5: the picks sleeve's live test, one per market
-            from pflab.lab import rates_study
-            rates_study.register(self.cursor(), self.clock())            # S91: the Rates up 1% study counts in the counter (its result is in docs/research)
+            try:
+                from pflab.lab import rates_study
+                rates_study.register(self.cursor(), self.clock())        # S91: the Rates up 1% study counts in the counter (its result is in docs/research)
+            except Exception:
+                log.exception("registering the S91 rates study failed")
             from pflab.learner import s84
             s84.register_thinking_live(self.cursor(), self.clock())     # S84 T8: the thinking loop's live test, once
             s84.register_thinking_amendment_a4(self.cursor(), self.clock())     # S86b: its Amendment A4 (the replayed model look, after-tax scoring), once
@@ -142,6 +145,13 @@ class Runtime:
             s79.apply_verdicts(self.cursor())
         except Exception:
             log.exception("registering S79 studies failed")
+        try:                                                 # S91: a plan left 'running' by a process that died is set back to paused at once (the plans job then resumes it)
+            from pflab.oper import plans
+            n = plans.reconcile(self.cursor(), self.clock())
+            if n:
+                log.info("recovered %d plan(s) left running by an earlier process", n)
+        except Exception:
+            log.exception("plan recovery at start failed")
         try:                                                 # S84 F1 (his decision 2026-11-12): the dated amendment is counted first, then India's share gets room for the system's own picks, once
             from pflab.core import pick_share
             from pflab.learner import s83 as s83a
