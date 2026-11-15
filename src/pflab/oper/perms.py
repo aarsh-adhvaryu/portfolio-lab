@@ -10,6 +10,36 @@ import re
 from pathlib import Path
 from typing import Optional, Tuple
 
+WEB_TOOLS = ("WebSearch", "WebFetch")
+# S91: a public search or page read must not carry his money: amounts, quantities, "my holdings", identity numbers. Company names and public questions are fine.
+PRIVATE_WORDS = re.compile(r"(\b(my|our)\s+(holdings?|portfolio|shares?|positions?|account|demat|folio|pan|aadhaar|bank)\b|\bi\s+(hold|own|bought|sold|invested)\b|\b\d[\d,]*\s*(shares|units|qty|lakh|crore)\b|(₹|\brs\.?|\binr)\s?\d)", re.I)
+PRIVATE_IDS = re.compile(r"\b[A-Z]{5}\d{4}[A-Z]\b|\b\d{4}\s?\d{4}\s?\d{4}\b")           # a PAN, a 12-digit Aadhaar-shaped number
+
+
+def web_ok(tool: str, inp: dict) -> Tuple[bool, str]:
+    """The public-research tools, for an answer session only: https pages on the open web, never a local or private address, and nothing of his in the words."""
+    from urllib.parse import urlparse
+    import ipaddress
+    text = " ".join(str(v) for v in (inp or {}).values())
+    if PRIVATE_WORDS.search(text) or PRIVATE_IDS.search(text):
+        return False, "a public search carries nothing of his: no amounts, quantities, holdings or identity numbers; ask it as a question about the company"
+    if tool == "WebFetch":
+        u = urlparse(str(inp.get("url") or ""))
+        host = (u.hostname or "").lower()
+        if u.scheme != "https" or not host or u.username or u.password:
+            return False, "only plain https pages"
+        try:
+            ip = ipaddress.ip_address(host)
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                return False, "no local or private addresses"
+        except ValueError:
+            if host in ("localhost",) or host.endswith((".local", ".internal", ".lan")) or "." not in host:
+                return False, "no local or private addresses"
+        if re.search(r"(token|secret|password|apikey|api_key|access_key)=", u.query, re.I):
+            return False, "the address carries a secret"
+    return True, ""
+
+
 META = re.compile(r"[;&|<>`$\n\r]|\$\(")
 PFLAB_READ = ("pm networth", "pm guards", "pm alerts", "pm propose", "pm advise", "pm simulate", "pm fd show", "list", "kg", "learner status", "service status", "alarm status", "problems", "conductor",
               "hq", "us", "engine list", "ask")
@@ -39,6 +69,8 @@ def decide(kind: str, tool: str, inp: dict, root: Path, branch: Optional[str] = 
     inp = inp or {}
     if tool.startswith("mcp__oper__") or tool.startswith("mcp__nse") or tool.startswith("mcp__kite__") or tool in FREE_TOOLS:
         return True, ""
+    if tool in WEB_TOOLS:
+        return web_ok(tool, inp) if kind == "answer" else (False, f"{tool} is not allowed in a {kind} session")
     if tool in READ_TOOLS:
         p = _path(inp, root)
         if p is None:

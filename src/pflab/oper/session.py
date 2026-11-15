@@ -118,13 +118,24 @@ def answer_full(rt, con, now: datetime, *, ctx, pid: int, first: str, r: dict, m
     if sw.get("kite"):                                               # Kite: the read-only snapshot tool; there is no order tool anywhere
         mcp["kite"] = cp.tool_server("kite", [kite_tool(ctx)])
 
+    web_on = _web_on(rt)
+
     async def can_use(name, inp, c):
         ok, why = perms.decide("answer", name, inp, ws)
+        if ok and name in perms.WEB_TOOLS:
+            if not web_on:
+                return cp.deny_result("refused: Search the web is switched off in Settings")
+            try:                                                      # the same gate every outward call passes: ids, his name, his address
+                import json as _json
+                from pflab.hq import egress
+                egress.check(_json.dumps(inp, default=str), ctx.gate, ("portfolio",), skip=("address_word",))
+            except Exception as e:
+                return cp.deny_result(f"refused: {str(e)[:160]}")
         return cp.allow_result() if ok else cp.deny_result(f"refused: {why}")
     progress("thinking")
     steps: List[str] = []
     try:
-        res = cp.run(con, prompt=prompt, system=PRESET, model=spec["model"], effort=spec["thinking"], klass="chat", purpose="operator_chat", agent="chat", now=now, cwd=str(ws), tools=BUILTIN,
+        res = cp.run(con, prompt=prompt, system=PRESET, model=spec["model"], effort=spec["thinking"], klass="chat", purpose="operator_chat", agent="chat", now=now, cwd=str(ws), tools=BUILTIN + (list(perms.WEB_TOOLS) if web_on else []),
                      allowed=[f"mcp__{k}__*" for k in mcp], mcp=mcp, resume=sid, max_turns=int(cp.settings()["max_turns_chat"]), can_use_tool=can_use,
                      setting_sources=["project"], chat_id=cid, timeout=600, skills=pathrouter.skills_for(q), explicit_model=bool(model_id), strict_mcp=not sw.get("connectors"))
     except (cp.PlanPaused, cp.PlanBudgetSpent) as e:
@@ -142,7 +153,11 @@ def answer_full(rt, con, now: datetime, *, ctx, pid: int, first: str, r: dict, m
     put_hist(con, cid, hist + max(0, res.input_tokens - res.cached_tokens) + res.output_tokens, now)
     steps = [s.replace("mcp__oper__", "") for s in res.steps]
     text = res.text or ""
-    clean, dropped = an.only_sourced_numbers(text[:3500], an.Request(ctx.source, "assistant")) if text else ("", 0)
+    web = list(getattr(res, "web", None) or [])
+    src = ctx.source + (chr(10) + chr(10).join(w["text"] + " " + str(w["input"]) for w in web) if web else "")      # what a page said is a source for its own numbers, nothing else is
+    clean, dropped = an.only_sourced_numbers(text[:3500], an.Request(src, "assistant")) if text else ("", 0)
+    if web:
+        clean = (clean + chr(10) * 2 if clean else "") + web_footer(con, now, cid, web)
     if notes:
         clean = (clean + "\n\n" if clean else "") + "\n".join(notes)
     passes.close(con, pid, "done", clean, ctx.decisions, 0.0, None, "; ".join(ctx.problems) or None)
@@ -152,6 +167,34 @@ def answer_full(rt, con, now: datetime, *, ctx, pid: int, first: str, r: dict, m
             "route": [f"tool: {s}" for s in steps[-8:]],
             "meta_obj": {"text": meta_txt, "model": res.model or spec["model"], "price": "plan", "thinking": spec["thinking"], "why": r["why"], "auto": r["auto"], "tools": steps[-8:], "snapshot": snap,
                          "engine": "claude_plan", "path": "full", "tokens": tok, "seconds": res.seconds, "session": res.session_id}}
+
+
+def _web_on(rt) -> bool:
+    try:
+        from pflab.app import settings as _st
+        return _st.ability("web", current=getattr(rt, "settings", None))
+    except Exception:
+        return True
+
+
+URL = __import__("re").compile(r"https?://[^\s)\]>\"']+")
+
+
+def web_footer(con, now: datetime, cid: Optional[int], web: List[dict]) -> str:
+    """Keep what the public web said with its address and the time it was read (table `web_evidence_s91`), and end the reply with the addresses. The page's own date stays in its text."""
+    con.execute("CREATE TABLE IF NOT EXISTS web_evidence_s91 (ev_id BIGINT, retrieved_at TIMESTAMP, chat_id BIGINT, tool VARCHAR, query VARCHAR, urls VARCHAR, excerpt VARCHAR)")
+    from pflab.pm.store import next_id
+    urls: List[str] = []
+    for w in web:
+        u = [x.rstrip(".,;") for x in URL.findall(w["text"])] + ([str(w["input"].get("url"))] if w["input"].get("url") else [])
+        for x in u:
+            if x not in urls:
+                urls.append(x)
+        con.execute("INSERT INTO web_evidence_s91 VALUES (?,?,?,?,?,?,?)", [next_id(con, "web_evidence_s91", "ev_id"), now, cid, w["tool"], str(w["input"].get("query") or w["input"].get("url") or "")[:300],
+                                                                          chr(10).join(u)[:2000], w["text"][:3000]])
+    if not urls:
+        return f"(Read on the public web {now:%d %b %Y %H:%M}: the pages returned no addresses.)"
+    return f"Sources, read {now:%d %b %Y %H:%M}: " + " · ".join(urls[:6])
 
 
 HIST_LIMIT = 60000

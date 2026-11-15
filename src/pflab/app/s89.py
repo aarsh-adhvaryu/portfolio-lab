@@ -285,6 +285,51 @@ def mine(rt, con, now: datetime, tab: str = "all") -> dict:
 
 # --- the Home screen ----------------------------------------------------------------------------------------------------------------------------------
 
+def status_rows(con, now: datetime, token_ok: bool, plan: dict) -> dict:
+    """S91: what the morning needs to show at a glance: the running release, the last complete Kite snapshot, the latest closed five-minute candle, the day's saved study, and the next action
+    or the specific reason something waits. Each row {name, text, state: ok | wait | bad}."""
+    rows: List[dict] = []
+    try:
+        from pflab import release
+        r = (release.load() or {}).get("app") or {}
+        rows.append({"name": "Running release", "text": r.get("tag") or "workshop copy", "state": "ok"})
+    except Exception:
+        pass
+    snap = _snap_at(con)
+    m = _meta(con, "india_refresh")
+    if snap is None:
+        rows.append({"name": "Your holdings (Kite)", "text": "no snapshot yet" + ("" if token_ok else ": log in to Kite"), "state": "wait"})
+    else:
+        age = (now - snap).total_seconds() / 60
+        bad = bool(m and m[0] == "error")
+        rows.append({"name": "Your holdings (Kite)", "text": f"complete snapshot {str(snap)[11:16]} ({'today' if snap.date() == now.date() else str(snap)[:10]})" + (" · the last refresh failed, this one is kept" if bad else ""),
+                     "state": "bad" if bad else ("ok" if age < 15 or snap.date() != now.date() else "wait")})
+    try:
+        from pflab.ingest import intraday5
+        lc = intraday5.latest_closed_any(con)
+        last = con.execute("SELECT started_at, status, detail FROM job_runs WHERE job='candles_5m' ORDER BY run_id DESC LIMIT 1").fetchone()
+        if lc:
+            rows.append({"name": "Latest closed 5-minute candle", "text": lc[5:] if lc[:4] == str(now.year) else lc, "state": "ok"})
+        else:
+            why = "waiting for the Kite login" if not token_ok else ("starts in market hours; the first session candles arrive within 5 minutes of 09:20" if last is None else "none stored yet")
+            rows.append({"name": "Latest closed 5-minute candle", "text": why, "state": "wait"})
+    except Exception:
+        pass
+    try:
+        from pflab.app import investigation
+        inv = investigation.get(con, now.date())
+        if inv and inv["status"] == "done":
+            rows.append({"name": "Saved study today", "text": f"{inv['subject']}: {inv['result'].get('verdict')} (p {inv['result'].get('p_value')}), {inv['period_from']} to {inv['period_to']}", "state": "ok"})
+        else:
+            why = (inv or {}).get("detail") or investigation.waiting_reason(con, now) or "runs within 15 minutes"
+            rows.append({"name": "Saved study today", "text": why, "state": "wait"})
+    except Exception:
+        pass
+    nxt = ("Log in to Kite: nothing live starts until you do" if not token_ok else "Paused: the plan limit; code-only work goes on" if plan.get("thinking") == "paused"
+           else "Not signed in on your Claude plan" if not plan.get("signed_in") else "Nothing needs you: it is working through the day's agenda")
+    return {"rows": rows, "next": nxt}
+
+
 def _eyes(con, now: datetime) -> List[dict]:
     try:
         from pflab.think import alarm
@@ -407,7 +452,7 @@ def home(rt, con, now: datetime) -> dict:
         paper = None
     m = mine(rt, con, now, "all")
     return {"now": str(now)[:16], "banner": banner, "needs": needs, "heard": heard, "eyes": eyes, "plan": plan, "paper": paper, "mine": {"value_inr": m["summary"]["value_inr"], "today_pct": m["summary"]["today_pct"],
-            "snapshot_at": m["state"]["snapshot_at"]}, "fall_chance": _fall(con), "plans": _plans_now(con), "storyline": story, "counts": counts, "last_job": last_job, "recent": recent, "kite_ok": token_ok, "kite_login": getattr(rt, "kite_state", None),
+            "snapshot_at": m["state"]["snapshot_at"]}, "fall_chance": _fall(con), "plans": _plans_now(con), "storyline": story, "counts": counts, "last_job": last_job, "recent": recent, "kite_ok": token_ok, "status": status_rows(con, now, token_ok, plan), "kite_login": getattr(rt, "kite_state", None),
             "doing": {"mode": (con.execute("SELECT mode FROM desk_sessions_s84 ORDER BY session_id DESC LIMIT 1").fetchone() or [None])[0] if _has(con, "desk_sessions_s84") else None}}
 
 
@@ -691,6 +736,8 @@ def register(app, rt) -> None:
 
     from pflab.oper import plans as _plans
     _plans.bind(rt)
+    from pflab.service import tasks_s91_investigation as _inv
+    _inv.bind(rt)
 
     @app.get("/api/plans")
     def plans_view():

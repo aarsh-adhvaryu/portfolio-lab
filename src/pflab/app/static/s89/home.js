@@ -42,7 +42,7 @@ S89.register('home', async (el) => {
     const race = days.length > 1 ? `Since it started: Claude ${pct(bkRet)} · baseline ${pct(bsRet)} · yours is not kept as history` : "Claude's book has no closes yet";
     const bookToday = days.length > 1 ? days[days.length - 1][1] - days[days.length - 2][1] : null;
     const plan = d.plan || {};
-    const JOB = { collect: 'collected the day’s data', prices: 'updated prices', filings: 'read company filings', news_s81_topup: 'read the news', alarm: 'checked headlines on what you hold',
+    const JOB = { candles_5m: 'fetched five-minute candles', investigation_daily: 'worked on the day’s saved study', bars_1m: 'recorded minute bars', collect: 'collected the day’s data', prices: 'updated prices', filings: 'read company filings', news_s81_topup: 'read the news', alarm: 'checked headlines on what you hold',
       conductor: 'checked every job is on time', forecast_loop: 'made and scored forecasts', fcast: 'made forecasts', story_daily: 'updated the storylines', kg2_nightly: 'updated the knowledge graph',
       guards: 'checked the limits', tradecheck: 'checked your Kite holdings', desk: 'Claude’s daily desk session', desk_us: 'Claude’s US morning session', paper: 'marked Claude’s book at the close',
       us_session: 'watched the US session', catch_up: 'caught up after the laptop was off', backup: 'backed up the record', week_check: 'checked its first week', problems_week: 'listed problems',
@@ -55,13 +55,14 @@ S89.register('home', async (el) => {
     const lj = d.last_job, paused = plan.thinking === 'paused';
     const tokLine = ` Claude used ${S89.kTok(tk)} tokens of your plan today (Usage shows where).`;
     const doing = paused ? { big: 'Thinking paused', small: `Until ${plan.paused_until || 'the reset'}. Stops and rails still run without the model.`, when: 'plan limit', dot: '#9A9DA4', pulse: '' }
-      : lj ? { big: lj.finished_at ? 'Watching' : 'Working', small: `Now: ${plain(lj.job)}.` + tokLine, when: ago(lj.finished_at || lj.started_at), dot: lj.status === 'failed' ? '#F0A56E' : '#7F9AF4', pulse: lj.finished_at ? '' : 'pl-pulse' }
+      : lj ? { big: lj.finished_at ? 'Watching' : 'Working', small: `Now: ${plain(lj.job)}. Next: ${(d.status || {}).next || 'its agenda'}.` + tokLine, when: ago(lj.finished_at || lj.started_at), dot: lj.status === 'failed' ? '#F0A56E' : '#7F9AF4', pulse: lj.finished_at ? '' : 'pl-pulse' }
       : { big: 'Starting', small: 'No job has run yet in this session.' + tokLine, when: '', dot: '#9A9DA4', pulse: '' };
     const heard = (d.heard || []).map((h) => ({ k: h.kind, kc: h.kind === 'alarm' ? '#9A4209' : '#3E4149', bg: h.kind === 'alarm' ? '#FDF0E6' : '#F6F5F1', t: (h.symbol ? h.symbol + ': ' : '') + h.text, s: h.at }));
     if (!heard.length) heard.push({ k: 'quiet', kc: '#6B6E76', bg: '#FBFAF7', t: 'Nothing heard yet', s: 'the alarm reader checks every 15 minutes while the app is open' });
     const eyes = (d.eyes || []).map((e) => { const ok = e.state === 'ok', off = e.state === 'never';
       return { n: e.name, s: e.state === 'down' ? 'not answering' : off ? 'not yet' : (e.age_min != null ? (e.age_min < 60 ? e.age_min + ' min ago' : Math.round(e.age_min / 60) + ' h ago') : ''),
         fill: ok ? '#2FA36B' : (off ? '#FFFFFF' : '#D9620F'), stroke: ok ? '#2FA36B' : (off ? '#9A9DA4' : '#D9620F'), sc: ok || off ? '#5B5E66' : '#9A4209', sw: ok || off ? 500 : 700 }; });
+    ((d.status || {}).rows || []).slice().reverse().forEach((r) => eyes.unshift({ n: r.name, s: r.text, fill: r.state === 'ok' ? '#2FA36B' : (r.state === 'bad' ? '#D9620F' : '#FFFFFF'), stroke: r.state === 'ok' ? '#2FA36B' : (r.state === 'bad' ? '#D9620F' : '#C9A227'), sc: r.state === 'bad' ? '#9A4209' : '#5B5E66', sw: 500 }));
     eyes.unshift({ n: 'Claude on your plan', s: plan.signed_in ? (paused ? 'paused till ' + (plan.paused_until || 'reset') : 'signed in') : 'not signed in', fill: plan.signed_in && !paused ? '#2FA36B' : '#D9620F', stroke: plan.signed_in && !paused ? '#2FA36B' : '#D9620F', sc: plan.signed_in && !paused ? '#5B5E66' : '#9A4209', sw: plan.signed_in && !paused ? 500 : 700 });
     const f = d.fall_chance, frac = f ? Math.min(1, f.p / 0.4) : 0, ang = Math.PI * (1 - frac);
     const fall = f ? { v: Math.round(f.p * 100) + '%', t: `chance of a ${f.drop_pct ? Math.round(f.drop_pct) + '% ' : ''}fall in the next ${f.horizon} sessions`, aria: `${Math.round(f.p * 100)} percent chance of a fall in the next ${f.horizon} sessions`,

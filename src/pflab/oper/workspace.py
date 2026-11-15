@@ -41,6 +41,6 @@ def ensure(data_dir: Optional[str] = None) -> Path:
     for name, (desc, prompt) in texts.AGENTS.items():
         _write_if_older(r / ".claude" / "agents" / f"{name}.md", _tagged(f"---\nname: {name}\ndescription: {desc}\ntools: Read, Grep, Glob\nmodel: sonnet\n---\n{prompt}\n"))
     sp = r / ".claude" / "settings.json"
-    if not sp.exists():
+    if not sp.exists() or "WebSearch" in sp.read_text(encoding="utf-8", errors="ignore"):          # S91: an older file that denies the public-web tools is replaced
         sp.write_text(json.dumps(texts.SETTINGS, indent=2), encoding="utf-8")
     return r
