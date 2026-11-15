@@ -392,6 +392,12 @@ max_turns_desk = 12
 max_turns_chat = 14
 max_turns_build = 40
 build_per_day = 2
+# NSE's own MCP servers (Streamable HTTP, no login; NSE describes the data as informational and educational, read-only, unadjusted for splits and bonuses, no intraday candles). They load for FULL answers only,
+# and only when the Agents screen's NSE switch is on (off by default). "nse_bhavcopy" = end-of-day data for about 5 years; "nse_live" = the current day's snapshot, 1 to 3 minutes behind.
+# The addresses are from a third-party write-up (marketcalls.in, 1 Oct 2026); nseindia.com/nse-mcp is the page to confirm them on.
+[operator.nse_mcp_urls]
+nse_bhavcopy = "https://mcp.nseindia.in/bhavcopy/cm/mcp"
+nse_live = "https://mcp.nseindia.in/cmmkt/mcp"
 
 # OpenAI, through its Responses API (gpt-6 models need it for tools). Model ids, prices, effort values and endpoints read from OpenAI's own pages on 2026-11-13:
 # developers.openai.com/api/docs/models and /api/docs/pricing, /api/docs/models/gpt-6-luna, gpt-6.1-sol, gpt-6-astra, /api/docs/guides/reasoning, /api/reference/resources/responses.

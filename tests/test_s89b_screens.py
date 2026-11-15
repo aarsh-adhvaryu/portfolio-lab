@@ -413,3 +413,20 @@ def test_every_screen_in_a_browser_on_both_stores_no_console_error_no_4xx_5xx_an
     finally:
         srv.should_exit = True
         th.join(timeout=5)
+
+
+def test_nse_official_servers_load_only_when_switched_on_and_both_are_named(app):
+    from pflab.oper import session
+    rt, c = app
+    s = session.nse_server()
+    assert set(s) == {"nse_bhavcopy", "nse_live"} and s["nse_live"]["url"] == "https://mcp.nseindia.in/cmmkt/mcp" and s["nse_bhavcopy"]["url"].endswith("/bhavcopy/cm/mcp")
+    assert all(v["type"] == "http" for v in s.values())
+    con = rt.cursor()
+    o = _ask_full(con, rt, None)
+    assert not any(k.startswith("nse") for k in o.mcp_servers)                                    # off by default: nothing of NSE's is loaded
+    c.post("/api/agents", json={"switch": "nse", "on": True})
+    o = _ask_full(con, rt, None)
+    assert {"nse_bhavcopy", "nse_live"} <= set(o.mcp_servers) and "mcp__nse_live__*" in o.allowed_tools and "mcp__nse_bhavcopy__*" in o.allowed_tools
+    from pflab.oper import perms
+    assert perms.decide("answer", "mcp__nse_live__cm_get_stock_quote", {}, Path("."))[0] is True
+    assert perms.decide("answer", "mcp__other__x", {}, Path("."))[0] is False

@@ -59,12 +59,17 @@ def kite_tool(ctx) -> tuple:
 
 
 def nse_server() -> Optional[dict]:
+    """NSE's own MCP servers (Streamable HTTP, no login): `[operator] nse_mcp_urls = {name = url}` (the end-of-day bhavcopy server and the live-snapshot server), or the one-address form `nse_mcp_url`.
+    Loaded only when the Agents screen's NSE switch is on AND an address is set."""
     try:
         from pflab import _toml
-        url = str((_toml.load(cp.CONFIG).get("operator") or {}).get("nse_mcp_url") or "")
+        op = _toml.load(cp.CONFIG).get("operator") or {}
     except Exception:
-        url = ""
-    return {"nse": {"type": "http", "url": url}} if url else None
+        return None
+    urls = {str(k): str(v) for k, v in (op.get("nse_mcp_urls") or {}).items() if v}
+    if not urls and op.get("nse_mcp_url"):
+        urls = {"nse": str(op["nse_mcp_url"])}
+    return {k: {"type": "http", "url": u} for k, u in urls.items()} or None
 
 
 def new_prompt(first: str) -> str:
@@ -113,7 +118,7 @@ def answer_full(rt, con, now: datetime, *, ctx, pid: int, first: str, r: dict, m
     steps: List[str] = []
     try:
         res = cp.run(con, prompt=prompt, system=PRESET, model=spec["model"], effort=spec["thinking"], klass="chat", purpose="operator_chat", agent="chat", now=now, cwd=str(ws), tools=BUILTIN,
-                     allowed=["mcp__oper__*"] + (["mcp__nse__*"] if "nse" in mcp else []) + (["mcp__kite__*"] if "kite" in mcp else []), mcp=mcp, resume=sid, max_turns=int(cp.settings()["max_turns_chat"]), can_use_tool=can_use,
+                     allowed=[f"mcp__{k}__*" for k in mcp], mcp=mcp, resume=sid, max_turns=int(cp.settings()["max_turns_chat"]), can_use_tool=can_use,
                      setting_sources=["project"], chat_id=cid, timeout=600, skills=pathrouter.skills_for(q), explicit_model=bool(model_id), strict_mcp=not sw.get("connectors"))
     except (cp.PlanPaused, cp.PlanBudgetSpent) as e:
         passes.close(con, pid, "stopped", "", ctx.decisions, 0.0, None, str(e)[:300])
