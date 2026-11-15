@@ -39,8 +39,23 @@ class UpdateError(RuntimeError):
     pass
 
 
+DOCKER_TIMEOUT_S = 600                                    # a sandbox image build never holds the start for longer than this
+
+
+def docker_up(timeout: float = 15.0) -> bool:
+    """Docker answers `docker info` within `timeout` seconds (Docker Desktop running); False when it does not or is not installed."""
+    try:
+        return subprocess.run(["docker", "info", "--format", "{{.ServerVersion}}"], capture_output=True, text=True, timeout=timeout).returncode == 0
+    except Exception:
+        return False
+
+
 def run_cmd(cmd: List[str], cwd: Path) -> Tuple[int, str]:
-    p = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, encoding="utf-8", errors="replace")
+    try:
+        p = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           timeout=DOCKER_TIMEOUT_S if cmd and cmd[0] == "docker" else None)
+    except subprocess.TimeoutExpired:
+        return 124, f"{cmd[0]} took more than {DOCKER_TIMEOUT_S} s and was stopped"
     return p.returncode, (p.stdout + p.stderr).strip()
 
 
@@ -64,9 +79,12 @@ def default_install(root: Path, run: Run = run_cmd) -> None:
         raise UpdateError(f"installing the requirements failed: {out[-300:]}")
     import shutil
     if shutil.which("docker") and (Path(root) / "sandbox" / "Dockerfile").exists():   # audit F2: the image carries the runner; it is rebuilt with the release
-        rc, out = run(["docker", "build", "-q", "-t", "pflab-sandbox:2", "-f", "sandbox/Dockerfile", "."], root)
-        if rc:                                                # not fatal: the sandbox probe then names the stale image and nothing generated runs
-            print(f"the sandbox image was not rebuilt ({out[-160:]}); calculations wait until it is")
+        if not docker_up():                                   # 2026-11-15: Docker Desktop not running made `docker build` wait forever and the icon sat on "starting"
+            print("the sandbox image was not rebuilt (Docker is not running); calculations wait until it is")
+        else:
+            rc, out = run(["docker", "build", "-q", "-t", "pflab-sandbox:2", "-f", "sandbox/Dockerfile", "."], root)
+            if rc:                                            # not fatal: the sandbox probe then names the stale image and nothing generated runs
+                print(f"the sandbox image was not rebuilt ({out[-160:]}); calculations wait until it is")
 
 
 def default_selftest(root: Path, run: Run = run_cmd, pm_dir: Optional[Path] = None) -> Tuple[bool, str]:
