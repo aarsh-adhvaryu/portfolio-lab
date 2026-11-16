@@ -1,5 +1,9 @@
 # CLAUDE.md — instructions for Claude Code on this repo
 
+> **In transition (S94, 16 Nov 2026).** The project has been redefined: `docs/BUDDY.md` is what it is now, and `docs/BUDDY_CUT.md` is the work order that removes everything else, phase by phase.
+> Until that cut is finished: read those two files first; where "What the system is" below disagrees with `docs/BUDDY.md`, `docs/BUDDY.md` wins; do not read `docs/PLAN.md`, `docs/BUILT.md` or
+> `docs/STUDIES.md` in full (they describe what is being removed); the first-week check and the 60-day freeze are suspended. The non-negotiables and the working rules below still hold.
+
 `portfolio-lab` (package `pflab`) is the investor's **companion** for NSE equities (a small US sleeve in beta). It collects data, keeps its own paper book,
 watches what he holds, thinks situations through, learns whether it was right, and answers him in a chat. **Claude Code is for development only: the system runs,
 learns and asks by itself.** Read `docs/PLAN.md` (intent, rules and what remains), `docs/BUILT.md` (what exists: jobs, tools, sources, tables, switches), `docs/STUDIES.md`

@@ -454,3 +454,9 @@ Session notes, test-finding files and one-session scripts (docs for s79-s86b, `t
 - **Chat and screen:** tool `standing_orders` (by name through `more_tools`), `propose_plan` takes `repeat`, `propose_action` kind `standing_set`; `GET /api/agents` returns `standing`, `POST /api/agents {"order": key, "on": bool}` switches one (the Agents screen's markup is not changed: his to wire). `run_agent` with agent `case` now really thinks the waiting cases through (before, that card did nothing).
 - **Week check:** criteria 8 and 9 read the orders: a desk or case worker he switched off is NOT TESTED / waiting, not a FAIL.
 - Tests: `tests/test_s93_standing.py` (14). Changed: `tests/test_s87_operator.py` (the automatic build needs `autofix` on).
+
+## S94 (2026-11-16, `pm/s94-buddy`, on top of `pm/s93-jarvis`): the definition and the work order (no code of the app changed)
+- `docs/BUDDY.md`: what the project is (four jobs: know, compute, remember, watch; views, not trades; what is removed and why; "Done when").
+- `docs/BUDDY_CUT.md`: the phased cut, with its State and Log; read at the start of every session of the cut.
+- `tools/reach.py`: what the app can still reach, from the source (`--paths`, `--why`, `--tests`, `--seams`); loaders that load code by name are declared in its `LOADS`. Test: `tests/test_s94_reach.py`.
+
