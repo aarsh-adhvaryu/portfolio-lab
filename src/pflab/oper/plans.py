@@ -1,12 +1,14 @@
 """S89b: plan cards. A multi-step request ("plan how to test pairs trading", "look into IT stocks and report") first becomes a PLAN CARD: the steps, the tool or agent each step uses and a token estimate, with
 Start / Change / Cancel. NOTHING runs before Start. On Start each step runs as one full-road session turn and ticks off live (`rt.bump("plans")` -> `/api/events`); the result lands in the chat and on Telegram.
 A plan that hits the plan's limit PAUSES with its finished steps kept and resumes after the reset (`resume_due`, called by the job `operator_plans`). A plan that needs code is a build request (Yes/No) instead.
+S93: a plan may REPEAT (`daily` or `weekly`). His one Yes on the card covers every later run: when a run is done the next is due a day or a week later, and `repeat_due` (the same job) starts it as a
+new plan with the same steps, whenever the app is next open (a closed laptop skips runs, it never stacks them). A failed run, or his "stop plan #N", ends the repeating.
 """
 from __future__ import annotations
 
 import json
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from pflab.llm import claude_plan as cp
@@ -17,7 +19,9 @@ STEP_TOKENS = 25000                                  # the estimate per step, fr
 DDL = ["CREATE TABLE IF NOT EXISTS plans_s89 (plan_id INTEGER PRIMARY KEY, created_at TIMESTAMP NOT NULL, chat_id INTEGER, title VARCHAR NOT NULL, status VARCHAR NOT NULL, est_tokens INTEGER, tokens INTEGER, "
        "resume_after TIMESTAMP, result_text VARCHAR, card_msg_id INTEGER, finished_at TIMESTAMP)",
        "CREATE TABLE IF NOT EXISTS plan_steps_s89 (plan_id INTEGER NOT NULL, n INTEGER NOT NULL, text VARCHAR NOT NULL, uses VARCHAR, est_tokens INTEGER, status VARCHAR NOT NULL, result VARCHAR, tokens INTEGER, "
-       "started_at TIMESTAMP, finished_at TIMESTAMP, PRIMARY KEY (plan_id, n))"]
+       "started_at TIMESTAMP, finished_at TIMESTAMP, PRIMARY KEY (plan_id, n))",
+       "CREATE TABLE IF NOT EXISTS plan_repeats_s93 (root_id INTEGER PRIMARY KEY, every VARCHAR NOT NULL, next_due TIMESTAMP, last_plan_id INTEGER NOT NULL, runs INTEGER NOT NULL, stopped_at TIMESTAMP)"]
+REPEATS = {"daily": 1, "weekly": 7}                   # S93: days between a finished run and the next
 RT: Dict[str, Any] = {"rt": None}
 RUN_STEP = None                                        # tests: a scripted `fn(con, plan, step, prior_text) -> (text, tokens)`
 _LOCK = threading.Lock()
@@ -43,8 +47,8 @@ def _bump(topic: str = "plans") -> None:
             pass
 
 
-def propose(con, now: datetime, title: str, steps: List[dict], chat_id: Optional[int] = None) -> str:
-    """Post the plan card. Nothing runs here."""
+def propose(con, now: datetime, title: str, steps: List[dict], chat_id: Optional[int] = None, repeat: str = "") -> str:
+    """Post the plan card. Nothing runs here. `repeat` ("daily" / "weekly") makes it a standing plan: the one Yes covers the later runs too, and the card says so."""
     from pflab.entrance import cards
     from pflab.pm.store import next_id
     ensure(con)
@@ -56,17 +60,23 @@ def propose(con, now: datetime, title: str, steps: List[dict], chat_id: Optional
             clean.append({"text": t, "uses": str((s.get("uses") or s.get("tool") or s.get("agent") or "") if isinstance(s, dict) else "")[:80], "est": int((s.get("est_tokens") if isinstance(s, dict) else 0) or STEP_TOKENS)})
     if len(title) < 6 or len(clean) < 2:
         return "Not proposed: a plan needs a title and at least two steps. Answer a single step directly."
+    rep = str(repeat or "").strip().lower()
+    if rep and rep not in REPEATS:
+        return "Not proposed: repeat is 'daily' or 'weekly' (or leave it out for a plan that runs once)."
     pid = next_id(con, "plans_s89", "plan_id")
     est = sum(s["est"] for s in clean)
     con.execute("INSERT INTO plans_s89 (plan_id, created_at, chat_id, title, status, est_tokens, tokens) VALUES (?,?,?,?,?,?,0)", [pid, now, chat_id, title, "proposed", est])
     for i, s in enumerate(clean, 1):
         con.execute("INSERT INTO plan_steps_s89 (plan_id, n, text, uses, est_tokens, status) VALUES (?,?,?,?,?,'pending')", [pid, i, s["text"], s["uses"], s["est"]])
     text = (f"Plan: {title}\n" + "\n".join(f"{i}. {s['text']}" + (f" ({s['uses']})" if s["uses"] else "") for i, s in enumerate(clean, 1))
-            + f"\nAbout {est:,} tokens of your plan. Yes starts it, No cancels it; to change it, say what to change.")
+            + f"\nAbout {est:,} tokens of your plan. Yes starts it, No cancels it; to change it, say what to change."
+            + (f"\nThis plan REPEATS {rep}: your Yes also covers the later runs (about {est:,} tokens each, only while the app is open). Say 'stop plan #{pid}' to end it." if rep else ""))
+    if rep:
+        con.execute("INSERT INTO plan_repeats_s93 (root_id, every, next_due, last_plan_id, runs, stopped_at) VALUES (?,?,NULL,?,0,NULL)", [pid, rep, pid])
     mid = cards.post_decision_card(con, now, "plan", {"plan_id": pid}, text, "pflab.oper.plans:on_yes", expires_hours=48)
     con.execute("UPDATE plans_s89 SET card_msg_id=? WHERE plan_id=?", [mid, pid])
     _bump()
-    return f"A plan card is in the chat (plan #{pid}, {len(clean)} steps, about {est:,} tokens). Nothing runs until he taps Start."
+    return f"A plan card is in the chat (plan #{pid}, {len(clean)} steps, about {est:,} tokens{', repeats ' + rep if rep else ''}). Nothing runs until he taps Start."
 
 
 def on_yes(con, now: datetime, payload: dict) -> str:
@@ -81,8 +91,23 @@ def get(con, plan_id: int) -> Optional[dict]:
         return None
     steps = [dict(zip(("n", "text", "uses", "est_tokens", "status", "result", "tokens"), x)) for x in con.execute(
         "SELECT n, text, uses, est_tokens, status, result, tokens FROM plan_steps_s89 WHERE plan_id=? ORDER BY n", [plan_id]).fetchall()]
+    rp = _repeat_row(con, plan_id)
     return {"plan_id": r[0], "created_at": str(r[1])[:16], "chat_id": r[2], "title": r[3], "status": r[4], "est_tokens": r[5], "tokens": r[6], "resume_after": str(r[7])[:16] if r[7] else None,
-            "result": r[8], "finished_at": str(r[9])[:16] if r[9] else None, "steps": steps}
+            "result": r[8], "finished_at": str(r[9])[:16] if r[9] else None, "steps": steps, "repeat": rp[1] if rp else None, "next_due": (str(rp[2])[:16] if rp and rp[2] else None),
+            "runs": int(rp[3]) if rp else None}
+
+
+def _repeat_row(con, plan_id: int) -> Optional[tuple]:
+    """(root_id, every, next_due, runs) when this plan is the first or the latest run of a repeating plan that has not been stopped."""
+    return con.execute("SELECT root_id, every, next_due, runs FROM plan_repeats_s93 WHERE (root_id=? OR last_plan_id=?) AND stopped_at IS NULL ORDER BY root_id LIMIT 1", [plan_id, plan_id]).fetchone()
+
+
+def _stop_repeat(con, plan_id: int) -> bool:
+    rp = _repeat_row(con, plan_id)
+    if not rp:
+        return False
+    con.execute("UPDATE plan_repeats_s93 SET stopped_at=now(), next_due=NULL WHERE root_id=?", [rp[0]])
+    return True
 
 
 def listing(con, limit: int = 12) -> List[dict]:
@@ -93,12 +118,15 @@ def listing(con, limit: int = 12) -> List[dict]:
 def cancel(con, plan_id: int) -> str:
     ensure(con)
     p = get(con, plan_id)
+    stopped = bool(p) and _stop_repeat(con, plan_id)                  # S93: cancelling any run of a repeating plan ends the repeating
     if not p or p["status"] in ("done", "cancelled"):
-        return "Nothing to cancel."
+        if stopped:
+            _bump()
+        return "Stopped: it will not run again." if stopped else "Nothing to cancel."
     con.execute("UPDATE plans_s89 SET status='cancelled', finished_at=now() WHERE plan_id=?", [plan_id])
     con.execute("UPDATE plan_steps_s89 SET status='skipped' WHERE plan_id=? AND status IN ('pending','running')", [plan_id])
     _bump()
-    return "Cancelled. Finished steps are kept."
+    return "Cancelled. Finished steps are kept." + (" It will not run again." if stopped else "")
 
 
 def start(con, now: datetime, plan_id: int) -> None:
@@ -180,6 +208,13 @@ def run(con, plan_id: int) -> None:
                 if _still_running(con, plan_id):
                     con.execute("UPDATE plan_steps_s89 SET status='failed', result=? WHERE plan_id=? AND n=?", [f"{type(e).__name__}: {str(e)[:200]}", plan_id, step["n"]])
                     con.execute("UPDATE plans_s89 SET status='failed', finished_at=now() WHERE plan_id=? AND status='running'", [plan_id])
+                    if _stop_repeat(con, plan_id):                    # S93: a repeating plan that failed stops repeating and says so once (no silent retries on his plan)
+                        try:
+                            from pflab.entrance import store
+                            store.post_system(con, datetime.now(), f"The repeating plan '{p['title']}' failed at step {step['n']} ({type(e).__name__}) and has stopped repeating. Ask for it again to restart it.",
+                                              kind="plan", key=f"plan-repeat-failed:{plan_id}", chat_id=p.get("chat_id"), channels=("laptop", "telegram"))
+                        except Exception:
+                            pass
                 _bump()
                 return
             if not _still_running(con, plan_id):                          # cancelled while the step ran: keep what it produced, but the plan stays cancelled and the step skipped
@@ -195,6 +230,9 @@ def run(con, plan_id: int) -> None:
         con.execute("UPDATE plans_s89 SET status='done', result_text=?, finished_at=now() WHERE plan_id=? AND status='running'", [text, plan_id])
         if not _still_running(con, plan_id) and get(con, plan_id)["status"] != "done":
             return
+        rp = _repeat_row(con, plan_id)
+        if rp:                                                            # S93: the next run is due a day (a week) after this one finished
+            con.execute("UPDATE plan_repeats_s93 SET next_due=?, runs=runs+1 WHERE root_id=?", [datetime.now() + timedelta(days=REPEATS[rp[1]]), rp[0]])
         try:
             from pflab.entrance import store
             store.post_system(con, datetime.now(), text[:3500], kind="plan", key=f"plan:{plan_id}", chat_id=p.get("chat_id"), channels=("laptop", "telegram"))
@@ -240,5 +278,27 @@ def resume_due(con, now: datetime) -> int:
         if cp.paused_until(con, now):
             continue
         start(con, now, int(pid))
+        n += 1
+    return n
+
+
+def repeat_due(con, now: datetime) -> int:
+    """S93: start the next run of every repeating plan whose time has come (he said Yes once, on the first card). The next run is a NEW plan with the same title and steps, so each run keeps
+    its own result and tokens. Nothing starts while the plan's limit is reached; a run still going is never doubled. -> the number of runs started."""
+    ensure(con)
+    from pflab.pm.store import next_id
+    n = 0
+    for root, every, last in con.execute("SELECT root_id, every, last_plan_id FROM plan_repeats_s93 WHERE stopped_at IS NULL AND next_due IS NOT NULL AND next_due <= ? ORDER BY root_id", [now]).fetchall():
+        if cp.paused_until(con, now):
+            break
+        p = get(con, int(last))
+        if not p or p["status"] != "done":
+            continue
+        pid = next_id(con, "plans_s89", "plan_id")
+        con.execute("INSERT INTO plans_s89 (plan_id, created_at, chat_id, title, status, est_tokens, tokens) VALUES (?,?,?,?,?,?,0)", [pid, now, p["chat_id"], p["title"], "proposed", p["est_tokens"]])
+        for s in p["steps"]:
+            con.execute("INSERT INTO plan_steps_s89 (plan_id, n, text, uses, est_tokens, status) VALUES (?,?,?,?,?,'pending')", [pid, s["n"], s["text"], s["uses"], s["est_tokens"]])
+        con.execute("UPDATE plan_repeats_s93 SET last_plan_id=?, next_due=NULL WHERE root_id=?", [pid, root])
+        start(con, now, pid)
         n += 1
     return n

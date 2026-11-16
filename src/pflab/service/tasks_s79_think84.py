@@ -18,14 +18,20 @@ def _enabled(ctx):
 
 
 def _run(ctx) -> dict:
+    from pflab.oper import standing
     from pflab.think import alarm, wire
     alarm.first(ctx)                                    # S86: a no-op when the catch-up already did it
+    go, why = standing.allowed(ctx.con, "cases")        # S93: off = the watch, the follow-up and the scoring go on (code); NEW cases wait for him (the gate itself is in `wire.sweep`)
     r = wire.sweep(ctx.con, ctx.now, ctx.data_root)
     if r.get("off"):
         return {"skipped": "switched off"}
     if r.get("skipped"):
         return {"skipped": r["skipped"]}
     out = {"sessions": r.get("sessions") or {}, "cases_opened": len(r.get("cases_opened") or []), "thought": len(r.get("thought") or [])}
+    if not go:
+        out["cases_waiting"] = len(standing.waiting_cases(ctx.con))
+        out["not_thought"] = why
+        standing.waiting_note(ctx.con, ctx.now)
     if r.get("failed"):                                     # visible in the job's detail and in the session log; not a job failure (the next pass tries again)
         out["thinking_problems"] = [str(x)[:200] for x in r["failed"][:4]]
     if not (out["sessions"] or out["thought"] or out.get("thinking_problems")):

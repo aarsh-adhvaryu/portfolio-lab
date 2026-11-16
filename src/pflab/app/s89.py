@@ -583,12 +583,22 @@ def agents(con, now: datetime) -> dict:
             skills.append({"name": name, "description": (m.group(1) if m else "").strip()})
     except Exception:
         skills = []
-    return {"agents": out, "models": list(MODELS), "levels": list(LEVELS), "switches": {k: bool(sw.get(k, False)) for k in ("kite", "nse", "tijori", "connectors")},
+    try:                                                               # S93: what the model may start by itself (`oper/standing.py`); a POST {"order": key, "on": bool} switches one
+        from pflab.oper import standing as _st
+        orders = _st.state(con, now) if _st.settings()["on"] else []
+    except Exception:
+        orders = []
+    return {"agents": out, "standing": orders, "models": list(MODELS), "levels": list(LEVELS), "switches": {k: bool(sw.get(k, False)) for k in ("kite", "nse", "tijori", "connectors")},
             "switch_note": "These load for full answers only and are off by default.", "signed_in": st["signed_in"], "skills": skills}
 
 
 def agents_set(con, now: datetime, body: dict) -> dict:
     ensure(con)
+    if "order" in body:                                               # S93: a standing order on or off (he pressed it himself: no card)
+        from pflab.oper import standing as _st
+        if not isinstance(body.get("on"), bool):
+            raise ValueError("on must be true or false")
+        return _st.set_on(con, now, str(body["order"]), body["on"], by="him (screen)")
     if "switch" in body:
         k = str(body["switch"])
         if k not in ("kite", "nse", "tijori", "connectors"):

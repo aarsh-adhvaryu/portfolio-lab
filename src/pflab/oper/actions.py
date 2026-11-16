@@ -6,7 +6,7 @@ import threading
 from datetime import datetime
 from typing import Any, Dict
 
-KINDS = ("watch_add", "watch_remove", "us_add", "us_set", "us_remove", "agent_set", "run_agent")
+KINDS = ("watch_add", "watch_remove", "us_add", "us_set", "us_remove", "agent_set", "run_agent", "standing_set")
 APPLY = "pflab.oper.actions:apply"
 
 
@@ -24,6 +24,10 @@ def describe(kind: str, p: Dict[str, Any]) -> str:
         return f"Remove {p['ticker']} from your US holdings?"
     if kind == "agent_set":
         return f"Set the {p['agent']} agent to {p.get('model') or 'its model'} at {p.get('thinking') or 'its thinking level'} thinking, from the next run?"
+    if kind == "standing_set":
+        from pflab.oper import standing
+        label, _, _, cost = standing.ORDERS[p["order"]]
+        return (f"Switch ON '{label}'? It then starts by itself ({cost})." if p["on"] else f"Switch OFF '{label}'? Nothing of that kind starts by itself until you switch it on; the alarm lane and the code go on.")
     return f"Run the {p['agent']} agent now? It draws on your plan's limits."
 
 
@@ -62,6 +66,11 @@ def check(con, now: datetime, kind: str, p: Dict[str, Any]) -> Dict[str, Any]:
         if p.get("thinking") is not None and p["thinking"] not in s89.LEVELS:
             raise ValueError("thinking must be one of " + ", ".join(s89.LEVELS))
         return {"agent": str(p["agent"]), "model": p.get("model"), "thinking": p.get("thinking")}
+    if kind == "standing_set":
+        from pflab.oper import standing
+        if str(p.get("order")) not in standing.ORDERS or not isinstance(p.get("on"), bool):
+            raise ValueError("standing_set: order is one of " + ", ".join(standing.ORDERS) + "; on is true or false")
+        return {"order": str(p["order"]), "on": bool(p["on"])}
     if str(p.get("agent")) not in ("desk", "weekly", "case"):
         raise ValueError("run_agent: desk, weekly or case")
     return {"agent": str(p["agent"])}
@@ -95,6 +104,10 @@ def apply(con, now: datetime, payload: Dict[str, Any]) -> str:
     if kind == "agent_set":
         s89.agents_set(con, now, p)
         return f"The {p['agent']} agent will use the new setting from its next run."
+    if kind == "standing_set":
+        from pflab.oper import standing
+        r = standing.set_on(con, now, p["order"], p["on"], by="him (chat)")
+        return f"'{r['label']}' is now {'ON' if r['on'] else 'OFF'}."
     agent = p["agent"]
 
     def go():
@@ -106,6 +119,9 @@ def apply(con, now: datetime, payload: Dict[str, Any]) -> str:
             elif agent == "desk":
                 from pflab.think import desk
                 desk.run_desk(c, datetime.now(), "india_close")
+            elif agent == "case":                                      # S93: his own "think the cases through" (before S93 this branch was missing and the card did nothing)
+                from pflab.think import wire
+                wire.sweep(c, datetime.now(), asked=True)
         except Exception:
             pass
     threading.Thread(target=go, name=f"run-{agent}", daemon=True).start()

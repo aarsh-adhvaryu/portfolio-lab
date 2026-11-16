@@ -41,6 +41,10 @@ learns and asks by itself.** Read `docs/PLAN.md` (intent, rules and what remains
 - **Self-fixing with his Yes** (`oper/build.py`): "build:" / "fix", or the operator's `request_build`, opens a build in its own git worktree on `fix/<date>-<slug>` (at most 2 a day); a Problems line does so BY ITSELF
   only for a repeated code fault (kinds `job_failed`, `thinking_failed`, seen twice) and at most once a day (S91: one automatic attempt cost 562k tokens of his plan; never for a source that is down). A build ends in one
   Yes/No card; Yes merges onto origin/main, tags and pushes; No changes nothing. Nothing is merged or pushed without his Yes. A build still runs the repo's tests on the host (not contained: open until Docker runs them).
+- **When the model works (S93, his Yes 16 Nov 2026).** Three triggers only: he asks; a plan he started (`oper/plans.py`; a plan may REPEAT `daily` or `weekly` on his one Yes, job `operator_plans`); a RED alarm.
+  What the model may still start BY ITSELF is a STANDING ORDER (`oper/standing.py`, defaults in `[jarvis]`, switched in the chat or by `POST /api/agents {order, on}`): `cases`, `desk`, `weekly` ship ON, `autofix`
+  ships OFF (a repeated fault becomes a Yes/No card that states the cost; no build starts by itself). An order that is off stops only NEW model work of its kind: code, a case already being followed and the alarm
+  lane go on; new cases wait and he is told once a day. `[jarvis] on = false` is the safe fallback (the behaviour before S93). Do not add model work that starts by itself outside a standing order.
 - **Knowledge graph and memory** (`kg2/`, `think/recall.py`) update themselves; the graph switches ON only when its nightly audit passes; what the system knows is read by every decision.
 - **Collectors and the clock.** The system runs whenever the app is open. On open it catches up first (every missed session's data and scoring, point-in-time), then works by the clock's MODE
   (`pre_open`, `session`, `post_close`, `deep`, per market) and its own agenda, never by job times. A closed laptop is normal, never an error: a gap is recorded as "off from X to Y". Honest limit:

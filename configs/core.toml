@@ -381,6 +381,16 @@ source = "his Claude plan: usage limits, no per-token charge"
 date = "2026-11-14"
 
 # S87: the operator (his Claude Code under the app). Daily token budgets per purpose class (a class that has spent its day stops until tomorrow; the code-only parts go on), turns per session.
+# S93 (his Yes, 16 Nov 2026): the model works when he asks, on a plan he started (once or on repeat), or on a RED alarm. What it may still start BY ITSELF is a standing order
+# (`oper/standing.py`); these are the defaults, and what he switches in the chat or on the Agents screen wins. An order that is off stops only NEW model work of its kind: the watch,
+# the rails, the scoring, a case already being followed and the alarm lane go on. `on = false` gives the behaviour before S93 (the safe fallback).
+[jarvis]
+on = true
+cases = true        # think the day's new cases through (measured about 12k tokens a case, at most 3 a day)
+desk = true         # the daily desk (measured about 14k a run)
+weekly = true       # the weekly look
+autofix = false     # a build for a repeated fault starts by itself (measured 398k and 562k tokens a build); off = a Yes/No card that states the cost
+
 [operator]
 enabled = true
 budget_desk = 250000               # S88: measured 14k a desk run; two runs a day and a weekly note fit in a quarter of a million

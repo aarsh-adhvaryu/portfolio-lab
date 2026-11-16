@@ -233,9 +233,11 @@ def test_jobs_are_registered_and_only_when_the_plan_engine_is_in_use(con, monkey
 
 
 def test_problems_become_build_requests_but_plan_limits_do_not(con):
+    from pflab.oper import standing
     from pflab.service import problems
     build.ensure(con)
     t0 = datetime(2026, 11, 16, 9, 0)
+    standing.set_on(con, t0, "autofix", True)                                                           # S93: a build by itself needs the standing order on (off by default: tests/test_s93_standing.py)
     problems._upsert(con, "job_failed", "k1", "job x failed: KeyError 'a'", "job x", t0, t0, 2)
     problems._upsert(con, "model_engine", "k2", "claude_plan: limit", "gateway", t0, t0, 2)
     problems._upsert(con, "blind_spot", "k3", "news source is down", "eyes", t0, t0, 5)                   # S91: a source that is down is not a code fault: no automatic build

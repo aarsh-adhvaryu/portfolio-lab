@@ -95,7 +95,12 @@ def propose_action(ctx, a: dict) -> str:
 
 def propose_plan(ctx, a: dict) -> str:
     from pflab.oper import plans
-    return plans.propose(ctx.con, ctx.now, str(a.get("title") or ""), list(a.get("steps") or []), getattr(ctx, "chat_id", None))
+    return plans.propose(ctx.con, ctx.now, str(a.get("title") or ""), list(a.get("steps") or []), getattr(ctx, "chat_id", None), repeat=str(a.get("repeat") or ""))
+
+
+def standing_orders(ctx, a: dict) -> str:
+    from pflab.oper import standing
+    return standing.text(ctx.con, ctx.now)
 
 
 def request_build(ctx, a: dict) -> str:
@@ -114,12 +119,16 @@ EXTRA = [
      "Only when he says he did or decided it.", {"type": "object", "properties": {"symbol": S, "action": S, "note": S}, "required": ["symbol", "action"]}, log_my_decision),
     ("my_decision_scores", "How his logged decisions scored against the Nifty 500 (5/20/60 sessions), with the tax caveat on sales.", {"type": "object", "properties": {}}, my_decision_scores),
     ("propose_action", "Propose a CHANGE: kind is watch_add / watch_remove (payload symbol, market India|US, why, alerts), us_add / us_set / us_remove (ticker, shares, avg_price, bought_on), agent_set (agent, model, "
-     "thinking) or run_agent (agent: desk, weekly or case). It posts a Yes/No card; nothing changes before his Yes. Reading needs no card.",
+     "thinking), run_agent (agent: desk, weekly or case) or standing_set (order: cases, desk, weekly or autofix; on: true or false). It posts a Yes/No card; nothing changes before his Yes. Reading needs no card.",
      {"type": "object", "properties": {"kind": S, "payload": {"type": "object"}}, "required": ["kind", "payload"]}, propose_action),
     ("propose_plan", "A request with several steps ('plan how to test pairs trading', 'look into IT stocks and report'): post a PLAN CARD first (title, steps each with the tool or agent it uses and an estimate). "
-     "Nothing runs until he taps Start. Use it instead of doing a long job unasked.",
-     {"type": "object", "properties": {"title": S, "steps": {"type": "array", "items": {"type": "object", "properties": {"text": S, "uses": S, "est_tokens": {"type": "integer"}}, "required": ["text"]}}}, "required": ["title", "steps"]},
+     "Nothing runs until he taps Start. Use it instead of doing a long job unasked. When he wants it done regularly ('every day', 'each week', 'keep doing this') set repeat to daily or weekly: "
+     "his one Yes then covers the later runs, and 'stop plan #N' ends it.",
+     {"type": "object", "properties": {"title": S, "steps": {"type": "array", "items": {"type": "object", "properties": {"text": S, "uses": S, "est_tokens": {"type": "integer"}}, "required": ["text"]}},
+                                       "repeat": {"type": "string", "enum": ["", "daily", "weekly"]}}, "required": ["title", "steps"]},
      propose_plan),
+    ("standing_orders", "What the model may start BY ITSELF (think new cases through, the daily desk, the weekly look, fixing a repeated fault): on or off, what a run costs, tokens used in 7 days, cases waiting. "
+     "To switch one, propose_action kind standing_set.", {"type": "object", "properties": {}}, standing_orders),
     ("request_build", "A bug or a 'build:' request: opens a build session on a branch in the workshop and sends him a Yes/No card. Never edit code yourself.",
      {"type": "object", "properties": {"problem": S}, "required": ["problem"]}, request_build),
 ]

@@ -95,17 +95,56 @@ def scan_problems(con, now: datetime) -> int:
     n = 0
     d0 = datetime(now.year, now.month, now.day)
     done = int(con.execute("SELECT count(*) FROM operator_builds_s87 WHERE source='problems' AND created_at >= ?", [d0]).fetchone()[0])
+    from pflab.oper import standing
+    auto = standing.is_on(con, "autofix")                             # S93: off by default: a repeated fault is OFFERED (a Yes/No card with the cost), a build starts only on his Yes
+    day, _, cnt = str(gw._get_state(con, "fix_offer_day") or "").partition(":")
+    offered = int(cnt or 0) if day == str(now.date()) else 0
     for r in rows:
         if r["last_seen"] < since or r["kind"] in IGNORE_KINDS or "claude_plan" in str(r["text"]) or "plan's limit" in str(r["text"]):
             continue
-        if r["kind"] not in AUTO_KINDS or int(r.get("times") or 1) < AUTO_MIN_TIMES or done + n >= AUTO_PER_DAY:
+        if r["kind"] not in AUTO_KINDS or int(r.get("times") or 1) < AUTO_MIN_TIMES or done + n + offered >= AUTO_PER_DAY:
             continue
         if con.execute("SELECT 1 FROM operator_builds_s87 WHERE problem LIKE ? AND created_at >= ?", [f"%#{r['key']}%", now - timedelta(days=3)]).fetchone():
             continue                                                  # the same problem was already tried in the last 3 days (its text changes as its count grows; its key does not)
-        request(con, now, f"[{r['kind']}] {r['text']} ({r['context'] or 'no context'}) #{r['key']}", source="problems")
+        if not auto:
+            if offer_fix(con, now, r):
+                offered += 1
+                gw._set_state(con, "fix_offer_day", f"{now.date()}:{offered}", now, "fix offers made today")
+            continue
+        request(con, now, _problem_text(r), source="problems")
         n += 1
     gw._set_state(con, "build_scan", now.isoformat(), now, "problems scanned for builds")
     return n
+
+
+def _problem_text(r: dict) -> str:
+    return f"[{r['kind']}] {r['text']} ({r['context'] or 'no context'}) #{r['key']}"
+
+
+def offer_fix(con, now: datetime, r: dict) -> bool:
+    """S93: one Yes/No card for a repeated fault, once per problem (its key): what failed, how often, what an attempt costs. Nothing is spent before his Yes. -> True when a NEW card was posted."""
+    import json
+    from pflab.entrance import cards
+    from pflab.oper import standing
+    payload = {"key": str(r["key"]), "kind": str(r["kind"])}
+    try:
+        if con.execute("SELECT 1 FROM cards_s85 WHERE kind='decision:fix_offer' AND payload_json=? LIMIT 1", [json.dumps(payload, default=str)]).fetchone():
+            return False
+    except Exception:
+        pass
+    text = (f"This has failed {int(r.get('times') or 1)} times: {str(r['text'])[:300]} ({r['context'] or 'no context'}).\n"
+            f"I can try to fix it on a branch of its own. One attempt costs {standing.FIX_TOKENS}. Yes starts one build, and you get a second Yes/No card before anything is merged.")
+    cards.post_decision_card(con, now, "fix_offer", payload, text, "pflab.oper.build:on_fix_yes", expires_hours=72)
+    return True
+
+
+def on_fix_yes(con, now: datetime, payload: dict) -> str:
+    """Runs only after his Yes on a fix offer: the build is queued like one he asked for."""
+    from pflab.service import problems
+    row = next((x for x in problems.listing(con) if str(x["key"]) == str(payload.get("key"))), None)
+    if row is None:
+        return "That problem is no longer on the list: nothing to fix."
+    return request(con, now, _problem_text(row), source="problems")
 
 
 def _test_run(wt: Path, py: Path, files: List[str]) -> str:

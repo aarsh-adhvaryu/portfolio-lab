@@ -25,7 +25,7 @@ def _build(ctx) -> dict:
 
 def _plans(ctx) -> dict:
     from pflab.oper import plans
-    return {"resumed": plans.resume_due(ctx.con, ctx.now)}
+    return {"resumed": plans.resume_due(ctx.con, ctx.now), "repeated": plans.repeat_due(ctx.con, ctx.now)}
 
 
 def _weekly(ctx) -> dict:
@@ -33,11 +33,15 @@ def _weekly(ctx) -> dict:
     scored = learn.score_due(ctx.con, ctx.now, ctx.data_root)                  # his logged decisions: scored when their horizon has passed (code only)
     if not introspect.due(ctx.con, ctx.now):
         return {"skipped": "written for this week", "his_decisions_scored": scored}
+    from pflab.oper import standing                                            # S93: the weekly look writes itself only while its standing order is on
+    ok, why = standing.allowed(ctx.con, "weekly")
+    if not ok:
+        return {"skipped": why, "his_decisions_scored": scored}
     return {**introspect.run(ctx.con, ctx.now), "his_decisions_scored": scored}
 
 
-register(Job("operator_build", Interval(30, weekdays_only=False), _build, "S87 O4: new Problems become build requests; one queued build runs on a fix/ branch to a Yes/No card (max 2 a day)",
+register(Job("operator_build", Interval(30, weekdays_only=False), _build, "S87 O4: a repeated fault is offered as a fix (S93: a Yes/No card with the cost; a build by itself only with the standing order autofix on); one queued build runs on a fix/ branch to a Yes/No card (max 2 a day)",
              cooldown_minutes=20, enabled_fn=_enabled))
 register(Job("operator_weekly", Interval(60, weekdays_only=False), _weekly, "S87 O3/O5: the weekly introspection after the Friday close: what worked, what did not, calibration, what to test next",
              cooldown_minutes=50, enabled_fn=_enabled))
-register(Job("operator_plans", Interval(15, weekdays_only=False), _plans, "S89b: a plan that paused at the plan's limit goes on from where it stopped after the reset", cooldown_minutes=10, enabled_fn=_enabled))
+register(Job("operator_plans", Interval(15, weekdays_only=False), _plans, "S89b: a plan that paused at the plan's limit goes on from where it stopped after the reset; S93: a repeating plan's next run starts when it is due", cooldown_minutes=10, enabled_fn=_enabled))

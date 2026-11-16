@@ -820,6 +820,10 @@ def tick_hook(con, now: datetime, root=None) -> dict:
             chat_hooks.run_queued_suggestions(con, now, root=root)
         except Exception:
             pass
+        from pflab.oper import standing                                       # S93: the desk sits down by itself only while its standing order is on ("run the desk" in the chat still works)
+        ok, why = standing.allowed(con, "desk")
+        if not ok:
+            return {"paused": why}
         m = mode_for(con, now)
         if not m:
             return {"nothing_open": True}

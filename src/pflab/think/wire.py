@@ -198,9 +198,19 @@ def pending_sessions(con, now: datetime, market: str, root=None) -> List[date]:
     return [d for d in days if d <= upto and not _marked(con, market, d)]
 
 
-def sweep(con, now: datetime, root=None, *, only_market: Optional[str] = None, think_cases: bool = True, follow: bool = True) -> dict:
+def _cases_order_on(con) -> bool:
+    """S93: new cases are thought through by themselves only while the standing order `cases` is on (`oper/standing.py`). A fault in the check never stops the thinking."""
+    try:
+        from pflab.oper import standing
+        return standing.is_on(con, "cases")
+    except Exception:
+        return True
+
+
+def sweep(con, now: datetime, root=None, *, only_market: Optional[str] = None, think_cases: bool = True, follow: bool = True, asked: bool = False) -> dict:
     """The close (India), the US morning and the catch-up in one: every unwatched session since the last one is watched in order (all but the newest as `catchup`, at its own close, point-in-time;
-    the newest as `close` or `us_morning`), then the cases opened (and the ones an earlier pass left unthought) are thought through up to the daily cap, then the follow-up runs once. Never raises."""
+    the newest as `close` or `us_morning`), then the cases opened (and the ones an earlier pass left unthought) are thought through up to the daily cap, then the follow-up runs once. Never raises.
+    S93: with the standing order `cases` off the new cases are left open and unthought (they wait for him); `asked=True` is his own "think the cases through" and thinks them anyway."""
     out: dict = {"sessions": {}, "thought": [], "failed": []}
     try:
         if not _active():
@@ -236,7 +246,7 @@ def sweep(con, now: datetime, root=None, *, only_market: Optional[str] = None, t
                 out["sessions"][market] = done
         if (not only_market or only_market == "US") and _market_on("US"):
             opened += _us_carry(con, now, w, root, out)
-        if think_cases:
+        if think_cases and (asked or _cases_order_on(con)):
             from pflab import think
             ids = opened + _unthought(con, int(think.settings()["max_cases_per_day"]))
             if ids:

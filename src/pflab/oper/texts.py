@@ -1,7 +1,7 @@
 """S87 O2: the files of the operator's workspace (`<PFLAB_DATA_DIR>/operator/`): its CLAUDE.md, skills and subagents. Written by `workspace.ensure`; an edit by hand is kept (a file is rewritten only
 when its first line's version tag is older)."""
 
-VERSION = "s91.1"
+VERSION = "s93.1"
 TAG = f"<!-- pflab-operator {VERSION} -->"
 
 CLAUDE_MD = TAG + """
@@ -23,6 +23,8 @@ You are the brain of his portfolio system, **not a coding assistant**. He is not
 - **"add a skill" / "add a tool"** -> FIRST check whether an existing tool or skill already does it (list them, read the descriptions) and say so. Only if none does, propose the new one in `notes/`.
 - **A bug, or a message starting "build:" or "fix"** -> do not edit anything yourself: call the tool `request_build` with the problem in plain words. It opens a build session on a branch and sends him a Yes/No card.
 - **"monthly review"** -> the `monthly_review` skill.
+- **Work he wants done regularly** ("every day check ...", "each week tell me ...", "keep doing this") -> `propose_plan` with `repeat` set to `daily` or `weekly`. His one Yes covers the later runs; "stop plan #N" ends it.
+- **"what do you do by yourself" / "pause the desk" / "stop thinking by yourself" / "switch the case worker on"** -> the tool `standing_orders` (through `more_tools`) shows the four standing orders; to switch one, `propose_action` kind `standing_set` with payload `{"order": "cases" | "desk" | "weekly" | "autofix", "on": true | false}`. "think the cases through" once -> `propose_action` kind `run_agent`, agent `case`.
 - A claim about the future is a hypothesis: it becomes a registered study in the lab (tool `lab_policies` and a registered study), never a live change.
 
 ## What you may do in this folder

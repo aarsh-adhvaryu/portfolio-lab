@@ -117,6 +117,15 @@ def _open_days(con, armed_at: datetime, now: datetime) -> List[date]:
     return sorted(days)
 
 
+def _order_on(con, key: str) -> bool:
+    """S93: whether a standing order (`oper/standing.py`) is on; a fault in the check counts as on (the stricter reading)."""
+    try:
+        from pflab.oper import standing
+        return standing.is_on(con, key)
+    except Exception:
+        return True
+
+
 def _tbl(con, name: str) -> bool:
     return bool(con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name=?", [name]).fetchone()[0])
 
@@ -157,6 +166,8 @@ def _s86_criteria(con, armed_at: datetime, now: datetime) -> List[dict]:
         have = {r[0] for r in con.execute("SELECT DISTINCT day FROM desk_sessions_s84 WHERE status IN ('done','quiet','budget') AND day >= ?", [armed_at.date()]).fetchall()}
         miss = [d for d in odays if d not in have and d < now.date()]
         scored = con.execute("SELECT count(*) FROM pick_scores_s83").fetchone()[0] if _tbl(con, "pick_scores_s83") else 0
+        if miss and not _order_on(con, "desk"):
+            return _crit("daily_desk_and_picks_scored", "NOT TESTED", "the daily desk is switched off by him (standing order): it runs when he asks")
         if miss:
             return _crit("daily_desk_and_picks_scored", "FAIL", "no finished desk session on: " + ", ".join(f"{d:%d %b}" for d in miss))
         return _crit("daily_desk_and_picks_scored", "PASS" if scored else "NOT TESTED", f"desk ran on all {len(odays)} open day(s); {scored} pick score row(s)" if scored else "the desk ran; no pick has a scored horizon yet")
@@ -171,6 +182,10 @@ def _s86_criteria(con, armed_at: datetime, now: datetime) -> List[dict]:
                     miss.append(f"{m} {d:%d %b}")
         unthought = con.execute("SELECT count(*) FROM think_cases_s84 c WHERE state='open' AND opened_at < ? AND NOT EXISTS (SELECT 1 FROM think_steps_s84 s WHERE s.case_id=c.case_id)",
                                 [now - timedelta(days=1)]).fetchone()[0]
+        if unthought and not _order_on(con, "cases"):                 # S93: with the case worker switched off by him the cases WAIT for him: that is the design, not a miss
+            if not miss:
+                return _crit("thinking_loop_every_close", "PASS", f"every India close and US morning of the open days was watched; {unthought} case(s) wait for him (the case worker is switched off)")
+            unthought = 0
         if miss or unthought:
             return _crit("thinking_loop_every_close", "FAIL", (f"not watched: {', '.join(miss)}; " if miss else "") + (f"{unthought} case(s) without a look" if unthought else ""))
         return _crit("thinking_loop_every_close", "PASS", "every India close and US morning of the open days was watched; no case without a look")

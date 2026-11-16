@@ -178,3 +178,10 @@ Run in a Linux cloud container (Python 3.13, `requirements.lock` without the Win
 The last 17 were checked against an untouched copy of `main` in the same container: the same 17 fail there, by name (17 failed, 34 passed in those two files). I cannot tell from here whether the 16 pass on your PC; run `tests/test_s85_engines.py` once there. If they fail there too, that is a fault on `main` from before this branch.
 After the doc edits the doc-reading tests and every test file this branch touched were run again and pass.
 Still yours before a merge: the suite on your PC and `python -m pflab.hq.security push` (the privacy check needs your `privacy_terms.json`, which the cloud does not have; I read the diff by hand: it is deletions, test trims and these notes, with no amount, name or id of yours).
+
+---
+
+## Decisions after the audit (16 Nov 2026, evening)
+- **Not merged.** `pm/s92-audit` and `pm/s93-jarvis` are both waiting for his word.
+- **Section 5 (the Jarvis design): Yes.** Built on `pm/s93-jarvis` (see `docs/BUILT.md` S93). What was built differs from the proposal in two honest ways: (1) the desk and the case worker ship ON, because by his own measurements they are the cheap part (about 14,000 and 12,000 tokens a run) and they are what the learning record is made of; the dear part, a build that starts by itself (398,000 and 562,000 tokens), ships OFF and asks first; (2) an order does not pause itself after "no outcome", because a "hold" is often the right answer and would be counted as nothing: the tokens per order are shown, the outcome side is left for an agreed definition.
+- **Section 2C (the statements era): it can leave the app.** His holdings come from the Kite login. This is the next cut, on its own branch.
