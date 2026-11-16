@@ -4,7 +4,7 @@ from datetime import date
 
 import pandas as pd
 
-from pflab.data import asia, flows, gdelt_s79b as gg, global_markets as gm, vix_in
+from pflab.data import flows, gdelt_s79b as gg, global_markets as gm, vix_in
 
 
 NSE_ROWS = [
@@ -53,22 +53,6 @@ def test_manifest_merges_by_name(tmp_path):
                            {"name": "a", "source": "u2", "first": "2020-01-01", "last": "2020-03-01", "rows": 4}], tmp_path)
     m = json.loads((tmp_path / "_s79b_manifest.json").read_text(encoding="utf-8"))["series"]
     assert [x["name"] for x in m] == ["a", "b"] and m[0]["rows"] == 4 and m[0]["last"] == "2020-03-01" and m[0]["fetched_at"]
-
-
-def _gfile(root, key, closes):
-    (root / "global").mkdir(parents=True, exist_ok=True)
-    pd.DataFrame({"date": [date(2026, 11, 2 + i) for i in range(len(closes))], "close": closes}).to_parquet(root / "global" / f"{key}.parquet", index=False)
-
-
-def test_asia_closes_upto_and_window_change(tmp_path):
-    _gfile(tmp_path, "KR_KOSPI", [100.0, 90.0, 99.0])
-    _gfile(tmp_path, "JP_NIKKEI225", [10.0, 11.0, 12.0])
-    c = asia.closes(tmp_path, upto=date(2026, 11, 3))
-    assert len(c) == 2 and set(c.columns) == {"KR_KOSPI", "JP_NIKKEI225"}
-    w = asia.window_change(date(2026, 11, 2), date(2026, 11, 4), tmp_path)
-    assert w["KR_KOSPI"]["pct"] == -1.0 and w["JP_NIKKEI225"]["pct"] == 20.0
-    r = asia.returns(tmp_path)
-    assert abs(r["KR_KOSPI"].iloc[1] + 0.1) < 1e-12
 
 
 def test_vix_load_upto(tmp_path):

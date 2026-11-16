@@ -6,7 +6,7 @@ from datetime import datetime
 
 import pytest
 
-from pflab.app import front, settings as st
+from pflab.app import settings as st
 from pflab.hq import egress, tools as tl
 from pflab.hq.desk import Desk
 from pflab.paper import book
@@ -50,12 +50,3 @@ def test_with_kite_live_off_no_fill_and_no_watch_uses_a_live_quote(con, tmp_path
     assert book.live_prices(con, NOW, ["INE000A01011"]) == {"INE000A01011": 100.0}
     st.save(tmp_path, {"abilities": {"kite_live": False}})
     assert book.live_prices(con, NOW, ["INE000A01011"]) == {}
-
-
-def test_local_first_off_sends_the_chat_to_the_cloud_agent(monkeypatch, tmp_path):
-    import importlib
-    monkeypatch.setenv("PFLAB_PM_DIR", str(tmp_path))
-    real = importlib.reload(front)                                                        # (the suite's fixture replaces front.enabled; this is the real function)
-    assert real.enabled() is True
-    st.save(tmp_path, {"abilities": {"local_first": False}})
-    assert real.enabled() is False

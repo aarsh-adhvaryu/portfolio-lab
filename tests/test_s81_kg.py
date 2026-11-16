@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 
 from pflab.kg import events as kev
-from pflab.kg2 import audit, build as kb, classify, job, news, position, scope as sc, switch
+from pflab.kg2 import audit, build as kb, classify, job, news, scope as sc, switch
 from pflab.pm import store
 
 ASOF = date(2026, 6, 30)
@@ -412,40 +412,6 @@ def test_find_names_flags_unusual_volume_only_among_tag_only_names(root):
     out = sc.find_names(root, today=ASOF)
     assert [o["isin"] for o in out] == [B_NEW] and out[0]["z_volume"] >= 2 and len(out) <= sc.FOUND_CAP
     assert sc.apply_found(root, out) == 1 and sc.load(root)["names"][1]["origin"] == "found"
-
-
-# ------------------------------------------------------------------ the position layer
-
-def test_position_layer_reads_the_book(con):
-    day = date(2026, 6, 30)
-    con.execute("INSERT INTO paper_lots VALUES (1, ?, 'ALPHA', ?, 10, 100.0, 'EQUITY', 'test')", [A, date(2025, 7, 10)])
-    con.execute("INSERT INTO paper_lots VALUES (2, ?, 'ALPHA', ?, 5, 80.0, 'EQUITY', 'test')", [A, date(2024, 1, 5)])
-    con.execute("INSERT INTO prices VALUES (?, ?, 120.0, 'EQ', 't', ?)", [A, date(2026, 6, 29), datetime(2026, 6, 29)])
-    con.execute("INSERT INTO paper_trades (trade_id, day, isin, side, qty, price, charges, realised, detail_json) VALUES (1, ?, ?, 'sell', 1, 1, 0, 50000, ?)",
-                [date(2026, 5, 4), "INE000X01011", json.dumps({"gains": {"lt_eq": 50000.0}})])
-    con.execute("INSERT INTO storylines_s80 (storyline_id, market, claim, kind, direction, subject, opened_on, status, prior) VALUES (1,'IN','Alpha benefits from a falling input cost over the quarter','market',1,'NIFTY500_TRI',?, 'open', 0.5)", [date(2026, 6, 1)])
-    con.execute("INSERT INTO storyline_exposure_s80 VALUES (1, ?, 0.6, 'test', ?)", [A, date(2026, 6, 1)])
-    p = position.positions(con, day)
-    h = p["holdings"][0]
-    assert h["qty"] == 15 and h["cost"] == pytest.approx(1400.0) and h["value"] == pytest.approx(1800.0) and h["unrealised"] == pytest.approx(400.0)
-    young = [l for l in h["lots"] if l["lot_id"] == 1][0]
-    assert not young["long_term"] and young["days_to_long_term"] == (date(2026, 7, 11) - day).days and h["days_to_next_long_term"] == young["days_to_long_term"]
-    old = [l for l in h["lots"] if l["lot_id"] == 2][0]
-    assert old["long_term"] and old["days_to_long_term"] == 0 and h["unrealised_long_term"] == pytest.approx(200.0) and h["unrealised_short_term"] == pytest.approx(200.0)
-    ex = p["exemption"]
-    assert ex["fy"] == 2027 and ex["used"] == 50000.0 and ex["left"] == ex["limit"] - 50000.0 and ex["limit"] > 0
-    assert h["exit_plan"] is None and h["storylines"][0]["storyline_id"] == 1 and h["events"] == []
-
-
-def test_position_layer_shows_the_exit_plan_and_events_when_they_exist(con):
-    day = date(2026, 6, 30)
-    con.execute("INSERT INTO paper_lots VALUES (1, ?, 'ALPHA', ?, 10, 100.0, 'EQUITY', 'test')", [A, date(2025, 1, 10)])
-    con.execute("INSERT INTO exit_plans_s81 (plan_id, market, isin, sleeve, opened_on, stop, status) VALUES (1, 'IN', ?, 'longterm', ?, 90.0, 'open')", [A, date(2025, 1, 10)])      # the exit manager's real table
-    con.execute("INSERT INTO kg2_event VALUES ('e1', ?, 'bse_announcement', 'r', ?, ?, 'regulatory_action', 'high', 'Show cause notice', 'filing:scrip_isin_on_dissem_date', 'p', 'k', 'release_time')",
-                [A, datetime(2026, 6, 20, 10), date(2026, 6, 20)])
-    h = position.positions(con, day)["holdings"][0]
-    assert h["exit_plan"]["stop"] == 90.0 and h["events"][0]["kind"] == "regulatory_action"
-    assert position.positions(con, date(2024, 1, 1))["holdings"] == []                # nothing was held yet
 
 
 # ------------------------------------------------------------------ the news collector

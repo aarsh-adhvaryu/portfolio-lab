@@ -24,14 +24,6 @@ def _stable_channel(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _local_front_off(monkeypatch):
-    """S71: the local model takes the easy turns of the chat (app/front.py). The older chat tests script the cloud agent, so they run with the front off;
-    the front's own tests turn it on."""
-    from pflab.app import front
-    monkeypatch.setattr(front, "enabled", lambda: False)
-
-
-@pytest.fixture(autouse=True)
 def _no_backup_decision(monkeypatch):
     """Tests never read the investor's own backup decision in configs/service.toml (S58b); a test that needs one sets it."""
     from pflab.service import backup

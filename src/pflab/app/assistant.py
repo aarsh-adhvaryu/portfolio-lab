@@ -8,8 +8,8 @@ answer out on its own threads. This module keeps the thread helpers the rest of 
     never         trade, place a GTT, move money, change his targets, limits or stock list (put to him as a Yes/No card, applied only on his Yes), reveal his identity or banking details, or write a
                   number no tool returned
 
-Models (A70): Auto picks Haiku 5.5, Sonnet 5.5 or Opus 5.5 by code (`entrance/router.py`), his picker overrides it for a message; the local 8B model no longer answers the chat. The old local front
-(`app/front.py`) is no longer called and its missions are gone; the module stays only because its helpers and tests are imported elsewhere.
+Models (A70): Auto picks Haiku 5.5, Sonnet 5.5 or Opus 5.5 by code (`entrance/router.py`), his picker overrides it for a message; the local 8B model no longer answers the chat (the old local
+front, `app/front.py`, was deleted in S92: nothing called it).
 """
 from __future__ import annotations
 

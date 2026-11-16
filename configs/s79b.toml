@@ -8,7 +8,6 @@ manage = false          # true: the seats_mode job loads/unloads seat models by 
 teacher_log = true      # every cloud call's input/output kept (redacted) in teacher_log_s79 for later distillation (no training this session)
 escalate_samples = 3    # local samples on a judgment call
 escalate_min_confidence = 0.6
-deep_pool = true        # deep_pool.py may use idle cores in deep mode
 
 # Item 18B (blended benchmark and attribution) and 18E (verify corporate actions and top-ups on the system's own book).
 [benchmark]
