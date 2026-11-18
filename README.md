@@ -1,5 +1,9 @@
 # Portfolio Lab
 
+> **Parked (18 Nov 2026).** Building stopped: for day-to-day portfolio work the Claude app with a holdings doc does what this was meant to do. `main` is the last
+> state, tested (audit S92 in `docs/AUDIT_S92.md`, standing orders S93). The slim redefinition, a "portfolio buddy", is on branch `buddy` (`docs/BUDDY.md`, work
+> order `docs/BUDDY_CUT.md`) for if a real need comes back. The newest tag `v2026.11.15.10` is what an installed app runs; `main` is not tagged.
+
 **A local-first companion for an Indian equity portfolio (with a small US sleeve in beta).** It collects market data, filings and news by itself, runs its own
 paper portfolio against the index after tax, watches what the investor holds for bad news within minutes, thinks each situation through, and learns whether it
 was right. The investor talks to it in a chat (laptop and Telegram). **It never places an order.**

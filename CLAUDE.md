@@ -1,5 +1,8 @@
 # CLAUDE.md — instructions for Claude Code on this repo
 
+> **Parked (18 Nov 2026).** No new work on `main`. If work resumes, start from branch `buddy`: read `docs/BUDDY.md`, then `docs/BUDDY_CUT.md`, and ask him before
+> building anything. Do not tag `main` (an installed app takes the newest tag at its next start).
+
 `portfolio-lab` (package `pflab`) is the investor's **companion** for NSE equities (a small US sleeve in beta). It collects data, keeps its own paper book,
 watches what he holds, thinks situations through, learns whether it was right, and answers him in a chat. **Claude Code is for development only: the system runs,
 learns and asks by itself.** Read `docs/PLAN.md` (intent, rules and what remains), `docs/BUILT.md` (what exists: jobs, tools, sources, tables, switches), `docs/STUDIES.md`
